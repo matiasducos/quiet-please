@@ -32,6 +32,26 @@ export interface Database {
           avatar_url?: string | null
           total_points?: number
         }
+        Relationships: []
+      }
+      draws: {
+        Row: {
+          id: string
+          tournament_id: string
+          bracket_data: Json
+          synced_at: string
+        }
+        Insert: {
+          id?: string
+          tournament_id: string
+          bracket_data?: Json
+          synced_at?: string
+        }
+        Update: {
+          bracket_data?: Json
+          synced_at?: string
+        }
+        Relationships: []
       }
       tournaments: {
         Row: {
@@ -66,6 +86,7 @@ export interface Database {
           ends_at?: string | null
           status?: 'upcoming' | 'accepting_predictions' | 'in_progress' | 'completed'
         }
+        Relationships: []
       }
       predictions: {
         Row: {
@@ -94,6 +115,7 @@ export interface Database {
           points_earned?: number
           updated_at?: string
         }
+        Relationships: []
       }
       match_results: {
         Row: {
@@ -120,6 +142,7 @@ export interface Database {
           score?: string | null
           played_at?: string | null
         }
+        Relationships: []
       }
       point_ledger: {
         Row: {
@@ -141,6 +164,7 @@ export interface Database {
           awarded_at?: string
         }
         Update: never
+        Relationships: []
       }
       leagues: {
         Row: {
@@ -166,6 +190,7 @@ export interface Database {
           description?: string | null
           is_active?: boolean
         }
+        Relationships: []
       }
       league_members: {
         Row: {
@@ -183,6 +208,7 @@ export interface Database {
         Update: {
           total_points?: number
         }
+        Relationships: []
       }
       challenges: {
         Row: {
@@ -206,7 +232,10 @@ export interface Database {
         Update: {
           status?: 'pending' | 'accepted' | 'declined' | 'completed'
         }
+        Relationships: []
       }
     }
+    Views: Record<string, never>
+    Functions: Record<string, never>
   }
 }

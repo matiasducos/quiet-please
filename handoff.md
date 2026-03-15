@@ -2,23 +2,34 @@
 
 ## Current status (as of March 15, 2026)
 
-The project is in early foundation stage. The app scaffolds, runs, and displays a working landing page. Auth pages exist but are not yet wired to a live Supabase instance with tables. No real features (bracket prediction, tournaments, leaderboards) are built yet.
+The project has a working foundation with auth, database, and live tennis API data flowing into the database. 22 tournaments were successfully synced in the last session.
 
 ### What is working right now
-- Next.js 16 app boots and serves pages at localhost:3000
-- Landing page (`/`) renders with full design system (DM Serif Display + DM Sans + DM Mono, court green palette)
-- `/login` and `/signup` pages render with full UI (not yet tested end-to-end with Supabase)
-- `/auth/callback` route handler exists
-- `/dashboard` placeholder page exists (redirects to login if unauthenticated)
-- Supabase browser/server/admin clients are wired up
-- Next.js middleware handles route protection (redirects unauthenticated users from protected routes to /login)
-- Tennis data adapter scaffold is complete (api-tennis.com provider implemented, Sportradar stub ready)
-- Full TypeScript database types in `src/types/database.ts`
-- ATP/WTA points table constants in `src/lib/tennis/points.ts`
-- DB migration SQL written (`supabase/migrations/001_initial_schema.sql`) — **NOT YET RUN on Supabase**
+- ✅ Next.js 16 app running at localhost:3000
+- ✅ Landing page (`/`) with full design system
+- ✅ `/login` and `/signup` pages — fully working end-to-end with Supabase
+- ✅ `/auth/callback` route for OAuth
+- ✅ `/dashboard` — authenticated, shows username and points
+- ✅ Route protection via middleware (unauthenticated users redirected to /login)
+- ✅ Supabase browser/server/admin clients configured and working
+- ✅ All 9 DB tables created with RLS policies and indexes
+- ✅ Auto-user-creation trigger (new auth user → public.users row)
+- ✅ Tennis data adapter — api-tennis.com provider fully implemented
+- ✅ `/api/cron/sync-tournaments` — syncs ATP & WTA calendar, 22 tournaments in DB
+- ✅ `/api/cron/sync-draws` — written, not yet tested
+- ✅ Email/password auth working (email confirmation disabled for dev)
+- ✅ Google OAuth UI present but not configured (needs Google Cloud credentials)
 
 ### What is NOT done yet
-Everything in the roadmap from Phase 1 step 4 onward.
+- Tournament list page (shows tournaments to users)
+- Bracket/draw viewer
+- Bracket prediction UI
+- Points engine (awards points after match results)
+- Result sync cron job
+- Global leaderboard
+- Leagues and challenges
+- User profile page
+- Vercel deployment
 
 ---
 
@@ -27,189 +38,231 @@ Everything in the roadmap from Phase 1 step 4 onward.
 ```
 quiet-please/
 ├── docs/
-│   ├── architecture.md       ← system design, decisions
-│   ├── database.md           ← full schema reference
-│   ├── api-adapter.md        ← tennis data layer docs
-│   ├── roadmap.md            ← phases and decisions log
-│   └── handoff.md            ← this file
+│   ├── architecture.md
+│   ├── database.md
+│   ├── api-adapter.md
+│   ├── roadmap.md
+│   └── handoff.md              ← this file
 ├── src/
 │   ├── app/
-│   │   ├── layout.tsx        ← root layout
-│   │   ├── page.tsx          ← landing page ✅
-│   │   ├── globals.css       ← design system + CSS vars
-│   │   ├── login/page.tsx    ← login page ✅ (UI only)
-│   │   ├── signup/page.tsx   ← signup page ✅ (UI only)
-│   │   ├── dashboard/page.tsx ← dashboard placeholder ✅
-│   │   └── auth/callback/route.ts ← OAuth callback ✅
+│   │   ├── layout.tsx           ✅
+│   │   ├── page.tsx             ✅ landing page
+│   │   ├── globals.css          ✅ design system
+│   │   ├── login/page.tsx       ✅ working
+│   │   ├── signup/page.tsx      ✅ working
+│   │   ├── dashboard/page.tsx   ✅ placeholder
+│   │   ├── auth/callback/route.ts ✅
+│   │   └── api/cron/
+│   │       ├── sync-tournaments/route.ts ✅ tested, working
+│   │       └── sync-draws/route.ts       ✅ written, not tested
 │   ├── lib/
 │   │   ├── supabase/
-│   │   │   ├── client.ts     ← browser Supabase client
-│   │   │   ├── server.ts     ← server Supabase client
-│   │   │   ├── admin.ts      ← service role client (server only)
-│   │   │   └── middleware.ts ← session refresh + route protection
+│   │   │   ├── client.ts        ✅
+│   │   │   ├── server.ts        ✅
+│   │   │   ├── admin.ts         ✅
+│   │   │   └── middleware.ts    ✅
 │   │   └── tennis/
-│   │       ├── index.ts      ← public adapter interface
-│   │       ├── types.ts      ← internal normalised types
-│   │       ├── points.ts     ← ATP/WTA points constants
+│   │       ├── index.ts         ✅
+│   │       ├── types.ts         ✅
+│   │       ├── points.ts        ✅
 │   │       └── providers/
-│   │           ├── base.ts       ← abstract provider class
-│   │           ├── api-tennis.ts ← api-tennis.com implementation ✅
-│   │           └── sportradar.ts ← Sportradar stub (not implemented)
-│   ├── middleware.ts          ← Next.js route protection
+│   │           ├── base.ts          ✅
+│   │           ├── api-tennis.ts    ✅ working
+│   │           └── sportradar.ts    stub only
+│   ├── middleware.ts             ✅
 │   └── types/
-│       └── database.ts        ← TypeScript types mirroring DB schema
+│       └── database.ts           ✅
 ├── supabase/
 │   └── migrations/
-│       └── 001_initial_schema.sql ← full DB migration (NOT YET RUN)
-├── .env.local                 ← local secrets (NOT committed)
-├── .env.example               ← env var template
-└── setup-pages.sh             ← helper script (can be deleted)
+│       └── 001_initial_schema.sql ✅ RUN — all tables exist
+├── setup-pages.sh               (can be deleted)
+├── fix-provider.sh              (can be deleted)
+├── .env.local                   (local only, not committed)
+└── .env.example
 ```
 
 ---
 
-## Environment variables
-
-File: `.env.local` (already exists on dev machine, NOT in git)
+## Environment variables (.env.local)
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://nqmjrwqcqnxoocodgedj.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<publishable key from Supabase dashboard>
-SUPABASE_SERVICE_ROLE_KEY=<secret key from Supabase dashboard>
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<publishable key — new format, get from Supabase Settings → API Keys>
+SUPABASE_SERVICE_ROLE_KEY=<secret key — get from Supabase Settings → API Keys>
 TENNIS_API_KEY=3c017f23c4mshcb90a92890cb23dp103ec3jsn3367cf2e71d1
 TENNIS_API_PROVIDER=api-tennis
+CRON_SECRET=dev-secret-123
 ```
 
-**Important:** The original service role key was accidentally exposed in chat and the JWT secret was rotated. New keys are in the Supabase dashboard under Settings → API Keys.
+**Key notes:**
+- Supabase rotated JWT secret during setup — use NEW publishable/secret keys (not legacy anon/service_role)
+- Tennis API is via RapidAPI (BASIC free tier, 500 req/month) — subscribed to "Tennis API - ATP WTA ITF" by Matchstat
+- `CRON_SECRET` not enforced in development (NODE_ENV=development bypasses auth check)
 
 ---
 
-## Pending decisions (questions for the product owner)
+## Tennis API details
 
-### Auth & users
-1. Should Google OAuth be enabled? (Requires setting up OAuth credentials in Supabase dashboard → Auth → Providers → Google)
-2. Should email confirmation be required on signup, or allow immediate access?
-3. Should there be a username uniqueness check on the frontend before form submission, or just rely on DB constraint error?
+Provider: **Tennis API - ATP WTA ITF** by Matchstat on RapidAPI
+RapidAPI host: `tennis-api-atp-wta-itf.p.rapidapi.com`
+Plan: BASIC (free, limited requests)
 
-### Tournaments & draws
-4. Should the app cover ATP Challenger events, or only ATP main tour + WTA?
-5. Should qualifying rounds be included in predictions, or only main draw?
-6. When a tournament has no draw yet (e.g. 3 weeks away), should it appear in the app at all? If yes, in what state?
-7. What is the exact "draw close" time rule? (e.g. 1 hour before first match? At official draw ceremony?)
+Key endpoints used:
+- `GET tennis/v2/{type}/tournament/calendar/{year}` — full season calendar (ATP/WTA)
+- `GET tennis/v2/{type}/fixtures/tournament/{tournamentId}` — all matches for a tournament
+- `GET tennis/v2/{type}/fixtures/{startdate}/{enddate}` — fixtures by date range
 
-### Predictions
-8. If a player retires during a match mid-tournament, how should that be handled — does the user who picked them lose points, or is it voided?
-9. Should users be able to see OTHER users' predictions after predictions lock? Or only after the tournament ends?
-10. Should there be a "public" vs "private" prediction mode?
+Response structure:
+```json
+{
+  "data": [
+    {
+      "id": 21364,
+      "name": "Nitto ATP Finals - Turin",
+      "courtId": 3,
+      "date": "2026-11-16T00:00:00.000Z",
+      "rankId": 7,
+      "court": { "id": 3, "name": "I.hard" },
+      "round": { "id": 7, "name": "Tour finals" },
+      "coutry": { "acronym": "ITA", "name": "Italy" }
+    }
+  ]
+}
+```
 
-### Leagues & challenges
-11. What is the maximum size of a private league?
-12. Can a user be in multiple leagues simultaneously?
-13. For season-long group challenges — does the group automatically include all tournaments, or can the group admin choose which tournaments count?
-14. Should there be a league admin role with extra permissions (remove members, etc.)?
+Fixture response structure:
+```json
+{
+  "data": [
+    {
+      "id": 1722,
+      "date": "2026-03-17T12:00:00.000Z",
+      "roundId": 4,
+      "player1Id": 29457,
+      "player2Id": 51853,
+      "tournamentId": 21512,
+      "player1": { "id": 29457, "name": "Andrea Pellegrino", "countryAcr": "ITA" },
+      "player2": { "id": 51853, "name": "Pol Martin Tiffon", "countryAcr": "ESP" }
+    }
+  ],
+  "hasNextPage": true
+}
+```
 
-### Points & leaderboards
-15. Should the global leaderboard be all-time cumulative, or reset per season (calendar year)?
-16. Should there be separate leaderboards per tour (ATP-only, WTA-only) or always combined?
-17. Should points earned in private leagues count toward the global leaderboard, or be separate?
+roundId mapping (confirmed from API):
+- 1 = Final
+- 2 = Semifinal
+- 3 = Quarterfinal
+- 4 = Round of 16
+- 5 = Round of 32
+- 6 = Round of 64
+- 7 = Round of 128
 
-### Monetisation (for future planning)
-18. What is the intended monetisation model? (Paid leagues, subscriptions, ads, sponsorship?)
-19. Should there be a free tier with limited tournaments per season?
+---
+
+## Supabase project
+
+Project ID: `nqmjrwqcqnxoocodgedj`
+URL: `https://nqmjrwqcqnxoocodgedj.supabase.co`
+Dashboard: https://supabase.com/dashboard/project/nqmjrwqcqnxoocodgedj
+
+Auth settings:
+- Email provider: enabled
+- Confirm email: DISABLED (for development — re-enable before production)
+- Google OAuth: not configured
 
 ---
 
 ## Immediate next steps (in order)
 
-### Step 1 — Run the DB migration
-Go to Supabase dashboard → SQL Editor → New query.
-Paste the full contents of `supabase/migrations/001_initial_schema.sql` and run it.
-This creates all tables, RLS policies, indexes, and the auto-user-creation trigger.
+### Step 1 — Test sync-draws endpoint
+Hit: `http://localhost:3000/api/cron/sync-draws`
+This will try to fetch draws for all 22 tournaments in the DB.
+Note: many may return empty (draw not published yet) — that's expected.
 
-### Step 2 — Enable Google OAuth (optional but recommended)
-- Go to Supabase → Authentication → Providers → Google
-- Create OAuth credentials at console.cloud.google.com
-- Add the Supabase callback URL to Google's allowed redirects
-
-### Step 3 — Test auth end-to-end
-- Create a test account via `/signup`
-- Verify the user appears in Supabase → Authentication → Users
-- Verify a row is created in the `users` table (via the trigger)
-- Verify `/dashboard` is accessible after login
-- Verify `/dashboard` redirects to `/login` when not authenticated
-
-### Step 4 — Build tournament list page
+### Step 2 — Build tournament list page
 File: `src/app/tournaments/page.tsx`
-- Server component that reads from `tournaments` table
-- For now, seed a few tournaments manually in Supabase SQL Editor
-- Show ATP and WTA tabs
-- Each card shows: name, tour, category, surface, dates, status badge
-- Link to `/tournaments/[id]` (detail page, not yet built)
 
-### Step 5 — Build the draw sync cron job
-File: `src/app/api/cron/sync-draws/route.ts`
-- Uses `tennisAdapter.getUpcomingTournaments()` 
-- Upserts tournaments into `tournaments` table
-- For each tournament, calls `tennisAdapter.getDraw()` and upserts into `draws` table
-- Protected with `CRON_SECRET` env var
-- Deploy as Vercel cron or Supabase Edge Function
+Server component. Query:
+```ts
+const { data } = await supabase
+  .from('tournaments')
+  .select('*')
+  .order('starts_at', { ascending: true })
+```
 
-### Step 6 — Build bracket prediction UI
+Display as cards showing: name, tour badge (ATP/WTA), surface, category, start date, status badge.
+Add ATP/WTA filter tabs.
+Link each card to `/tournaments/[id]`.
+
+### Step 3 — Build tournament detail + prediction page
+File: `src/app/tournaments/[id]/page.tsx`
 File: `src/app/tournaments/[id]/predict/page.tsx`
-- Read draw from `draws` table
-- Render bracket round by round
-- User clicks a player name to pick them as winner
-- Picks cascade: if you pick player A in R64, they automatically appear as the opponent's opponent in R32
-- Save to `predictions` table as JSONB
-- Lock form when `tournament.draw_close_at` has passed or `prediction.is_locked = true`
 
-### Step 7 — Build result sync + points engine
-Files:
-- `src/app/api/cron/sync-results/route.ts` — polls API for completed matches, writes to `match_results`
-- `src/app/api/cron/award-points/route.ts` — compares predictions vs results, writes to `point_ledger`, updates `users.total_points`
+Tournament detail shows: name, surface, draw, prediction CTA.
+Prediction page renders the bracket from `draws.bracket_data` JSONB.
+User clicks player names to pick winners round by round.
+Picks cascade (picking winner in R16 auto-advances them to QF slot).
+Saves to `predictions` table as JSONB.
+Lock button / auto-lock at `draw_close_at`.
 
-### Step 8 — Build global leaderboard
+### Step 4 — Build result sync cron
+File: `src/app/api/cron/sync-results/route.ts`
+
+For each `in_progress` tournament, call `tennisAdapter.getResults(externalId)`.
+Upsert into `match_results` table.
+Trigger points engine after each batch.
+
+### Step 5 — Build points engine
+File: `src/app/api/cron/award-points/route.ts`
+
+For each new match result:
+1. Find all predictions for that tournament
+2. Compare each prediction's picks JSON against the result
+3. If correct: insert into `point_ledger`, update `predictions.points_earned`, update `users.total_points`
+
+Points values are in `src/lib/tennis/points.ts`.
+
+### Step 6 — Global leaderboard
 File: `src/app/leaderboard/page.tsx`
-- Query `users` ordered by `total_points` DESC
-- Show rank, username, avatar, total points, tournaments played
 
-### Step 9 — Build leagues
+Query `users` ordered by `total_points` DESC with pagination.
+
+### Step 7 — Leagues
 Files:
-- `src/app/leagues/page.tsx` — list user's leagues
-- `src/app/leagues/new/page.tsx` — create league form
-- `src/app/leagues/[id]/page.tsx` — league detail + leaderboard
-- `src/app/leagues/join/[code]/page.tsx` — join via invite code
-
-### Step 10 — Build user profile
-File: `src/app/profile/[username]/page.tsx`
-- Show username, avatar, total points, global rank
-- Tournament history with points earned per tournament
-- Prediction accuracy stats (% correct per round)
+- `src/app/leagues/page.tsx`
+- `src/app/leagues/new/page.tsx`
+- `src/app/leagues/[id]/page.tsx`
+- `src/app/leagues/join/[code]/page.tsx`
 
 ---
 
-## Tech stack summary
+## Open product decisions
 
-| Layer | Technology | Notes |
-|---|---|---|
-| Framework | Next.js 16 (App Router) | Turbopack in dev |
-| Styling | Tailwind CSS + CSS variables | Design system in globals.css |
-| Database | Supabase (PostgreSQL) | Project: quiet-please |
-| Auth | Supabase Auth | Email + Google OAuth (Google not yet configured) |
-| Tennis data | api-tennis.com via RapidAPI | Free tier, 200 req/day. Adapter ready to swap to Sportradar |
-| Hosting | Vercel (planned) | Not yet deployed |
-| Background jobs | Not yet implemented | Plan: Vercel cron or Supabase Edge Functions |
+1. Should ATP Challenger events be included or only main tour + WTA?
+2. Should qualifying rounds be in the prediction bracket?
+3. When no draw exists yet, show tournament in "upcoming" state or hide it?
+4. If a player retires mid-tournament, void that pick or mark as loss?
+5. Can users see each other's predictions before tournament starts?
+6. Max league size?
+7. Does season-long challenge auto-include all tournaments or admin-selectable?
+8. Global leaderboard: all-time or reset per calendar year?
+9. Separate ATP/WTA leaderboards or combined?
+10. Monetisation model (paid leagues, subscriptions, ads)?
+11. Re-enable email confirmation before production?
+
+---
 
 ## Design system
 
-CSS variables defined in `src/app/globals.css`:
-- `--court` (#1a6b3c) — primary green, buttons, accents
-- `--court-dark` (#0f4a29) — dark green, signup panel
-- `--clay` (#c8530a) — orange accent
-- `--chalk` (#f5f2eb) — page background (warm off-white)
+CSS variables in `src/app/globals.css`:
+- `--court` (#1a6b3c) — primary green
+- `--court-dark` (#0f4a29) — dark green
+- `--clay` (#c8530a) — clay orange accent
+- `--chalk` (#f5f2eb) — page background
 - `--ink` (#0d0d0d) — primary text
 - `--muted` (#6b6b6b) — secondary text
-- Fonts: DM Serif Display (headings), DM Sans (body), DM Mono (labels/codes)
+- Fonts: DM Serif Display (headings), DM Sans (body), DM Mono (labels)
 
 ## Repository
 https://github.com/matiasducos/quiet-please

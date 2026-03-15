@@ -1,151 +1,161 @@
 import { TennisProvider } from './base'
 import type { Tournament, Draw, MatchResult, Round, TournamentCategory, Tour } from '../types'
 
-const BASE_URL = 'https://tennis-api-atp-wta-itf.p.rapidapi.com/tennis/'
+const RAPIDAPI_HOST = 'tennis-api-atp-wta-itf.p.rapidapi.com'
+
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 export class ApiTennisProvider extends TennisProvider {
-  private async fetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
-    const url = new URL(endpoint, BASE_URL)
-    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v))
 
-    const res = await fetch(url.toString(), {
+  private async fetch<T>(path: string): Promise<T> {
+    const url = `https://${RAPIDAPI_HOST}/${path}`
+    const res = await fetch(url, {
       headers: {
-        'x-rapidapi-key': this.apiKey,
-        'x-rapidapi-host': 'tennis-api-atp-wta-itf.p.rapidapi.com',
+        'x-rapidapi-key':  this.apiKey,
+        'x-rapidapi-host': RAPIDAPI_HOST,
+        'Content-Type':    'application/json',
       },
-      next: { revalidate: 1800 }, // 30 min cache
+      next: { revalidate: 1800 },
     })
-
     if (!res.ok) {
-      throw new Error(`api-tennis.com error: ${res.status} ${res.statusText}`)
+      const body = await res.text().catch(() => '')
+      throw new Error(`api-tennis error: ${res.status} ${res.statusText} — ${body}`)
     }
-
     return res.json()
   }
 
   async getUpcomingTournaments(): Promise<Tournament[]> {
-    const now = new Date()
-    const from = now.toISOString().split('T')[0]
-    const to = new Date(now.setMonth(now.getMonth() + 3)).toISOString().split('T')[0]
-    return this.getTournaments(from, to)
+    const year = new Date().getFullYear()
+    return this.getTournamentsByYear(year)
   }
 
   async getTournaments(from: string, to: string): Promise<Tournament[]> {
-    // api-tennis.com returns tournaments by date range
-    const data = await this.fetch<{ result: any[] }>('v1/tournament', { from, to })
+    const year = new Date(from).getFullYear()
+    const all = await this.getTournamentsByYear(year)
+    return all.filter(t => t.startsAt >= from && t.startsAt <= to)
+  }
 
-    return (data.result ?? [])
-      .filter((t: any) => this.isSupportedTour(t.event_type))
-      .map((t: any) => this.transformTournament(t))
+  private async getTournamentsByYear(year: number): Promise<Tournament[]> {
+    const tournaments: Tournament[] = []
+
+    // Sequential requests with delay to avoid rate limiting on free tier
+    const atpData = await this.fetch<{ data: any[] }>(`tennis/v2/atp/tournament/calendar/${year}`)
+    for (const item of (atpData.data ?? [])) {
+      tournaments.push(this.transformCalendarTournament(item, 'ATP'))
+    }
+
+    await delay(500) // 500ms between ATP and WTA calls
+
+    const wtaData = await this.fetch<{ data: any[] }>(`tennis/v2/wta/tournament/calendar/${year}`)
+    for (const item of (wtaData.data ?? [])) {
+      tournaments.push(this.transformCalendarTournament(item, 'WTA'))
+    }
+
+    return tournaments
   }
 
   async getDraw(tournamentExternalId: string): Promise<Draw> {
-    const data = await this.fetch<{ result: any[] }>('v1/tournament/draw', {
-      tournament_id: tournamentExternalId,
-    })
-
-    const matches = (data.result ?? []).map((m: any) => this.transformMatch(m))
-    const rounds = [...new Set(matches.map((m) => m.round))] as Round[]
-
-    return {
-      tournamentExternalId,
-      rounds,
-      matches,
+    for (const type of ['atp', 'wta']) {
+      try {
+        const data = await this.fetch<{ data: any[]; hasNextPage: boolean }>(
+          `tennis/v2/${type}/fixtures/tournament/${tournamentExternalId}`
+        )
+        if (data.data?.length) {
+          const matches = data.data.map((m: any) => this.transformMatch(m))
+          const rounds = [...new Set(matches.map(m => m.round))] as Round[]
+          return { tournamentExternalId, rounds, matches }
+        }
+        await delay(300)
+      } catch { await delay(300) }
     }
+    return { tournamentExternalId, rounds: [], matches: [] }
   }
 
   async getResults(tournamentExternalId: string): Promise<MatchResult[]> {
-    const data = await this.fetch<{ result: any[] }>('v1/tournament/results', {
-      tournament_id: tournamentExternalId,
-    })
-
-    return (data.result ?? [])
-      .filter((m: any) => m.winner_id)
-      .map((m: any) => this.transformResult(tournamentExternalId, m))
+    for (const type of ['atp', 'wta']) {
+      try {
+        const data = await this.fetch<{ data: any[] }>(
+          `tennis/v2/${type}/fixtures/tournament/${tournamentExternalId}`
+        )
+        if (data.data?.length) {
+          return data.data
+            .filter((m: any) => m.winner !== null && m.winner !== undefined)
+            .map((m: any) => this.transformResult(tournamentExternalId, m))
+        }
+        await delay(300)
+      } catch { await delay(300) }
+    }
+    return []
   }
 
-  // --- Transforms ---
-
-  private transformTournament(raw: any): Tournament {
+  private transformCalendarTournament(raw: any, tour: Tour): Tournament {
     return {
-      externalId:  String(raw.tournament_key ?? raw.id),
-      name:        raw.tournament_name ?? raw.name,
-      tour:        this.normalizeTour(raw.event_type),
-      category:    this.normalizeCategory(raw.event_type, raw.category),
-      surface:     this.normalizeSurface(raw.surface),
-      drawCloseAt: raw.start_date ?? raw.date_start,
-      startsAt:    raw.start_date ?? raw.date_start,
-      endsAt:      raw.end_date ?? raw.date_end,
+      externalId:  String(raw.id),
+      name:        raw.name ?? 'Unknown Tournament',
+      tour,
+      category:    this.normalizeCategory(raw.round?.name ?? '', raw.rankId),
+      surface:     this.normalizeSurface(raw.court?.name ?? ''),
+      drawCloseAt: raw.date ?? new Date().toISOString(),
+      startsAt:    raw.date ?? new Date().toISOString(),
+      endsAt:      raw.date ?? new Date().toISOString(),
     }
   }
 
   private transformMatch(raw: any): any {
     return {
-      matchId:  String(raw.match_key ?? raw.id),
-      round:    this.normalizeRound(raw.round_name ?? raw.round),
-      player1:  raw.player1_key ? {
-        externalId: String(raw.player1_key),
-        name:       raw.player1_name ?? '',
-        country:    raw.player1_country ?? '',
-        seed:       raw.player1_seed ?? undefined,
+      matchId:     String(raw.id),
+      round:       this.normalizeRoundId(raw.roundId ?? 0),
+      player1:     raw.player1 ? {
+        externalId: String(raw.player1.id),
+        name:       raw.player1.name ?? '',
+        country:    raw.player1.countryAcr ?? '',
       } : null,
-      player2:  raw.player2_key ? {
-        externalId: String(raw.player2_key),
-        name:       raw.player2_name ?? '',
-        country:    raw.player2_country ?? '',
-        seed:       raw.player2_seed ?? undefined,
+      player2:     raw.player2 ? {
+        externalId: String(raw.player2.id),
+        name:       raw.player2.name ?? '',
+        country:    raw.player2.countryAcr ?? '',
       } : null,
-      scheduledAt: raw.date ?? raw.scheduled_at,
+      scheduledAt: raw.date,
     }
   }
 
   private transformResult(tournamentExternalId: string, raw: any): MatchResult {
+    const homeWon = raw.winner === 1 || raw.winner === 'player1'
     return {
-      externalMatchId:    String(raw.match_key ?? raw.id),
+      externalMatchId:     String(raw.id),
       tournamentExternalId,
-      round:              this.normalizeRound(raw.round_name ?? raw.round),
-      winnerExternalId:   String(raw.winner_key ?? raw.winner_id),
-      loserExternalId:    String(raw.loser_key ?? raw.loser_id),
-      score:              raw.score ?? '',
-      playedAt:           raw.date ?? raw.played_at ?? new Date().toISOString(),
+      round:               this.normalizeRoundId(raw.roundId ?? 0),
+      winnerExternalId:    String(homeWon ? raw.player1?.id : raw.player2?.id),
+      loserExternalId:     String(homeWon ? raw.player2?.id : raw.player1?.id),
+      score:               raw.score ?? '',
+      playedAt:            raw.date ?? new Date().toISOString(),
     }
   }
 
-  // --- Normalizers ---
-
-  private isSupportedTour(eventType: string): boolean {
-    const t = (eventType ?? '').toLowerCase()
-    return t.includes('atp') || t.includes('wta')
+  private normalizeRoundId(roundId: number): Round {
+    switch (roundId) {
+      case 1: return 'F'
+      case 2: return 'SF'
+      case 3: return 'QF'
+      case 4: return 'R16'
+      case 5: return 'R32'
+      case 6: return 'R64'
+      case 7: return 'R128'
+      default: return 'R32'
+    }
   }
 
-  private normalizeTour(eventType: string): Tour {
-    return (eventType ?? '').toLowerCase().includes('wta') ? 'WTA' : 'ATP'
-  }
-
-  private normalizeCategory(eventType: string, category?: string): TournamentCategory {
-    const t = ((eventType ?? '') + (category ?? '')).toLowerCase()
-    if (t.includes('grand_slam') || t.includes('grand slam')) return 'grand_slam'
-    if (t.includes('1000') || t.includes('masters')) return 'masters_1000'
-    if (t.includes('500')) return '500'
+  private normalizeCategory(roundName: string, rankId?: number): TournamentCategory {
+    if (rankId === 1 || roundName.toLowerCase().includes('grand slam')) return 'grand_slam'
+    if (rankId === 3 || roundName.toLowerCase().includes('masters series')) return 'masters_1000'
+    if (roundName.toLowerCase().includes('500')) return '500'
     return '250'
   }
 
-  private normalizeSurface(surface: string): Tournament['surface'] {
-    const s = (surface ?? '').toLowerCase()
-    if (s.includes('clay')) return 'clay'
-    if (s.includes('grass')) return 'grass'
+  private normalizeSurface(courtName: string): Tournament['surface'] {
+    const c = courtName.toLowerCase()
+    if (c.includes('clay')) return 'clay'
+    if (c.includes('grass')) return 'grass'
     return 'hard'
-  }
-
-  private normalizeRound(round: string): Round {
-    const r = (round ?? '').toLowerCase().replace(/\s/g, '')
-    if (r.includes('128') || r.includes('r1')) return 'R128'
-    if (r.includes('64')  || r.includes('r2')) return 'R64'
-    if (r.includes('32')  || r.includes('r3')) return 'R32'
-    if (r.includes('16')  || r.includes('r4')) return 'R16'
-    if (r.includes('quarter')) return 'QF'
-    if (r.includes('semi'))    return 'SF'
-    if (r.includes('final'))   return 'F'
-    return 'R32'
   }
 }
