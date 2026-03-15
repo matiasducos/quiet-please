@@ -1,32 +1,57 @@
 # Developer Handoff — Quiet Please
 
-## Current status (as of March 15, 2026 — Session 3)
+## Current status (as of March 15, 2026 — Session 4)
 
-The app is now a working product. Auth, tournaments, bracket predictions, and leaderboard are all functional end-to-end with real data.
+The app is a working product with auth, tournaments, bracket predictions, leaderboard, result sync, and points engine all built. The main missing pieces are: sign out button wired to UI, points actually flowing (needs match results), and leagues.
 
 ### What is working right now
-- ✅ Landing page (`/`) with full design system
-- ✅ Auth — signup, login, logout, route protection
-- ✅ Dashboard (`/dashboard`) — username, points, upcoming tournaments
-- ✅ Tournament list (`/tournaments`) — ATP/WTA tabs, real data from API
-- ✅ Tournament detail (`/tournaments/[id]`) — surface, dates, points breakdown, draw status
-- ✅ Bracket predictor (`/tournaments/[id]/predict`) — pick winners per round, save draft, submit & lock
-- ✅ Leaderboard (`/leaderboard`) — global rankings, highlights current user
-- ✅ 22 ATP + WTA tournaments in DB (synced from api-tennis.com)
-- ✅ Cron: sync-tournaments — fetches full calendar
-- ✅ Cron: sync-draws — fetches draws for active tournaments
-- ✅ predictions table saving to Supabase with JSONB picks
-- ✅ Server Actions for saving/locking predictions
+- ✅ Landing page with full design system
+- ✅ Auth — signup, login, route protection
+- ✅ Dashboard — username, points, upcoming tournaments
+- ✅ Tournament list (`/tournaments`) — ATP/WTA tabs, real data
+- ✅ Tournament detail (`/tournaments/[id]`) — draw status, points breakdown
+- ✅ Bracket predictor (`/tournaments/[id]/predict`) — pick, save draft, submit & lock
+- ✅ Leaderboard (`/leaderboard`) — global rankings, current user highlight
+- ✅ 22 ATP + WTA tournaments in DB
+- ✅ Cron: sync-tournaments, sync-draws, sync-results, award-points — all written
+- ✅ `/auth/logout` route written
+- ✅ `src/components/Nav.tsx` shared nav component written
+- ✅ `increment_user_points` Supabase function — **needs to be confirmed created**
 
 ### What is NOT done yet
-- Result sync cron (sync match results from API)
-- Points engine (award points after results)
-- Points actually showing on leaderboard (all 0 until results flow)
-- Leagues (create, join, leaderboard)
+- Sign out button not yet visible in nav (logout route exists, not wired to UI pages)
+- Points engine not yet tested (needs real match results)
+- Duplicate "China Open - Beijing" in WTA — needs cleanup SQL
+- Leagues (create, join, leaderboard per group)
 - Head-to-head challenges
 - User profile page
-- Logout button in nav
 - Vercel deployment
+
+---
+
+## Pending SQL to run in Supabase
+
+**1. increment_user_points function** (required for points engine):
+```sql
+CREATE OR REPLACE FUNCTION public.increment_user_points(user_id uuid, points int)
+RETURNS void LANGUAGE sql AS $$
+  UPDATE public.users
+  SET total_points = total_points + points
+  WHERE id = user_id;
+$$;
+```
+
+**2. Fix duplicate China Open:**
+```sql
+DELETE FROM tournaments
+WHERE name = 'China Open - Beijing'
+AND tour = 'WTA'
+AND id = (
+  SELECT id FROM tournaments
+  WHERE name = 'China Open - Beijing' AND tour = 'WTA'
+  LIMIT 1
+);
+```
 
 ---
 
@@ -39,33 +64,39 @@ quiet-please/
 │   ├── database.md
 │   ├── api-adapter.md
 │   ├── roadmap.md
-│   └── handoff.md              ← this file
+│   └── handoff.md
 ├── src/
 │   ├── app/
-│   │   ├── layout.tsx           ✅
-│   │   ├── page.tsx             ✅ landing
-│   │   ├── globals.css          ✅ design system
-│   │   ├── login/page.tsx       ✅
-│   │   ├── signup/page.tsx      ✅
-│   │   ├── dashboard/page.tsx   ✅ with upcoming tournaments
+│   │   ├── layout.tsx                    ✅
+│   │   ├── page.tsx                      ✅ landing
+│   │   ├── globals.css                   ✅ design system
+│   │   ├── login/page.tsx                ✅
+│   │   ├── signup/page.tsx               ✅
+│   │   ├── dashboard/page.tsx            ✅
 │   │   ├── tournaments/
-│   │   │   ├── page.tsx         ✅ list with ATP/WTA tabs
+│   │   │   ├── page.tsx                  ✅
 │   │   │   └── [id]/
-│   │   │       ├── page.tsx     ✅ detail page
+│   │   │       ├── page.tsx              ✅
 │   │   │       └── predict/
-│   │   │           ├── page.tsx          ✅ server wrapper
-│   │   │           ├── BracketPredictor.tsx ✅ client UI
-│   │   │           └── actions.ts        ✅ server action
-│   │   ├── leaderboard/page.tsx ✅
-│   │   ├── auth/callback/route.ts ✅
+│   │   │           ├── page.tsx          ✅
+│   │   │           ├── BracketPredictor.tsx ✅
+│   │   │           └── actions.ts        ✅
+│   │   ├── leaderboard/page.tsx          ✅
+│   │   ├── auth/
+│   │   │   ├── callback/route.ts         ✅
+│   │   │   └── logout/route.ts           ✅ (not yet wired to nav)
 │   │   └── api/cron/
-│   │       ├── sync-tournaments/route.ts ✅ working
-│   │       └── sync-draws/route.ts       ✅ working
+│   │       ├── sync-tournaments/route.ts ✅ tested
+│   │       ├── sync-draws/route.ts       ✅ tested
+│   │       ├── sync-results/route.ts     ✅ written, not tested
+│   │       └── award-points/route.ts     ✅ written, not tested
+│   ├── components/
+│   │   └── Nav.tsx                       ✅ written, not yet used by pages
 │   ├── lib/
 │   │   ├── supabase/ (client, server, admin, middleware) ✅
-│   │   └── tennis/  (adapter, types, points, api-tennis provider) ✅
-│   ├── middleware.ts             ✅
-│   └── types/database.ts        ✅
+│   │   └── tennis/ (adapter, types, points, provider)   ✅
+│   ├── middleware.ts                      ✅
+│   └── types/database.ts                 ✅
 ├── supabase/migrations/001_initial_schema.sql ✅ run
 └── .env.local (not committed)
 ```
@@ -89,15 +120,13 @@ CRON_SECRET=dev-secret-123
 
 Provider: Tennis API - ATP WTA ITF by Matchstat (RapidAPI BASIC free tier)
 Host: `tennis-api-atp-wta-itf.p.rapidapi.com`
-
-Key endpoints:
-- `tennis/v2/{type}/tournament/calendar/{year}` → full season calendar
-- `tennis/v2/{type}/fixtures/tournament/{id}` → match fixtures (draw + results)
+Endpoints:
+- `tennis/v2/{type}/tournament/calendar/{year}` → season calendar
+- `tennis/v2/{type}/fixtures/tournament/{id}` → draw + results
 - `tennis/v2/{type}/fixtures/{from}/{to}` → fixtures by date range
 
-roundId mapping: 1=F, 2=SF, 3=QF, 4=R16, 5=R32, 6=R64, 7=R128
-
-Rate limit: free tier is strict — use sequential requests with 500ms delay between ATP/WTA calls.
+roundId: 1=F, 2=SF, 3=QF, 4=R16, 5=R32, 6=R64, 7=R128
+Rate limit: free tier — use sequential requests with 500ms delay.
 
 ---
 
@@ -105,93 +134,88 @@ Rate limit: free tier is strict — use sequential requests with 500ms delay bet
 
 Japan Open Tennis Championships - Tokyo (`id: 5f21f18e-5e6b-4b72-804a-3c114a5f8022`):
 - Status: `accepting_predictions`
-- Has a mock draw seeded with 4 QF matches (Alcaraz, Sinner, Zverev, Medvedev)
-- Used for testing the bracket predictor
+- Mock draw: 4 QF matches (Alcaraz vs Rune, Zverev vs Rublev, Medvedev vs Ruud, Sinner vs Paul)
+- SF and F matches with null players (TBD)
 
 ---
 
 ## Immediate next steps (in order)
 
-### Step 1 — Add logout button to nav
-All pages share the same nav pattern. Add a logout form action to the nav.
-In each page's nav, add:
+### Step 1 — Run pending SQL (see above)
+Run both SQL statements in Supabase SQL Editor.
+
+### Step 2 — Wire sign out to all nav bars
+Each page has an inline nav. Find the `score-pill` span and add right after it:
 ```tsx
 <form action="/auth/logout" method="post">
-  <button type="submit" style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
+  <button type="submit" style={{ fontSize: '0.8rem', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
     Sign out
   </button>
 </form>
 ```
-And create `src/app/auth/logout/route.ts`:
-```ts
-import { createClient } from '@/lib/supabase/server'
-import { NextResponse } from 'next/server'
-export async function POST() {
-  const supabase = await createClient()
-  await supabase.auth.signOut()
-  return NextResponse.redirect(new URL('/', process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'))
-}
+Pages to update: dashboard, tournaments, tournaments/[id], leaderboard, tournaments/[id]/predict (BracketPredictor.tsx nav)
+
+Alternatively — refactor all pages to use `src/components/Nav.tsx` which already has the sign out button built in.
+
+### Step 3 — Test the result sync and points engine
+Seed a match result manually for Japan Open in Supabase SQL Editor, then lock the test prediction, then hit `/api/cron/award-points` and verify points appear on leaderboard.
+
+Seed SQL:
+```sql
+INSERT INTO public.match_results (tournament_id, external_match_id, round, winner_external_id, loser_external_id, score, played_at)
+VALUES (
+  '5f21f18e-5e6b-4b72-804a-3c114a5f8022',
+  'test_qf_1',
+  'QF',
+  'p1',
+  'p2',
+  '6-3 6-4',
+  NOW()
+);
 ```
+(p1 = Alcaraz's externalId in our mock draw)
 
-### Step 2 — Build result sync cron
-File: `src/app/api/cron/sync-results/route.ts`
-- Query tournaments with `status = 'in_progress'`
-- Call `tennisAdapter.getResults(externalId)` for each
-- Upsert into `match_results` table
-- After each upsert, trigger points engine
-
-### Step 3 — Build points engine
-File: `src/app/api/cron/award-points/route.ts`
-- For each new match result, find all predictions for that tournament
-- Parse `predictions.picks` JSONB
-- If `picks[matchId] === result.winnerExternalId` → correct pick
-- Insert into `point_ledger`, update `predictions.points_earned`, update `users.total_points`
-- Points values from `src/lib/tennis/points.ts`
+Then hit: `http://localhost:3000/api/cron/award-points`
 
 ### Step 4 — Build leagues
-Files:
-- `src/app/leagues/page.tsx` — list user's leagues
-- `src/app/leagues/new/page.tsx` — create form
-- `src/app/leagues/[id]/page.tsx` — league detail + leaderboard
+Files to create:
+- `src/app/leagues/page.tsx` — list user's leagues + create button
+- `src/app/leagues/new/page.tsx` — create league form
+- `src/app/leagues/[id]/page.tsx` — league leaderboard + members
 - `src/app/leagues/join/[code]/page.tsx` — join via invite code
 
 ### Step 5 — Deploy to Vercel
 - Connect GitHub repo to Vercel
 - Add all env vars in Vercel dashboard
-- Set up Vercel cron jobs for sync-tournaments (daily) and sync-draws (every 3 hours)
-- Add `NEXT_PUBLIC_SITE_URL` env var pointing to production URL
-
-### Step 6 — User profile page
-File: `src/app/profile/[username]/page.tsx`
-- Show total points, global rank, prediction history, accuracy stats
+- Set up cron jobs (sync-tournaments daily, sync-draws every 3h)
+- Add `NEXT_PUBLIC_SITE_URL` env var
 
 ---
 
 ## Open product decisions
 
-1. Should ATP Challenger events be included or only main tour + WTA?
-2. When no draw exists, show tournament in "upcoming" state — done. OK?
-3. If a player retires mid-tournament, void that pick or mark as loss?
-4. Can users see each other's predictions before draw closes?
-5. Max league size?
-6. Does season-long challenge auto-include all tournaments or admin-selectable?
-7. Global leaderboard: all-time or reset per calendar year?
-8. Separate ATP/WTA leaderboards or combined?
-9. Monetisation model?
-10. Re-enable email confirmation before production?
+1. ATP Challengers included or main tour only?
+2. Player retires mid-tournament — void pick or loss?
+3. Can users see others' picks before draw closes?
+4. Max league size?
+5. Season-long challenge: all tournaments or admin-selectable?
+6. Global leaderboard: all-time or reset per year?
+7. Separate ATP/WTA leaderboards or combined?
+8. Monetisation model?
+9. Re-enable email confirmation before production?
 
 ---
 
 ## Design system
 
-CSS variables in `src/app/globals.css`:
-- `--court` (#1a6b3c) — primary green
-- `--court-dark` (#0f4a29) — dark green
-- `--clay` (#c8530a) — clay orange
-- `--chalk` (#f5f2eb) — page background
-- `--ink` (#0d0d0d) — primary text
-- `--muted` (#6b6b6b) — secondary text
-- Fonts: DM Serif Display (headings), DM Sans (body), DM Mono (labels)
+CSS variables (`src/app/globals.css`):
+- `--court` #1a6b3c — primary green
+- `--court-dark` #0f4a29 — dark green
+- `--clay` #c8530a — clay orange
+- `--chalk` #f5f2eb — page background
+- `--ink` #0d0d0d — primary text
+- `--muted` #6b6b6b — secondary text
+- Fonts: DM Serif Display (headings), DM Sans (body), DM Mono (labels/mono)
 
 ## Repository
 https://github.com/matiasducos/quiet-please
