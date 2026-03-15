@@ -1,6 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
+import type { Database } from '@/types/database'
+
+type TournamentRow = Database['public']['Tables']['tournaments']['Row']
 
 const SURFACE_COLORS: Record<string, { bg: string; text: string; label: string }> = {
   clay:  { bg: '#fdf2ed', text: '#993C1D', label: 'Clay' },
@@ -34,13 +37,14 @@ export default async function TournamentDetailPage({ params }: { params: Promise
 
   const { id } = await params
 
-  const { data: tournament } = await supabase
+  const { data } = await supabase
     .from('tournaments')
     .select('*')
     .eq('id', id)
     .single()
 
-  if (!tournament) notFound()
+  if (!data) notFound()
+  const tournament = data as TournamentRow
 
   const { data: draw } = await supabase
     .from('draws')
@@ -78,6 +82,11 @@ export default async function TournamentDetailPage({ params }: { params: Promise
           <div className="flex items-center gap-3 ml-4 pl-4 border-l" style={{ borderColor: 'var(--chalk-dim)' }}>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{profile?.username}</span>
             <span className="score-pill">{profile?.total_points ?? 0} pts</span>
+            <form action="/auth/logout" method="post">
+              <button type="submit" style={{ fontSize: '0.8rem', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                Sign out
+              </button>
+            </form>
           </div>
         </div>
       </nav>
