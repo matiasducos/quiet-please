@@ -147,14 +147,18 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                   </p>
                 </div>
               ) : (
-                <div>
-                  <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1rem' }}>
-                    Draw available — bracket prediction UI coming soon.
-                  </p>
-                  <pre style={{ fontSize: '0.7rem', color: 'var(--muted)', overflow: 'auto', maxHeight: '300px' }}>
-                    {JSON.stringify(draw.bracket_data, null, 2).slice(0, 500)}...
-                  </pre>
-                </div>
+                  <div>
+                    <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem' }}>
+                      The draw is published. Make your picks before it closes.
+                    </p>
+                    <Link
+                      href={`/tournaments/${tournament.id}/predict`}
+                      className="inline-block px-6 py-3 text-white text-sm font-medium rounded-sm hover:opacity-90"
+                      style={{ background: 'var(--court)' }}
+                    >
+                      Make predictions →
+                    </Link>
+                  </div>
               )}
             </div>
           </div>
