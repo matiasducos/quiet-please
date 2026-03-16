@@ -1,3 +1,8 @@
+#!/bin/bash
+set -e
+
+# Fix sync-tournaments to use the calendar endpoint (full year)
+cat > "src/app/api/cron/sync-tournaments/route.ts" << 'EOF'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -96,3 +101,6 @@ export async function GET(request: Request) {
     )
   }
 }
+EOF
+
+echo "✅ sync-tournaments updated to use calendar endpoint"
