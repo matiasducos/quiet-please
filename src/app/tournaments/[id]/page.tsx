@@ -226,6 +226,12 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                     The official draw is usually released a few days before the tournament starts. Check back soon.
                   </p>
                 </div>
+              ) : prediction?.is_locked ? (
+                <div className="py-6 text-center">
+                  <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.04em' }}>
+                    Your picks are locked — check the prediction card for your score.
+                  </p>
+                </div>
               ) : (
                 <div>
                   <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem' }}>

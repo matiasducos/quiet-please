@@ -70,12 +70,14 @@ export default function BracketPredictor({
   draw,
   existingPicks,
   predictionId,
+  returnUrl,
 }: {
   tournament: any
   draw: Draw
   existingPicks: Record<string, string>
   predictionId: string | null
   username: string
+  returnUrl?: string
 }) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -166,7 +168,7 @@ export default function BracketPredictor({
     setSaving(true)
     try {
       await savePrediction({ tournamentId: tournament.id, picks, predictionId, lock: true })
-      startTransition(() => router.push(`/tournaments/${tournament.id}`))
+      startTransition(() => router.push(returnUrl ?? `/tournaments/${tournament.id}`))
     } catch (e) { console.error(e); setSaving(false) }
   }
 

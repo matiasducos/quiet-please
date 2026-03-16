@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import BracketPredictor from './BracketPredictor'
+import { TEST_EXTERNAL_ID } from '@/app/test-tournaments/constants'
 
 export default async function PredictPage({ params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
@@ -18,6 +19,9 @@ export default async function PredictPage({ params }: { params: Promise<{ id: st
   if (!tournament) notFound()
   if (tournament.status !== 'accepting_predictions') redirect(`/tournaments/${id}`)
 
+  const isTest = tournament.external_id === TEST_EXTERNAL_ID
+  const returnUrl = isTest ? '/test-tournaments' : `/tournaments/${id}`
+
   const { data: draw } = await supabase
     .from('draws')
     .select('bracket_data')
@@ -33,7 +37,7 @@ export default async function PredictPage({ params }: { params: Promise<{ id: st
     .eq('user_id', user.id)
     .single()
 
-  if (prediction?.is_locked) redirect(`/tournaments/${id}`)
+  if (prediction?.is_locked) redirect(returnUrl)
 
   const { data: profile } = await supabase
     .from('users')
@@ -48,6 +52,7 @@ export default async function PredictPage({ params }: { params: Promise<{ id: st
       existingPicks={(prediction?.picks as Record<string, string>) ?? {}}
       predictionId={prediction?.id ?? null}
       username={profile?.username ?? ''}
+      returnUrl={returnUrl}
     />
   )
 }
