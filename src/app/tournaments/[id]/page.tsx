@@ -77,7 +77,7 @@ export default async function TournamentDetailPage({ params }: { params: Promise
 
   const { data: prediction } = await supabase
     .from('predictions')
-    .select('id, picks, is_locked, points_earned')
+    .select('id, picks, is_locked, points_earned, is_practice')
     .eq('tournament_id', id)
     .eq('user_id', user.id)
     .single()
@@ -93,8 +93,9 @@ export default async function TournamentDetailPage({ params }: { params: Promise
   const surface = SURFACE_COLORS[tournament.surface ?? 'hard']
   const status  = STATUS_STYLES[tournament.status ?? 'upcoming']
 
-  const canPredict = tournament.status === 'accepting_predictions' && !prediction?.is_locked
-  const hasDraw    = draw && draw.bracket_data
+  const canPredict  = tournament.status === 'accepting_predictions' && !prediction?.is_locked
+  const canPractice = tournament.status === 'completed' && !!(draw?.bracket_data) && !prediction
+  const hasDraw     = draw && draw.bracket_data
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
@@ -226,6 +227,19 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                     The official draw is usually released a few days before the tournament starts. Check back soon.
                   </p>
                 </div>
+              ) : canPractice ? (
+                <div>
+                  <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+                    This tournament is over. Practice your bracket against the actual results to see how many points you would have earned.
+                  </p>
+                  <Link
+                    href={`/tournaments/${tournament.id}/predict`}
+                    className="inline-block px-6 py-3 text-white text-sm font-medium rounded-sm hover:opacity-90"
+                    style={{ background: '#7c2d7c' }}
+                  >
+                    Practice picks →
+                  </Link>
+                </div>
               ) : prediction?.is_locked ? (
                 <div className="py-6 text-center">
                   <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.04em' }}>
@@ -260,21 +274,41 @@ export default async function TournamentDetailPage({ params }: { params: Promise
 
               {prediction ? (
                 <div>
+                  {prediction.is_practice && (
+                    <div className="mb-3 px-2.5 py-1 rounded-sm inline-flex items-center" style={{ background: '#f3e8ff' }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.08em', color: '#7c2d7c', fontWeight: 600 }}>
+                        PRACTICE
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between mb-3">
                     <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Status</span>
                     <span style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)', color: prediction.is_locked ? '#993C1D' : '#1a6b3c' }}>
-                      {prediction.is_locked ? 'Locked' : 'In progress'}
+                      {prediction.is_locked ? 'Scored' : 'In progress'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between mb-4">
-                    <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Points earned</span>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }}>{prediction.points_earned}</span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+                      {prediction.is_practice ? 'Practice score' : 'Points earned'}
+                    </span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }}>
+                      {prediction.points_earned ?? 0} pts
+                    </span>
                   </div>
                   {canPredict && (
                     <Link href={`/tournaments/${id}/predict`} className="block w-full py-2.5 text-sm font-medium text-white text-center rounded-sm hover:opacity-90" style={{ background: 'var(--court)' }}>
                       Edit picks
                     </Link>
                   )}
+                </div>
+              ) : canPractice ? (
+                <div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                    This tournament is over. Practice your bracket to see how many points you would have earned — no real points awarded.
+                  </p>
+                  <Link href={`/tournaments/${id}/predict`} className="block w-full py-2.5 text-sm font-medium text-white text-center rounded-sm hover:opacity-90" style={{ background: '#7c2d7c' }}>
+                    Practice picks
+                  </Link>
                 </div>
               ) : canPredict ? (
                 <div>

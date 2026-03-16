@@ -79,9 +79,12 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: 'No tournaments found', synced: 0 })
     }
 
+    // ignoreDuplicates: true — only INSERT new tournaments.
+    // Never UPDATE existing rows: preserves status, location, flag_emoji, ends_at, draw_close_at
+    // that may have been set manually or by other crons.
     const { error, count } = await supabase
       .from('tournaments')
-      .upsert(rows, { onConflict: 'external_id', ignoreDuplicates: false })
+      .upsert(rows, { onConflict: 'external_id', ignoreDuplicates: true })
       .select('id', { count: 'exact' })
 
     if (error) throw error

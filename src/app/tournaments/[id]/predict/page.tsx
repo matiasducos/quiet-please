@@ -17,10 +17,15 @@ export default async function PredictPage({ params }: { params: Promise<{ id: st
     .single()
 
   if (!tournament) notFound()
-  if (tournament.status !== 'accepting_predictions') redirect(`/tournaments/${id}`)
 
+  const isPractice = tournament.status === 'completed'
   const isTest = tournament.external_id === TEST_EXTERNAL_ID
   const returnUrl = isTest ? '/test-tournaments' : `/tournaments/${id}`
+
+  // Only allow predict page for accepting_predictions (real) and completed (practice)
+  if (tournament.status !== 'accepting_predictions' && !isPractice) {
+    redirect(returnUrl)
+  }
 
   const { data: draw } = await supabase
     .from('draws')
@@ -53,6 +58,7 @@ export default async function PredictPage({ params }: { params: Promise<{ id: st
       predictionId={prediction?.id ?? null}
       username={profile?.username ?? ''}
       returnUrl={returnUrl}
+      isPractice={isPractice}
     />
   )
 }

@@ -46,12 +46,13 @@ export async function GET(request: Request) {
     // Get tournament IDs from new results
     const tournamentIds = [...new Set(newResults.map(r => r.tournament_id))]
 
-    // Get all locked predictions for those tournaments
+    // Get all locked, non-practice predictions for those tournaments
     const { data: predictions } = await supabase
       .from('predictions')
       .select('id, user_id, tournament_id, picks')
       .in('tournament_id', tournamentIds)
       .eq('is_locked', true)
+      .eq('is_practice', false)
 
     if (!predictions?.length) {
       return NextResponse.json({ message: 'No locked predictions found', awarded: 0 })

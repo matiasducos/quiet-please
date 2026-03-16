@@ -17,8 +17,13 @@ export default function SignupPage() {
     setLoading(true); setError(null)
     if (username.length < 3) { setError('Username must be at least 3 characters.'); setLoading(false); return }
     const supabase = createClient()
-    const { error } = await supabase.auth.signUp({ email, password, options: { data: { username }, emailRedirectTo: `${window.location.origin}/auth/callback` } })
+    const { data: signUpData, error } = await supabase.auth.signUp({ email, password, options: { data: { username }, emailRedirectTo: `${window.location.origin}/auth/callback` } })
     if (error) { setError(error.message); setLoading(false); return }
+    // If email confirmation is required, session will be null — show check-email page
+    if (!signUpData.session) {
+      router.push(`/check-email?email=${encodeURIComponent(email)}`)
+      return
+    }
     router.push('/dashboard'); router.refresh()
   }
 

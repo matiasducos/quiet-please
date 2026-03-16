@@ -16,6 +16,7 @@ export interface Database {
           email: string
           avatar_url: string | null
           total_points: number
+          username_is_set: boolean
           created_at: string
         }
         Insert: {
@@ -24,6 +25,7 @@ export interface Database {
           email: string
           avatar_url?: string | null
           total_points?: number
+          username_is_set?: boolean
           created_at?: string
         }
         Update: {
@@ -31,6 +33,7 @@ export interface Database {
           email?: string
           avatar_url?: string | null
           total_points?: number
+          username_is_set?: boolean
         }
         Relationships: []
       }
@@ -101,6 +104,7 @@ export interface Database {
           tournament_id: string
           picks: Json
           is_locked: boolean
+          is_practice: boolean
           points_earned: number
           submitted_at: string
           updated_at: string
@@ -111,6 +115,7 @@ export interface Database {
           tournament_id: string
           picks?: Json
           is_locked?: boolean
+          is_practice?: boolean
           points_earned?: number
           submitted_at?: string
           updated_at?: string
@@ -118,6 +123,7 @@ export interface Database {
         Update: {
           picks?: Json
           is_locked?: boolean
+          is_practice?: boolean
           points_earned?: number
           updated_at?: string
         }

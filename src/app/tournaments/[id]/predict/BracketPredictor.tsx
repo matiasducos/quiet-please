@@ -71,6 +71,7 @@ export default function BracketPredictor({
   existingPicks,
   predictionId,
   returnUrl,
+  isPractice = false,
 }: {
   tournament: any
   draw: Draw
@@ -78,6 +79,7 @@ export default function BracketPredictor({
   predictionId: string | null
   username: string
   returnUrl?: string
+  isPractice?: boolean
 }) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -155,6 +157,7 @@ export default function BracketPredictor({
   }
 
   const handleSave = async () => {
+    if (isPractice) return
     setSaving(true)
     try {
       await savePrediction({ tournamentId: tournament.id, picks, predictionId })
@@ -164,10 +167,13 @@ export default function BracketPredictor({
   }
 
   const handleSubmit = async () => {
-    if (!confirm('Lock your picks? This cannot be undone.')) return
+    const msg = isPractice
+      ? 'Score your picks against the actual results? This will show you how many points you would have earned.'
+      : 'Lock your picks? This cannot be undone.'
+    if (!confirm(msg)) return
     setSaving(true)
     try {
-      await savePrediction({ tournamentId: tournament.id, picks, predictionId, lock: true })
+      await savePrediction({ tournamentId: tournament.id, picks, predictionId, lock: true, isPractice })
       startTransition(() => router.push(returnUrl ?? `/tournaments/${tournament.id}`))
     } catch (e) { console.error(e); setSaving(false) }
   }
@@ -187,35 +193,49 @@ export default function BracketPredictor({
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
               {pickedCount}/{totalMatches} picks
             </span>
-            <button
-              onClick={handleSave}
-              disabled={saving || pickedCount === 0}
-              className="px-3 py-1.5 text-xs rounded-sm border transition-colors disabled:opacity-40 whitespace-nowrap"
-              style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
-            >
-              {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save draft'}
-            </button>
+            {!isPractice && (
+              <button
+                onClick={handleSave}
+                disabled={saving || pickedCount === 0}
+                className="px-3 py-1.5 text-xs rounded-sm border transition-colors disabled:opacity-40 whitespace-nowrap"
+                style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
+              >
+                {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save draft'}
+              </button>
+            )}
             <button
               onClick={handleSubmit}
               disabled={saving || pickedCount === 0}
               className="px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40 whitespace-nowrap"
-              style={{ background: 'var(--court)', color: 'white' }}
+              style={{ background: isPractice ? '#7c2d7c' : 'var(--court)', color: 'white' }}
             >
-              {saving ? 'Submitting…' : 'Submit & lock'}
+              {saving ? 'Scoring…' : isPractice ? 'Score my picks' : 'Submit & lock'}
             </button>
           </div>
         </div>
       </nav>
+
+      {/* Practice mode banner */}
+      {isPractice && (
+        <div className="px-6 py-2.5 flex items-center gap-2" style={{ background: '#f3e8ff', borderBottom: '1px solid #e9d5ff' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: '#7c2d7c', fontWeight: 600 }}>
+            PRACTICE MODE
+          </span>
+          <span style={{ fontSize: '0.75rem', color: '#6b21a8' }}>
+            This tournament is over. Pick your bracket and see how many points you would have earned — no points are awarded.
+          </span>
+        </div>
+      )}
 
       {/* Header */}
       <div className="px-6 py-5 border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="flex items-center gap-2 mb-1" style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
           <Link href={`/tournaments/${tournament.id}`} style={{ color: 'var(--muted)' }}>{tournament.name}</Link>
           <span>/</span>
-          <span>Your picks</span>
+          <span>{isPractice ? 'Practice picks' : 'Your picks'}</span>
         </div>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.02em' }}>
-          Make your predictions
+          {isPractice ? 'Practice your bracket' : 'Make your predictions'}
         </h1>
         <p style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
           Pick winners round by round. Your QF picks carry through to the Semis and Final.
@@ -366,26 +386,30 @@ export default function BracketPredictor({
               {pickedCount} of {totalMatches} picks made
             </span>
             <div className="flex gap-3">
-              <button
-                onClick={handleSave}
-                disabled={saving || pickedCount === 0}
-                className="px-5 py-2.5 text-sm rounded-sm border transition-colors disabled:opacity-40"
-                style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
-              >
-                {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save draft'}
-              </button>
+              {!isPractice && (
+                <button
+                  onClick={handleSave}
+                  disabled={saving || pickedCount === 0}
+                  className="px-5 py-2.5 text-sm rounded-sm border transition-colors disabled:opacity-40"
+                  style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
+                >
+                  {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save draft'}
+                </button>
+              )}
               <button
                 onClick={handleSubmit}
                 disabled={saving || pickedCount === 0}
                 className="px-5 py-2.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
-                style={{ background: 'var(--court)', color: 'white' }}
+                style={{ background: isPractice ? '#7c2d7c' : 'var(--court)', color: 'white' }}
               >
-                {saving ? 'Submitting…' : 'Submit & lock picks'}
+                {saving ? (isPractice ? 'Scoring…' : 'Submitting…') : isPractice ? 'Score my picks' : 'Submit & lock picks'}
               </button>
             </div>
           </div>
           <p style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-            Once locked, your picks cannot be changed.
+            {isPractice
+              ? 'Your score is calculated immediately against actual results. No points are awarded.'
+              : 'Once locked, your picks cannot be changed.'}
           </p>
         </div>
       </div>
