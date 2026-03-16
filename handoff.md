@@ -28,9 +28,9 @@ The app is a fully working product, live in production. All core features are bu
 - None outstanding.
 
 ### What is NOT done yet
-- Google OAuth (UI exists, not configured)
 - Email confirmation disabled (re-enable before production)
 - TypeScript build errors suppressed via `ignoreBuildErrors: true` — fix properly by running `supabase gen types typescript` to generate DB types
+- Google OAuth users get auto-generated username (e.g. `matiasducos9`) — consider adding a username-pick step on first Google login
 
 ---
 
@@ -153,9 +153,10 @@ File: `src/app/profile/[username]/page.tsx`
 - Show: total points, global rank, tournaments predicted, accuracy stats
 - List of predictions with points earned per tournament
 
-### Step 5 — Google OAuth
-In Supabase → Auth → Sign In/Providers → Google:
-- Create OAuth credentials at console.cloud.google.com
+### ~~Step 5 — Google OAuth~~ ✅ DONE
+- Google Cloud Console credentials created and linked to Supabase
+- Login and signup pages already had `signInWithOAuth` wired up
+- Working in production
 - Add Supabase callback URL to Google's allowed redirects
 - Add Client ID and Secret to Supabase
 
