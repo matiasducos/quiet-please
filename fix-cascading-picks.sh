@@ -1,3 +1,7 @@
+#!/bin/bash
+set -e
+
+cat > "src/app/tournaments/[id]/predict/BracketPredictor.tsx" << 'EOF'
 'use client'
 
 import { useState, useTransition } from 'react'
@@ -390,3 +394,6 @@ export default function BracketPredictor({
     </div>
   )
 }
+EOF
+
+echo "✅ Cascading picks written"
