@@ -17,28 +17,36 @@ export async function GET(request: Request) {
   try {
     const supabase = createAdminClient()
 
-    // Get all match results that haven't been scored yet
-    // (not in point_ledger)
-    const { data: newResults } = await supabase
+    // Get all match results
+    const { data: allResults } = await supabase
       .from('match_results')
-      .select(`
-        id,
-        tournament_id,
-        round,
-        winner_external_id,
-        tournaments (id, category)
-      `)
-      .not('id', 'in',
-        supabase.from('point_ledger').select('match_result_id')
-      )
+      .select('id, tournament_id, round, winner_external_id, tournaments(id, category)')
+      .order('played_at', { ascending: true })
 
-    if (!newResults?.length) {
+    if (!allResults?.length) {
+      return NextResponse.json({ message: 'No match results found', awarded: 0 })
+    }
+
+    // Get already scored result IDs from point_ledger
+    const { data: alreadyScored } = await supabase
+      .from('point_ledger')
+      .select('match_result_id')
+
+    const scoredIds = new Set((alreadyScored ?? []).map(r => r.match_result_id))
+
+    // Filter to only new unscored results
+    const newResults = allResults.filter(r => !scoredIds.has(r.id))
+
+    if (!newResults.length) {
       return NextResponse.json({ message: 'No new results to score', awarded: 0 })
     }
 
-    // Get all locked predictions for affected tournaments
+    console.log(`[award-points] ${newResults.length} new results to score`)
+
+    // Get tournament IDs from new results
     const tournamentIds = [...new Set(newResults.map(r => r.tournament_id))]
 
+    // Get all locked predictions for those tournaments
     const { data: predictions } = await supabase
       .from('predictions')
       .select('id, user_id, tournament_id, picks')
@@ -49,43 +57,33 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: 'No locked predictions found', awarded: 0 })
     }
 
-    let totalAwarded = 0
+    console.log(`[award-points] ${predictions.length} locked predictions to check`)
+
     const ledgerRows: any[] = []
-    const userPointsMap: Record<string, number> = {}
-    const predictionPointsMap: Record<string, number> = {}
+    const userPointsDelta: Record<string, number> = {}
+    const predictionPointsDelta: Record<string, number> = {}
 
     for (const result of newResults) {
       const tournament = result.tournaments as any
       if (!tournament?.category) continue
 
+      const isWinner = result.round === 'F'
+      const points = getPointsForRound(
+        tournament.category,
+        result.round as any,
+        isWinner
+      )
+      if (points <= 0) continue
+
       for (const prediction of predictions) {
         if (prediction.tournament_id !== result.tournament_id) continue
 
         const picks = prediction.picks as Record<string, string>
+        // Check if any pick value matches the winner
+        const didPickWinner = Object.values(picks).includes(result.winner_external_id)
+        if (!didPickWinner) continue
 
-        // Find if any pick in this match matches the winner
-        // picks format: { matchId: playerExternalId }
-        const pickedWinnerId = Object.values(picks).find(
-          playerId => playerId === result.winner_external_id
-        )
-
-        if (!pickedWinnerId) continue
-
-        // Check that this pick was specifically for this match's round
-        // by finding the matchId that had this pick
-        const matchPickEntry = Object.entries(picks).find(
-          ([, playerId]) => playerId === result.winner_external_id
-        )
-        if (!matchPickEntry) continue
-
-        const isWinner = result.round === 'F'
-        const points = getPointsForRound(
-          tournament.category,
-          result.round as any,
-          isWinner
-        )
-
-        if (points <= 0) continue
+        console.log(`[award-points] ${prediction.user_id} gets ${points} pts for ${result.round}`)
 
         ledgerRows.push({
           user_id:         prediction.user_id,
@@ -95,25 +93,26 @@ export async function GET(request: Request) {
           points,
         })
 
-        userPointsMap[prediction.user_id] = (userPointsMap[prediction.user_id] ?? 0) + points
-        predictionPointsMap[prediction.id] = (predictionPointsMap[prediction.id] ?? 0) + points
-        totalAwarded++
+        userPointsDelta[prediction.user_id] = (userPointsDelta[prediction.user_id] ?? 0) + points
+        predictionPointsDelta[prediction.id] = (predictionPointsDelta[prediction.id] ?? 0) + points
       }
     }
 
-    // Insert point ledger rows
-    if (ledgerRows.length > 0) {
-      const { error } = await supabase.from('point_ledger').insert(ledgerRows)
-      if (error) throw error
+    if (ledgerRows.length === 0) {
+      return NextResponse.json({ message: 'No correct predictions found', awarded: 0 })
     }
 
-    // Update users.total_points
-    for (const [userId, pts] of Object.entries(userPointsMap)) {
+    // Insert point ledger
+    const { error: ledgerError } = await supabase.from('point_ledger').insert(ledgerRows)
+    if (ledgerError) throw ledgerError
+
+    // Update user total_points
+    for (const [userId, pts] of Object.entries(userPointsDelta)) {
       await supabase.rpc('increment_user_points', { user_id: userId, points: pts })
     }
 
-    // Update predictions.points_earned
-    for (const [predId, pts] of Object.entries(predictionPointsMap)) {
+    // Update prediction points_earned
+    for (const [predId, pts] of Object.entries(predictionPointsDelta)) {
       const { data: pred } = await supabase
         .from('predictions')
         .select('points_earned')
@@ -126,13 +125,18 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json({
-      message: 'Points awarded',
-      new_results_processed: newResults.length,
+      message: 'Points awarded successfully',
+      new_results_scored: newResults.length,
       point_entries_created: ledgerRows.length,
-      total_point_awards: totalAwarded,
+      users_awarded: Object.keys(userPointsDelta).length,
+      points_by_user: userPointsDelta,
     })
+
   } catch (err) {
     console.error('[award-points] Error:', err)
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Unknown error' },
+      { status: 500 }
+    )
   }
 }
