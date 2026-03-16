@@ -52,7 +52,7 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
           <Link href="/leaderboard" style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>Leaderboard</Link>
           <Link href="/leagues" style={{ fontSize: '0.875rem', color: 'var(--ink)', fontWeight: 500 }}>Leagues</Link>
           <div className="flex items-center gap-3 ml-4 pl-4 border-l" style={{ borderColor: 'var(--chalk-dim)' }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{profile?.username}</span>
+            <Link href={`/profile/${profile?.username}`} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)', textDecoration: 'none' }}>{profile?.username}</Link>
             <span className="score-pill">{profile?.total_points ?? 0} pts</span>
             <form action="/auth/logout" method="post">
               <button type="submit" style={{ fontSize: '0.8rem', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Sign out</button>
@@ -117,7 +117,7 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
                     : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{i + 1}</span>}
                 </div>
                 <div className="col-span-8 flex items-center gap-2">
-                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: isMe ? 'var(--court)' : 'var(--ink)' }}>{username}</span>
+                  <Link href={`/profile/${username}`} style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: isMe ? 'var(--court)' : 'var(--ink)', textDecoration: 'none' }}>{username}</Link>
                   {isMe && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--court)', background: '#eaf3de', padding: '1px 6px', borderRadius: '2px' }}>you</span>}
                   {m.user_id === league.owner_id && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'var(--chalk-dim)', padding: '1px 6px', borderRadius: '2px' }}>owner</span>}
                 </div>

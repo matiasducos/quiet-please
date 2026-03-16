@@ -30,7 +30,7 @@ export default async function LeaderboardPage() {
           <Link href="/leaderboard" style={{ fontSize: '0.875rem', color: 'var(--ink)', fontWeight: 500 }}>Leaderboard</Link>
           <Link href="/leagues" style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>Leagues</Link>
           <div className="flex items-center gap-3 ml-4 pl-4 border-l" style={{ borderColor: 'var(--chalk-dim)' }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{profile?.username}</span>
+            <Link href={`/profile/${profile?.username}`} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)', textDecoration: 'none' }}>{profile?.username}</Link>
             <span className="score-pill">{profile?.total_points ?? 0} pts</span>
             <form action="/auth/logout" method="post">
               <button type="submit" style={{ fontSize: '0.8rem', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
@@ -107,14 +107,15 @@ export default async function LeaderboardPage() {
                     )}
                   </div>
                   <div className="col-span-8 flex items-center gap-2">
-                    <span style={{
+                    <Link href={`/profile/${u.username}`} style={{
                       fontFamily: 'var(--font-display)',
                       fontSize: '1rem',
                       color: isMe ? 'var(--court)' : 'var(--ink)',
                       fontWeight: isMe ? 500 : 400,
+                      textDecoration: 'none',
                     }}>
                       {u.username}
-                    </span>
+                    </Link>
                     {isMe && (
                       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--court)', background: '#eaf3de', padding: '1px 6px', borderRadius: '2px' }}>
                         you

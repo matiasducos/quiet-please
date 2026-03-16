@@ -23,7 +23,11 @@ export default async function DashboardPage() {
           <Link href="/leaderboard" style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>Leaderboard</Link>
           <Link href="/leagues" style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>Leagues</Link>
           <div className="flex items-center gap-3 ml-4 pl-4 border-l" style={{ borderColor: 'var(--chalk-dim)' }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{profile?.username ?? user.email}</span>
+            {profile?.username ? (
+              <Link href={`/profile/${profile.username}`} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)', textDecoration: 'none' }}>{profile.username}</Link>
+            ) : (
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{user.email}</span>
+            )}
             <span className="score-pill">{profile?.total_points ?? 0} pts</span>
             <form action="/auth/logout" method="post">
               <button type="submit" style={{ fontSize: '0.8rem', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
