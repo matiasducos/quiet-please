@@ -106,9 +106,22 @@ export async function GET(request: Request) {
     const { error: ledgerError } = await supabase.from('point_ledger').insert(ledgerRows)
     if (ledgerError) throw ledgerError
 
-    // Update user total_points
+    // Update user total_points and propagate to league memberships
     for (const [userId, pts] of Object.entries(userPointsDelta)) {
       await supabase.rpc('increment_user_points', { user_id: userId, points: pts })
+
+      const { data: memberships } = await supabase
+        .from('league_members')
+        .select('league_id, total_points')
+        .eq('user_id', userId)
+
+      for (const m of memberships ?? []) {
+        await supabase
+          .from('league_members')
+          .update({ total_points: m.total_points + pts })
+          .eq('league_id', m.league_id)
+          .eq('user_id', userId)
+      }
     }
 
     // Update prediction points_earned

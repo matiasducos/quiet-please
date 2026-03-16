@@ -23,7 +23,9 @@ export default function Nav({ username, points = 0, activePage }: NavProps) {
           Leagues
         </Link>
         <div className="flex items-center gap-3 ml-4 pl-4 border-l" style={{ borderColor: 'var(--chalk-dim)' }}>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{username}</span>
+          {username ? (
+            <Link href={`/profile/${username}`} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)', textDecoration: 'none' }}>{username}</Link>
+          ) : null}
           <span className="score-pill">{points} pts</span>
           <form action="/auth/logout" method="post">
             <button type="submit" style={{ fontSize: '0.8rem', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>

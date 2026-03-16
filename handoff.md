@@ -1,8 +1,8 @@
 # Developer Handoff — Quiet Please
 
-## Current status (as of March 16, 2026 — Session 5)
+## Current status (as of March 16, 2026 — Session 6)
 
-The app is a fully working product. All core features are built and tested end-to-end. The main remaining items are: fixing the predict page button visibility, deploying to Vercel, and user profile page.
+The app is a fully working product. All core features are built and tested end-to-end. The main remaining items are: deploying to Vercel and configuring Google OAuth.
 
 ### What is working right now
 - ✅ Landing page with full design system (chalk bg, court green, DM Serif Display)
@@ -17,13 +17,14 @@ The app is a fully working product. All core features are built and tested end-t
 - ✅ Cron: sync-tournaments, sync-draws, sync-results, award-points — all working
 - ✅ Points engine tested — 29 pts awarded for correct QF pick, showing in nav and leaderboard
 - ✅ CSS variables fixed — all buttons, colors, fonts working across entire app
+- ✅ League points synced — award-points cron now propagates to league_members.total_points
+- ✅ User profile page (`/profile/[username]`) — points, rank, hit rate, predictions history
+- ✅ Leaderboard usernames link to profile pages
 
 ### Known bugs
-- **Predict page button overflow** — "Submit & lock picks" button not visible on some screen sizes. The button exists at the bottom of the page too but may still be hidden. Needs a proper responsive fix.
+- None outstanding.
 
 ### What is NOT done yet
-- User profile page (`/profile/[username]`)
-- League points not synced to global points (league members start at 0, don't inherit global pts)
 - Vercel deployment
 - Google OAuth (UI exists, not configured)
 - Email confirmation disabled (re-enable before production)
