@@ -42,23 +42,41 @@ export default async function PredictPage({ params }: { params: Promise<{ id: st
     .eq('user_id', user.id)
     .single()
 
-  if (prediction?.is_locked) redirect(returnUrl)
-
   const { data: profile } = await supabase
     .from('users')
     .select('username')
     .eq('id', user.id)
     .single()
 
-  // Fetch actual match results for practice mode so picks are color-coded in real time
+  // Fetch match results for: practice mode, locked picks (readOnly), and in_progress tournaments
+  const needsResults = isPractice || prediction?.is_locked ||
+    tournament.status === 'in_progress' || tournament.status === 'completed'
+
   let matchResults: Record<string, string> = {}
-  if (isPractice) {
+  if (needsResults) {
     const { data: results } = await supabase
       .from('match_results')
       .select('external_match_id, winner_external_id')
       .eq('tournament_id', id)
     matchResults = Object.fromEntries(
       (results ?? []).map(r => [r.external_match_id, r.winner_external_id])
+    )
+  }
+
+  // Locked picks → show readOnly bracket with results overlay
+  if (prediction?.is_locked) {
+    return (
+      <BracketPredictor
+        tournament={tournament}
+        draw={draw.bracket_data as any}
+        existingPicks={(prediction.picks as Record<string, string>) ?? {}}
+        predictionId={prediction.id}
+        username={profile?.username ?? ''}
+        returnUrl={returnUrl}
+        matchResults={matchResults}
+        readOnly
+        shareUrl={profile?.username ? `/tournaments/${id}/picks/${profile.username}` : undefined}
+      />
     )
   }
 

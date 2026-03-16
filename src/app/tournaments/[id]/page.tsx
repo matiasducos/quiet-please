@@ -257,13 +257,23 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                   <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.04em', marginBottom: '1rem' }}>
                     Your picks are locked.
                   </p>
-                  <Link
-                    href={`/tournaments/${id}/picks`}
-                    className="inline-block px-5 py-2 text-sm font-medium rounded-sm hover:opacity-90"
-                    style={{ background: 'var(--court)', color: 'white' }}
-                  >
-                    View your picks →
-                  </Link>
+                  <div className="flex flex-col items-center gap-3">
+                    <Link
+                      href={`/tournaments/${id}/predict`}
+                      className="inline-block px-5 py-2 text-sm font-medium rounded-sm hover:opacity-90"
+                      style={{ background: 'var(--court)', color: 'white' }}
+                    >
+                      View your picks →
+                    </Link>
+                    {(t.status === 'in_progress' || t.status === 'completed') && (
+                      <Link
+                        href={`/tournaments/${id}/picks`}
+                        style={{ fontSize: '0.8rem', color: 'var(--muted)' }}
+                      >
+                        See all picks →
+                      </Link>
+                    )}
+                  </div>
                 </div>
               ) : user && canPredict ? (
                 <div>
@@ -287,15 +297,25 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                       ? 'Draw is published — sign in to predict when picks open.'
                       : 'This tournament has ended.'}
                   </p>
-                  {(t.status === 'accepting_predictions' || t.status === 'upcoming') && !user && (
-                    <Link
-                      href="/login"
-                      className="inline-block px-6 py-2.5 text-sm font-medium rounded-sm hover:opacity-90"
-                      style={{ background: 'var(--court)', color: 'white' }}
-                    >
-                      Sign in to predict →
-                    </Link>
-                  )}
+                  <div className="flex flex-col items-center gap-3">
+                    {(t.status === 'accepting_predictions' || t.status === 'upcoming') && !user && (
+                      <Link
+                        href="/login"
+                        className="inline-block px-6 py-2.5 text-sm font-medium rounded-sm hover:opacity-90"
+                        style={{ background: 'var(--court)', color: 'white' }}
+                      >
+                        Sign in to predict →
+                      </Link>
+                    )}
+                    {(t.status === 'in_progress' || t.status === 'completed') && (
+                      <Link
+                        href={`/tournaments/${id}/picks`}
+                        style={{ fontSize: '0.875rem', color: 'var(--court)' }}
+                      >
+                        See all picks →
+                      </Link>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

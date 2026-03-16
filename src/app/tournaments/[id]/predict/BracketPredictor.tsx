@@ -92,6 +92,7 @@ export default function BracketPredictor({
   isPractice = false,
   matchResults,
   readOnly = false,
+  shareUrl,
 }: {
   tournament: any
   draw: Draw
@@ -102,10 +103,12 @@ export default function BracketPredictor({
   isPractice?: boolean
   matchResults?: Record<string, string>  // matchId → winnerExternalId
   readOnly?: boolean
+  shareUrl?: string
 }) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [picks, setPicks] = useState<Record<string, string>>(existingPicks)
+  const [copied, setCopied] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [activeRound, setActiveRound] = useState(() => {
@@ -277,6 +280,21 @@ export default function BracketPredictor({
             <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
               Results not yet available — check back after matches are played.
             </span>
+          )}
+          {shareUrl && (
+            <button
+              onClick={() => {
+                const url = `${window.location.origin}${shareUrl}`
+                navigator.clipboard.writeText(url).then(() => {
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 2000)
+                })
+              }}
+              className="ml-auto px-3 py-1 rounded-sm border text-xs transition-colors"
+              style={{ borderColor: 'var(--chalk-dim)', color: copied ? 'var(--court)' : 'var(--muted)', background: 'white', flexShrink: 0 }}
+            >
+              {copied ? 'Copied!' : 'Share picks'}
+            </button>
           )}
         </div>
       )}
