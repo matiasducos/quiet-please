@@ -1,0 +1,109 @@
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+
+export default async function LeaguesPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data: profile } = await supabase
+    .from('users')
+    .select('username, total_points')
+    .eq('id', user.id)
+    .single()
+
+  // Get leagues the user is a member of
+  const { data: memberships } = await supabase
+    .from('league_members')
+    .select('league_id, total_points, joined_at, leagues(id, name, description, invite_code, owner_id, is_active)')
+    .eq('user_id', user.id)
+    .order('joined_at', { ascending: false })
+
+  const leagues = (memberships ?? []).map(m => ({
+    ...(m.leagues as any),
+    my_points: m.total_points,
+  }))
+
+  return (
+    <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
+      <nav className="flex items-center justify-between px-8 py-5 border-b" style={{ borderColor: 'var(--chalk-dim)' }}>
+        <Link href="/dashboard" style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem' }}>Quiet Please</Link>
+        <div className="flex items-center gap-6">
+          <Link href="/tournaments" style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>Tournaments</Link>
+          <Link href="/leaderboard" style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>Leaderboard</Link>
+          <Link href="/leagues" style={{ fontSize: '0.875rem', color: 'var(--ink)', fontWeight: 500 }}>Leagues</Link>
+          <div className="flex items-center gap-3 ml-4 pl-4 border-l" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{profile?.username}</span>
+            <span className="score-pill">{profile?.total_points ?? 0} pts</span>
+            <form action="/auth/logout" method="post">
+              <button type="submit" style={{ fontSize: '0.8rem', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Sign out</button>
+            </form>
+          </div>
+        </div>
+      </nav>
+
+      <div className="max-w-3xl mx-auto px-8 py-10">
+        <div className="flex items-end justify-between mb-8">
+          <div>
+            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>Leagues</h1>
+            <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>Compete with friends across the full season.</p>
+          </div>
+          <div className="flex gap-3">
+            <Link
+              href="/leagues/join"
+              className="px-4 py-2 text-sm rounded-sm border transition-colors"
+              style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
+            >
+              Join with code
+            </Link>
+            <Link
+              href="/leagues/new"
+              className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90"
+              style={{ background: 'var(--court)' }}
+            >
+              Create league
+            </Link>
+          </div>
+        </div>
+
+        {leagues.length === 0 ? (
+          <div className="text-center py-20 bg-white rounded-sm border" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '0.5rem' }}>No leagues yet</p>
+            <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem' }}>Create one or join with an invite code.</p>
+            <Link href="/leagues/new" className="px-6 py-2.5 text-sm font-medium text-white rounded-sm hover:opacity-90" style={{ background: 'var(--court)' }}>
+              Create your first league
+            </Link>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {leagues.map((league: any) => (
+              <Link
+                key={league.id}
+                href={`/leagues/${league.id}`}
+                className="flex items-center justify-between bg-white rounded-sm border px-6 py-5 tournament-card"
+                style={{ borderColor: 'var(--chalk-dim)', textDecoration: 'none' }}
+              >
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)' }}>{league.name}</span>
+                    {league.owner_id === user.id && (
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--court)', background: '#eaf3de', padding: '1px 6px', borderRadius: '2px' }}>owner</span>
+                    )}
+                  </div>
+                  {league.description && (
+                    <p style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{league.description}</p>
+                  )}
+                </div>
+                <div className="text-right">
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: 'var(--ink)' }}>{league.my_points} pts</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', marginTop: '2px' }}>your score</div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    </main>
+  )
+}

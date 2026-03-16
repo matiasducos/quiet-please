@@ -1,26 +1,39 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --court: #1a6b3c;
+  --court-light: #22883f;
+  --court-dark: #0f4a29;
+  --clay: #c8530a;
+  --chalk: #f5f2eb;
+  --chalk-dim: #e8e3d8;
+  --ink: #0d0d0d;
+  --muted: #6b6b6b;
+  --font-display: DM Serif Display, Georgia, serif;
+  --font-body: DM Sans, sans-serif;
+  --font-mono: DM Mono, monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* { box-sizing: border-box; }
+
+html {
+  background-color: var(--chalk);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.score-pill {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 2px;
+  background: var(--court);
+  color: white;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.tournament-card {
+  transition: transform 0.15s ease;
+}
+.tournament-card:hover {
+  transform: translateY(-2px);
 }
