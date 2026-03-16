@@ -91,6 +91,7 @@ export default function BracketPredictor({
   returnUrl,
   isPractice = false,
   matchResults,
+  matchPoints,
   readOnly = false,
   shareUrl,
 }: {
@@ -102,6 +103,7 @@ export default function BracketPredictor({
   returnUrl?: string
   isPractice?: boolean
   matchResults?: Record<string, string>  // matchId → winnerExternalId
+  matchPoints?: Record<string, number>   // matchId → points earned
   readOnly?: boolean
   shareUrl?: string
 }) {
@@ -205,6 +207,9 @@ export default function BracketPredictor({
   return (
     <div className="min-h-screen" style={{ background: 'var(--chalk)' }}>
 
+      {/* Sticky top block — nav + banner + round tabs */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+
       {/* Nav */}
       <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="flex items-center justify-between px-4 md:px-6 py-4">
@@ -299,23 +304,6 @@ export default function BracketPredictor({
         </div>
       )}
 
-      {/* Header */}
-      <div className="px-4 md:px-6 py-5 border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
-        <div className="flex items-center gap-2 mb-1" style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-          <Link href={`/tournaments/${tournament.id}`} style={{ color: 'var(--muted)' }}>{tournament.name}</Link>
-          <span>/</span>
-          <span>{readOnly ? 'Your picks' : isPractice ? 'Practice picks' : 'Your picks'}</span>
-        </div>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.02em' }}>
-          {readOnly ? 'Your locked picks' : isPractice ? 'Practice your bracket' : 'Make your predictions'}
-        </h1>
-        <p style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
-          {readOnly
-            ? 'View your picks round by round.'
-            : 'Pick winners round by round. Your QF picks carry through to the Semis and Final.'}
-        </p>
-      </div>
-
       {/* Round tabs */}
       <div className="flex border-b bg-white overflow-x-auto" style={{ borderColor: 'var(--chalk-dim)', scrollbarWidth: 'none' }}>
         {sortedRounds.map(round => (
@@ -333,6 +321,25 @@ export default function BracketPredictor({
             {ROUND_LABELS[round] ?? round}
           </button>
         ))}
+      </div>
+
+      </div>{/* end sticky top block */}
+
+      {/* Header */}
+      <div className="px-4 md:px-6 py-5 border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
+        <div className="flex items-center gap-2 mb-1" style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+          <Link href={`/tournaments/${tournament.id}`} style={{ color: 'var(--muted)' }}>{tournament.name}</Link>
+          <span>/</span>
+          <span>{readOnly ? 'Your picks' : isPractice ? 'Practice picks' : 'Your picks'}</span>
+        </div>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.02em' }}>
+          {readOnly ? 'Your locked picks' : isPractice ? 'Practice your bracket' : 'Make your predictions'}
+        </h1>
+        <p style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+          {readOnly
+            ? 'View your picks round by round.'
+            : 'Pick winners round by round. Your QF picks carry through to the Semis and Final.'}
+        </p>
       </div>
 
       {/* Matches */}
@@ -386,7 +393,9 @@ export default function BracketPredictor({
                       marginLeft: '8px',
                       border: state === 'winner' ? '1px solid #fcd34d' : undefined,
                     }}>
-                      {style.label}
+                      {state === 'correct' && matchPoints?.[match.matchId] != null
+                        ? '✓ +' + matchPoints[match.matchId] + ' pts'
+                        : style.label}
                     </span>
                   )}
                 </button>

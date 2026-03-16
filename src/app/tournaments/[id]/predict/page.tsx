@@ -53,14 +53,31 @@ export default async function PredictPage({ params }: { params: Promise<{ id: st
     tournament.status === 'in_progress' || tournament.status === 'completed'
 
   let matchResults: Record<string, string> = {}
+  let matchPoints: Record<string, number> = {}
   if (needsResults) {
-    const { data: results } = await supabase
-      .from('match_results')
-      .select('external_match_id, winner_external_id')
-      .eq('tournament_id', id)
+    const [resultsRes, pointsRes] = await Promise.all([
+      supabase
+        .from('match_results')
+        .select('external_match_id, winner_external_id')
+        .eq('tournament_id', id),
+      prediction?.is_locked
+        ? supabase
+            .from('point_ledger')
+            .select('points, match_results(external_match_id)')
+            .eq('user_id', user.id)
+            .eq('tournament_id', id)
+        : Promise.resolve({ data: null as any }),
+    ])
     matchResults = Object.fromEntries(
-      (results ?? []).map(r => [r.external_match_id, r.winner_external_id])
+      (resultsRes.data ?? []).map((r: any) => [r.external_match_id, r.winner_external_id])
     )
+    if (pointsRes.data) {
+      matchPoints = Object.fromEntries(
+        (pointsRes.data ?? [])
+          .filter((r: any) => r.match_results?.external_match_id)
+          .map((r: any) => [r.match_results.external_match_id, r.points])
+      )
+    }
   }
 
   // Locked picks → show readOnly bracket with results overlay
@@ -74,6 +91,7 @@ export default async function PredictPage({ params }: { params: Promise<{ id: st
         username={profile?.username ?? ''}
         returnUrl={returnUrl}
         matchResults={matchResults}
+        matchPoints={matchPoints}
         readOnly
         shareUrl={profile?.username ? `/tournaments/${id}/picks/${profile.username}` : undefined}
       />

@@ -28,14 +28,27 @@ export default async function UserPicksPage({
     .eq('is_practice', false)
     .single()
 
-  // Fetch match results for color coding
-  const { data: results } = await supabase
-    .from('match_results')
-    .select('external_match_id, winner_external_id')
-    .eq('tournament_id', id)
+  // Fetch match results for color coding + per-match points
+  const [{ data: results }, { data: pointRows }] = await Promise.all([
+    supabase
+      .from('match_results')
+      .select('external_match_id, winner_external_id')
+      .eq('tournament_id', id),
+    supabase
+      .from('point_ledger')
+      .select('points, match_results(external_match_id)')
+      .eq('user_id', targetUser.id)
+      .eq('tournament_id', id),
+  ])
 
   const matchResults: Record<string, string> = Object.fromEntries(
     (results ?? []).map(r => [r.external_match_id, r.winner_external_id])
+  )
+
+  const matchPoints: Record<string, number> = Object.fromEntries(
+    (pointRows ?? [])
+      .filter((r: any) => r.match_results?.external_match_id)
+      .map((r: any) => [r.match_results.external_match_id, r.points])
   )
 
   if (!prediction) {
@@ -62,6 +75,7 @@ export default async function UserPicksPage({
       username={username}
       returnUrl={`/tournaments/${id}`}
       matchResults={matchResults}
+      matchPoints={matchPoints}
       readOnly
     />
   )
