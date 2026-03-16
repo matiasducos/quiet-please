@@ -1,8 +1,8 @@
 {
   "crons": [
     { "path": "/api/cron/sync-tournaments", "schedule": "0 6 * * *" },
-    { "path": "/api/cron/sync-draws", "schedule": "0 */3 * * *" },
-    { "path": "/api/cron/sync-results", "schedule": "*/30 * * * *" },
-    { "path": "/api/cron/award-points", "schedule": "*/35 * * * *" }
+    { "path": "/api/cron/sync-draws", "schedule": "0 9 * * *" },
+    { "path": "/api/cron/sync-results", "schedule": "0 12 * * *" },
+    { "path": "/api/cron/award-points", "schedule": "0 18 * * *" }
   ]
 }
