@@ -31,6 +31,7 @@ The app is a fully working product, live in production. All core features are bu
 - Email confirmation disabled (re-enable before production)
 - TypeScript build errors suppressed via `ignoreBuildErrors: true` — fix properly by running `supabase gen types typescript` to generate DB types
 - Google OAuth users get auto-generated username (e.g. `matiasducos9`) — consider adding a username-pick step on first Google login
+- Cron schedules are daily-only (Vercel Hobby plan limit) — upgrade to Vercel Pro ($20/mo) to restore sub-hourly syncs (sync-results every 30 min, award-points every 35 min). **Only matters when going fully public with live tournament data.**
 
 ---
 
