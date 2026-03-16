@@ -32,8 +32,6 @@ const ROUND_LABELS: Record<string, string> = {
 
 const ROUND_ORDER = ['R128', 'R64', 'R32', 'R16', 'QF', 'SF', 'F']
 
-// Build a map of which match feeds into which next-round match slot
-// matchIndex within a round → { nextMatchIndex, slot: 'player1' | 'player2' }
 function buildFeedMap(matches: DrawMatch[]) {
   const byRound: Record<string, DrawMatch[]> = {}
   for (const m of matches) {
@@ -41,7 +39,6 @@ function buildFeedMap(matches: DrawMatch[]) {
     byRound[m.round].push(m)
   }
 
-  // feedMap[matchId] = { nextMatchId, slot }
   const feedMap: Record<string, { nextMatchId: string; slot: 'player1' | 'player2' }> = {}
 
   const rounds = ROUND_ORDER.filter(r => byRound[r])
@@ -52,7 +49,6 @@ function buildFeedMap(matches: DrawMatch[]) {
     const next = byRound[nextRound]
     if (!next?.length) continue
 
-    // Pair up: matches 0,1 → next[0]; matches 2,3 → next[1]; etc.
     for (let i = 0; i < current.length; i++) {
       const nextMatchIndex = Math.floor(i / 2)
       const slot = i % 2 === 0 ? 'player1' : 'player2'
@@ -65,6 +61,28 @@ function buildFeedMap(matches: DrawMatch[]) {
   return feedMap
 }
 
+// Derive pick color state for a player slot
+function getPickState(
+  pickedId: string | undefined,
+  playerExternalId: string | undefined,
+  actualWinnerId: string | undefined,
+): 'correct' | 'wrong' | 'picked' | 'winner' | 'none' {
+  if (!playerExternalId) return 'none'
+  const pickedThis = pickedId === playerExternalId
+  if (pickedThis && actualWinnerId) return actualWinnerId === playerExternalId ? 'correct' : 'wrong'
+  if (pickedThis) return 'picked'
+  if (actualWinnerId === playerExternalId) return 'winner'
+  return 'none'
+}
+
+const PICK_STYLES: Record<string, { bg: string; labelColor: string; labelBg: string; label: string }> = {
+  correct: { bg: '#dcfce7', labelColor: '#166534', labelBg: '#dcfce7', label: '✓ correct' },
+  wrong:   { bg: '#fee2e2', labelColor: '#991b1b', labelBg: '#fee2e2', label: '✗ wrong'   },
+  picked:  { bg: '#eaf3de', labelColor: '#27500A', labelBg: '#eaf3de', label: 'picked'     },
+  winner:  { bg: '#fffbeb', labelColor: '#92400e', labelBg: '#fffbeb', label: 'winner'     },
+  none:    { bg: 'white',   labelColor: '',        labelBg: '',        label: ''            },
+}
+
 export default function BracketPredictor({
   tournament,
   draw,
@@ -72,6 +90,8 @@ export default function BracketPredictor({
   predictionId,
   returnUrl,
   isPractice = false,
+  matchResults,
+  readOnly = false,
 }: {
   tournament: any
   draw: Draw
@@ -80,6 +100,8 @@ export default function BracketPredictor({
   username: string
   returnUrl?: string
   isPractice?: boolean
+  matchResults?: Record<string, string>  // matchId → winnerExternalId
+  readOnly?: boolean
 }) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -96,13 +118,10 @@ export default function BracketPredictor({
   const totalMatches = draw.matches.length
   const pickedCount = Object.keys(picks).length
 
-  // Get the effective player for a match slot, considering cascaded picks
   function getEffectivePlayer(match: DrawMatch, slot: 'player1' | 'player2'): Player | null {
     const base = match[slot]
-    // If there's a real player already, use them
     if (base) return base
 
-    // Otherwise look backwards — find which previous match feeds into this slot
     const prevMatch = draw.matches.find(m => {
       const feed = feedMap[m.matchId]
       return feed?.nextMatchId === match.matchId && feed?.slot === slot
@@ -110,15 +129,12 @@ export default function BracketPredictor({
 
     if (!prevMatch) return null
 
-    // Check if user picked a winner for that previous match
     const pickedId = picks[prevMatch.matchId]
     if (!pickedId) return null
 
-    // Find the player object
     if (prevMatch.player1?.externalId === pickedId) return prevMatch.player1
     if (prevMatch.player2?.externalId === pickedId) return prevMatch.player2
 
-    // Recursively check cascaded player
     const p1 = getEffectivePlayer(prevMatch, 'player1')
     const p2 = getEffectivePlayer(prevMatch, 'player2')
     if (p1?.externalId === pickedId) return p1
@@ -128,11 +144,9 @@ export default function BracketPredictor({
   }
 
   const pickWinner = (matchId: string, playerExternalId: string) => {
-    // When picking a winner, clear any downstream picks that are now invalid
+    if (readOnly) return
     const newPicks = { ...picks, [matchId]: playerExternalId }
 
-    // Find all downstream matches and clear them if the previously picked player
-    // is no longer advancing
     const clearDownstream = (mId: string) => {
       const feed = feedMap[mId]
       if (!feed) return
@@ -140,7 +154,6 @@ export default function BracketPredictor({
       if (!nextMatch) return
       const nextPick = newPicks[nextMatch.matchId]
       if (nextPick) {
-        // Check if the picked player for the next match is still reachable
         const p1 = getEffectivePlayer(nextMatch, 'player1')
         const p2 = getEffectivePlayer(nextMatch, 'player2')
         const validIds = [p1?.externalId, p2?.externalId].filter(Boolean)
@@ -157,7 +170,7 @@ export default function BracketPredictor({
   }
 
   const handleSave = async () => {
-    if (isPractice) return
+    if (isPractice || readOnly) return
     setSaving(true)
     try {
       await savePrediction({ tournamentId: tournament.id, picks, predictionId })
@@ -167,6 +180,7 @@ export default function BracketPredictor({
   }
 
   const handleSubmit = async () => {
+    if (readOnly) return
     const msg = isPractice
       ? 'Score your picks against the actual results? This will show you how many points you would have earned.'
       : 'Lock your picks? This cannot be undone.'
@@ -180,43 +194,64 @@ export default function BracketPredictor({
 
   const matchesForRound = (round: string) => draw.matches.filter(m => m.round === round)
 
+  // Count correctly picked vs total picked (for read-only summary)
+  const correctPicks = readOnly && matchResults
+    ? Object.entries(picks).filter(([matchId, playerId]) => matchResults[matchId] === playerId).length
+    : null
+
   return (
     <div className="min-h-screen" style={{ background: 'var(--chalk)' }}>
 
       {/* Nav */}
       <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
-        <div className="flex items-center justify-between px-6 py-4">
+        <div className="flex items-center justify-between px-4 md:px-6 py-4">
           <Link href="/dashboard" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)', whiteSpace: 'nowrap' }}>
             Quiet Please
           </Link>
           <div className="flex items-center gap-2 ml-4">
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
-              {pickedCount}/{totalMatches} picks
+              {readOnly
+                ? correctPicks !== null && matchResults && Object.keys(matchResults).length > 0
+                  ? `${correctPicks}/${Object.keys(matchResults).length} correct`
+                  : `${pickedCount} picks`
+                : `${pickedCount}/${totalMatches} picks`}
             </span>
-            {!isPractice && (
-              <button
-                onClick={handleSave}
-                disabled={saving || pickedCount === 0}
-                className="px-3 py-1.5 text-xs rounded-sm border transition-colors disabled:opacity-40 whitespace-nowrap"
+            {readOnly ? (
+              <Link
+                href={returnUrl ?? `/tournaments/${tournament.id}`}
+                className="px-3 py-1.5 text-xs rounded-sm border whitespace-nowrap"
                 style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
               >
-                {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save draft'}
-              </button>
+                ← Back
+              </Link>
+            ) : (
+              <>
+                {!isPractice && (
+                  <button
+                    onClick={handleSave}
+                    disabled={saving || pickedCount === 0}
+                    className="px-3 py-1.5 text-xs rounded-sm border transition-colors disabled:opacity-40 whitespace-nowrap"
+                    style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
+                  >
+                    {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save draft'}
+                  </button>
+                )}
+                <button
+                  onClick={handleSubmit}
+                  disabled={saving || pickedCount === 0}
+                  className="px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40 whitespace-nowrap"
+                  style={{ background: isPractice ? '#7c2d7c' : 'var(--court)', color: 'white' }}
+                >
+                  {saving ? 'Scoring…' : isPractice ? 'Score my picks' : 'Submit & lock'}
+                </button>
+              </>
             )}
-            <button
-              onClick={handleSubmit}
-              disabled={saving || pickedCount === 0}
-              className="px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40 whitespace-nowrap"
-              style={{ background: isPractice ? '#7c2d7c' : 'var(--court)', color: 'white' }}
-            >
-              {saving ? 'Scoring…' : isPractice ? 'Score my picks' : 'Submit & lock'}
-            </button>
           </div>
         </div>
       </nav>
 
       {/* Practice mode banner */}
-      {isPractice && (
+      {isPractice && !readOnly && (
         <div className="px-6 py-2.5 flex items-center gap-2" style={{ background: '#f3e8ff', borderBottom: '1px solid #e9d5ff' }}>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: '#7c2d7c', fontWeight: 600 }}>
             PRACTICE MODE
@@ -227,23 +262,44 @@ export default function BracketPredictor({
         </div>
       )}
 
+      {/* Read-only banner */}
+      {readOnly && (
+        <div className="px-6 py-2.5 flex items-center gap-3" style={{ background: '#f1efe8', borderBottom: '1px solid var(--chalk-dim)' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: 'var(--muted)', fontWeight: 600 }}>
+            LOCKED PICKS
+          </span>
+          {matchResults && Object.keys(matchResults).length > 0 && (
+            <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+              Green = correct · Red = wrong · Gold = actual winner you missed
+            </span>
+          )}
+          {(!matchResults || Object.keys(matchResults).length === 0) && (
+            <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+              Results not yet available — check back after matches are played.
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Header */}
-      <div className="px-6 py-5 border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
+      <div className="px-4 md:px-6 py-5 border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="flex items-center gap-2 mb-1" style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
           <Link href={`/tournaments/${tournament.id}`} style={{ color: 'var(--muted)' }}>{tournament.name}</Link>
           <span>/</span>
-          <span>{isPractice ? 'Practice picks' : 'Your picks'}</span>
+          <span>{readOnly ? 'Your picks' : isPractice ? 'Practice picks' : 'Your picks'}</span>
         </div>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.02em' }}>
-          {isPractice ? 'Practice your bracket' : 'Make your predictions'}
+          {readOnly ? 'Your locked picks' : isPractice ? 'Practice your bracket' : 'Make your predictions'}
         </h1>
         <p style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
-          Pick winners round by round. Your QF picks carry through to the Semis and Final.
+          {readOnly
+            ? 'View your picks round by round.'
+            : 'Pick winners round by round. Your QF picks carry through to the Semis and Final.'}
         </p>
       </div>
 
       {/* Round tabs */}
-      <div className="flex border-b bg-white overflow-x-auto" style={{ borderColor: 'var(--chalk-dim)' }}>
+      <div className="flex border-b bg-white overflow-x-auto" style={{ borderColor: 'var(--chalk-dim)', scrollbarWidth: 'none' }}>
         {sortedRounds.map(round => (
           <button
             key={round}
@@ -262,13 +318,62 @@ export default function BracketPredictor({
       </div>
 
       {/* Matches */}
-      <div className="max-w-2xl mx-auto px-6 py-6">
+      <div className="max-w-2xl mx-auto px-4 md:px-6 py-6">
         <div className="flex flex-col gap-4">
           {matchesForRound(activeRound).map((match, i) => {
             const p1 = getEffectivePlayer(match, 'player1')
             const p2 = getEffectivePlayer(match, 'player2')
             const pickedId = picks[match.matchId]
+            const actualWinnerId = matchResults?.[match.matchId]
             const isLocked = !p1 && !p2
+
+            const s1 = getPickState(pickedId, p1?.externalId, actualWinnerId)
+            const s2 = getPickState(pickedId, p2?.externalId, actualWinnerId)
+
+            const renderPlayer = (player: Player | null, slot: 'player1' | 'player2', state: ReturnType<typeof getPickState>, withBorderBottom: boolean) => {
+              const style = PICK_STYLES[state]
+              const isClickable = !readOnly && !!player
+              return (
+                <button
+                  onClick={() => player && pickWinner(match.matchId, player.externalId)}
+                  disabled={!player || readOnly}
+                  className={`w-full flex items-center justify-between px-4 py-4 transition-all text-left${withBorderBottom ? ' border-b' : ''}`}
+                  style={{
+                    borderColor: 'var(--chalk-dim)',
+                    background: style.bg,
+                    cursor: isClickable ? 'pointer' : 'default',
+                    opacity: !player ? 0.35 : 1,
+                  }}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    {player?.seed && (
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', minWidth: '18px', flexShrink: 0 }}>[{player.seed}]</span>
+                    )}
+                    <span className="truncate" style={{ fontFamily: 'var(--font-display)', fontSize: '1.05rem', color: player ? 'var(--ink)' : 'var(--muted)' }}>
+                      {player?.name ?? 'TBD'}
+                    </span>
+                    {player?.country && (
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', flexShrink: 0 }}>{player.country}</span>
+                    )}
+                  </div>
+                  {state !== 'none' && (
+                    <span style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.7rem',
+                      color: style.labelColor,
+                      background: style.labelBg,
+                      padding: '2px 8px',
+                      borderRadius: '2px',
+                      flexShrink: 0,
+                      marginLeft: '8px',
+                      border: state === 'winner' ? '1px solid #fcd34d' : undefined,
+                    }}>
+                      {style.label}
+                    </span>
+                  )}
+                </button>
+              )
+            }
 
             return (
               <div key={match.matchId} className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
@@ -276,75 +381,20 @@ export default function BracketPredictor({
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>
                     MATCH {i + 1}
                   </span>
-                  {isLocked && (
+                  {isLocked && !readOnly && (
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
-                      Pick QF winners first
+                      Pick earlier rounds first
                     </span>
                   )}
                 </div>
 
-                {/* Player 1 */}
-                <button
-                  onClick={() => p1 && pickWinner(match.matchId, p1.externalId)}
-                  disabled={!p1}
-                  className="w-full flex items-center justify-between px-4 py-4 border-b transition-all text-left"
-                  style={{
-                    borderColor: 'var(--chalk-dim)',
-                    background: pickedId === p1?.externalId ? '#eaf3de' : 'white',
-                    cursor: p1 ? 'pointer' : 'default',
-                    opacity: !p1 ? 0.35 : 1,
-                  }}
-                >
-                  <div className="flex items-center gap-3">
-                    {p1?.seed && (
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', minWidth: '18px' }}>[{p1.seed}]</span>
-                    )}
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.05rem', color: p1 ? 'var(--ink)' : 'var(--muted)' }}>
-                      {p1?.name ?? 'TBD'}
-                    </span>
-                    {p1?.country && (
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>{p1.country}</span>
-                    )}
-                  </div>
-                  {pickedId === p1?.externalId && (
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#27500A', background: '#eaf3de', padding: '2px 8px', borderRadius: '2px', flexShrink: 0 }}>
-                      picked
-                    </span>
-                  )}
-                </button>
+                {renderPlayer(p1, 'player1', s1, true)}
 
                 <div className="flex items-center justify-center py-1" style={{ background: '#fafaf8' }}>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.1em' }}>VS</span>
                 </div>
 
-                {/* Player 2 */}
-                <button
-                  onClick={() => p2 && pickWinner(match.matchId, p2.externalId)}
-                  disabled={!p2}
-                  className="w-full flex items-center justify-between px-4 py-4 transition-all text-left"
-                  style={{
-                    background: pickedId === p2?.externalId ? '#eaf3de' : 'white',
-                    cursor: p2 ? 'pointer' : 'default',
-                    opacity: !p2 ? 0.35 : 1,
-                  }}
-                >
-                  <div className="flex items-center gap-3">
-                    {p2?.seed && (
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', minWidth: '18px' }}>[{p2.seed}]</span>
-                    )}
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.05rem', color: p2 ? 'var(--ink)' : 'var(--muted)' }}>
-                      {p2?.name ?? 'TBD'}
-                    </span>
-                    {p2?.country && (
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>{p2.country}</span>
-                    )}
-                  </div>
-                  {pickedId === p2?.externalId && (
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#27500A', background: '#eaf3de', padding: '2px 8px', borderRadius: '2px', flexShrink: 0 }}>
-                      picked
-                    </span>
-                  )}
-                </button>
+                {renderPlayer(p2, 'player2', s2, false)}
               </div>
             )
           })}
@@ -379,39 +429,53 @@ export default function BracketPredictor({
           </button>
         </div>
 
-        {/* Submit area */}
-        <div className="mt-8 pt-6 border-t flex flex-col gap-3" style={{ borderColor: 'var(--chalk-dim)' }}>
-          <div className="flex items-center justify-between">
-            <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
-              {pickedCount} of {totalMatches} picks made
-            </span>
-            <div className="flex gap-3">
-              {!isPractice && (
+        {/* Submit area — hidden in readOnly mode */}
+        {!readOnly && (
+          <div className="mt-8 pt-6 border-t flex flex-col gap-3" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
+                {pickedCount} of {totalMatches} picks made
+              </span>
+              <div className="flex gap-3">
+                {!isPractice && (
+                  <button
+                    onClick={handleSave}
+                    disabled={saving || pickedCount === 0}
+                    className="px-5 py-2.5 text-sm rounded-sm border transition-colors disabled:opacity-40"
+                    style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
+                  >
+                    {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save draft'}
+                  </button>
+                )}
                 <button
-                  onClick={handleSave}
+                  onClick={handleSubmit}
                   disabled={saving || pickedCount === 0}
-                  className="px-5 py-2.5 text-sm rounded-sm border transition-colors disabled:opacity-40"
-                  style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
+                  className="px-5 py-2.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
+                  style={{ background: isPractice ? '#7c2d7c' : 'var(--court)', color: 'white' }}
                 >
-                  {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save draft'}
+                  {saving ? (isPractice ? 'Scoring…' : 'Submitting…') : isPractice ? 'Score my picks' : 'Submit & lock picks'}
                 </button>
-              )}
-              <button
-                onClick={handleSubmit}
-                disabled={saving || pickedCount === 0}
-                className="px-5 py-2.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
-                style={{ background: isPractice ? '#7c2d7c' : 'var(--court)', color: 'white' }}
-              >
-                {saving ? (isPractice ? 'Scoring…' : 'Submitting…') : isPractice ? 'Score my picks' : 'Submit & lock picks'}
-              </button>
+              </div>
             </div>
+            <p style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+              {isPractice
+                ? 'Your score is calculated immediately against actual results. No points are awarded.'
+                : 'Once locked, your picks cannot be changed.'}
+            </p>
           </div>
-          <p style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-            {isPractice
-              ? 'Your score is calculated immediately against actual results. No points are awarded.'
-              : 'Once locked, your picks cannot be changed.'}
-          </p>
-        </div>
+        )}
+
+        {/* Read-only back link */}
+        {readOnly && (
+          <div className="mt-8 pt-6 border-t text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <Link
+              href={returnUrl ?? `/tournaments/${tournament.id}`}
+              style={{ fontSize: '0.875rem', color: 'var(--court)' }}
+            >
+              ← Back to tournament
+            </Link>
+          </div>
+        )}
       </div>
     </div>
   )

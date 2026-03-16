@@ -1,10 +1,26 @@
 import { createClient } from '@/lib/supabase/server'
-import { redirect, notFound } from 'next/navigation'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { unstable_cache } from 'next/cache'
+import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import type { Database } from '@/types/database'
 import Nav from '@/components/Nav'
 
 type TournamentRow = Database['public']['Tables']['tournaments']['Row']
+
+// ── ISR cache — same for all users, refreshes every hour ──────────────────
+const getTournamentDetail = unstable_cache(
+  async (id: string) => {
+    const supabase = createAdminClient()
+    const [{ data: tournament }, { data: draw }] = await Promise.all([
+      supabase.from('tournaments').select('*').eq('id', id).single(),
+      supabase.from('draws').select('bracket_data, synced_at').eq('tournament_id', id).single(),
+    ])
+    return { tournament, draw }
+  },
+  ['tournament-detail'],
+  { revalidate: 3600 }
+)
 
 // ── Shared style maps (mirrors TournamentCard) ────────────────────────────
 const TIER: Record<string, { label: string; bg: string; text: string }> = {
@@ -54,60 +70,56 @@ function formatDate(dateStr: string | null) {
 }
 
 export default async function TournamentDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
   const { id } = await params
 
-  const { data } = await supabase
-    .from('tournaments')
-    .select('*')
-    .eq('id', id)
-    .single()
+  // Public data (cached) + auth (per-request, no redirect)
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  if (!data) notFound()
-  const tournament = data as TournamentRow
+  const [{ tournament, draw }, prediction, profile] = await Promise.all([
+    getTournamentDetail(id),
+    user
+      ? supabase
+          .from('predictions')
+          .select('id, picks, is_locked, points_earned, is_practice')
+          .eq('tournament_id', id)
+          .eq('user_id', user.id)
+          .single()
+          .then(r => r.data)
+      : Promise.resolve(null),
+    user
+      ? supabase
+          .from('users')
+          .select('username, total_points')
+          .eq('id', user.id)
+          .single()
+          .then(r => r.data)
+      : Promise.resolve(null),
+  ])
 
-  const { data: draw } = await supabase
-    .from('draws')
-    .select('bracket_data, synced_at')
-    .eq('tournament_id', id)
-    .single()
+  if (!tournament) notFound()
+  const t = tournament as TournamentRow
 
-  const { data: prediction } = await supabase
-    .from('predictions')
-    .select('id, picks, is_locked, points_earned, is_practice')
-    .eq('tournament_id', id)
-    .eq('user_id', user.id)
-    .single()
+  const tierKey = `${t.tour}|${t.category}`
+  const tier    = TIER[tierKey] ?? { label: t.tour, bg: '#4a5568', text: '#fff' }
+  const surface = SURFACE_COLORS[t.surface ?? 'hard']
+  const status  = STATUS_STYLES[t.status ?? 'upcoming']
 
-  const { data: profile } = await supabase
-    .from('users')
-    .select('username, total_points')
-    .eq('id', user.id)
-    .single()
-
-  const tierKey = `${tournament.tour}|${tournament.category}`
-  const tier    = TIER[tierKey] ?? { label: tournament.tour, bg: '#4a5568', text: '#fff' }
-  const surface = SURFACE_COLORS[tournament.surface ?? 'hard']
-  const status  = STATUS_STYLES[tournament.status ?? 'upcoming']
-
-  const canPredict  = tournament.status === 'accepting_predictions' && !prediction?.is_locked
-  const canPractice = tournament.status === 'completed' && !!(draw?.bracket_data) && !prediction
+  const canPredict  = t.status === 'accepting_predictions' && !prediction?.is_locked
+  const canPractice = t.status === 'completed' && !!(draw?.bracket_data) && !prediction
   const hasDraw     = draw && draw.bracket_data
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={profile?.username} points={profile?.total_points ?? 0} activePage="tournaments" />
+      <Nav username={profile?.username} points={profile?.total_points ?? 0} activePage="tournaments" userId={user?.id} />
 
-      <div className="max-w-4xl mx-auto px-8 py-10">
+      <div className="max-w-4xl mx-auto px-4 md:px-8 py-10">
 
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 mb-8" style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
           <Link href="/tournaments" style={{ color: 'var(--muted)' }}>Tournaments</Link>
           <span>/</span>
-          <span style={{ color: 'var(--ink)' }}>{tournament.tour}</span>
+          <span style={{ color: 'var(--ink)' }}>{t.tour}</span>
         </div>
 
         {/* ── Header card ─────────────────────────────────────────────── */}
@@ -155,26 +167,26 @@ export default async function TournamentDetailPage({ params }: { params: Promise
 
             {/* Flag + location + date */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px', flexWrap: 'wrap' }}>
-              {(tournament.flag_emoji || tournament.location) && (
+              {(t.flag_emoji || t.location) && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {tournament.flag_emoji && (
-                    <span style={{ fontSize: '1.1rem', lineHeight: 1 }}>{tournament.flag_emoji}</span>
+                  {t.flag_emoji && (
+                    <span style={{ fontSize: '1.1rem', lineHeight: 1 }}>{t.flag_emoji}</span>
                   )}
-                  {tournament.location && (
+                  {t.location && (
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.03em' }}>
-                      {tournament.location}
+                      {t.location}
                     </span>
                   )}
                 </div>
               )}
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.03em' }}>
-                {formatDateRange(tournament.starts_at, tournament.ends_at)}
+                {formatDateRange(t.starts_at, t.ends_at)}
               </span>
             </div>
 
             {/* Tournament name */}
             <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1, marginBottom: '16px' }}>
-              {tournament.name}
+              {t.name}
             </h1>
 
             {/* Meta row: surface + picks-close */}
@@ -194,13 +206,13 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                 {surface.label}
               </span>
 
-              {tournament.draw_close_at && (
+              {t.draw_close_at && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
                     PICKS CLOSE
                   </span>
                   <span style={{ fontSize: '0.85rem', color: 'var(--ink)' }}>
-                    {formatDate(tournament.draw_close_at)}
+                    {formatDate(t.draw_close_at)}
                   </span>
                 </div>
               )}
@@ -209,10 +221,10 @@ export default async function TournamentDetailPage({ params }: { params: Promise
         </div>
 
         {/* ── Main content grid ─────────────────────────────────────────── */}
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
           {/* Left — draw / bracket */}
-          <div className="col-span-2">
+          <div className="col-span-1 md:col-span-2">
             <div className="bg-white rounded-sm border p-6" style={{ borderColor: 'var(--chalk-dim)' }}>
               <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', marginBottom: '1rem' }}>
                 Draw
@@ -227,37 +239,63 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                     The official draw is usually released a few days before the tournament starts. Check back soon.
                   </p>
                 </div>
-              ) : canPractice ? (
+              ) : user && canPractice ? (
                 <div>
                   <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem', lineHeight: 1.6 }}>
                     This tournament is over. Practice your bracket against the actual results to see how many points you would have earned.
                   </p>
                   <Link
-                    href={`/tournaments/${tournament.id}/predict`}
+                    href={`/tournaments/${t.id}/predict`}
                     className="inline-block px-6 py-3 text-white text-sm font-medium rounded-sm hover:opacity-90"
                     style={{ background: '#7c2d7c' }}
                   >
                     Practice picks →
                   </Link>
                 </div>
-              ) : prediction?.is_locked ? (
+              ) : user && prediction?.is_locked ? (
                 <div className="py-6 text-center">
-                  <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.04em' }}>
-                    Your picks are locked — check the prediction card for your score.
+                  <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.04em', marginBottom: '1rem' }}>
+                    Your picks are locked.
                   </p>
+                  <Link
+                    href={`/tournaments/${id}/picks`}
+                    className="inline-block px-5 py-2 text-sm font-medium rounded-sm hover:opacity-90"
+                    style={{ background: 'var(--court)', color: 'white' }}
+                  >
+                    View your picks →
+                  </Link>
                 </div>
-              ) : (
+              ) : user && canPredict ? (
                 <div>
                   <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem' }}>
                     The draw is published. Make your picks before it closes.
                   </p>
                   <Link
-                    href={`/tournaments/${tournament.id}/predict`}
+                    href={`/tournaments/${t.id}/predict`}
                     className="inline-block px-6 py-3 text-white text-sm font-medium rounded-sm hover:opacity-90"
                     style={{ background: 'var(--court)' }}
                   >
                     Make predictions →
                   </Link>
+                </div>
+              ) : (
+                <div className="py-8 text-center">
+                  <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1rem' }}>
+                    {t.status === 'accepting_predictions'
+                      ? 'Sign in to make your picks.'
+                      : t.status === 'upcoming'
+                      ? 'Draw is published — sign in to predict when picks open.'
+                      : 'This tournament has ended.'}
+                  </p>
+                  {(t.status === 'accepting_predictions' || t.status === 'upcoming') && !user && (
+                    <Link
+                      href="/login"
+                      className="inline-block px-6 py-2.5 text-sm font-medium rounded-sm hover:opacity-90"
+                      style={{ background: 'var(--court)', color: 'white' }}
+                    >
+                      Sign in to predict →
+                    </Link>
+                  )}
                 </div>
               )}
             </div>
@@ -269,10 +307,27 @@ export default async function TournamentDetailPage({ params }: { params: Promise
             {/* Prediction card */}
             <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
               <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.75rem' }}>
-                Your prediction
+                {user ? 'Your prediction' : 'Predict the draw'}
               </h3>
 
-              {prediction ? (
+              {!user ? (
+                <div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                    {t.status === 'accepting_predictions'
+                      ? 'The draw is open. Sign in to pick your bracket and earn points.'
+                      : t.status === 'upcoming'
+                      ? 'Sign in to be notified when predictions open.'
+                      : 'Sign in to track your predictions and compare with friends.'}
+                  </p>
+                  <Link
+                    href="/login"
+                    className="block w-full py-2.5 text-sm font-medium text-white text-center rounded-sm hover:opacity-90"
+                    style={{ background: 'var(--court)' }}
+                  >
+                    Sign in
+                  </Link>
+                </div>
+              ) : prediction ? (
                 <div>
                   {prediction.is_practice && (
                     <div className="mb-3 px-2.5 py-1 rounded-sm inline-flex items-center" style={{ background: '#f3e8ff' }}>
@@ -321,9 +376,9 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                 </div>
               ) : (
                 <p style={{ fontSize: '0.8rem', color: 'var(--muted)', lineHeight: 1.5 }}>
-                  {tournament.status === 'upcoming'
+                  {t.status === 'upcoming'
                     ? 'Predictions will open when the draw is published.'
-                    : tournament.status === 'completed'
+                    : t.status === 'completed'
                     ? 'This tournament has ended.'
                     : 'Predictions are closed for this tournament.'}
                 </p>
@@ -336,11 +391,11 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                 Points per round
               </h3>
               {[
-                { round: 'Winner',      pts: tournament.category === 'grand_slam' ? 2000 : tournament.category === 'masters_1000' ? 1000 : tournament.category === '500' ? 500  : 250 },
-                { round: 'Final',       pts: tournament.category === 'grand_slam' ? 1200 : tournament.category === 'masters_1000' ? 600  : tournament.category === '500' ? 150  : 80  },
-                { round: 'Semifinal',   pts: tournament.category === 'grand_slam' ? 720  : tournament.category === 'masters_1000' ? 360  : tournament.category === '500' ? 90   : 45  },
-                { round: 'Quarterfinal',pts: tournament.category === 'grand_slam' ? 360  : tournament.category === 'masters_1000' ? 180  : tournament.category === '500' ? 60   : 29  },
-                { round: 'R16',         pts: tournament.category === 'grand_slam' ? 180  : tournament.category === 'masters_1000' ? 90   : tournament.category === '500' ? 30   : 13  },
+                { round: 'Winner',      pts: t.category === 'grand_slam' ? 2000 : t.category === 'masters_1000' ? 1000 : t.category === '500' ? 500  : 250 },
+                { round: 'Final',       pts: t.category === 'grand_slam' ? 1200 : t.category === 'masters_1000' ? 600  : t.category === '500' ? 150  : 80  },
+                { round: 'Semifinal',   pts: t.category === 'grand_slam' ? 720  : t.category === 'masters_1000' ? 360  : t.category === '500' ? 90   : 45  },
+                { round: 'Quarterfinal',pts: t.category === 'grand_slam' ? 360  : t.category === 'masters_1000' ? 180  : t.category === '500' ? 60   : 29  },
+                { round: 'R16',         pts: t.category === 'grand_slam' ? 180  : t.category === 'masters_1000' ? 90   : t.category === '500' ? 30   : 13  },
               ].map(({ round, pts }) => (
                 <div key={round} className="flex items-center justify-between py-1.5 border-b last:border-0" style={{ borderColor: 'var(--chalk-dim)' }}>
                   <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{round}</span>

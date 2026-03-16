@@ -50,6 +50,18 @@ export default async function PredictPage({ params }: { params: Promise<{ id: st
     .eq('id', user.id)
     .single()
 
+  // Fetch actual match results for practice mode so picks are color-coded in real time
+  let matchResults: Record<string, string> = {}
+  if (isPractice) {
+    const { data: results } = await supabase
+      .from('match_results')
+      .select('external_match_id, winner_external_id')
+      .eq('tournament_id', id)
+    matchResults = Object.fromEntries(
+      (results ?? []).map(r => [r.external_match_id, r.winner_external_id])
+    )
+  }
+
   return (
     <BracketPredictor
       tournament={tournament}
@@ -59,6 +71,7 @@ export default async function PredictPage({ params }: { params: Promise<{ id: st
       username={profile?.username ?? ''}
       returnUrl={returnUrl}
       isPractice={isPractice}
+      matchResults={matchResults}
     />
   )
 }

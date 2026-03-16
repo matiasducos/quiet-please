@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPointsForRound } from '@/lib/tennis'
+import { sendPointsAwardedEmail } from '@/lib/email'
 
 function isAuthorized(request: Request): boolean {
   if (process.env.NODE_ENV === 'development') return true
@@ -60,9 +61,19 @@ export async function GET(request: Request) {
 
     console.log(`[award-points] ${predictions.length} locked predictions to check`)
 
+    // Fetch tournament names for notification messages
+    const { data: tournamentData } = await supabase
+      .from('tournaments')
+      .select('id, name')
+      .in('id', tournamentIds as string[])
+    const tournamentNames: Record<string, string> = {}
+    for (const t of tournamentData ?? []) tournamentNames[t.id] = t.name
+
     const ledgerRows: any[] = []
     const userPointsDelta: Record<string, number> = {}
     const predictionPointsDelta: Record<string, number> = {}
+    // Track per-user per-tournament points for notifications
+    const userTournamentPoints: Record<string, Record<string, number>> = {}
 
     for (const result of newResults) {
       const tournament = result.tournaments as any
@@ -96,6 +107,10 @@ export async function GET(request: Request) {
 
         userPointsDelta[prediction.user_id] = (userPointsDelta[prediction.user_id] ?? 0) + points
         predictionPointsDelta[prediction.id] = (predictionPointsDelta[prediction.id] ?? 0) + points
+
+        if (!userTournamentPoints[prediction.user_id]) userTournamentPoints[prediction.user_id] = {}
+        userTournamentPoints[prediction.user_id][result.tournament_id] =
+          (userTournamentPoints[prediction.user_id][result.tournament_id] ?? 0) + points
       }
     }
 
@@ -136,6 +151,33 @@ export async function GET(request: Request) {
         .from('predictions')
         .update({ points_earned: (pred?.points_earned ?? 0) + pts })
         .eq('id', predId)
+    }
+
+    // Send points_awarded notifications + emails per user per tournament
+    try {
+      for (const [userId, tPoints] of Object.entries(userTournamentPoints)) {
+        const { data: { user: authUser } } = await supabase.auth.admin.getUserById(userId)
+        for (const [tId, pts] of Object.entries(tPoints)) {
+          const tName = tournamentNames[tId] ?? 'a tournament'
+          await (supabase as any).from('notifications').insert({
+            user_id:       userId,
+            type:          'points_awarded',
+            tournament_id: tId,
+            meta:          { points: pts, tournament_name: tName },
+          })
+          if (authUser?.email) {
+            await sendPointsAwardedEmail({
+              to:             authUser.email,
+              tournamentName: tName,
+              tournamentId:   tId,
+              points:         pts,
+              totalPoints:    userPointsDelta[userId],
+            })
+          }
+        }
+      }
+    } catch (notifyErr) {
+      console.error('[award-points] notification error:', notifyErr)
     }
 
     return NextResponse.json({

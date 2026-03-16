@@ -28,7 +28,7 @@ export default async function LeaguesPage() {
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={profile?.username} points={profile?.total_points ?? 0} activePage="leagues" />
+      <Nav username={profile?.username} points={profile?.total_points ?? 0} activePage="leagues" userId={user.id} />
 
       <div className="max-w-3xl mx-auto px-8 py-10">
         <div className="flex items-end justify-between mb-8">

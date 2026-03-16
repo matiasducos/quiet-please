@@ -24,7 +24,7 @@ export default async function LeaderboardPage() {
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={profile?.username} points={profile?.total_points ?? 0} activePage="leaderboard" />
+      <Nav username={profile?.username} points={profile?.total_points ?? 0} activePage="leaderboard" userId={user.id} />
 
       <div className="max-w-3xl mx-auto px-8 py-10">
         <div className="mb-8">

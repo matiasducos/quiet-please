@@ -1,0 +1,146 @@
+'use server'
+
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import Nav from '@/components/Nav'
+
+// Mark all unread as read — called on page load via inline server action
+async function markAllRead(userId: string) {
+  'use server'
+  const supabase = await createClient()
+  await (supabase as any)
+    .from('notifications')
+    .update({ read_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .is('read_at', null)
+}
+
+const TYPE_META: Record<string, { label: string; color: string }> = {
+  draw_open:       { label: 'Draw open',       color: '#27500A' },
+  points_awarded:  { label: 'Points awarded',  color: '#185FA5' },
+}
+
+function formatRelative(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60_000)
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
+
+export default async function NotificationsPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const [{ data: notifications }, { data: profile }] = await Promise.all([
+    (supabase as any)
+      .from('notifications')
+      .select('id, type, meta, read_at, created_at, tournament_id')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(50),
+    supabase.from('users').select('username, total_points').eq('id', user.id).single(),
+  ])
+
+  // Mark as read (fire-and-forget — we don't await so page renders immediately)
+  markAllRead(user.id)
+
+  const items = notifications ?? []
+
+  return (
+    <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
+      <Nav username={profile?.username} points={profile?.total_points ?? 0} userId={user.id} />
+
+      <div className="max-w-2xl mx-auto px-4 md:px-8 py-10">
+
+        <div className="mb-8">
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+            Notifications
+          </h1>
+        </div>
+
+        {items.length === 0 ? (
+          <div className="bg-white rounded-sm border py-16 px-8 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', color: 'var(--ink)', marginBottom: '0.5rem' }}>
+              All caught up
+            </p>
+            <p style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
+              You&apos;ll be notified here when draws open and points are awarded.
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {items.map((n: any) => {
+              const meta = (n.meta ?? {}) as Record<string, string | number>
+              const typeMeta = TYPE_META[n.type] ?? { label: n.type, color: 'var(--ink)' }
+              const isUnread = !n.read_at
+              const href = n.tournament_id ? `/tournaments/${n.tournament_id}` : '/tournaments'
+
+              return (
+                <Link
+                  key={n.id}
+                  href={href}
+                  className="block bg-white rounded-sm border px-5 py-4 hover:border-current transition-colors"
+                  style={{
+                    borderColor: isUnread ? 'var(--court)' : 'var(--chalk-dim)',
+                    textDecoration: 'none',
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      {/* Type badge */}
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '0.6rem',
+                          letterSpacing: '0.1em',
+                          textTransform: 'uppercase',
+                          color: typeMeta.color,
+                          fontWeight: 600,
+                          display: 'block',
+                          marginBottom: '4px',
+                        }}
+                      >
+                        {typeMeta.label}
+                      </span>
+
+                      {/* Message */}
+                      <p style={{ fontSize: '0.9rem', color: 'var(--ink)', lineHeight: 1.4 }}>
+                        {n.type === 'draw_open' && (
+                          <>Draw is open for <strong>{meta.tournament_name ?? 'a tournament'}</strong>. Make your picks before it closes.</>
+                        )}
+                        {n.type === 'points_awarded' && (
+                          <>You earned <strong>{meta.points ?? 0} pts</strong> for {meta.tournament_name ?? 'a tournament'}.</>
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="flex-shrink-0 flex items-center gap-2">
+                      {isUnread && (
+                        <span
+                          style={{
+                            width: '6px',
+                            height: '6px',
+                            borderRadius: '50%',
+                            background: 'var(--court)',
+                            display: 'block',
+                          }}
+                        />
+                      )}
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                        {formatRelative(n.created_at)}
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </main>
+  )
+}

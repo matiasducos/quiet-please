@@ -37,3 +37,15 @@ html {
 .tournament-card:hover {
   transform: translateY(-2px);
 }
+
+/* Skeleton loading shimmer */
+@keyframes skeleton-shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #ede9e0 25%, #e3dfd5 50%, #ede9e0 75%);
+  background-size: 800px 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  border-radius: 3px;
+}
