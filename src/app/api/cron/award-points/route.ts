@@ -35,7 +35,7 @@ export async function GET(request: Request) {
     const scoredIds = new Set((alreadyScored ?? []).map(r => r.match_result_id))
 
     // Filter to only new unscored results
-    const newResults = allResults.filter(r => !scoredIds.has(r.id))
+    const newResults = (allResults as any[]).filter(r => !scoredIds.has(r.id))
 
     if (!newResults.length) {
       return NextResponse.json({ message: 'No new results to score', awarded: 0 })
