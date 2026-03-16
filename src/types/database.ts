@@ -65,6 +65,8 @@ export interface Database {
           starts_at: string | null
           ends_at: string | null
           status: 'upcoming' | 'accepting_predictions' | 'in_progress' | 'completed'
+          location: string | null
+          flag_emoji: string | null
         }
         Insert: {
           id?: string
@@ -77,6 +79,8 @@ export interface Database {
           starts_at?: string | null
           ends_at?: string | null
           status?: 'upcoming' | 'accepting_predictions' | 'in_progress' | 'completed'
+          location?: string | null
+          flag_emoji?: string | null
         }
         Update: {
           name?: string
@@ -85,6 +89,8 @@ export interface Database {
           starts_at?: string | null
           ends_at?: string | null
           status?: 'upcoming' | 'accepting_predictions' | 'in_progress' | 'completed'
+          location?: string | null
+          flag_emoji?: string | null
         }
         Relationships: []
       }
