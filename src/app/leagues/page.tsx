@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import Nav from '@/components/Nav'
 
 export default async function LeaguesPage() {
   const supabase = await createClient()
@@ -27,21 +28,7 @@ export default async function LeaguesPage() {
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <nav className="flex items-center justify-between px-8 py-5 border-b" style={{ borderColor: 'var(--chalk-dim)' }}>
-        <Link href="/dashboard" style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem' }}>Quiet Please</Link>
-        <div className="flex items-center gap-6">
-          <Link href="/tournaments" style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>Tournaments</Link>
-          <Link href="/leaderboard" style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>Leaderboard</Link>
-          <Link href="/leagues" style={{ fontSize: '0.875rem', color: 'var(--ink)', fontWeight: 500 }}>Leagues</Link>
-          <div className="flex items-center gap-3 ml-4 pl-4 border-l" style={{ borderColor: 'var(--chalk-dim)' }}>
-            <Link href={`/profile/${profile?.username}`} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)', textDecoration: 'none' }}>{profile?.username}</Link>
-            <span className="score-pill">{profile?.total_points ?? 0} pts</span>
-            <form action="/auth/logout" method="post">
-              <button type="submit" style={{ fontSize: '0.8rem', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Sign out</button>
-            </form>
-          </div>
-        </div>
-      </nav>
+      <Nav username={profile?.username} points={profile?.total_points ?? 0} activePage="leagues" />
 
       <div className="max-w-3xl mx-auto px-8 py-10">
         <div className="flex items-end justify-between mb-8">

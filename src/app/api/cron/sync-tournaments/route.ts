@@ -25,10 +25,11 @@ async function fetchCalendar(type: 'atp' | 'wta', year: number) {
   return (json.data ?? []) as any[]
 }
 
-function normalizeCategory(rankId: number): string {
+function normalizeCategory(rankId: number): string | null {
   if (rankId === 1) return 'grand_slam'
   if (rankId === 3) return 'masters_1000'
-  if (rankId === 7) return 'tour_finals'
+  if (rankId === 5) return '500'
+  if (rankId === 7) return null  // Tour Finals — round-robin format, skip
   return '250'
 }
 
@@ -57,11 +58,14 @@ export async function GET(request: Request) {
         const startsAt = t.date ? new Date(t.date).toISOString() : null
         if (!startsAt) continue
 
+        const category = normalizeCategory(t.rankId ?? 2)
+        if (!category) continue  // skip unsupported formats (e.g. Tour Finals)
+
         rows.push({
           external_id:   String(t.id),
           name:          t.name,
           tour:          type.toUpperCase(),
-          category:      normalizeCategory(t.rankId ?? 2),
+          category,
           surface:       normalizeSurface(t.court?.name ?? ''),
           starts_at:     startsAt,
           ends_at:       startsAt, // API doesn't return end date on calendar

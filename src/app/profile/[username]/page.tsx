@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import Nav from '@/components/Nav'
 
 export default async function ProfilePage({ params }: { params: Promise<{ username: string }> }) {
   const { username } = await params
@@ -23,23 +24,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
   if (!profile) {
     return (
       <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-        <nav className="flex items-center justify-between px-8 py-5 border-b" style={{ borderColor: 'var(--chalk-dim)' }}>
-          <Link href="/dashboard" style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem' }}>Quiet Please</Link>
-          <div className="flex items-center gap-6">
-            <Link href="/tournaments" style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>Tournaments</Link>
-            <Link href="/leaderboard" style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>Leaderboard</Link>
-            <Link href="/leagues" style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>Leagues</Link>
-            <div className="flex items-center gap-3 ml-4 pl-4 border-l" style={{ borderColor: 'var(--chalk-dim)' }}>
-              <Link href={`/profile/${currentProfile?.username}`} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)', textDecoration: 'none' }}>{currentProfile?.username}</Link>
-              <span className="score-pill">{currentProfile?.total_points ?? 0} pts</span>
-              <form action="/auth/logout" method="post">
-                <button type="submit" style={{ fontSize: '0.8rem', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                  Sign out
-                </button>
-              </form>
-            </div>
-          </div>
-        </nav>
+        <Nav username={currentProfile?.username} points={currentProfile?.total_points ?? 0} />
         <div className="max-w-3xl mx-auto px-8 py-20 text-center">
           <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '1rem' }}>404</p>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', letterSpacing: '-0.02em', marginBottom: '1.5rem' }}>Player not found</h1>
@@ -75,23 +60,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <nav className="flex items-center justify-between px-8 py-5 border-b" style={{ borderColor: 'var(--chalk-dim)' }}>
-        <Link href="/dashboard" style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem' }}>Quiet Please</Link>
-        <div className="flex items-center gap-6">
-          <Link href="/tournaments" style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>Tournaments</Link>
-          <Link href="/leaderboard" style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>Leaderboard</Link>
-          <Link href="/leagues" style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>Leagues</Link>
-          <div className="flex items-center gap-3 ml-4 pl-4 border-l" style={{ borderColor: 'var(--chalk-dim)' }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{currentProfile?.username}</span>
-            <span className="score-pill">{currentProfile?.total_points ?? 0} pts</span>
-            <form action="/auth/logout" method="post">
-              <button type="submit" style={{ fontSize: '0.8rem', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                Sign out
-              </button>
-            </form>
-          </div>
-        </div>
-      </nav>
+      <Nav username={currentProfile?.username} points={currentProfile?.total_points ?? 0} />
 
       <div className="max-w-3xl mx-auto px-8 py-10">
         {/* Header */}
