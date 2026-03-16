@@ -180,12 +180,105 @@ export async function GET(request: Request) {
       console.error('[award-points] notification error:', notifyErr)
     }
 
+    // ── Score and finalize completed challenges ────────────────────────────
+    let challengesScored = 0
+    let challengesExpired = 0
+    try {
+      // 1. Expire pending challenges for tournaments that have started
+      const { data: pendingChallenges } = await supabase
+        .from('challenges')
+        .select('id, tournament_id')
+        .eq('status', 'pending')
+
+      if (pendingChallenges?.length) {
+        const pendingTournamentIds = [...new Set(pendingChallenges.map(c => c.tournament_id))]
+        const { data: startedTournaments } = await supabase
+          .from('tournaments')
+          .select('id')
+          .in('id', pendingTournamentIds as string[])
+          .in('status', ['in_progress', 'completed'])
+
+        const startedIds = new Set((startedTournaments ?? []).map(t => t.id))
+        const toExpire = pendingChallenges.filter(c => startedIds.has(c.tournament_id))
+
+        for (const c of toExpire) {
+          await supabase
+            .from('challenges')
+            .update({ status: 'expired', updated_at: new Date().toISOString() })
+            .eq('id', c.id)
+          challengesExpired++
+        }
+      }
+
+      // 2. Score accepted challenges for completed tournaments
+      const { data: acceptedChallenges } = await supabase
+        .from('challenges')
+        .select('id, challenger_id, challenged_id, tournament_id')
+        .eq('status', 'accepted')
+
+      if (acceptedChallenges?.length) {
+        const acceptedTournamentIds = [...new Set(acceptedChallenges.map(c => c.tournament_id))]
+        const { data: completedTournaments } = await supabase
+          .from('tournaments')
+          .select('id')
+          .in('id', acceptedTournamentIds as string[])
+          .eq('status', 'completed')
+
+        const completedIds = new Set((completedTournaments ?? []).map(t => t.id))
+        const toScore = acceptedChallenges.filter(c => completedIds.has(c.tournament_id))
+
+        for (const challenge of toScore) {
+          const { data: preds } = await supabase
+            .from('predictions')
+            .select('user_id, points_earned, picks')
+            .in('user_id', [challenge.challenger_id, challenge.challenged_id])
+            .eq('tournament_id', challenge.tournament_id)
+            .eq('is_locked', true)
+            .eq('is_practice', false)
+
+          const challengerPred = (preds ?? []).find(p => p.user_id === challenge.challenger_id)
+          const challengedPred = (preds ?? []).find(p => p.user_id === challenge.challenged_id)
+
+          const challengerPts   = challengerPred?.points_earned ?? 0
+          const challengedPts   = challengedPred?.points_earned ?? 0
+          const challengerCount = Object.keys((challengerPred?.picks as Record<string, string> | null) ?? {}).length
+          const challengedCount = Object.keys((challengedPred?.picks as Record<string, string> | null) ?? {}).length
+
+          let winner_id: string | null = null
+          if (challengerPts > challengedPts)       winner_id = challenge.challenger_id
+          else if (challengedPts > challengerPts)  winner_id = challenge.challenged_id
+          else if (challengerCount > challengedCount) winner_id = challenge.challenger_id
+          else if (challengedCount > challengerCount) winner_id = challenge.challenged_id
+          // else draw: winner_id stays null
+
+          await supabase
+            .from('challenges')
+            .update({
+              status:                          'completed',
+              challenger_points:               challengerPts,
+              challenged_points:               challengedPts,
+              challenger_predictions_count:    challengerCount,
+              challenged_predictions_count:    challengedCount,
+              winner_id,
+              updated_at:                      new Date().toISOString(),
+            })
+            .eq('id', challenge.id)
+
+          challengesScored++
+        }
+      }
+    } catch (challengeErr) {
+      console.error('[award-points] challenge scoring error:', challengeErr)
+    }
+
     return NextResponse.json({
       message: 'Points awarded successfully',
       new_results_scored: newResults.length,
       point_entries_created: ledgerRows.length,
       users_awarded: Object.keys(userPointsDelta).length,
       points_by_user: userPointsDelta,
+      challenges_scored: challengesScored,
+      challenges_expired: challengesExpired,
     })
 
   } catch (err) {

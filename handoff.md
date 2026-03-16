@@ -1,8 +1,8 @@
 # Developer Handoff — Quiet Please
 
-## Current status (as of March 16, 2026 — Session 11)
+## Current status (as of March 16, 2026 — Session 12)
 
-The app is live in production. All Phase 4 features are now complete.
+The app is live in production. Phase 4 and Phase 6 (Challenge a friend) are now complete.
 
 ### What is working right now
 - ✅ Landing page with full design system (chalk bg, court green, DM Serif Display)
@@ -21,13 +21,17 @@ The app is live in production. All Phase 4 features are now complete.
 - ✅ Share picks — "Share picks" button in locked bracket banner copies public link to clipboard
 - ✅ Leaderboard (`/leaderboard`) — global rankings, current user highlight, medal emojis
 - ✅ Leagues (`/leagues`) — create, join with invite code, per-league leaderboard + activity feed (join / locked picks / points events)
-- ✅ User profile page (`/profile/[username]`) — points, rank, hit rate, predictions history
+- ✅ Friends system (`/friends`) — search by username, send/accept/decline requests, challenge button
+- ✅ Challenges (`/challenges`) — hub showing pending/active/past challenges, grouped by state
+- ✅ New challenge flow (`/challenges/new`) — 2-step: pick friend → pick tournament
+- ✅ Challenge detail (`/challenges/[id]`) — accept/decline, live lock status, completed result banner (win/loss/draw)
+- ✅ User profile page (`/profile/[username]`) — points, rank, hit rate, predictions history, challenges section
 - ✅ Notifications (`/notifications`) — in-app notification dot in Nav, notifications page
 - ✅ Email notifications — draw opens + points awarded emails
 - ✅ Open Graph images — `/tournaments/[id]/opengraph-image.tsx`, tier/surface badges, tournament name, date range
 - ✅ Admin panel (`/admin`) — trigger sync-tournaments, sync-draws, sync-results, award-points, sync-backfill; protected by ADMIN_USER_IDS env var
 - ✅ Full 2026 ATP/WTA 250+ calendar seeded in DB
-- ✅ Cron: sync-tournaments, sync-draws, sync-results, award-points, sync-backfill — all working
+- ✅ Cron: sync-tournaments, sync-draws, sync-results, award-points, sync-backfill — all working; award-points also scores + expires challenges
 - ✅ Points engine tested — awards correct per-round points, showing in nav and leaderboard
 - ✅ League points synced — award-points cron propagates to league_members.total_points
 - ✅ ATP Tour-style tournament cards — tier badges, country flags, date ranges
@@ -40,7 +44,7 @@ The app is live in production. All Phase 4 features are now complete.
 - Cron schedules are daily-only (Vercel Hobby plan limit) — upgrade to Vercel Pro ($20/mo) for sub-hourly syncs (sync-results every 30 min, award-points every 35 min). **Only matters when going fully public with live tournament data.**
 
 ### Pending manual steps (must do before public launch)
-1. **Apply migrations** to production Supabase: `003_username_setup.sql` + `004_practice_predictions.sql`
+1. **Apply migrations** to production Supabase: `003_username_setup.sql` + `004_practice_predictions.sql` + `006_challenges.sql`
 2. **Re-enable email confirmation** in Supabase dashboard → Auth → Email Provider (code is ready)
 3. **Run sync-backfill** to process past 2026 tournaments: `GET /api/cron/sync-backfill` with `Authorization: Bearer <CRON_SECRET>`
 
@@ -80,7 +84,14 @@ quiet-please/
 │   │   │   ├── new/page.tsx + actions.ts                ✅
 │   │   │   ├── [id]/page.tsx                            ✅ (leaderboard + activity feed)
 │   │   │   └── join/page.tsx + actions.ts               ✅
-│   │   ├── profile/[username]/page.tsx                  ✅
+│   │   ├── friends/
+│   │   │   ├── page.tsx                                 ✅ (search, send/accept/decline, challenge btn)
+│   │   │   └── actions.ts                               ✅
+│   │   ├── challenges/
+│   │   │   ├── page.tsx                                 ✅ (hub: pending/active/past)
+│   │   │   ├── new/page.tsx + actions.ts                ✅ (2-step: friend → tournament)
+│   │   │   └── [id]/page.tsx + actions.ts               ✅ (detail, accept/decline, result)
+│   │   ├── profile/[username]/page.tsx                  ✅ (+ challenges section)
 │   │   ├── auth/callback/route.ts                       ✅
 │   │   ├── auth/logout/route.ts                         ✅
 │   │   └── api/cron/
@@ -88,7 +99,7 @@ quiet-please/
 │   │       ├── sync-draws/route.ts                      ✅
 │   │       ├── sync-results/route.ts                    ✅
 │   │       ├── sync-backfill/route.ts                   ✅
-│   │       └── award-points/route.ts                    ✅ (skips is_practice)
+│   │       └── award-points/route.ts                    ✅ (skips is_practice, scores challenges)
 │   ├── components/Nav.tsx                               ✅ (notification dot)
 │   ├── lib/supabase/ (client, server, admin, middleware) ✅
 │   ├── lib/tennis/ (adapter, types, points, api-tennis provider) ✅
@@ -97,7 +108,8 @@ quiet-please/
 └── supabase/migrations/
     ├── 001_initial_schema.sql                           ✅ run
     ├── 003_username_setup.sql                           ✅ written, NOT YET run on prod
-    └── 004_practice_predictions.sql                     ✅ written, NOT YET run on prod
+    ├── 004_practice_predictions.sql                     ✅ written, NOT YET run on prod
+    └── 006_challenges.sql                               ✅ written, NOT YET run on prod
 ```
 
 ---
@@ -143,6 +155,12 @@ Rate limit: sequential requests with 500ms delay between ATP/WTA calls.
 - Adds `is_practice boolean NOT NULL DEFAULT false` to `public.predictions`
 - Practice predictions are scored immediately in the server action (not via cron)
 - Practice predictions never affect `users.total_points` or `league_members.total_points`
+
+### 006_challenges.sql (NOT YET RUN ON PROD)
+- Adds `friendships` table: `requester_id`, `addressee_id`, status (`pending|accepted|declined`), unique constraint, no-self constraint
+- Adds `challenges` table: `challenger_id`, `challenged_id`, `tournament_id`, status (`pending|accepted|declined|expired|completed`), final score columns, `winner_id`
+- Both FKs on `challenges` are explicitly named (`challenges_challenger_id_fkey`, `challenges_challenged_id_fkey`) for PostgREST disambiguation
+- RLS policies: users can SELECT rows where they are a party; INSERT as requester/challenger; UPDATE as addressee/challenged only
 
 ---
 
@@ -194,6 +212,49 @@ All originally planned Phase 4 items are now shipped:
 - Separate ATP/WTA leaderboards
 - Season-long standings across all tournaments
 - Player search / bracket search
+
+---
+
+## Phase 6 — Challenge a friend ✅ (complete as of Session 12)
+
+### Product decisions (confirmed)
+- **Friend discovery**: friends/follow system built — search by username → send request → accept
+- **Challenge multiplicity**: multiple challenges per tournament allowed — each is independent
+- **Pick visibility**: hidden until both players have locked their picks
+- **Scoring**: same weighted points system as main predictor; player with most points wins the challenge
+- **Tie-breaking**: 1st: most points; 2nd: most predictions made; 3rd: draw
+- **Challenge timeline**: challenges can be created for `upcoming` or `accepting_predictions` tournaments only
+- **Acceptance deadline**: must accept AND submit picks BEFORE the tournament goes `in_progress`. Pending challenges for tournaments that transition to `in_progress` are automatically expired. This prevents the late-acceptor information advantage (knowing early round results).
+- **Declining**: challenged user can decline; challenger sees friendly "challenge was not accepted" message
+- **Invite link flow (new friends)**: Phase 2 — not yet built
+- **Notifications**: Phase 2 — not yet built
+- **Challenge history**: embedded in user profile page (`/profile/[username]`)
+- **One-sided submission**: challenge still scores based on what was submitted; if one player never submitted, they score 0
+
+### What was built
+
+| Route | Status |
+|-------|--------|
+| `supabase/migrations/006_challenges.sql` | ✅ written (run on prod manually) |
+| `/friends` + `/friends/actions.ts` | ✅ search, send/accept/decline requests |
+| `/challenges` | ✅ hub: pending/active/past, grouped by state |
+| `/challenges/new` + `/challenges/new/actions.ts` | ✅ 2-step: pick friend → pick tournament |
+| `/challenges/[id]` + `/challenges/[id]/actions.ts` | ✅ detail: accept/decline, lock status, result banner |
+| `/profile/[username]` | ✅ extended with challenges table (WIN/LOSS/DRAW) |
+| `award-points` cron | ✅ now also expires pending + scores completed challenges |
+| `Nav.tsx` | ✅ "Challenges" link added between Leagues and Sandbox |
+
+### Key implementation notes
+
+- **FK disambiguation**: `challenges` has two FKs to `users` (`challenger_id`, `challenged_id`). Both constraints are explicitly named in the migration so PostgREST can disambiguate joined queries.
+- **Admin client pattern**: All cross-user data (reading opponent profiles, challenge visibility) uses `createAdminClient()` — same as leagues.
+- **Challenge scoring in cron**: Appended to `award-points` cron (not a separate endpoint). Reads `predictions.points_earned` after that's been updated, so scores are always current.
+- **Expiration at render time**: `/challenges/[id]` also computes `effectiveStatus` at render — if tournament has started but challenge is still `pending` in DB, it shows "expired" immediately without a DB write.
+
+### Phase 2 (not yet built)
+- Invite link for non-users → `/challenges/invite/[token]` landing page
+- In-app + email notifications for challenge lifecycle events
+- Win/loss record on profile
 
 ---
 

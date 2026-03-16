@@ -1,0 +1,272 @@
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { redirect, notFound } from 'next/navigation'
+import Link from 'next/link'
+import Nav from '@/components/Nav'
+import { respondToChallenge } from './actions'
+
+export default async function ChallengeDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { id } = await params
+  const admin = createAdminClient()
+
+  const { data: challenge } = await admin
+    .from('challenges')
+    .select('id, challenger_id, challenged_id, tournament_id, status, challenger_points, challenged_points, challenger_predictions_count, challenged_predictions_count, winner_id, created_at')
+    .eq('id', id)
+    .single()
+
+  if (!challenge) notFound()
+
+  const isChallenger = challenge.challenger_id === user.id
+  const isChallenged = challenge.challenged_id === user.id
+  if (!isChallenger && !isChallenged) redirect('/challenges')
+
+  const { data: profile } = await supabase
+    .from('users')
+    .select('username, total_points')
+    .eq('id', user.id)
+    .single()
+
+  // Fetch both player profiles + tournament
+  const [{ data: challengerProfile }, { data: challengedProfile }, { data: tournament }] = await Promise.all([
+    admin.from('users').select('id, username').eq('id', challenge.challenger_id).single(),
+    admin.from('users').select('id, username').eq('id', challenge.challenged_id).single(),
+    admin.from('tournaments').select('id, name, status, starts_at, ends_at, tour, surface').eq('id', challenge.tournament_id).single(),
+  ])
+
+  const myUsername   = isChallenger ? challengerProfile?.username : challengedProfile?.username
+  const theirUsername = isChallenger ? challengedProfile?.username : challengerProfile?.username
+  const theirId      = isChallenger ? challenge.challenged_id : challenge.challenger_id
+
+  const myPoints    = isChallenger ? challenge.challenger_points : challenge.challenged_points
+  const theirPoints = isChallenger ? challenge.challenged_points : challenge.challenger_points
+  const myPredCount = isChallenger ? challenge.challenger_predictions_count : challenge.challenged_predictions_count
+  const theirPredCount = isChallenger ? challenge.challenged_predictions_count : challenge.challenger_predictions_count
+
+  const isDraw    = challenge.status === 'completed' && challenge.winner_id === null
+  const isWinner  = challenge.winner_id === user.id
+  const isLoser   = challenge.status === 'completed' && challenge.winner_id !== null && !isWinner
+
+  // Check if picks have been locked (for both players), when challenge is accepted or completed
+  let myPicksLocked    = false
+  let theirPicksLocked = false
+
+  if (['accepted', 'completed'].includes(challenge.status)) {
+    const { data: preds } = await admin
+      .from('predictions')
+      .select('user_id, is_locked')
+      .in('user_id', [user.id, theirId])
+      .eq('tournament_id', challenge.tournament_id)
+      .eq('is_practice', false)
+
+    myPicksLocked    = (preds ?? []).some(p => p.user_id === user.id && p.is_locked)
+    theirPicksLocked = (preds ?? []).some(p => p.user_id === theirId && p.is_locked)
+  }
+
+  // If challenge is pending and tournament has started, show as expired
+  const effectiveStatus =
+    challenge.status === 'pending' &&
+    (tournament?.status === 'in_progress' || tournament?.status === 'completed')
+      ? 'expired'
+      : challenge.status
+
+  const formatDate = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+
+  return (
+    <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
+      <Nav username={profile?.username} points={profile?.total_points ?? 0} activePage="challenges" userId={user.id} />
+
+      <div className="max-w-2xl mx-auto px-8 py-10">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 mb-6" style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+          <Link href="/challenges" style={{ color: 'var(--muted)' }}>Challenges</Link>
+          <span>/</span>
+          <span>{myUsername} vs {theirUsername}</span>
+        </div>
+
+        {/* Header */}
+        <div className="mb-8">
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+            {myUsername} <span style={{ color: 'var(--muted)' }}>vs</span> {theirUsername}
+          </h1>
+          <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
+            {tournament?.name} · {tournament?.tour} · {tournament?.starts_at ? formatDate(tournament.starts_at) : ''}
+          </p>
+        </div>
+
+        {/* ── Pending: needs response ─────────────────────────────────────── */}
+        {effectiveStatus === 'pending' && isChallenged && (
+          <div className="bg-white rounded-sm border p-6 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', marginBottom: '0.5rem' }}>
+              {challengerProfile?.username} is challenging you!
+            </p>
+            <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem' }}>
+              Accept to predict {tournament?.name} head-to-head. Picks are hidden until both of you lock.
+            </p>
+            <div className="flex gap-3">
+              <form action={respondToChallenge}>
+                <input type="hidden" name="challenge_id" value={challenge.id} />
+                <input type="hidden" name="response" value="accepted" />
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 text-sm font-medium text-white rounded-sm hover:opacity-90"
+                  style={{ background: 'var(--court)' }}
+                >
+                  Accept challenge
+                </button>
+              </form>
+              <form action={respondToChallenge}>
+                <input type="hidden" name="challenge_id" value={challenge.id} />
+                <input type="hidden" name="response" value="declined" />
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 text-sm rounded-sm border"
+                  style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white' }}
+                >
+                  Decline
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {effectiveStatus === 'pending' && isChallenger && (
+          <div className="bg-white rounded-sm border p-6 mb-6 text-center" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
+            <p style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
+              Waiting for <strong>{theirUsername}</strong> to accept your challenge.
+            </p>
+          </div>
+        )}
+
+        {/* ── Expired ─────────────────────────────────────────────────────── */}
+        {effectiveStatus === 'expired' && (
+          <div className="bg-white rounded-sm border p-6 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.25rem' }}>Challenge expired</p>
+            <p style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
+              {tournament?.name} has already started. Challenges must be accepted before the tournament begins.
+            </p>
+          </div>
+        )}
+
+        {/* ── Declined ────────────────────────────────────────────────────── */}
+        {effectiveStatus === 'declined' && (
+          <div className="bg-white rounded-sm border p-6 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.25rem' }}>Challenge not accepted</p>
+            <p style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
+              {isChallenger
+                ? `${theirUsername} declined your challenge. Better luck next time!`
+                : 'You declined this challenge.'}
+            </p>
+          </div>
+        )}
+
+        {/* ── Active (accepted) ────────────────────────────────────────────── */}
+        {effectiveStatus === 'accepted' && (
+          <div className="bg-white rounded-sm border p-6 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '1rem' }}>Challenge active</p>
+            <div className="flex flex-col gap-2 mb-4">
+              <div className="flex items-center justify-between">
+                <span style={{ fontSize: '0.875rem', color: 'var(--ink)' }}>{myUsername} (you)</span>
+                {myPicksLocked
+                  ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', letterSpacing: '0.05em' }}>LOCKED ✓</span>
+                  : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#c17c00' }}>PICKS PENDING</span>}
+              </div>
+              <div className="flex items-center justify-between">
+                <span style={{ fontSize: '0.875rem', color: 'var(--ink)' }}>{theirUsername}</span>
+                {theirPicksLocked
+                  ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', letterSpacing: '0.05em' }}>LOCKED ✓</span>
+                  : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>PICKS PENDING</span>}
+              </div>
+            </div>
+            {!myPicksLocked && (
+              <Link
+                href={`/tournaments/${challenge.tournament_id}/predict`}
+                className="inline-block px-5 py-2.5 text-sm font-medium text-white rounded-sm hover:opacity-90"
+                style={{ background: 'var(--court)', textDecoration: 'none' }}
+              >
+                Make your picks →
+              </Link>
+            )}
+            {myPicksLocked && (
+              <Link
+                href={`/tournaments/${challenge.tournament_id}/picks/${myUsername}`}
+                className="inline-block px-4 py-2 text-sm rounded-sm border"
+                style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', textDecoration: 'none' }}
+              >
+                View your picks →
+              </Link>
+            )}
+          </div>
+        )}
+
+        {/* ── Completed ───────────────────────────────────────────────────── */}
+        {effectiveStatus === 'completed' && (
+          <>
+            {/* Result banner */}
+            <div
+              className="rounded-sm border p-6 mb-6 text-center"
+              style={{
+                borderColor: isDraw ? 'var(--chalk-dim)' : isWinner ? '#97C459' : '#f4c5ba',
+                background: isDraw ? 'var(--chalk)' : isWinner ? '#eaf3de' : '#fdf1ee',
+              }}
+            >
+              <p style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '1.75rem',
+                letterSpacing: '-0.02em',
+                color: isDraw ? 'var(--ink)' : isWinner ? '#27500A' : '#c84b31',
+                marginBottom: '0.25rem',
+              }}>
+                {isDraw ? 'Draw' : isWinner ? 'You win!' : `${theirUsername} wins`}
+              </p>
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '1.1rem', color: 'var(--muted)' }}>
+                {myPoints ?? 0} pts <span style={{ color: 'var(--muted)' }}>vs</span> {theirPoints ?? 0} pts
+              </p>
+              {isDraw && myPredCount != null && (
+                <p style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '0.25rem' }}>
+                  {myPredCount} vs {theirPredCount} predictions made
+                </p>
+              )}
+            </div>
+
+            {/* View brackets */}
+            <div className="flex gap-3">
+              <Link
+                href={`/tournaments/${challenge.tournament_id}/picks/${myUsername}`}
+                className="flex-1 px-4 py-3 text-sm text-center rounded-sm border"
+                style={{ borderColor: 'var(--chalk-dim)', color: 'var(--ink)', textDecoration: 'none', background: 'white' }}
+              >
+                Your picks →
+              </Link>
+              <Link
+                href={`/tournaments/${challenge.tournament_id}/picks/${theirUsername}`}
+                className="flex-1 px-4 py-3 text-sm text-center rounded-sm border"
+                style={{ borderColor: 'var(--chalk-dim)', color: 'var(--ink)', textDecoration: 'none', background: 'white' }}
+              >
+                {theirUsername}'s picks →
+              </Link>
+            </div>
+          </>
+        )}
+
+        {/* Tournament link */}
+        <div className="mt-6 text-center">
+          <Link
+            href={`/tournaments/${challenge.tournament_id}`}
+            style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}
+          >
+            View tournament →
+          </Link>
+        </div>
+      </div>
+    </main>
+  )
+}

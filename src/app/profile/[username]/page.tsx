@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
@@ -57,6 +58,55 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
 
   const isOwnProfile = user.id === profile.id
   const memberSince = new Date(profile.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+
+  // Challenges for this profile (using admin client — needed to see other users' challenges)
+  const admin = createAdminClient()
+  const { data: rawChallenges } = await admin
+    .from('challenges')
+    .select('id, challenger_id, challenged_id, tournament_id, status, challenger_points, challenged_points, winner_id, created_at')
+    .or(`challenger_id.eq.${profile.id},challenged_id.eq.${profile.id}`)
+    .in('status', ['completed', 'accepted', 'pending'])
+    .order('created_at', { ascending: false })
+    .limit(10)
+
+  // Get opponent + tournament details
+  const challengeOpponentIds = [...new Set(
+    (rawChallenges ?? []).map(c => c.challenger_id === profile.id ? c.challenged_id : c.challenger_id)
+  )]
+  const challengeTournamentIds = [...new Set((rawChallenges ?? []).map(c => c.tournament_id))]
+
+  let challengeOpponentNames: Record<string, string> = {}
+  let challengeTournamentNames: Record<string, string> = {}
+
+  const [oppRes, tRes] = await Promise.all([
+    challengeOpponentIds.length > 0
+      ? admin.from('users').select('id, username').in('id', challengeOpponentIds)
+      : Promise.resolve({ data: [] as any[] }),
+    challengeTournamentIds.length > 0
+      ? admin.from('tournaments').select('id, name').in('id', challengeTournamentIds)
+      : Promise.resolve({ data: [] as any[] }),
+  ])
+  challengeOpponentNames = Object.fromEntries((oppRes.data ?? []).map((u: any) => [u.id, u.username]))
+  challengeTournamentNames = Object.fromEntries((tRes.data ?? []).map((t: any) => [t.id, t.name]))
+
+  const challenges = (rawChallenges ?? []).map(c => {
+    const isProfileChallenger = c.challenger_id === profile.id
+    const opponentId = isProfileChallenger ? c.challenged_id : c.challenger_id
+    const myPts    = isProfileChallenger ? c.challenger_points : c.challenged_points
+    const theirPts = isProfileChallenger ? c.challenged_points : c.challenger_points
+    const won  = c.winner_id === profile.id
+    const lost = c.status === 'completed' && c.winner_id !== null && !won
+    const draw = c.status === 'completed' && c.winner_id === null
+    return {
+      id: c.id,
+      opponentName: challengeOpponentNames[opponentId] ?? 'Unknown',
+      tournamentName: challengeTournamentNames[c.tournament_id] ?? 'Unknown',
+      status: c.status,
+      myPts,
+      theirPts,
+      won, lost, draw,
+    }
+  })
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
@@ -166,6 +216,67 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
             </div>
           )}
         </div>
+
+        {/* Challenges */}
+        {challenges.length > 0 && (
+          <div className="mt-10">
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.01em', marginBottom: '1rem' }}>
+              Challenges
+            </h2>
+            <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+              <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
+                <div className="col-span-4" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>TOURNAMENT</div>
+                <div className="col-span-3" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>OPPONENT</div>
+                <div className="col-span-2 text-center" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>RESULT</div>
+                <div className="col-span-3 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>SCORE</div>
+              </div>
+              {challenges.map(c => (
+                <Link
+                  key={c.id}
+                  href={`/challenges/${c.id}`}
+                  className="grid grid-cols-12 px-5 py-4 border-b last:border-0 tournament-card"
+                  style={{ borderColor: 'var(--chalk-dim)', textDecoration: 'none' }}
+                >
+                  <div className="col-span-4 flex items-center">
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.9rem', color: 'var(--ink)' }}>
+                      {c.tournamentName}
+                    </span>
+                  </div>
+                  <div className="col-span-3 flex items-center">
+                    <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+                      {c.opponentName}
+                    </span>
+                  </div>
+                  <div className="col-span-2 flex items-center justify-center">
+                    {c.status === 'completed' ? (
+                      <span style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '0.65rem',
+                        letterSpacing: '0.06em',
+                        color: c.draw ? 'var(--muted)' : c.won ? 'var(--court)' : '#c84b31',
+                      }}>
+                        {c.draw ? 'DRAW' : c.won ? 'WIN' : 'LOSS'}
+                      </span>
+                    ) : (
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', letterSpacing: '0.04em' }}>
+                        {c.status === 'accepted' ? 'ACTIVE' : 'PENDING'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="col-span-3 flex items-center justify-end">
+                    {c.status === 'completed' ? (
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--ink)' }}>
+                        {c.myPts ?? 0} <span style={{ color: 'var(--muted)' }}>vs</span> {c.theirPts ?? 0}
+                      </span>
+                    ) : (
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>—</span>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </main>
   )
