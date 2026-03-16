@@ -3,7 +3,7 @@ import Link from 'next/link'
 interface NavProps {
   username?: string | null
   points?: number
-  activePage?: 'tournaments' | 'leaderboard' | 'leagues'
+  activePage?: 'tournaments' | 'leaderboard' | 'leagues' | 'test'
 }
 
 export default function Nav({ username, points = 0, activePage }: NavProps) {
@@ -22,6 +22,9 @@ export default function Nav({ username, points = 0, activePage }: NavProps) {
           </Link>
           <Link href="/leagues" style={{ fontSize: '0.875rem', color: activePage === 'leagues' ? 'var(--ink)' : 'var(--muted)', fontWeight: activePage === 'leagues' ? 500 : 400 }}>
             Leagues
+          </Link>
+          <Link href="/test-tournaments" style={{ fontSize: '0.875rem', color: activePage === 'test' ? 'var(--ink)' : 'var(--muted)', fontWeight: activePage === 'test' ? 500 : 400 }}>
+            Sandbox
           </Link>
         </div>
       </div>
