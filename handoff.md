@@ -1,8 +1,8 @@
 # Developer Handoff — Quiet Please
 
-## Current status (as of March 16, 2026 — Session 8)
+## Current status (as of March 16, 2026 — Session 11)
 
-The app is live in production. Session 8 added email confirmation, Google OAuth username-pick flow, full 2026 ATP/WTA calendar (250+), past tournament backfill + practice mode, and fixed the sync-tournaments status reset bug.
+The app is live in production. All Phase 4 features are now complete.
 
 ### What is working right now
 - ✅ Landing page with full design system (chalk bg, court green, DM Serif Display)
@@ -11,20 +11,26 @@ The app is live in production. Session 8 added email confirmation, Google OAuth 
 - ✅ Google OAuth — login/signup with Google, new OAuth users redirected to /setup-username
 - ✅ Username setup — /setup-username page for OAuth users who need to pick a username
 - ✅ Dashboard — username, points, upcoming tournaments
-- ✅ Tournament list (`/tournaments`) — ATP/WTA tabs, real data from API
-- ✅ Tournament detail (`/tournaments/[id]`) — draw status, points breakdown, predict/practice buttons
-- ✅ Bracket predictor (`/tournaments/[id]/predict`) — pick winners per round, save draft, submit & lock
-- ✅ Practice mode — completed tournaments show "Practice picks" button, picks scored immediately against actual results, no real points awarded
+- ✅ Tournament list (`/tournaments`) — ATP/WTA tabs, surface filters, real data; accessible without login
+- ✅ Tournament detail (`/tournaments/[id]`) — public (ISR cached), draw status, points breakdown, predict/practice buttons; "See all picks →" link when in_progress/completed
+- ✅ Bracket predictor (`/tournaments/[id]/predict`) — pick winners per round, save draft, submit & lock; sticky header (nav + banner + round tabs)
+- ✅ Locked picks view — `predict/page.tsx` shows readOnly bracket with color-coded results + per-match points (`✓ +N pts`) instead of redirecting
+- ✅ Practice mode — completed tournaments show "Practice picks" button, picks scored immediately, no real points awarded
+- ✅ Public picks page (`/tournaments/[id]/picks/[username]`) — view any user's locked bracket, no auth required; color-coded with results + points
+- ✅ All picks listing (`/tournaments/[id]/picks`) — leaderboard of all locked predictions, sorted by points_earned; "View →" links to individual bracket
+- ✅ Share picks — "Share picks" button in locked bracket banner copies public link to clipboard
 - ✅ Leaderboard (`/leaderboard`) — global rankings, current user highlight, medal emojis
-- ✅ Leagues (`/leagues`) — create, join with invite code, per-league leaderboard
-- ✅ Full 2026 ATP/WTA 250+ calendar seeded in DB (ATP 250+, WTA 250+)
-- ✅ Cron: sync-tournaments, sync-draws, sync-results, award-points — all working
-- ✅ award-points cron now skips practice predictions (`is_practice = true`)
-- ✅ Points engine tested — 29 pts awarded for correct QF pick, showing in nav and leaderboard
-- ✅ CSS variables fixed — all buttons, colors, fonts working across entire app
-- ✅ League points synced — award-points cron propagates to league_members.total_points
+- ✅ Leagues (`/leagues`) — create, join with invite code, per-league leaderboard + activity feed (join / locked picks / points events)
 - ✅ User profile page (`/profile/[username]`) — points, rank, hit rate, predictions history
-- ✅ Leaderboard usernames link to profile pages
+- ✅ Notifications (`/notifications`) — in-app notification dot in Nav, notifications page
+- ✅ Email notifications — draw opens + points awarded emails
+- ✅ Open Graph images — `/tournaments/[id]/opengraph-image.tsx`, tier/surface badges, tournament name, date range
+- ✅ Admin panel (`/admin`) — trigger sync-tournaments, sync-draws, sync-results, award-points, sync-backfill; protected by ADMIN_USER_IDS env var
+- ✅ Full 2026 ATP/WTA 250+ calendar seeded in DB
+- ✅ Cron: sync-tournaments, sync-draws, sync-results, award-points, sync-backfill — all working
+- ✅ Points engine tested — awards correct per-round points, showing in nav and leaderboard
+- ✅ League points synced — award-points cron propagates to league_members.total_points
+- ✅ ATP Tour-style tournament cards — tier badges, country flags, date ranges
 - ✅ Deployed to production at https://quiet-please.vercel.app
 - ✅ Vercel cron jobs configured (daily schedules — Hobby plan limit)
 - ✅ Supabase Auth redirect URLs updated for production
@@ -51,39 +57,45 @@ quiet-please/
 │   │   ├── layout.tsx, page.tsx, globals.css            ✅
 │   │   ├── login/page.tsx                               ✅
 │   │   ├── signup/page.tsx                              ✅ (email confirmation flow)
-│   │   ├── check-email/page.tsx                         ✅ NEW
-│   │   ├── setup-username/page.tsx + actions.ts         ✅ NEW (OAuth username pick)
+│   │   ├── check-email/page.tsx                         ✅
+│   │   ├── setup-username/page.tsx + actions.ts         ✅ (OAuth username pick)
 │   │   ├── dashboard/page.tsx                           ✅
+│   │   ├── notifications/page.tsx                       ✅
+│   │   ├── admin/page.tsx + AdminPanel.tsx              ✅ (protected, 5 cron triggers)
 │   │   ├── tournaments/
-│   │   │   ├── page.tsx                                 ✅
+│   │   │   ├── page.tsx                                 ✅ (public, ATP/WTA/surface filters)
 │   │   │   └── [id]/
-│   │   │       ├── page.tsx                             ✅ (practice button for completed)
+│   │   │       ├── page.tsx                             ✅ (ISR, public, "See all picks →")
+│   │   │       ├── opengraph-image.tsx                  ✅ (1200×630, tier+surface badges)
+│   │   │       ├── picks/
+│   │   │       │   ├── page.tsx                         ✅ (all locked picks, sorted by pts)
+│   │   │       │   └── [username]/page.tsx              ✅ (public bracket view, color-coded)
 │   │   │       └── predict/
-│   │   │           ├── page.tsx                         ✅ (allows completed tournaments)
-│   │   │           ├── BracketPredictor.tsx             ✅ (isPractice prop + practice UI)
+│   │   │           ├── page.tsx                         ✅ (locked→readOnly, practice mode)
+│   │   │           ├── BracketPredictor.tsx             ✅ (sticky header, per-match pts)
 │   │   │           └── actions.ts                       ✅ (isPractice scoring)
 │   │   ├── leaderboard/page.tsx                         ✅
 │   │   ├── leagues/
 │   │   │   ├── page.tsx                                 ✅
 │   │   │   ├── new/page.tsx + actions.ts                ✅
-│   │   │   ├── [id]/page.tsx                            ✅
+│   │   │   ├── [id]/page.tsx                            ✅ (leaderboard + activity feed)
 │   │   │   └── join/page.tsx + actions.ts               ✅
+│   │   ├── profile/[username]/page.tsx                  ✅
 │   │   ├── auth/callback/route.ts                       ✅
 │   │   ├── auth/logout/route.ts                         ✅
 │   │   └── api/cron/
-│   │       ├── sync-tournaments/route.ts                ✅ (ignoreDuplicates bug fixed)
+│   │       ├── sync-tournaments/route.ts                ✅
 │   │       ├── sync-draws/route.ts                      ✅
 │   │       ├── sync-results/route.ts                    ✅
-│   │       ├── sync-backfill/route.ts                   ✅ NEW (on-demand past tournament backfill)
-│   │       └── award-points/route.ts                    ✅ (skips is_practice predictions)
-│   ├── components/Nav.tsx                               ✅
-│   ├── lib/supabase/ (client, server, admin, middleware) ✅ (middleware checks username_is_set)
+│   │       ├── sync-backfill/route.ts                   ✅
+│   │       └── award-points/route.ts                    ✅ (skips is_practice)
+│   ├── components/Nav.tsx                               ✅ (notification dot)
+│   ├── lib/supabase/ (client, server, admin, middleware) ✅
 │   ├── lib/tennis/ (adapter, types, points, api-tennis provider) ✅
-│   ├── middleware.ts                                    ✅
-│   └── types/database.ts                               ✅ (updated: is_practice, username_is_set)
+│   ├── middleware.ts                                    ✅ (checks username_is_set)
+│   └── types/database.ts                               ✅
 └── supabase/migrations/
     ├── 001_initial_schema.sql                           ✅ run
-    ├── 002_seed_tournaments.sql (if any)
     ├── 003_username_setup.sql                           ✅ written, NOT YET run on prod
     └── 004_practice_predictions.sql                     ✅ written, NOT YET run on prod
 ```
@@ -147,39 +159,41 @@ Rate limit: sequential requests with 500ms delay between ATP/WTA calls.
 
 ---
 
-## Phase 4 — Planned frontend changes (not yet started)
+## Phase 4 — Status (all complete as of Session 11)
 
-These are the next set of improvements to work on, roughly in priority order:
+All originally planned Phase 4 items are now shipped:
+- ✅ Color-coded bracket picks (green/red/gold) with per-match points
+- ✅ Tournament card filtering (ATP/WTA + surface)
+- ✅ Email notifications (draw opens + points awarded)
+- ✅ In-app notification dot in Nav
+- ✅ ISR-cached public tournament pages
+- ✅ Open Graph images
+- ✅ `/tournaments` accessible without login
+- ✅ Share bracket link
+- ✅ Public per-user picks view
+- ✅ All-picks leaderboard per tournament
+- ✅ League activity feed
+- ✅ Admin panel for triggering syncs
+- ✅ Sticky bracket header
 
-### UX improvements
-- Mobile responsive layouts (currently desktop-first) — Nav, bracket predictor, tournament cards
-- Better empty states — no predictions, no leagues, no completed tournaments
-- Loading skeletons for data-heavy pages
+## Phase 5 — Next things to work on
 
-### Tournament improvements
-- Show actual results overlaid on bracket predictor for completed/in-progress tournaments
-- Color code picks: green = correct, red = wrong, grey = pending
-- Tournament card filtering on /tournaments page (filter by surface, tour)
+### High priority
+- **Mobile responsive layouts** — Nav, bracket predictor, and tournament cards are desktop-first. BracketPredictor especially needs work at small widths (round tabs overflow, player names truncate badly)
+- **Apply pending migrations to prod** — `003_username_setup.sql` and `004_practice_predictions.sql` are written but not yet run on production Supabase
+- **Re-enable email confirmation** in Supabase dashboard → Auth → Email Provider (code is ready; was disabled for testing)
 
-### Notifications
-- Email notifications when draw opens (predictions available)
-- Email notifications when points are awarded
-- In-app notification dot in Nav
+### Medium priority
+- **Override tournament status** in admin panel — manually set a tournament to in_progress/completed without waiting for sync
+- **Better empty states** — no predictions yet, no leagues yet, no completed tournaments
+- **Loading skeletons** for data-heavy pages (tournament list, leaderboard)
+- **Upgrade cron schedules** — Vercel Hobby plan limits to daily. Upgrade to Pro ($20/mo) for sub-hourly syncs (results every 30 min, award-points every 35 min). Only matters for live tournament coverage
 
-### SEO & discoverability
-- Static tournament pages (ISR) for better SEO
-- Open Graph images for sharing prediction results
-- `/tournaments` page accessible without login (just read-only)
-
-### Social
-- Share your bracket as an image/link
-- See friends' predictions after draw closes
-- League activity feed
-
-### Admin
-- Admin panel for manually triggering syncs
-- Override tournament status
-- View all predictions for a tournament
+### Lower priority / nice to have
+- Global leaderboard: all-time vs per-year toggle
+- Separate ATP/WTA leaderboards
+- Season-long standings across all tournaments
+- Player search / bracket search
 
 ---
 
