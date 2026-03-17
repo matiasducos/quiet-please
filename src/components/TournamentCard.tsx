@@ -69,6 +69,12 @@ export default function TournamentCard({ t }: { t: TournamentCardData }) {
   const canPredict  = t.status === 'accepting_predictions'
   const dateRange   = formatDateRange(t.starts_at, t.ends_at)
 
+  // If location is missing but name contains " - City", use the city as a fallback
+  const fallbackLocation = !t.location && t.name.includes(' - ')
+    ? t.name.split(' - ').pop() ?? null
+    : null
+  const displayLocation = t.location ?? fallbackLocation
+
   return (
     <Link
       href={`/tournaments/${t.id}`}
@@ -115,13 +121,13 @@ export default function TournamentCard({ t }: { t: TournamentCardData }) {
       {/* ── Card body ──────────────────────────────────────────────── */}
       <div style={{ padding: '14px 16px 14px' }}>
 
-        {/* Flag + location */}
-        {(t.flag_emoji || t.location) && (
+        {/* Flag + location (or fallback city parsed from name) */}
+        {(t.flag_emoji || displayLocation) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
             {t.flag_emoji && (
               <span style={{ fontSize: '0.95rem', lineHeight: 1 }}>{t.flag_emoji}</span>
             )}
-            {t.location && (
+            {displayLocation && (
               <span
                 style={{
                   fontFamily: 'var(--font-mono)',
@@ -130,7 +136,7 @@ export default function TournamentCard({ t }: { t: TournamentCardData }) {
                   letterSpacing: '0.03em',
                 }}
               >
-                {t.location}
+                {displayLocation}
               </span>
             )}
           </div>

@@ -87,7 +87,6 @@ export default function Nav({ username, points = 0, activePage, userId }: NavPro
               >
                 {username}
               </Link>
-              <span className="score-pill">{points} pts</span>
               <form action="/auth/logout" method="post" className="hidden md:block">
                 <button
                   type="submit"

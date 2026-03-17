@@ -4,6 +4,7 @@ import { unstable_cache } from 'next/cache'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import TournamentCard from '@/components/TournamentCard'
+import TournamentMonthGroup from '@/components/TournamentMonthGroup'
 
 // Cached — same data for all users, refreshes every hour
 const getTournaments = unstable_cache(
@@ -117,13 +118,50 @@ export default async function TournamentsPage({ searchParams }: { searchParams: 
               )}
             </p>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {tournaments.map((t: any) => (
-              <TournamentCard key={t.id} t={t} />
-            ))}
-          </div>
-        )}
+        ) : (() => {
+          // ── Group tournaments by calendar month ──────────────────────────
+          // Key format: "YYYY-MM" (0-based month, zero-padded) — sorts correctly lexicographically
+          const monthMap = new Map<string, { label: string; list: typeof tournaments }>()
+          for (const t of tournaments) {
+            let key: string
+            let label: string
+            if (t.starts_at) {
+              const d = new Date(t.starts_at)
+              key   = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`
+              label = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+            } else {
+              key   = '9999-99'
+              label = 'Date TBC'
+            }
+            if (!monthMap.has(key)) monthMap.set(key, { label, list: [] })
+            monthMap.get(key)!.list.push(t)
+          }
+
+          const now        = new Date()
+          // Current month key — months are 0-indexed so match the same format used above
+          const currentKey = `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`
+
+          const groups = [...monthMap.entries()]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([key, { label, list }]) => ({ key, label, list }))
+
+          return (
+            <>
+              {groups.map(group => (
+                <TournamentMonthGroup
+                  key={group.key}
+                  month={group.label}
+                  count={group.list.length}
+                  defaultOpen={group.key >= currentKey}
+                >
+                  {group.list.map((t: any) => (
+                    <TournamentCard key={t.id} t={t} />
+                  ))}
+                </TournamentMonthGroup>
+              ))}
+            </>
+          )
+        })()}
       </div>
     </main>
   )
