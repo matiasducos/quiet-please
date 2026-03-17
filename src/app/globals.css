@@ -42,6 +42,15 @@ html {
   opacity: 0.75;
 }
 
+/* ── Bracket pick row hover ─────────────────────────────────────── */
+.pick-btn {
+  transition: box-shadow 0.12s ease, filter 0.12s ease !important;
+}
+.pick-btn:not(:disabled):hover {
+  box-shadow: inset 4px 0 0 var(--court);
+  filter: brightness(0.96);
+}
+
 /* ── Interactive cursors ───────────────────────────────────────── */
 button, a, [role="button"], select {
   cursor: pointer;

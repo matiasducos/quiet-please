@@ -406,7 +406,7 @@ export default function BracketPredictor({
                 <button
                   onClick={() => player && pickWinner(match.matchId, player.externalId)}
                   disabled={!player || readOnly}
-                  className={`w-full flex items-center justify-between px-4 py-4 transition-all text-left${withBorderBottom ? ' border-b' : ''}`}
+                  className={`pick-btn w-full flex items-center justify-between px-4 py-4 text-left${withBorderBottom ? ' border-b' : ''}`}
                   style={{
                     borderColor: 'var(--chalk-dim)',
                     background: style.bg,
@@ -421,8 +421,7 @@ export default function BracketPredictor({
                         fontSize: '0.6rem',
                         fontWeight: 600,
                         color: 'white',
-                        background: 'var(--court)',
-                        opacity: 0.75,
+                        background: '#5a5a4a',
                         minWidth: '18px',
                         height: '18px',
                         borderRadius: '2px',
