@@ -2,82 +2,95 @@
 
 ## Overview
 
-Quiet Please is a Next.js web app backed by Supabase. The system is split into four clear layers:
+Quiet Please is a Next.js (App Router) web app backed by Supabase. The system has four clear layers:
 
 ```
-[ Client (Next.js) ]
-        ↓
-[ Next.js API routes ]
-        ↓                          ↓
-[ Supabase (DB/Auth) ]   [ Tennis data adapter ]
-        ↓                          ↓
-[ Background jobs ]      [ External tennis API ]
+[ Browser ]
+     ↓
+[ Next.js — Server Components + Client Components ]
+     ↓                          ↓
+[ Supabase (DB / Auth) ]   [ Tennis data adapter ]
+     ↓                          ↓
+[ Vercel Cron Jobs ]       [ External tennis API ]
 ```
 
 ## Layers
 
-### Client layer
-Next.js App Router handles all UI. Server components fetch data directly from Supabase where possible. Client components handle interactive bracket picking, real-time leaderboard updates via Supabase Realtime.
+### Client layer — Next.js App Router
+The UI is split between Server Components (fetch data directly, no API hop) and Client Components (interactive UI, prefixed with `'use client'`).
 
-### API routes
-Next.js API routes handle:
-- Prediction submission and validation
-- League/challenge management
-- Webhook endpoints for any future integrations
+**Server components** handle: page-level data fetching (tournaments, predictions, leaderboard, profile), ISR-cached public pages (tournament detail cached 1 hour), all read-heavy views.
+
+**Client components** handle: bracket picking (`BracketPredictor.tsx`), collapsible month groups (`TournamentMonthGroup.tsx`), location edit form (`LocationEditForm.tsx`), admin panel triggers.
+
+**Server actions** (`actions.ts` files per route) handle all mutations — form submissions call server actions directly without going through an API route.
 
 ### Supabase
-Handles everything backend:
-- **PostgreSQL** — all app data (users, tournaments, predictions, points)
-- **Auth** — email/password + OAuth (Google, etc.)
-- **Realtime** — live leaderboard updates pushed to clients
-- **Edge Functions** — background cron jobs (draw sync, result sync, points engine)
-- **Storage** — user avatars
+Handles all backend data:
+- **PostgreSQL** — all app data (users, tournaments, predictions, points, leagues, challenges, friendships, notifications)
+- **Auth** — email/password + Google OAuth. RLS policies enforce data isolation.
+- **No Realtime** — leaderboards and other views are server-rendered; Supabase Realtime is not currently used.
+- **No Storage** — avatar upload is not currently implemented.
 
 ### Tennis data adapter
-A dedicated abstraction layer in `src/lib/tennis/`. **Nothing in the app calls the external tennis API directly.** All calls go through the adapter, which:
-1. Fetches from the configured provider
-2. Transforms the response into our internal format
+Location: `src/lib/tennis/`
+
+A dedicated abstraction layer. **No other part of the app imports from the tennis API directly.** All calls go through `tennisAdapter` exported from `src/lib/tennis/index.ts`, which:
+1. Picks the configured provider based on `TENNIS_API_PROVIDER` env var
+2. Fetches from that provider
 3. Returns normalised TypeScript types
 
-This means swapping API providers (e.g. from api-tennis.com to Sportradar) only requires changes inside `src/lib/tennis/` — zero changes to the rest of the app.
+Swapping API providers only requires changes inside `src/lib/tennis/providers/` — zero changes to the rest of the app.
 
 See [api-adapter.md](api-adapter.md) for full details.
 
-### Background jobs (Supabase Edge Functions cron)
+### Background jobs — Vercel Cron
 
-| Job | Schedule | Purpose |
+All cron jobs are Next.js API routes under `src/app/api/cron/`, triggered by Vercel Cron on the Hobby plan (daily schedules only).
+
+| Job | Route | Purpose |
 |---|---|---|
-| `sync-draws` | Every 3 hours | Fetch new/updated tournament draws from the API |
-| `sync-results` | Every 30 minutes | Fetch completed match results |
-| `award-points` | Triggered after sync-results | Compare results against predictions, write to point_ledger |
-| `lock-predictions` | At draw_close_at time | Mark all predictions as locked for a tournament |
+| `sync-tournaments` | `/api/cron/sync-tournaments` | Fetch season calendar from API, insert new tournaments |
+| `sync-draws` | `/api/cron/sync-draws` | Fetch bracket data for accepting_predictions tournaments |
+| `sync-results` | `/api/cron/sync-results` | Fetch match results for in_progress tournaments |
+| `award-points` | `/api/cron/award-points` | Score predictions against results, stamp expires_at, call recalculate_ranking_points(), expire/score challenges |
+| `sync-backfill` | `/api/cron/sync-backfill` | One-time / on-demand: catch up past tournaments (draws + results + status = completed) |
+
+All cron jobs require `Authorization: Bearer <CRON_SECRET>` in production. They use `createAdminClient()` (service role) to bypass RLS.
+
+**Vercel Hobby limitation**: cron schedules are daily-only. Upgrading to Vercel Pro enables sub-hourly schedules (e.g. sync-results every 30 min during live tournaments).
+
+### Admin panel
+`/admin` (protected by `ADMIN_USER_IDS` env var) allows manually triggering any cron job from the browser without needing to hit API endpoints directly.
+
+---
 
 ## Hosting
 
-- **Vercel** — Next.js frontend + API routes
-- **Supabase cloud** — database, auth, realtime, storage, edge functions
+- **Vercel** — Next.js app, API routes, cron jobs
+- **Supabase cloud** — PostgreSQL, Auth (email + Google OAuth)
+
+---
 
 ## Key design decisions
 
 ### Why Next.js App Router?
-- Server components allow direct DB reads without an extra API hop
-- Great for SEO (tournament pages, player pages)
-- Easy to scale with Vercel
+Server Components allow direct DB reads without an extra API hop. ISR caching (`unstable_cache` with `revalidate`) keeps public tournament pages fast without needing a CDN layer. Vercel deploys are zero-config.
 
 ### Why Supabase over plain PostgreSQL?
-- Auth out of the box (crucial for user profiles, private leagues)
-- Realtime subscriptions for live leaderboards
-- Row Level Security (RLS) for data isolation between users/leagues
-- Edge Functions for cron jobs — no extra infrastructure
+Auth out of the box (email + Google OAuth, RLS, JWT). Row Level Security enforces data isolation without application-layer checks. `createAdminClient()` (service role) bypasses RLS for cron jobs and cross-user reads.
 
 ### Why an adapter layer for tennis data?
-Tennis data APIs vary in quality, cost, and coverage. Starting with a cheaper/free API and migrating to a premium one (Sportradar) later is a realistic growth path. The adapter makes this a one-day job instead of a full rewrite.
+Tennis data APIs vary in quality, cost, and coverage. Starting with a cheaper API and migrating to a premium one (Sportradar) later is realistic. The adapter makes that migration a one-day job.
 
-### Why store predictions as JSONB?
-A full bracket for a 128-player Grand Slam has 127 matches across 7 rounds. Storing each pick as a separate row would require complex joins for every bracket view. JSONB stores the entire bracket as one document, making reads fast and simple while PostgreSQL still allows querying inside it.
+### Why JSONB for bracket picks?
+A full Grand Slam bracket has 127 matches across 7 rounds. JSONB stores the entire bracket as one document — fast to read, easy to evolve the schema, no complex joins per pick.
 
-### Why a separate point_ledger table?
-- Full audit trail of every point award
-- Easy to recalculate if there's a scoring dispute
-- Powers analytics (which rounds do users predict best?)
-- Essential for a future monetisation layer (paid leagues, prizes)
+### Why `ranking_points` instead of `total_points`?
+`total_points` is a raw sum with no expiry. `ranking_points` mirrors the ATP rolling 52-week window — points expire 364 days after the tournament, so the leaderboard reflects recent form rather than all-time accumulation. `recalculate_ranking_points()` is a SQL function called by the award-points cron, keeping the logic in one place.
+
+### Why weekly_slots at DB level?
+The one-slot-per-week rule could be enforced in application code, but a `UNIQUE(user_id, circuit, iso_year, iso_week)` constraint at the DB level means it's impossible to double-book even if the server action is bypassed or called concurrently.
+
+### Why Server Actions for mutations?
+Server Actions (Next.js 14+) let form submissions go directly to server-side code without a separate API route. They integrate cleanly with `revalidatePath` for cache invalidation and make the data flow from UI → mutation → re-render straightforward.

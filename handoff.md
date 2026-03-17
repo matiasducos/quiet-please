@@ -1,6 +1,6 @@
 # Developer Handoff — Quiet Please
 
-## Current status (as of March 17, 2026 — Session 15)
+## Current status (as of March 17, 2026 — Session 16)
 
 The app is live in production. Phase 4, Phase 6 (Challenge a friend), and the ATP-style ranking system are now complete. Mobile responsive layouts addressed in Session 14.
 
@@ -31,12 +31,15 @@ The app is live in production. Phase 4, Phase 6 (Challenge a friend), and the AT
 - ✅ Email notifications — draw opens + points awarded emails
 - ✅ Open Graph images — `/tournaments/[id]/opengraph-image.tsx`, tier/surface badges, tournament name, date range
 - ✅ Admin panel (`/admin`) — trigger sync-tournaments, sync-draws, sync-results, award-points, sync-backfill; protected by ADMIN_USER_IDS env var; "Admin" link shown in Nav for admin users
-- ✅ Full 2026 ATP/WTA 250+ calendar seeded in DB
+- ⚠️ 2026 ATP/WTA calendar partially seeded — Grand Slams, Masters 1000, and select 500s only; 250-level events + past Jan–March tournaments (Australian Open etc.) still missing (see Medium Priority)
 - ✅ Cron: sync-tournaments, sync-draws, sync-results, award-points, sync-backfill — all working; award-points also scores + expires challenges
 - ✅ Points engine tested — awards correct per-round points, showing in nav and leaderboard
 - ✅ League points synced — award-points cron propagates to league_members.total_points
 - ✅ Mobile responsive layouts — Nav (admin/sign-out on mobile tab row), BracketPredictor banners, tournament detail h1
 - ✅ ATP Tour-style tournament cards — tier badges, country flags, date ranges
+- ✅ Tournament list grouped by month — collapsed by default, chevron expand/collapse, shadow on header to signal clickability
+- ✅ City dropdown on profile location form — populated based on selected country (47 countries × 5-15 cities each), client component with key-reset trick
+- ✅ Points removed from Nav — already visible on leaderboard and profile
 - ✅ Deployed to production at https://quiet-please.vercel.app
 - ✅ Vercel cron jobs configured (daily schedules — Hobby plan limit)
 - ✅ Supabase Auth redirect URLs updated for production
@@ -218,6 +221,7 @@ All originally planned Phase 4 items are now shipped:
 - **Re-enable email confirmation** in Supabase dashboard → Auth → Email Provider (code is ready; was disabled for testing)
 
 ### Medium priority
+- **Complete tournament calendar** — Several tournaments are missing from the DB, including 250-level events (e.g. Houston Open, ATP Indian Wells 250 qualifier, WTA 250s throughout the year) and past Jan–March 2026 events (Australian Open should show as completed). Root cause: `seed-tournaments` route only hardcodes Grand Slams, Masters 1000, and a handful of 500s — no 250-level events were ever seeded. The RapidAPI calendar endpoint only returns the last ~11 events of the year (Nov–Dec), so it can't fill the gap. Fix: expand `src/app/api/admin/seed-tournaments/route.ts` to include all ATP 250 + WTA 250/500 events for 2026, plus past Jan–March tournaments (Australian Open ATP+WTA, Doha/Adelaide/etc.). After adding to seed: hit `/api/admin/seed-tournaments`, then run sync-backfill to mark past ones as completed with results.
 - **Override tournament status** in admin panel — manually set a tournament to in_progress/completed without waiting for sync
 - **Better empty states** — no predictions yet, no leagues yet, no completed tournaments
 - **Loading skeletons** for data-heavy pages (tournament list, leaderboard)
