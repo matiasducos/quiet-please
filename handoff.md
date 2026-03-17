@@ -1,6 +1,6 @@
 # Developer Handoff — Quiet Please
 
-## Current status (as of March 16, 2026 — Session 12)
+## Current status (as of March 17, 2026 — Session 13)
 
 The app is live in production. Phase 4 and Phase 6 (Challenge a friend) are now complete.
 
@@ -21,15 +21,15 @@ The app is live in production. Phase 4 and Phase 6 (Challenge a friend) are now 
 - ✅ Share picks — "Share picks" button in locked bracket banner copies public link to clipboard
 - ✅ Leaderboard (`/leaderboard`) — global rankings, current user highlight, medal emojis
 - ✅ Leagues (`/leagues`) — create, join with invite code, per-league leaderboard + activity feed (join / locked picks / points events)
-- ✅ Friends system (`/friends`) — search by username, send/accept/decline requests, challenge button
+- ✅ Friends system (`/friends`) — search by username, send/accept/decline requests, challenge button; feedback messages via URL params (green/red banners); accessible from own profile page
 - ✅ Challenges (`/challenges`) — hub showing pending/active/past challenges, grouped by state
 - ✅ New challenge flow (`/challenges/new`) — 2-step: pick friend → pick tournament
 - ✅ Challenge detail (`/challenges/[id]`) — accept/decline, live lock status, completed result banner (win/loss/draw)
-- ✅ User profile page (`/profile/[username]`) — points, rank, hit rate, predictions history, challenges section
+- ✅ User profile page (`/profile/[username]`) — points, rank, hit rate, predictions history, challenges section; "Friends →" link on own profile; contextual friend button on other profiles (Add / Request sent / Accept+Decline / Friends ✓)
 - ✅ Notifications (`/notifications`) — in-app notification dot in Nav, notifications page
 - ✅ Email notifications — draw opens + points awarded emails
 - ✅ Open Graph images — `/tournaments/[id]/opengraph-image.tsx`, tier/surface badges, tournament name, date range
-- ✅ Admin panel (`/admin`) — trigger sync-tournaments, sync-draws, sync-results, award-points, sync-backfill; protected by ADMIN_USER_IDS env var
+- ✅ Admin panel (`/admin`) — trigger sync-tournaments, sync-draws, sync-results, award-points, sync-backfill; protected by ADMIN_USER_IDS env var; "Admin" link shown in Nav for admin users
 - ✅ Full 2026 ATP/WTA 250+ calendar seeded in DB
 - ✅ Cron: sync-tournaments, sync-draws, sync-results, award-points, sync-backfill — all working; award-points also scores + expires challenges
 - ✅ Points engine tested — awards correct per-round points, showing in nav and leaderboard
@@ -44,7 +44,7 @@ The app is live in production. Phase 4 and Phase 6 (Challenge a friend) are now 
 - Cron schedules are daily-only (Vercel Hobby plan limit) — upgrade to Vercel Pro ($20/mo) for sub-hourly syncs (sync-results every 30 min, award-points every 35 min). **Only matters when going fully public with live tournament data.**
 
 ### Pending manual steps (must do before public launch)
-1. **Apply migrations** to production Supabase: `003_username_setup.sql` + `004_practice_predictions.sql` + `006_challenges.sql`
+1. **Apply migrations** to production Supabase: `003_username_setup.sql` + `004_practice_predictions.sql` (`006_challenges.sql` already run on prod)
 2. **Re-enable email confirmation** in Supabase dashboard → Auth → Email Provider (code is ready)
 3. **Run sync-backfill** to process past 2026 tournaments: `GET /api/cron/sync-backfill` with `Authorization: Bearer <CRON_SECRET>`
 
@@ -109,7 +109,7 @@ quiet-please/
     ├── 001_initial_schema.sql                           ✅ run
     ├── 003_username_setup.sql                           ✅ written, NOT YET run on prod
     ├── 004_practice_predictions.sql                     ✅ written, NOT YET run on prod
-    └── 006_challenges.sql                               ✅ written, NOT YET run on prod
+    └── 006_challenges.sql                               ✅ written, run on prod
 ```
 
 ---
@@ -156,7 +156,7 @@ Rate limit: sequential requests with 500ms delay between ATP/WTA calls.
 - Practice predictions are scored immediately in the server action (not via cron)
 - Practice predictions never affect `users.total_points` or `league_members.total_points`
 
-### 006_challenges.sql (NOT YET RUN ON PROD)
+### 006_challenges.sql (RUN ON PROD ✅)
 - Adds `friendships` table: `requester_id`, `addressee_id`, status (`pending|accepted|declined`), unique constraint, no-self constraint
 - Adds `challenges` table: `challenger_id`, `challenged_id`, `tournament_id`, status (`pending|accepted|declined|expired|completed`), final score columns, `winner_id`
 - Both FKs on `challenges` are explicitly named (`challenges_challenger_id_fkey`, `challenges_challenged_id_fkey`) for PostgREST disambiguation
