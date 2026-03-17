@@ -5,7 +5,11 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { sendFriendRequest, acceptFriendRequest, declineFriendRequest } from './actions'
 
-export default async function FriendsPage() {
+export default async function FriendsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ msg?: string; type?: string }>
+}) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -59,6 +63,8 @@ export default async function FriendsPage() {
     .filter(f => f.status === 'pending' && f.requester_id === user.id)
     .map(f => ({ id: f.id, other_id: f.addressee_id, username: usernames[f.addressee_id] ?? 'Unknown' }))
 
+  const { msg, type } = await searchParams
+
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       <Nav username={profile?.username} points={profile?.total_points ?? 0} activePage="challenges" userId={user.id} />
@@ -76,10 +82,26 @@ export default async function FriendsPage() {
           <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>Add friends to challenge them head-to-head in tournaments.</p>
         </div>
 
+        {/* Message banner */}
+        {msg && (
+          <div
+            className="rounded-sm px-4 py-3 mb-6 text-sm"
+            style={{
+              background: type === 'success' ? '#eaf3de' : '#fdecea',
+              color: type === 'success' ? 'var(--court-dark)' : '#c84b31',
+              fontFamily: 'var(--font-mono)',
+              border: `1px solid ${type === 'success' ? '#c3dda8' : '#f5c0b8'}`,
+            }}
+          >
+            {decodeURIComponent(msg)}
+          </div>
+        )}
+
         {/* Add friend */}
         <div className="bg-white rounded-sm border p-6 mb-8" style={{ borderColor: 'var(--chalk-dim)' }}>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '1rem' }}>Add a friend</h2>
           <form action={sendFriendRequest} className="flex gap-3">
+            <input type="hidden" name="return_to" value="/friends" />
             <input
               name="username"
               type="text"
@@ -120,6 +142,7 @@ export default async function FriendsPage() {
                   <div className="flex gap-2">
                     <form action={acceptFriendRequest}>
                       <input type="hidden" name="friendship_id" value={req.id} />
+                      <input type="hidden" name="return_to" value="/friends" />
                       <button
                         type="submit"
                         className="px-3 py-1.5 text-xs font-medium text-white rounded-sm hover:opacity-90"
@@ -130,6 +153,7 @@ export default async function FriendsPage() {
                     </form>
                     <form action={declineFriendRequest}>
                       <input type="hidden" name="friendship_id" value={req.id} />
+                      <input type="hidden" name="return_to" value="/friends" />
                       <button
                         type="submit"
                         className="px-3 py-1.5 text-xs rounded-sm border"

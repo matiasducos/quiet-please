@@ -11,7 +11,9 @@ export async function sendFriendRequest(formData: FormData) {
   if (!user) redirect('/login')
 
   const username = (formData.get('username') as string)?.trim()
-  if (!username) return { error: 'Please enter a username' }
+  const returnTo = (formData.get('return_to') as string) || '/friends'
+
+  if (!username) redirect(`${returnTo}?msg=Please+enter+a+username&type=error`)
 
   const admin = createAdminClient()
 
@@ -22,8 +24,8 @@ export async function sendFriendRequest(formData: FormData) {
     .ilike('username', username)
     .single()
 
-  if (!target) return { error: `User "${username}" not found` }
-  if (target.id === user.id) return { error: 'You cannot add yourself as a friend' }
+  if (!target) redirect(`${returnTo}?msg=User+%22${encodeURIComponent(username)}%22+not+found&type=error`)
+  if (target.id === user.id) redirect(`${returnTo}?msg=You+cannot+add+yourself+as+a+friend&type=error`)
 
   // Check for existing friendship in either direction
   const { data: existing } = await admin
@@ -37,10 +39,10 @@ export async function sendFriendRequest(formData: FormData) {
 
   if (existing) {
     if (existing.status === 'accepted') {
-      return { error: `You are already friends with ${target.username}` }
+      redirect(`${returnTo}?msg=You+are+already+friends+with+${encodeURIComponent(target.username)}&type=error`)
     }
     if (existing.status === 'pending' && existing.requester_id === user.id) {
-      return { error: 'Friend request already sent' }
+      redirect(`${returnTo}?msg=Friend+request+already+sent+to+${encodeURIComponent(target.username)}&type=error`)
     }
     if (existing.status === 'pending' && existing.requester_id === target.id) {
       // They already sent us a request — auto-accept it
@@ -49,7 +51,7 @@ export async function sendFriendRequest(formData: FormData) {
         .update({ status: 'accepted', updated_at: new Date().toISOString() })
         .eq('id', existing.id)
       revalidatePath('/friends')
-      return { success: `You are now friends with ${target.username}` }
+      redirect(`${returnTo}?msg=You+are+now+friends+with+${encodeURIComponent(target.username)}&type=success`)
     }
     if (existing.status === 'declined') {
       // Remove old declined record so we can re-send
@@ -61,10 +63,10 @@ export async function sendFriendRequest(formData: FormData) {
     .from('friendships')
     .insert({ requester_id: user.id, addressee_id: target.id })
 
-  if (error) return { error: error.message }
+  if (error) redirect(`${returnTo}?msg=${encodeURIComponent(error.message)}&type=error`)
 
   revalidatePath('/friends')
-  return { success: `Friend request sent to ${target.username}` }
+  redirect(`${returnTo}?msg=Friend+request+sent+to+${encodeURIComponent(target.username)}&type=success`)
 }
 
 export async function acceptFriendRequest(formData: FormData) {
@@ -73,6 +75,7 @@ export async function acceptFriendRequest(formData: FormData) {
   if (!user) redirect('/login')
 
   const friendshipId = formData.get('friendship_id') as string
+  const returnTo = (formData.get('return_to') as string) || '/friends'
   const admin = createAdminClient()
 
   await admin
@@ -82,6 +85,7 @@ export async function acceptFriendRequest(formData: FormData) {
     .eq('addressee_id', user.id)
 
   revalidatePath('/friends')
+  redirect(`${returnTo}?msg=Friend+request+accepted&type=success`)
 }
 
 export async function declineFriendRequest(formData: FormData) {
@@ -90,6 +94,7 @@ export async function declineFriendRequest(formData: FormData) {
   if (!user) redirect('/login')
 
   const friendshipId = formData.get('friendship_id') as string
+  const returnTo = (formData.get('return_to') as string) || '/friends'
   const admin = createAdminClient()
 
   await admin
@@ -99,4 +104,5 @@ export async function declineFriendRequest(formData: FormData) {
     .eq('addressee_id', user.id)
 
   revalidatePath('/friends')
+  redirect(`${returnTo}?msg=Request+declined&type=error`)
 }

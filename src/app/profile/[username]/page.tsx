@@ -3,9 +3,17 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
+import { sendFriendRequest, acceptFriendRequest, declineFriendRequest } from '@/app/friends/actions'
 
-export default async function ProfilePage({ params }: { params: Promise<{ username: string }> }) {
+export default async function ProfilePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ username: string }>
+  searchParams: Promise<{ msg?: string; type?: string }>
+}) {
   const { username } = await params
+  const { msg, type } = await searchParams
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -58,6 +66,29 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
 
   const isOwnProfile = user.id === profile.id
   const memberSince = new Date(profile.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+
+  // Friendship status between viewer and this profile
+  type FriendStatus = 'none' | 'friends' | 'sent' | 'received'
+  let friendStatus: FriendStatus = 'none'
+  let friendshipId: string | null = null
+
+  if (!isOwnProfile) {
+    const admin2 = createAdminClient()
+    const { data: fs } = await admin2
+      .from('friendships')
+      .select('id, status, requester_id')
+      .or(
+        `and(requester_id.eq.${user.id},addressee_id.eq.${profile.id}),` +
+        `and(requester_id.eq.${profile.id},addressee_id.eq.${user.id})`
+      )
+      .maybeSingle()
+
+    if (fs) {
+      friendshipId = fs.id
+      if (fs.status === 'accepted') friendStatus = 'friends'
+      else if (fs.status === 'pending') friendStatus = fs.requester_id === user.id ? 'sent' : 'received'
+    }
+  }
 
   // Challenges for this profile (using admin client — needed to see other users' challenges)
   const admin = createAdminClient()
@@ -113,6 +144,21 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
       <Nav username={currentProfile?.username} points={currentProfile?.total_points ?? 0} />
 
       <div className="max-w-3xl mx-auto px-8 py-10">
+        {/* Message banner */}
+        {msg && (
+          <div
+            className="rounded-sm px-4 py-3 mb-6 text-sm"
+            style={{
+              background: type === 'success' ? '#eaf3de' : '#fdecea',
+              color: type === 'success' ? 'var(--court-dark)' : '#c84b31',
+              fontFamily: 'var(--font-mono)',
+              border: `1px solid ${type === 'success' ? '#c3dda8' : '#f5c0b8'}`,
+            }}
+          >
+            {decodeURIComponent(msg)}
+          </div>
+        )}
+
         {/* Header */}
         <div className="mb-8">
           <Link href="/leaderboard" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.05em', textDecoration: 'none' }}>
@@ -132,6 +178,61 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
                 Member since {memberSince}
               </p>
             </div>
+
+            {/* Friend button — only shown when viewing someone else's profile */}
+            {!isOwnProfile && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {friendStatus === 'none' && (
+                  <form action={sendFriendRequest}>
+                    <input type="hidden" name="username" value={profile.username} />
+                    <input type="hidden" name="return_to" value={`/profile/${profile.username}`} />
+                    <button
+                      type="submit"
+                      className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90"
+                      style={{ background: 'var(--court)' }}
+                    >
+                      + Add friend
+                    </button>
+                  </form>
+                )}
+                {friendStatus === 'sent' && (
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', padding: '8px 12px', border: '1px solid var(--chalk-dim)', borderRadius: '2px', background: 'white' }}>
+                    Request sent
+                  </span>
+                )}
+                {friendStatus === 'received' && (
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <form action={acceptFriendRequest}>
+                      <input type="hidden" name="friendship_id" value={friendshipId!} />
+                      <input type="hidden" name="return_to" value={`/profile/${profile.username}`} />
+                      <button
+                        type="submit"
+                        className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90"
+                        style={{ background: 'var(--court)' }}
+                      >
+                        Accept request
+                      </button>
+                    </form>
+                    <form action={declineFriendRequest}>
+                      <input type="hidden" name="friendship_id" value={friendshipId!} />
+                      <input type="hidden" name="return_to" value={`/profile/${profile.username}`} />
+                      <button
+                        type="submit"
+                        className="px-4 py-2 text-sm rounded-sm border"
+                        style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white' }}
+                      >
+                        Decline
+                      </button>
+                    </form>
+                  </div>
+                )}
+                {friendStatus === 'friends' && (
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--court)', padding: '8px 12px', border: '1px solid #c3dda8', borderRadius: '2px', background: '#eaf3de' }}>
+                    Friends ✓
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
