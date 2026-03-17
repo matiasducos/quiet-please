@@ -135,15 +135,19 @@ function generateDraw(extId: string, rounds: string[], players: Player[]): Draw 
   return { tournamentExternalId: extId, rounds, matches }
 }
 
-// Build a Player object from the pool entry (with stable externalId)
-function poolPlayer(index: number): Player {
-  const p = ATP_PLAYERS[index]
-  return { externalId: `p${index + 1}`, name: p.name, country: p.country, seed: p.seed }
-}
-
-// Take the first N players from the pool
+// Build a Player object from the pool entry (with stable externalId).
+// For draws larger than the pool, cycles back through with a "(Q)" qualifier suffix.
 function players(n: number): Player[] {
-  return Array.from({ length: n }, (_, i) => poolPlayer(i))
+  return Array.from({ length: n }, (_, i) => {
+    const p = ATP_PLAYERS[i % ATP_PLAYERS.length]
+    const isQualifier = i >= ATP_PLAYERS.length
+    return {
+      externalId: `p${i + 1}`,
+      name: isQualifier ? `${p.name} (Q)` : p.name,
+      country: p.country,
+      seed: isQualifier ? undefined : p.seed,
+    }
+  })
 }
 
 // ── Sandbox configurations ─────────────────────────────────────────────────
@@ -152,25 +156,25 @@ const SANDBOXES = [
     key: 'atp250',
     label: 'ATP 250',
     tournament: { id: 'sandbox-250', name: 'Eastbourne International', tour: 'ATP' },
-    draw: generateDraw('sb-250', ['QF', 'SF', 'F'], players(8)),
+    draw: generateDraw('sb-250', ['R16', 'QF', 'SF', 'F'], players(16)),
   },
   {
     key: 'atp500',
     label: 'ATP 500',
     tournament: { id: 'sandbox-500', name: 'Dubai Duty Free Tennis Championships', tour: 'ATP' },
-    draw: generateDraw('sb-500', ['R16', 'QF', 'SF', 'F'], players(16)),
+    draw: generateDraw('sb-500', ['R32', 'R16', 'QF', 'SF', 'F'], players(32)),
   },
   {
     key: 'm1000',
     label: 'Masters 1000',
     tournament: { id: 'sandbox-1000', name: 'BNP Paribas Open (Indian Wells)', tour: 'ATP' },
-    draw: generateDraw('sb-1000', ['R32', 'R16', 'QF', 'SF', 'F'], players(32)),
+    draw: generateDraw('sb-1000', ['R64', 'R32', 'R16', 'QF', 'SF', 'F'], players(64)),
   },
   {
     key: 'gs',
     label: 'Grand Slam',
     tournament: { id: 'sandbox-gs', name: 'Roland Garros', tour: 'ATP' },
-    draw: generateDraw('sb-gs', ['R64', 'R32', 'R16', 'QF', 'SF', 'F'], players(64)),
+    draw: generateDraw('sb-gs', ['R128', 'R64', 'R32', 'R16', 'QF', 'SF', 'F'], players(128)),
   },
 ]
 
