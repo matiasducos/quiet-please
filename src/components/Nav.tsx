@@ -19,6 +19,9 @@ const NAV_LINKS = [
 
 export default function Nav({ username, points = 0, activePage, userId }: NavProps) {
   const isGuest = !username
+  const adminIds = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean)
+  const isDev = process.env.NODE_ENV === 'development'
+  const isAdmin = !isGuest && !!userId && (isDev || adminIds.includes(userId))
 
   return (
     <nav className="sticky top-0 z-50 bg-white border-b" style={{ borderColor: 'var(--chalk-dim)' }}>
@@ -68,6 +71,14 @@ export default function Nav({ username, points = 0, activePage, userId }: NavPro
                 <Suspense fallback={null}>
                   <NotificationBell userId={userId} />
                 </Suspense>
+              )}
+              {isAdmin && (
+                <Link
+                  href="/admin"
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', textDecoration: 'none', padding: '2px 7px', border: '1px solid var(--chalk-dim)', borderRadius: '2px', background: '#fafaf8' }}
+                >
+                  Admin
+                </Link>
               )}
               <Link
                 href={`/profile/${username}`}
