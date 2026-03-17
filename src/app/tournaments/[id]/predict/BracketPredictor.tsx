@@ -414,15 +414,31 @@ export default function BracketPredictor({
                     opacity: !player ? 0.35 : 1,
                   }}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    {player?.seed && (
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', minWidth: '18px', flexShrink: 0 }}>[{player.seed}]</span>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {player?.seed ? (
+                      <span style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '0.6rem',
+                        fontWeight: 600,
+                        color: 'white',
+                        background: 'var(--court)',
+                        opacity: 0.75,
+                        minWidth: '18px',
+                        height: '18px',
+                        borderRadius: '2px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}>{player.seed}</span>
+                    ) : (
+                      <span style={{ minWidth: '18px', flexShrink: 0 }} />
                     )}
-                    <span className="truncate" style={{ fontFamily: 'var(--font-display)', fontSize: '1.05rem', color: player ? 'var(--ink)' : 'var(--muted)' }}>
+                    <span className="truncate" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', letterSpacing: '-0.01em', color: player ? 'var(--ink)' : 'var(--muted)' }}>
                       {player?.name ?? 'TBD'}
                     </span>
                     {player?.country && (
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', flexShrink: 0 }}>{player.country}</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', flexShrink: 0, letterSpacing: '0.04em' }}>{player.country}</span>
                     )}
                   </div>
                   {state !== 'none' && (
