@@ -137,10 +137,6 @@ export default async function TournamentsPage({ searchParams }: { searchParams: 
             monthMap.get(key)!.list.push(t)
           }
 
-          const now        = new Date()
-          // Current month key — months are 0-indexed so match the same format used above
-          const currentKey = `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`
-
           const groups = [...monthMap.entries()]
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([key, { label, list }]) => ({ key, label, list }))
@@ -152,7 +148,7 @@ export default async function TournamentsPage({ searchParams }: { searchParams: 
                   key={group.key}
                   month={group.label}
                   count={group.list.length}
-                  defaultOpen={group.key >= currentKey}
+                  defaultOpen={false}
                 >
                   {group.list.map((t: any) => (
                     <TournamentCard key={t.id} t={t} />
