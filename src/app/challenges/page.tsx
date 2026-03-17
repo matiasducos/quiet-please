@@ -35,7 +35,7 @@ export default async function ChallengesPage() {
 
   const { data: profile } = await supabase
     .from('users')
-    .select('username, total_points')
+    .select('username, ranking_points')
     .eq('id', user.id)
     .single()
 
@@ -135,7 +135,7 @@ export default async function ChallengesPage() {
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={profile?.username} points={profile?.total_points ?? 0} activePage="challenges" userId={user.id} />
+      <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="challenges" userId={user.id} />
 
       <div className="max-w-3xl mx-auto px-8 py-10">
         <div className="flex items-end justify-between mb-8">

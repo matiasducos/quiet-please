@@ -18,10 +18,10 @@ export async function GET(request: Request) {
   try {
     const supabase = createAdminClient()
 
-    // Get all match results
+    // Get all match results (includes starts_at for expires_at calculation)
     const { data: allResults } = await supabase
       .from('match_results')
-      .select('id, tournament_id, round, winner_external_id, tournaments(id, category)')
+      .select('id, tournament_id, round, winner_external_id, tournaments(id, category, starts_at)')
       .order('played_at', { ascending: true })
 
     if (!allResults?.length) {
@@ -50,7 +50,7 @@ export async function GET(request: Request) {
     // Get all locked, non-practice predictions for those tournaments
     const { data: predictions } = await supabase
       .from('predictions')
-      .select('id, user_id, tournament_id, picks')
+      .select('id, user_id, tournament_id, picks, expires_at')
       .in('tournament_id', tournamentIds)
       .eq('is_locked', true)
       .eq('is_practice', false)
@@ -61,13 +61,17 @@ export async function GET(request: Request) {
 
     console.log(`[award-points] ${predictions.length} locked predictions to check`)
 
-    // Fetch tournament names for notification messages
+    // Fetch tournament names + starts_at for notification messages and expires_at calculation
     const { data: tournamentData } = await supabase
       .from('tournaments')
-      .select('id, name')
+      .select('id, name, starts_at')
       .in('id', tournamentIds as string[])
     const tournamentNames: Record<string, string> = {}
-    for (const t of tournamentData ?? []) tournamentNames[t.id] = t.name
+    const tournamentStartsAt: Record<string, string> = {}
+    for (const t of tournamentData ?? []) {
+      tournamentNames[t.id] = t.name
+      tournamentStartsAt[t.id] = t.starts_at
+    }
 
     const ledgerRows: any[] = []
     const userPointsDelta: Record<string, number> = {}
@@ -122,7 +126,7 @@ export async function GET(request: Request) {
     const { error: ledgerError } = await supabase.from('point_ledger').insert(ledgerRows)
     if (ledgerError) throw ledgerError
 
-    // Update user total_points and propagate to league memberships
+    // Update user total_points, propagate to league memberships, recalculate ranking_points
     for (const [userId, pts] of Object.entries(userPointsDelta)) {
       await supabase.rpc('increment_user_points', { user_id: userId, points: pts })
 
@@ -138,19 +142,26 @@ export async function GET(request: Request) {
           .eq('league_id', m.league_id)
           .eq('user_id', userId)
       }
+
+      // Recalculate rolling 52-week ranking points for this user
+      await supabase.rpc('recalculate_ranking_points', { p_user_id: userId })
     }
 
-    // Update prediction points_earned
+    // Update prediction points_earned + set expires_at on first award (rolling 52-week window)
     for (const [predId, pts] of Object.entries(predictionPointsDelta)) {
-      const { data: pred } = await supabase
-        .from('predictions')
-        .select('points_earned')
-        .eq('id', predId)
-        .single()
-      await supabase
-        .from('predictions')
-        .update({ points_earned: (pred?.points_earned ?? 0) + pts })
-        .eq('id', predId)
+      const pred = (predictions ?? []).find((p: any) => p.id === predId)
+      const updateRow: Record<string, any> = {
+        points_earned: (pred?.points_earned ?? 0) + pts,
+      }
+      // Stamp expires_at = tournament.starts_at + 364 days on the first point award
+      if (!pred?.expires_at && pred?.tournament_id) {
+        const startsAt = tournamentStartsAt[pred.tournament_id]
+        if (startsAt) {
+          const expiresAt = new Date(new Date(startsAt).getTime() + 364 * 24 * 60 * 60 * 1000)
+          updateRow.expires_at = expiresAt.toISOString()
+        }
+      }
+      await supabase.from('predictions').update(updateRow).eq('id', predId)
     }
 
     // Send points_awarded notifications + emails per user per tournament

@@ -113,6 +113,7 @@ export default function BracketPredictor({
   const [copied, setCopied] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [slotError, setSlotError] = useState<string | null>(null)
   const [activeRound, setActiveRound] = useState(() => {
     const sorted = draw.rounds.slice().sort((a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b))
     return sorted[0] ?? 'QF'
@@ -172,14 +173,25 @@ export default function BracketPredictor({
 
     setPicks(newPicks)
     setSaved(false)
+    setSlotError(null)
   }
 
   const handleSave = async () => {
     if (isPractice || readOnly) return
     setSaving(true)
+    setSlotError(null)
     try {
-      await savePrediction({ tournamentId: tournament.id, picks, predictionId })
-      setSaved(true)
+      const result = await savePrediction({ tournamentId: tournament.id, picks, predictionId })
+      if (result.success) {
+        setSaved(true)
+      } else if (result.error === 'slot_taken') {
+        setSlotError(
+          `Your ${tournament.tour} slot this week is already taken by ${result.conflictingTournamentName}. ` +
+          `You can only enter one ${tournament.tour} tournament per week.`
+        )
+      } else {
+        console.error(result.message)
+      }
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
   }
@@ -191,9 +203,21 @@ export default function BracketPredictor({
       : 'Lock your picks? This cannot be undone.'
     if (!confirm(msg)) return
     setSaving(true)
+    setSlotError(null)
     try {
-      await savePrediction({ tournamentId: tournament.id, picks, predictionId, lock: true, isPractice })
-      startTransition(() => router.push(returnUrl ?? `/tournaments/${tournament.id}`))
+      const result = await savePrediction({ tournamentId: tournament.id, picks, predictionId, lock: true, isPractice })
+      if (result.success) {
+        startTransition(() => router.push(returnUrl ?? `/tournaments/${tournament.id}`))
+      } else if (result.error === 'slot_taken') {
+        setSlotError(
+          `Your ${tournament.tour} slot this week is already taken by ${result.conflictingTournamentName}. ` +
+          `You can only enter one ${tournament.tour} tournament per week.`
+        )
+        setSaving(false)
+      } else {
+        console.error(result.message)
+        setSaving(false)
+      }
     } catch (e) { console.error(e); setSaving(false) }
   }
 
@@ -469,6 +493,12 @@ export default function BracketPredictor({
         {/* Submit area — hidden in readOnly mode */}
         {!readOnly && (
           <div className="mt-8 pt-6 border-t flex flex-col gap-3" style={{ borderColor: 'var(--chalk-dim)' }}>
+            {/* Slot conflict error */}
+            {slotError && (
+              <div className="rounded-sm px-4 py-3 text-sm" style={{ background: '#fdecea', color: '#c84b31', border: '1px solid #f5c0b8', fontFamily: 'var(--font-mono)' }}>
+                {slotError}
+              </div>
+            )}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
                 {pickedCount} of {totalMatches} picks made

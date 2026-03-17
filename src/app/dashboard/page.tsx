@@ -10,7 +10,7 @@ export default async function DashboardPage() {
 
   const { data: profile } = await supabase
     .from('users')
-    .select('username, total_points')
+    .select('username, ranking_points')
     .eq('id', user.id)
     .single()
 
@@ -46,7 +46,7 @@ export default async function DashboardPage() {
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={profile?.username} points={profile?.total_points ?? 0} userId={user.id} />
+      <Nav username={profile?.username} points={profile?.ranking_points ?? 0} userId={user.id} />
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-12">
 
         <div className="mb-12">

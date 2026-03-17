@@ -37,7 +37,7 @@ export default async function AllPicksPage({
           .order('points_earned', { ascending: false })
       : Promise.resolve({ data: [] }),
     user
-      ? supabase.from('users').select('username, total_points').eq('id', user.id).single().then(r => r.data)
+      ? supabase.from('users').select('username, ranking_points').eq('id', user.id).single().then(r => r.data)
       : Promise.resolve(null),
   ])
 
@@ -45,7 +45,7 @@ export default async function AllPicksPage({
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={profile?.username} points={profile?.total_points ?? 0} activePage="tournaments" userId={user?.id} />
+      <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="tournaments" userId={user?.id} />
 
       <div className="max-w-2xl mx-auto px-4 md:px-8 py-10">
 

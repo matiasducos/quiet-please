@@ -36,13 +36,13 @@ export default async function TournamentsPage({ searchParams }: { searchParams: 
   const [tournaments, profile] = await Promise.all([
     getTournaments(activeTour, activeSurface),
     user
-      ? supabase.from('users').select('username, total_points').eq('id', user.id).single().then(r => r.data)
+      ? supabase.from('users').select('username, ranking_points').eq('id', user.id).single().then(r => r.data)
       : Promise.resolve(null),
   ])
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={profile?.username} points={profile?.total_points ?? 0} activePage="tournaments" userId={user?.id} />
+      <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="tournaments" userId={user?.id} />
 
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
 

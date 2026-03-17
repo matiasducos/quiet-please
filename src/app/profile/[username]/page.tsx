@@ -4,36 +4,48 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { sendFriendRequest, acceptFriendRequest, declineFriendRequest } from '@/app/friends/actions'
+import { updateLocation } from '@/app/profile/actions'
+
+// ── Country list for the location edit form ───────────────────────────────────
+const COUNTRIES = [
+  'Argentina','Australia','Austria','Belgium','Brazil','Bulgaria','Canada',
+  'Chile','China','Colombia','Croatia','Czech Republic','Denmark','Ecuador',
+  'Finland','France','Germany','Great Britain','Greece','Hungary','India',
+  'Ireland','Israel','Italy','Japan','Kazakhstan','Latvia','Mexico','Netherlands',
+  'New Zealand','Norway','Poland','Portugal','Romania','Russia','Serbia',
+  'Slovakia','Slovenia','South Korea','Spain','Sweden','Switzerland','Taiwan',
+  'Tunisia','Ukraine','United States','Uruguay',
+].sort()
 
 export default async function ProfilePage({
   params,
   searchParams,
 }: {
   params: Promise<{ username: string }>
-  searchParams: Promise<{ msg?: string; type?: string }>
+  searchParams: Promise<{ msg?: string; type?: string; edit?: string }>
 }) {
   const { username } = await params
-  const { msg, type } = await searchParams
+  const { msg, type, edit } = await searchParams
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
   const { data: currentProfile } = await supabase
     .from('users')
-    .select('username, total_points')
+    .select('username, ranking_points')
     .eq('id', user.id)
     .single()
 
   const { data: profile } = await supabase
     .from('users')
-    .select('id, username, total_points, created_at')
+    .select('id, username, total_points, ranking_points, atp_ranking_points, wta_ranking_points, country, city, created_at')
     .eq('username', username)
     .single()
 
   if (!profile) {
     return (
       <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-        <Nav username={currentProfile?.username} points={currentProfile?.total_points ?? 0} />
+        <Nav username={currentProfile?.username} points={currentProfile?.ranking_points ?? 0} />
         <div className="max-w-3xl mx-auto px-8 py-20 text-center">
           <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '1rem' }}>404</p>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', letterSpacing: '-0.02em', marginBottom: '1.5rem' }}>Player not found</h1>
@@ -43,11 +55,11 @@ export default async function ProfilePage({
     )
   }
 
-  // Global rank: number of players with strictly more points, + 1
+  // Global rank by ranking_points
   const { count: usersAhead } = await supabase
     .from('users')
     .select('*', { count: 'exact', head: true })
-    .gt('total_points', profile.total_points)
+    .gt('ranking_points', profile.ranking_points ?? 0)
 
   const globalRank = (usersAhead ?? 0) + 1
 
@@ -57,6 +69,7 @@ export default async function ProfilePage({
     .select('id, points_earned, created_at, tournaments(id, name, tour, category, starts_at)')
     .eq('user_id', profile.id)
     .eq('is_locked', true)
+    .eq('is_practice', false)
     .order('created_at', { ascending: false })
 
   const tournamentsCount = predictions?.length ?? 0
@@ -65,9 +78,9 @@ export default async function ProfilePage({
     : 0
 
   const isOwnProfile = user.id === profile.id
-  const memberSince = new Date(profile.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+  const memberSince  = new Date(profile.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 
-  // Friendship status between viewer and this profile
+  // Friendship status
   type FriendStatus = 'none' | 'friends' | 'sent' | 'received'
   let friendStatus: FriendStatus = 'none'
   let friendshipId: string | null = null
@@ -90,7 +103,7 @@ export default async function ProfilePage({
     }
   }
 
-  // Challenges for this profile (using admin client — needed to see other users' challenges)
+  // Challenges
   const admin = createAdminClient()
   const { data: rawChallenges } = await admin
     .from('challenges')
@@ -100,7 +113,6 @@ export default async function ProfilePage({
     .order('created_at', { ascending: false })
     .limit(10)
 
-  // Get opponent + tournament details
   const challengeOpponentIds = [...new Set(
     (rawChallenges ?? []).map(c => c.challenger_id === profile.id ? c.challenged_id : c.challenger_id)
   )]
@@ -117,7 +129,7 @@ export default async function ProfilePage({
       ? admin.from('tournaments').select('id, name').in('id', challengeTournamentIds)
       : Promise.resolve({ data: [] as any[] }),
   ])
-  challengeOpponentNames = Object.fromEntries((oppRes.data ?? []).map((u: any) => [u.id, u.username]))
+  challengeOpponentNames  = Object.fromEntries((oppRes.data ?? []).map((u: any) => [u.id, u.username]))
   challengeTournamentNames = Object.fromEntries((tRes.data ?? []).map((t: any) => [t.id, t.name]))
 
   const challenges = (rawChallenges ?? []).map(c => {
@@ -133,17 +145,18 @@ export default async function ProfilePage({
       opponentName: challengeOpponentNames[opponentId] ?? 'Unknown',
       tournamentName: challengeTournamentNames[c.tournament_id] ?? 'Unknown',
       status: c.status,
-      myPts,
-      theirPts,
-      won, lost, draw,
+      myPts, theirPts, won, lost, draw,
     }
   })
 
+  const showEditLocation = edit === 'location' && isOwnProfile
+
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={currentProfile?.username} points={currentProfile?.total_points ?? 0} />
+      <Nav username={currentProfile?.username} points={currentProfile?.ranking_points ?? 0} />
 
       <div className="max-w-3xl mx-auto px-8 py-10">
+
         {/* Message banner */}
         {msg && (
           <div
@@ -177,38 +190,50 @@ export default async function ProfilePage({
               <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: '0.4rem', fontFamily: 'var(--font-mono)' }}>
                 Member since {memberSince}
               </p>
+
+              {/* Location display */}
+              {(profile.country || profile.city) ? (
+                <div className="flex items-center gap-2 mt-1.5">
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>
+                    📍 {[profile.city, profile.country].filter(Boolean).join(', ')}
+                  </span>
+                  {isOwnProfile && (
+                    <Link
+                      href={`/profile/${profile.username}?edit=location`}
+                      style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', textDecoration: 'none' }}
+                    >
+                      edit
+                    </Link>
+                  )}
+                </div>
+              ) : isOwnProfile ? (
+                <Link
+                  href={`/profile/${profile.username}?edit=location`}
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', textDecoration: 'none', display: 'inline-block', marginTop: '0.35rem' }}
+                >
+                  + Set your location
+                </Link>
+              ) : null}
             </div>
 
-            {/* Friends link — only shown on own profile */}
+            {/* Friends link / Add friend / Status buttons */}
             {isOwnProfile && (
               <Link
                 href="/friends"
                 className="px-4 py-2 text-sm rounded-sm border hover:opacity-80"
-                style={{
-                  borderColor: 'var(--chalk-dim)',
-                  color: 'var(--muted)',
-                  background: 'white',
-                  textDecoration: 'none',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '0.8rem',
-                }}
+                style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white', textDecoration: 'none', fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}
               >
                 Friends →
               </Link>
             )}
 
-            {/* Friend button — only shown when viewing someone else's profile */}
             {!isOwnProfile && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 {friendStatus === 'none' && (
                   <form action={sendFriendRequest}>
                     <input type="hidden" name="username" value={profile.username} />
                     <input type="hidden" name="return_to" value={`/profile/${profile.username}`} />
-                    <button
-                      type="submit"
-                      className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90"
-                      style={{ background: 'var(--court)' }}
-                    >
+                    <button type="submit" className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90" style={{ background: 'var(--court)' }}>
                       + Add friend
                     </button>
                   </form>
@@ -223,22 +248,14 @@ export default async function ProfilePage({
                     <form action={acceptFriendRequest}>
                       <input type="hidden" name="friendship_id" value={friendshipId!} />
                       <input type="hidden" name="return_to" value={`/profile/${profile.username}`} />
-                      <button
-                        type="submit"
-                        className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90"
-                        style={{ background: 'var(--court)' }}
-                      >
+                      <button type="submit" className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90" style={{ background: 'var(--court)' }}>
                         Accept request
                       </button>
                     </form>
                     <form action={declineFriendRequest}>
                       <input type="hidden" name="friendship_id" value={friendshipId!} />
                       <input type="hidden" name="return_to" value={`/profile/${profile.username}`} />
-                      <button
-                        type="submit"
-                        className="px-4 py-2 text-sm rounded-sm border"
-                        style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white' }}
-                      >
+                      <button type="submit" className="px-4 py-2 text-sm rounded-sm border" style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white' }}>
                         Decline
                       </button>
                     </form>
@@ -254,13 +271,73 @@ export default async function ProfilePage({
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-4 gap-3 mb-10">
+        {/* ── Location edit form ────────────────────────────────────────────── */}
+        {showEditLocation && (
+          <div className="mb-8 bg-white rounded-sm border p-6" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '1.25rem' }}>
+              Set your location
+            </h2>
+            <form action={updateLocation} className="flex flex-col gap-4">
+              <input type="hidden" name="username" value={profile.username} />
+
+              <div>
+                <label style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.06em', display: 'block', marginBottom: '0.4rem' }}>
+                  COUNTRY
+                </label>
+                <select
+                  name="country"
+                  defaultValue={profile.country ?? ''}
+                  className="w-full px-3 py-2 rounded-sm border text-sm"
+                  style={{ borderColor: 'var(--chalk-dim)', fontFamily: 'var(--font-mono)', background: 'white' }}
+                >
+                  <option value="">— Not set —</option>
+                  {COUNTRIES.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.06em', display: 'block', marginBottom: '0.4rem' }}>
+                  CITY
+                </label>
+                <input
+                  type="text"
+                  name="city"
+                  defaultValue={profile.city ?? ''}
+                  placeholder="e.g. Madrid"
+                  maxLength={80}
+                  className="w-full px-3 py-2 rounded-sm border text-sm"
+                  style={{ borderColor: 'var(--chalk-dim)', fontFamily: 'var(--font-mono)' }}
+                />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-sm font-medium text-white rounded-sm"
+                  style={{ background: 'var(--court)' }}
+                >
+                  Save location
+                </button>
+                <Link
+                  href={`/profile/${profile.username}`}
+                  style={{ fontSize: '0.85rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}
+                >
+                  Cancel
+                </Link>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* ── Stats grid ────────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
           {[
-            { label: 'Total points', value: profile.total_points },
-            { label: 'Global rank', value: `#${globalRank}` },
-            { label: 'Tournaments', value: tournamentsCount },
-            { label: 'Hit rate', value: tournamentsCount > 0 ? `${hitRate}%` : '—' },
+            { label: 'Ranking pts',  value: profile.ranking_points ?? 0,                         sub: '52-week rolling' },
+            { label: 'Rank',         value: `#${globalRank}`,                                     sub: null },
+            { label: 'Tournaments',  value: tournamentsCount,                                      sub: null },
+            { label: 'Hit rate',     value: tournamentsCount > 0 ? `${hitRate}%` : '—',           sub: null },
           ].map((stat, i) => (
             <div key={i} className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>
@@ -269,11 +346,41 @@ export default async function ProfilePage({
               <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.75rem', letterSpacing: '-0.02em' }}>
                 {stat.value}
               </div>
+              {stat.sub && (
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', marginTop: '0.2rem' }}>
+                  {stat.sub}
+                </div>
+              )}
             </div>
           ))}
         </div>
 
-        {/* Predictions list */}
+        {/* Circuit breakdown — only shown when user has circuit-specific points */}
+        {((profile.atp_ranking_points ?? 0) > 0 || (profile.wta_ranking_points ?? 0) > 0) && (
+          <div className="flex gap-3 mb-8">
+            {(profile.atp_ranking_points ?? 0) > 0 && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-sm border" style={{ borderColor: '#bee3f8', background: '#ebf8ff' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#185FA5' }}>ATP</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: '#185FA5', fontWeight: 600 }}>
+                  {profile.atp_ranking_points}
+                </span>
+              </div>
+            )}
+            {(profile.wta_ranking_points ?? 0) > 0 && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-sm border" style={{ borderColor: '#fbb6ce', background: '#fff5f7' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#993556' }}>WTA</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: '#993556', fontWeight: 600 }}>
+                  {profile.wta_ranking_points}
+                </span>
+              </div>
+            )}
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', alignSelf: 'center' }}>
+              all-time: {profile.total_points ?? 0} pts
+            </span>
+          </div>
+        )}
+
+        {/* ── Predictions list ──────────────────────────────────────────────── */}
         <div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.01em', marginBottom: '1rem' }}>
             Predictions
@@ -291,12 +398,12 @@ export default async function ProfilePage({
           ) : (
             <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
               <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
-                <div className="col-span-7" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>TOURNAMENT</div>
-                <div className="col-span-2 text-center" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>TOUR</div>
-                <div className="col-span-3 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>POINTS</div>
+                <div className="col-span-7"  style={hStyle}>TOURNAMENT</div>
+                <div className="col-span-2 text-center" style={hStyle}>TOUR</div>
+                <div className="col-span-3 text-right"  style={hStyle}>POINTS</div>
               </div>
               {predictions.map(p => {
-                const t = p.tournaments as any
+                const t   = p.tournaments as any
                 const pts = p.points_earned ?? 0
                 return (
                   <Link
@@ -313,7 +420,7 @@ export default async function ProfilePage({
                     <div className="col-span-2 flex items-center justify-center">
                       <span className="px-2 py-0.5 text-xs rounded-sm" style={{
                         background: t?.tour === 'WTA' ? '#fbeaf0' : '#e6f1fb',
-                        color: t?.tour === 'WTA' ? '#993556' : '#185FA5',
+                        color:      t?.tour === 'WTA' ? '#993556' : '#185FA5',
                         fontFamily: 'var(--font-mono)',
                       }}>
                         {t?.tour ?? '—'}
@@ -336,7 +443,7 @@ export default async function ProfilePage({
           )}
         </div>
 
-        {/* Challenges */}
+        {/* ── Challenges ────────────────────────────────────────────────────── */}
         {challenges.length > 0 && (
           <div className="mt-10">
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.01em', marginBottom: '1rem' }}>
@@ -344,10 +451,10 @@ export default async function ProfilePage({
             </h2>
             <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
               <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
-                <div className="col-span-4" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>TOURNAMENT</div>
-                <div className="col-span-3" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>OPPONENT</div>
-                <div className="col-span-2 text-center" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>RESULT</div>
-                <div className="col-span-3 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>SCORE</div>
+                <div className="col-span-4" style={hStyle}>TOURNAMENT</div>
+                <div className="col-span-3" style={hStyle}>OPPONENT</div>
+                <div className="col-span-2 text-center" style={hStyle}>RESULT</div>
+                <div className="col-span-3 text-right" style={hStyle}>SCORE</div>
               </div>
               {challenges.map(c => (
                 <Link
@@ -362,16 +469,12 @@ export default async function ProfilePage({
                     </span>
                   </div>
                   <div className="col-span-3 flex items-center">
-                    <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
-                      {c.opponentName}
-                    </span>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>{c.opponentName}</span>
                   </div>
                   <div className="col-span-2 flex items-center justify-center">
                     {c.status === 'completed' ? (
                       <span style={{
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '0.65rem',
-                        letterSpacing: '0.06em',
+                        fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.06em',
                         color: c.draw ? 'var(--muted)' : c.won ? 'var(--court)' : '#c84b31',
                       }}>
                         {c.draw ? 'DRAW' : c.won ? 'WIN' : 'LOSS'}
@@ -399,4 +502,11 @@ export default async function ProfilePage({
       </div>
     </main>
   )
+}
+
+const hStyle: React.CSSProperties = {
+  fontFamily: 'var(--font-mono)',
+  fontSize: '0.7rem',
+  color: 'var(--muted)',
+  letterSpacing: '0.05em',
 }

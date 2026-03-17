@@ -90,7 +90,7 @@ export default async function TournamentDetailPage({ params }: { params: Promise
     user
       ? supabase
           .from('users')
-          .select('username, total_points')
+          .select('username, ranking_points')
           .eq('id', user.id)
           .single()
           .then(r => r.data)
@@ -111,7 +111,7 @@ export default async function TournamentDetailPage({ params }: { params: Promise
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={profile?.username} points={profile?.total_points ?? 0} activePage="tournaments" userId={user?.id} />
+      <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="tournaments" userId={user?.id} />
 
       <div className="max-w-4xl mx-auto px-4 md:px-8 py-10">
 

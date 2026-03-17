@@ -20,7 +20,7 @@ export default async function NewChallengePage({
 
   const { data: profile } = await supabase
     .from('users')
-    .select('username, total_points')
+    .select('username, ranking_points')
     .eq('id', user.id)
     .single()
 
@@ -50,7 +50,7 @@ export default async function NewChallengePage({
 
     return (
       <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-        <Nav username={profile?.username} points={profile?.total_points ?? 0} activePage="challenges" userId={user.id} />
+        <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="challenges" userId={user.id} />
 
         <div className="max-w-3xl mx-auto px-8 py-10">
           <div className="flex items-center gap-2 mb-6" style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
@@ -136,7 +136,7 @@ export default async function NewChallengePage({
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={profile?.username} points={profile?.total_points ?? 0} activePage="challenges" userId={user.id} />
+      <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="challenges" userId={user.id} />
 
       <div className="max-w-3xl mx-auto px-8 py-10">
         <div className="flex items-center gap-2 mb-6" style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>

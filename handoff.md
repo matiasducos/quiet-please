@@ -1,8 +1,8 @@
 # Developer Handoff — Quiet Please
 
-## Current status (as of March 17, 2026 — Session 14)
+## Current status (as of March 17, 2026 — Session 15)
 
-The app is live in production. Phase 4 and Phase 6 (Challenge a friend) are now complete. Mobile responsive layouts addressed in Session 14.
+The app is live in production. Phase 4, Phase 6 (Challenge a friend), and the ATP-style ranking system are now complete. Mobile responsive layouts addressed in Session 14.
 
 ### What is working right now
 - ✅ Landing page with full design system (chalk bg, court green, DM Serif Display)
@@ -19,13 +19,14 @@ The app is live in production. Phase 4 and Phase 6 (Challenge a friend) are now 
 - ✅ Public picks page (`/tournaments/[id]/picks/[username]`) — view any user's locked bracket, no auth required; color-coded with results + points
 - ✅ All picks listing (`/tournaments/[id]/picks`) — leaderboard of all locked predictions, sorted by points_earned; "View →" links to individual bracket
 - ✅ Share picks — "Share picks" button in locked bracket banner copies public link to clipboard
-- ✅ Leaderboard (`/leaderboard`) — global rankings, current user highlight, medal emojis
+- ✅ Leaderboard (`/leaderboard`) — worldwide / country / city scopes; ATP / WTA / both circuit filter; rolling 52-week ranking_points; "my rank" highlight; medal emojis
 - ✅ Leagues (`/leagues`) — create, join with invite code, per-league leaderboard + activity feed (join / locked picks / points events)
 - ✅ Friends system (`/friends`) — search by username, send/accept/decline requests, challenge button; feedback messages via URL params (green/red banners); accessible from own profile page
 - ✅ Challenges (`/challenges`) — hub showing pending/active/past challenges, grouped by state
 - ✅ New challenge flow (`/challenges/new`) — 2-step: pick friend → pick tournament
 - ✅ Challenge detail (`/challenges/[id]`) — accept/decline, live lock status, completed result banner (win/loss/draw)
-- ✅ User profile page (`/profile/[username]`) — points, rank, hit rate, predictions history, challenges section; "Friends →" link on own profile; contextual friend button on other profiles (Add / Request sent / Accept+Decline / Friends ✓)
+- ✅ User profile page (`/profile/[username]`) — ranking_points + ATP/WTA circuit breakdown; country/city display + inline edit form (`?edit=location`); rank, hit rate, predictions history, challenges section; "Friends →" link on own profile; contextual friend button on other profiles (Add / Request sent / Accept+Decline / Friends ✓)
+- ✅ ATP-style ranking system — rolling 52-week window; weekly slot enforcement (one ATP + one WTA slot per ISO week per user); `ranking_points` / `atp_ranking_points` / `wta_ranking_points` columns on users; Grand Slams consume both ISO weeks they span; slot conflict shown server-side before bracket loads
 - ✅ Notifications (`/notifications`) — in-app notification dot in Nav, notifications page
 - ✅ Email notifications — draw opens + points awarded emails
 - ✅ Open Graph images — `/tournaments/[id]/opengraph-image.tsx`, tier/surface badges, tournament name, date range
@@ -45,7 +46,7 @@ The app is live in production. Phase 4 and Phase 6 (Challenge a friend) are now 
 - Cron schedules are daily-only (Vercel Hobby plan limit) — upgrade to Vercel Pro ($20/mo) for sub-hourly syncs (sync-results every 30 min, award-points every 35 min). **Only matters when going fully public with live tournament data.**
 
 ### Pending manual steps (must do before public launch)
-1. **Apply migrations** to production Supabase: `003_username_setup.sql` + `004_practice_predictions.sql` (`006_challenges.sql` already run on prod)
+1. **Apply migrations** to production Supabase — in order: `003_username_setup.sql` → `004_practice_predictions.sql` → `007_ranking_system.sql` (`006_challenges.sql` already run on prod)
 2. **Re-enable email confirmation** in Supabase dashboard → Auth → Email Provider (code is ready)
 3. **Run sync-backfill** to process past 2026 tournaments: `GET /api/cron/sync-backfill` with `Authorization: Bearer <CRON_SECRET>`
 
@@ -92,7 +93,9 @@ quiet-please/
 │   │   │   ├── page.tsx                                 ✅ (hub: pending/active/past)
 │   │   │   ├── new/page.tsx + actions.ts                ✅ (2-step: friend → tournament)
 │   │   │   └── [id]/page.tsx + actions.ts               ✅ (detail, accept/decline, result)
-│   │   ├── profile/[username]/page.tsx                  ✅ (+ challenges section)
+│   │   ├── profile/
+│   │   │   ├── [username]/page.tsx                      ✅ (ranking_points, ATP/WTA breakdown, country/city edit, challenges)
+│   │   │   └── actions.ts                               ✅ (updateLocation server action)
 │   │   ├── auth/callback/route.ts                       ✅
 │   │   ├── auth/logout/route.ts                         ✅
 │   │   └── api/cron/
@@ -100,17 +103,19 @@ quiet-please/
 │   │       ├── sync-draws/route.ts                      ✅
 │   │       ├── sync-results/route.ts                    ✅
 │   │       ├── sync-backfill/route.ts                   ✅
-│   │       └── award-points/route.ts                    ✅ (skips is_practice, scores challenges)
+│   │       └── award-points/route.ts                    ✅ (stamps expires_at, calls recalculate_ranking_points)
 │   ├── components/Nav.tsx                               ✅ (notification dot)
 │   ├── lib/supabase/ (client, server, admin, middleware) ✅
 │   ├── lib/tennis/ (adapter, types, points, api-tennis provider) ✅
+│   ├── lib/utils/iso-week.ts                            ✅ (ISO 8601 week arithmetic, getTournamentISOWeeks)
 │   ├── middleware.ts                                    ✅ (checks username_is_set)
 │   └── types/database.ts                               ✅
 └── supabase/migrations/
     ├── 001_initial_schema.sql                           ✅ run
     ├── 003_username_setup.sql                           ✅ written, NOT YET run on prod
     ├── 004_practice_predictions.sql                     ✅ written, NOT YET run on prod
-    └── 006_challenges.sql                               ✅ written, run on prod
+    ├── 006_challenges.sql                               ✅ written, run on prod
+    └── 007_ranking_system.sql                           ✅ written, NOT YET run on prod
 ```
 
 ---
@@ -163,6 +168,15 @@ Rate limit: sequential requests with 500ms delay between ATP/WTA calls.
 - Both FKs on `challenges` are explicitly named (`challenges_challenger_id_fkey`, `challenges_challenged_id_fkey`) for PostgREST disambiguation
 - RLS policies: users can SELECT rows where they are a party; INSERT as requester/challenger; UPDATE as addressee/challenged only
 
+### 007_ranking_system.sql (NOT YET RUN ON PROD)
+- Adds `expires_at TIMESTAMPTZ` to `predictions` (stamped = starts_at + 364 days when points first awarded)
+- Adds to `users`: `ranking_points INT NOT NULL DEFAULT 0`, `atp_ranking_points INT NOT NULL DEFAULT 0`, `wta_ranking_points INT NOT NULL DEFAULT 0`, `country TEXT`, `city TEXT`
+- Creates `weekly_slots` table: `(user_id, circuit, iso_year, iso_week, tournament_id)` with UNIQUE(user_id, circuit, iso_year, iso_week) — enforces one ATP + one WTA slot per ISO week per user
+- Creates `recalculate_ranking_points(p_user_id UUID)` SQL function: sums non-expired prediction points separately for ATP and WTA circuits, writes all three columns atomically
+- Creates indexes on `predictions.expires_at`, `users.ranking_points DESC`, `users.country`, `users.city`
+- Resets all existing points to 0 (was dummy data only)
+- **Important**: `ranking_points` replaces `total_points` in all queries — do not use `total_points` in new code
+
 ---
 
 ## How practice mode works
@@ -199,7 +213,8 @@ All originally planned Phase 4 items are now shipped:
 
 ### High priority
 - ✅ **Mobile responsive layouts** — Nav (admin pill + sign-out hidden on mobile top row; sign-out added to mobile scrollable tab row), BracketPredictor (save draft hidden in sticky nav on mobile; practice + locked banners reflow: badge inline, long text wraps below), tournament detail h1 uses `text-3xl md:text-4xl` responsive sizing
-- **Apply pending migrations to prod** — `003_username_setup.sql` and `004_practice_predictions.sql` are written but not yet run on production Supabase
+- ✅ **ATP-style ranking system** — rolling 52-week window, weekly slots, circuit breakdown, leaderboard scopes, country/city on profile (Session 15)
+- **Apply pending migrations to prod** — `003_username_setup.sql`, `004_practice_predictions.sql`, and `007_ranking_system.sql` are written but not yet run on production Supabase
 - **Re-enable email confirmation** in Supabase dashboard → Auth → Email Provider (code is ready; was disabled for testing)
 
 ### Medium priority
@@ -209,10 +224,9 @@ All originally planned Phase 4 items are now shipped:
 - **Upgrade cron schedules** — Vercel Hobby plan limits to daily. Upgrade to Pro ($20/mo) for sub-hourly syncs (results every 30 min, award-points every 35 min). Only matters for live tournament coverage
 
 ### Lower priority / nice to have
-- Global leaderboard: all-time vs per-year toggle
-- Separate ATP/WTA leaderboards
-- Season-long standings across all tournaments
+- All-time points view alongside rolling 52-week ranking (already stored in `predictions.points_earned` — just needs a different aggregate query)
 - Player search / bracket search
+- League-level ranking (per-league rolling points)
 
 ---
 
@@ -259,6 +273,44 @@ All originally planned Phase 4 items are now shipped:
 
 ---
 
+## Phase 7 — ATP-style Ranking System ✅ (complete as of Session 15)
+
+### Product decisions (confirmed)
+- **Rolling window**: 52 weeks (same as ATP — not a calendar year reset). Points expire 364 days after the tournament starts.
+- **Weekly slots**: one ATP slot + one WTA slot per ISO week per user. Submitting picks for a tournament consumes your slot for that week on that circuit.
+- **Grand Slams span 2 ISO weeks**: both weeks are consumed on slot reservation.
+- **Slot reservation timing**: locked at first pick save (non-revocable). Conflict shown server-side before bracket loads; also caught at submit time in BracketPredictor.
+- **Circuit breakdown**: `ranking_points` = ATP + WTA combined; `atp_ranking_points` and `wta_ranking_points` stored separately.
+- **Leaderboard scopes**: Worldwide (all users), Country (same country), City (same city). URL-param driven, fully shareable.
+- **Location on profile**: country (dropdown, 47 options) + city (text input), inline edit via `?edit=location` — no client component needed.
+
+### What was built
+
+| File | What changed |
+|------|--------------|
+| `supabase/migrations/007_ranking_system.sql` | New migration — expires_at, ranking_points cols, weekly_slots table, recalculate_ranking_points() SQL fn |
+| `src/lib/utils/iso-week.ts` | New — ISO 8601 week arithmetic (Thursday-anchor), getTournamentISOWeeks() |
+| `src/app/tournaments/[id]/predict/actions.ts` | SaveResult discriminated union; weekly slot conflict check on first save |
+| `src/app/tournaments/[id]/predict/BracketPredictor.tsx` | Slot error banner, handles SaveResult type |
+| `src/app/tournaments/[id]/predict/page.tsx` | Server-side slot pre-check before rendering bracket |
+| `src/app/api/cron/award-points/route.ts` | Stamps expires_at on first award; calls recalculate_ranking_points() per user |
+| `src/app/leaderboard/page.tsx` | Full rewrite — 3 scope buttons, circuit filter, ranking_points |
+| `src/app/profile/[username]/page.tsx` | ranking_points + ATP/WTA pills, country/city display + edit form |
+| `src/app/profile/actions.ts` | New — updateLocation server action |
+| All other app pages | Bulk: total_points → ranking_points in Nav props + select queries |
+
+### Key implementation notes
+
+- **`weekly_slots` UNIQUE constraint**: DB-level enforcement — even if the server action is bypassed, the DB rejects duplicate slot reservations.
+- **`SaveResult` discriminated union**: `{ success: true } | { success: false; error: 'slot_taken'; conflictingTournamentName } | { success: false; error: 'unknown'; message }`. Avoids losing structured info vs throwing errors from Server Actions.
+- **`upsert` with `ignoreDuplicates: true`**: re-saving a draft for the same tournament is idempotent — won't error or double-book.
+- **ISO week edge case**: Thursday-anchor algorithm handles late-December dates that belong to next year's ISO week (e.g., Dec 29, 2025 → ISO week 1 of 2026).
+- **`recalculate_ranking_points` called once per user per cron run** — not per match result. Efficient for large prediction volumes.
+- **`expires_at` stamped only once** — checked `!pred?.expires_at` before writing, so partial cron re-runs don't reset the expiry.
+- **Country/city leaderboard**: only shown if `profile.country` / `profile.city` is set; buttons disabled with tooltip otherwise.
+
+---
+
 ## Open product decisions
 
 1. ATP Challengers included or main tour only?
@@ -266,8 +318,8 @@ All originally planned Phase 4 items are now shipped:
 3. Can users see others' picks before draw closes?
 4. Max league size?
 5. Season-long challenge: all tournaments or admin-selectable?
-6. Global leaderboard: all-time or reset per year?
-7. Separate ATP/WTA leaderboards or combined?
+6. ~~Global leaderboard: all-time or reset per year?~~ — **resolved**: rolling 52-week ATP-style window
+7. ~~Separate ATP/WTA leaderboards or combined?~~ — **resolved**: combined leaderboard with circuit filter (ATP / WTA / Both)
 8. Monetisation model?
 
 ---

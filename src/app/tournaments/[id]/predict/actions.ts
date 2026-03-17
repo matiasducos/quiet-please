@@ -3,6 +3,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { getPointsForRound } from '@/lib/tennis'
+import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
+
+export type SaveResult =
+  | { success: true }
+  | { success: false; error: 'slot_taken'; conflictingTournamentName: string }
+  | { success: false; error: 'unknown'; message: string }
 
 export async function savePrediction({
   tournamentId,
@@ -16,10 +22,10 @@ export async function savePrediction({
   predictionId: string | null
   lock?: boolean
   isPractice?: boolean
-}) {
+}): Promise<SaveResult> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  if (!user) return { success: false, error: 'unknown', message: 'Not authenticated' }
 
   // Practice mode: score immediately against existing match_results (all results
   // are already in the DB for completed tournaments — no cron needed).
@@ -52,19 +58,72 @@ export async function savePrediction({
   if (lock && isPractice) row.points_earned = pointsEarned
 
   if (predictionId) {
+    // ── UPDATE existing prediction ──────────────────────────────────────────
     const { error } = await supabase
       .from('predictions')
       .update(row)
       .eq('id', predictionId)
       .eq('user_id', user.id)
       .eq('is_locked', false)
-    if (error) throw error
+    if (error) return { success: false, error: 'unknown', message: error.message }
+
   } else {
+    // ── INSERT new prediction ───────────────────────────────────────────────
+    // For real (non-practice) tournaments: enforce the one-slot-per-circuit-per-week rule.
+    if (!isPractice) {
+      // Fetch tournament metadata needed for slot calculation
+      const { data: tournament, error: tErr } = await supabase
+        .from('tournaments')
+        .select('tour, starts_at, ends_at, name')
+        .eq('id', tournamentId)
+        .single()
+
+      if (tErr || !tournament) {
+        return { success: false, error: 'unknown', message: 'Tournament not found' }
+      }
+
+      const circuit = tournament.tour as 'ATP' | 'WTA'
+      const weeks = getTournamentISOWeeks(tournament.starts_at, tournament.ends_at)
+
+      // Check each ISO week: is there already a slot for this user + circuit
+      // pointing to a DIFFERENT tournament?
+      for (const w of weeks) {
+        const { data: existing } = await supabase
+          .from('weekly_slots')
+          .select('tournament_id, tournaments(name)')
+          .eq('user_id', user.id)
+          .eq('circuit', circuit)
+          .eq('iso_year', w.year)
+          .eq('iso_week', w.week)
+          .neq('tournament_id', tournamentId)
+          .maybeSingle()
+
+        if (existing) {
+          const conflictingName = (existing.tournaments as any)?.name ?? 'another tournament'
+          return { success: false, error: 'slot_taken', conflictingTournamentName: conflictingName }
+        }
+      }
+
+      // No conflict — upsert slot rows (idempotent: same tournament re-saves are silently ignored)
+      const slotRows = weeks.map(w => ({
+        user_id:       user.id,
+        circuit,
+        iso_year:      w.year,
+        iso_week:      w.week,
+        tournament_id: tournamentId,
+      }))
+      const { error: slotError } = await supabase
+        .from('weekly_slots')
+        .upsert(slotRows, { onConflict: 'user_id,circuit,iso_year,iso_week', ignoreDuplicates: true })
+      if (slotError) return { success: false, error: 'unknown', message: slotError.message }
+    }
+
     const { error } = await supabase
       .from('predictions')
       .insert({ ...row, submitted_at: new Date().toISOString() } as any)
-    if (error) throw error
+    if (error) return { success: false, error: 'unknown', message: error.message }
   }
 
   revalidatePath(`/tournaments/${tournamentId}`)
+  return { success: true }
 }
