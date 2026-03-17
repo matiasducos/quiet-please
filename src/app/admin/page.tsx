@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import AdminPanel from './AdminPanel'
 
@@ -16,5 +17,13 @@ export default async function AdminPage() {
 
   const cronSecret = process.env.CRON_SECRET ?? ''
 
-  return <AdminPanel cronSecret={cronSecret} />
+  // Fetch tournaments for status override (2026 onwards, newest first)
+  const admin = createAdminClient()
+  const { data: tournaments } = await admin
+    .from('tournaments')
+    .select('id, name, status, start_date, tour')
+    .gte('start_date', '2026-01-01')
+    .order('start_date', { ascending: false })
+
+  return <AdminPanel cronSecret={cronSecret} tournaments={tournaments ?? []} />
 }
