@@ -31,7 +31,7 @@ The app is live in production. Phase 4, Phase 6 (Challenge a friend), and the AT
 - ✅ Email notifications — draw opens + points awarded emails
 - ✅ Open Graph images — `/tournaments/[id]/opengraph-image.tsx`, tier/surface badges, tournament name, date range
 - ✅ Admin panel (`/admin`) — trigger sync-tournaments, sync-draws, sync-results, award-points, sync-backfill; protected by ADMIN_USER_IDS env var; "Admin" link shown in Nav for admin users
-- ⚠️ 2026 ATP/WTA calendar partially seeded — Grand Slams, Masters 1000, and select 500s only; 250-level events + past Jan–March tournaments (Australian Open etc.) still missing (see Medium Priority)
+- ⚠️ 2026 ATP/WTA calendar incomplete — current free-tier API (api-tennis.com via RapidAPI) only returns a subset of events; 250-level events are missing because they're not included in the free plan. **Upgrade path**: api-tennis.com direct subscription (Starter $40/mo, 14-day free trial). Before paying, email contact@api-tennis.com to confirm ATP/WTA 250 coverage. The adapter layer is already built — only `TENNIS_API_KEY` env var + base URL need changing. No code changes required.
 - ✅ Cron: sync-tournaments, sync-draws, sync-results, award-points, sync-backfill — all working; award-points also scores + expires challenges
 - ✅ Points engine tested — awards correct per-round points, showing in nav and leaderboard
 - ✅ League points synced — award-points cron propagates to league_members.total_points
