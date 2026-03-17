@@ -179,6 +179,24 @@ export default async function ProfilePage({
               </p>
             </div>
 
+            {/* Friends link — only shown on own profile */}
+            {isOwnProfile && (
+              <Link
+                href="/friends"
+                className="px-4 py-2 text-sm rounded-sm border hover:opacity-80"
+                style={{
+                  borderColor: 'var(--chalk-dim)',
+                  color: 'var(--muted)',
+                  background: 'white',
+                  textDecoration: 'none',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.8rem',
+                }}
+              >
+                Friends →
+              </Link>
+            )}
+
             {/* Friend button — only shown when viewing someone else's profile */}
             {!isOwnProfile && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
