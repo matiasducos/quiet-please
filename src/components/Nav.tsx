@@ -14,7 +14,7 @@ const NAV_LINKS = [
   { href: '/leaderboard',      label: 'Leaderboard', page: 'leaderboard' },
   { href: '/leagues',          label: 'Leagues',     page: 'leagues'     },
   { href: '/challenges',       label: 'Challenges',  page: 'challenges'  },
-  { href: '/test-tournaments', label: 'Sandbox',     page: 'test'        },
+  { href: '/sandbox',          label: 'Sandbox',     page: 'test'        },
 ] as const
 
 export default function Nav({ username, points = 0, activePage, userId }: NavProps) {
