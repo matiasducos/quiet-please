@@ -4,18 +4,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { sendFriendRequest, acceptFriendRequest, declineFriendRequest } from '@/app/friends/actions'
-import { updateLocation } from '@/app/profile/actions'
-
-// ── Country list for the location edit form ───────────────────────────────────
-const COUNTRIES = [
-  'Argentina','Australia','Austria','Belgium','Brazil','Bulgaria','Canada',
-  'Chile','China','Colombia','Croatia','Czech Republic','Denmark','Ecuador',
-  'Finland','France','Germany','Great Britain','Greece','Hungary','India',
-  'Ireland','Israel','Italy','Japan','Kazakhstan','Latvia','Mexico','Netherlands',
-  'New Zealand','Norway','Poland','Portugal','Romania','Russia','Serbia',
-  'Slovakia','Slovenia','South Korea','Spain','Sweden','Switzerland','Taiwan',
-  'Tunisia','Ukraine','United States','Uruguay',
-].sort()
+import LocationEditForm from '@/app/profile/LocationEditForm'
 
 export default async function ProfilePage({
   params,
@@ -273,62 +262,11 @@ export default async function ProfilePage({
 
         {/* ── Location edit form ────────────────────────────────────────────── */}
         {showEditLocation && (
-          <div className="mb-8 bg-white rounded-sm border p-6" style={{ borderColor: 'var(--chalk-dim)' }}>
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '1.25rem' }}>
-              Set your location
-            </h2>
-            <form action={updateLocation} className="flex flex-col gap-4">
-              <input type="hidden" name="username" value={profile.username} />
-
-              <div>
-                <label style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.06em', display: 'block', marginBottom: '0.4rem' }}>
-                  COUNTRY
-                </label>
-                <select
-                  name="country"
-                  defaultValue={profile.country ?? ''}
-                  className="w-full px-3 py-2 rounded-sm border text-sm"
-                  style={{ borderColor: 'var(--chalk-dim)', fontFamily: 'var(--font-mono)', background: 'white' }}
-                >
-                  <option value="">— Not set —</option>
-                  {COUNTRIES.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.06em', display: 'block', marginBottom: '0.4rem' }}>
-                  CITY
-                </label>
-                <input
-                  type="text"
-                  name="city"
-                  defaultValue={profile.city ?? ''}
-                  placeholder="e.g. Madrid"
-                  maxLength={80}
-                  className="w-full px-3 py-2 rounded-sm border text-sm"
-                  style={{ borderColor: 'var(--chalk-dim)', fontFamily: 'var(--font-mono)' }}
-                />
-              </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="submit"
-                  className="px-5 py-2 text-sm font-medium text-white rounded-sm"
-                  style={{ background: 'var(--court)' }}
-                >
-                  Save location
-                </button>
-                <Link
-                  href={`/profile/${profile.username}`}
-                  style={{ fontSize: '0.85rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}
-                >
-                  Cancel
-                </Link>
-              </div>
-            </form>
-          </div>
+          <LocationEditForm
+            username={profile.username}
+            defaultCountry={profile.country ?? null}
+            defaultCity={profile.city ?? null}
+          />
         )}
 
         {/* ── Stats grid ────────────────────────────────────────────────────── */}
