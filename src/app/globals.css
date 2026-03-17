@@ -32,10 +32,31 @@ html {
 }
 
 .tournament-card {
-  transition: transform 0.15s ease;
+  transition: transform 0.15s ease, opacity 0.1s ease;
 }
 .tournament-card:hover {
   transform: translateY(-2px);
+}
+.tournament-card:active {
+  transform: translateY(0);
+  opacity: 0.75;
+}
+
+/* ── Interactive cursors ───────────────────────────────────────── */
+button, a, [role="button"], select {
+  cursor: pointer;
+}
+
+/* ── Click / press feedback ────────────────────────────────────── */
+button, [role="button"] {
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+button:active, [role="button"]:active {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+a:active {
+  opacity: 0.75;
 }
 
 /* Skeleton loading shimmer */
