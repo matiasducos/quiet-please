@@ -237,9 +237,19 @@ export default function BracketPredictor({
       {/* Nav */}
       <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="flex items-center justify-between px-4 md:px-6 py-4">
-          <Link href="/dashboard" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)', whiteSpace: 'nowrap' }}>
-            Quiet Please
-          </Link>
+          <div className="flex items-center gap-3">
+            {!readOnly && (
+              <Link
+                href={returnUrl ?? `/tournaments/${tournament.id}`}
+                style={{ fontSize: '0.8rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}
+              >
+                ← Back
+              </Link>
+            )}
+            <Link href="/dashboard" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)', whiteSpace: 'nowrap' }}>
+              Quiet Please
+            </Link>
+          </div>
           <div className="flex items-center gap-2 ml-4">
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
               {readOnly
