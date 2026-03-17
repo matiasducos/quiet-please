@@ -185,7 +185,7 @@ export default async function TournamentDetailPage({ params }: { params: Promise
             </div>
 
             {/* Tournament name */}
-            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1, marginBottom: '16px' }}>
+            <h1 className="text-3xl md:text-4xl" style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', lineHeight: 1.1, marginBottom: '16px' }}>
               {t.name}
             </h1>
 

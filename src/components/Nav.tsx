@@ -75,6 +75,7 @@ export default function Nav({ username, points = 0, activePage, userId }: NavPro
               {isAdmin && (
                 <Link
                   href="/admin"
+                  className="hidden md:inline-flex items-center"
                   style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', textDecoration: 'none', padding: '2px 7px', border: '1px solid var(--chalk-dim)', borderRadius: '2px', background: '#fafaf8' }}
                 >
                   Admin
@@ -87,7 +88,7 @@ export default function Nav({ username, points = 0, activePage, userId }: NavPro
                 {username}
               </Link>
               <span className="score-pill">{points} pts</span>
-              <form action="/auth/logout" method="post">
+              <form action="/auth/logout" method="post" className="hidden md:block">
                 <button
                   type="submit"
                   style={{ fontSize: '0.8rem', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
@@ -121,6 +122,27 @@ export default function Nav({ username, points = 0, activePage, userId }: NavPro
             {link.label}
           </Link>
         ))}
+        {/* Sign out — visible only on mobile, at end of scrollable row */}
+        {!isGuest && (
+          <form action="/auth/logout" method="post" className="flex-shrink-0">
+            <button
+              type="submit"
+              className="px-5 py-2.5 text-xs border-b-2 transition-colors"
+              style={{
+                fontFamily: 'var(--font-mono)',
+                letterSpacing: '0.04em',
+                borderBottomColor: 'transparent',
+                color: 'var(--muted)',
+                background: 'none',
+                border: 'none',
+                borderBottom: '2px solid transparent',
+                cursor: 'pointer',
+              }}
+            >
+              Sign out
+            </button>
+          </form>
+        )}
       </div>
 
     </nav>

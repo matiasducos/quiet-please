@@ -1,8 +1,8 @@
 # Developer Handoff — Quiet Please
 
-## Current status (as of March 17, 2026 — Session 13)
+## Current status (as of March 17, 2026 — Session 14)
 
-The app is live in production. Phase 4 and Phase 6 (Challenge a friend) are now complete.
+The app is live in production. Phase 4 and Phase 6 (Challenge a friend) are now complete. Mobile responsive layouts addressed in Session 14.
 
 ### What is working right now
 - ✅ Landing page with full design system (chalk bg, court green, DM Serif Display)
@@ -34,6 +34,7 @@ The app is live in production. Phase 4 and Phase 6 (Challenge a friend) are now 
 - ✅ Cron: sync-tournaments, sync-draws, sync-results, award-points, sync-backfill — all working; award-points also scores + expires challenges
 - ✅ Points engine tested — awards correct per-round points, showing in nav and leaderboard
 - ✅ League points synced — award-points cron propagates to league_members.total_points
+- ✅ Mobile responsive layouts — Nav (admin/sign-out on mobile tab row), BracketPredictor banners, tournament detail h1
 - ✅ ATP Tour-style tournament cards — tier badges, country flags, date ranges
 - ✅ Deployed to production at https://quiet-please.vercel.app
 - ✅ Vercel cron jobs configured (daily schedules — Hobby plan limit)
@@ -197,7 +198,7 @@ All originally planned Phase 4 items are now shipped:
 ## Phase 5 — Next things to work on
 
 ### High priority
-- **Mobile responsive layouts** — Nav, bracket predictor, and tournament cards are desktop-first. BracketPredictor especially needs work at small widths (round tabs overflow, player names truncate badly)
+- ✅ **Mobile responsive layouts** — Nav (admin pill + sign-out hidden on mobile top row; sign-out added to mobile scrollable tab row), BracketPredictor (save draft hidden in sticky nav on mobile; practice + locked banners reflow: badge inline, long text wraps below), tournament detail h1 uses `text-3xl md:text-4xl` responsive sizing
 - **Apply pending migrations to prod** — `003_username_setup.sql` and `004_practice_predictions.sql` are written but not yet run on production Supabase
 - **Re-enable email confirmation** in Supabase dashboard → Auth → Email Provider (code is ready; was disabled for testing)
 

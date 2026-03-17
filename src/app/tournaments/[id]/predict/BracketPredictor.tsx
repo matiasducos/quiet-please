@@ -238,7 +238,7 @@ export default function BracketPredictor({
                   <button
                     onClick={handleSave}
                     disabled={saving || pickedCount === 0}
-                    className="px-3 py-1.5 text-xs rounded-sm border transition-colors disabled:opacity-40 whitespace-nowrap"
+                    className="hidden md:block px-3 py-1.5 text-xs rounded-sm border transition-colors disabled:opacity-40 whitespace-nowrap"
                     style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
                   >
                     {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save draft'}
@@ -260,47 +260,57 @@ export default function BracketPredictor({
 
       {/* Practice mode banner */}
       {isPractice && !readOnly && (
-        <div className="px-6 py-2.5 flex items-center gap-2" style={{ background: '#f3e8ff', borderBottom: '1px solid #e9d5ff' }}>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: '#7c2d7c', fontWeight: 600 }}>
-            PRACTICE MODE
-          </span>
-          <span style={{ fontSize: '0.75rem', color: '#6b21a8' }}>
+        <div className="px-4 md:px-6 py-2.5" style={{ background: '#f3e8ff', borderBottom: '1px solid #e9d5ff' }}>
+          <div className="flex items-center gap-2">
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: '#7c2d7c', fontWeight: 600, flexShrink: 0 }}>
+              PRACTICE MODE
+            </span>
+            <span className="hidden md:inline" style={{ fontSize: '0.75rem', color: '#6b21a8' }}>
+              This tournament is over. Pick your bracket and see how many points you would have earned — no points are awarded.
+            </span>
+          </div>
+          <p className="md:hidden mt-1" style={{ fontSize: '0.75rem', color: '#6b21a8' }}>
             This tournament is over. Pick your bracket and see how many points you would have earned — no points are awarded.
-          </span>
+          </p>
         </div>
       )}
 
       {/* Read-only banner */}
       {readOnly && (
-        <div className="px-6 py-2.5 flex items-center gap-3" style={{ background: '#f1efe8', borderBottom: '1px solid var(--chalk-dim)' }}>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: 'var(--muted)', fontWeight: 600 }}>
-            LOCKED PICKS
-          </span>
-          {matchResults && Object.keys(matchResults).length > 0 && (
-            <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-              Green = correct · Red = wrong · Gold = actual winner you missed
+        <div className="px-4 md:px-6 py-2.5" style={{ background: '#f1efe8', borderBottom: '1px solid var(--chalk-dim)' }}>
+          {/* First row: badge + (desktop legend) + share button */}
+          <div className="flex items-center gap-3">
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: 'var(--muted)', fontWeight: 600, flexShrink: 0 }}>
+              LOCKED PICKS
             </span>
-          )}
-          {(!matchResults || Object.keys(matchResults).length === 0) && (
-            <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-              Results not yet available — check back after matches are played.
+            {/* Legend inline — desktop only */}
+            <span className="hidden md:inline" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+              {matchResults && Object.keys(matchResults).length > 0
+                ? 'Green = correct · Red = wrong · Gold = actual winner you missed'
+                : 'Results not yet available — check back after matches are played.'}
             </span>
-          )}
-          {shareUrl && (
-            <button
-              onClick={() => {
-                const url = `${window.location.origin}${shareUrl}`
-                navigator.clipboard.writeText(url).then(() => {
-                  setCopied(true)
-                  setTimeout(() => setCopied(false), 2000)
-                })
-              }}
-              className="ml-auto px-3 py-1 rounded-sm border text-xs transition-colors"
-              style={{ borderColor: 'var(--chalk-dim)', color: copied ? 'var(--court)' : 'var(--muted)', background: 'white', flexShrink: 0 }}
-            >
-              {copied ? 'Copied!' : 'Share picks'}
-            </button>
-          )}
+            {shareUrl && (
+              <button
+                onClick={() => {
+                  const url = `${window.location.origin}${shareUrl}`
+                  navigator.clipboard.writeText(url).then(() => {
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 2000)
+                  })
+                }}
+                className="ml-auto px-3 py-1 rounded-sm border text-xs transition-colors flex-shrink-0"
+                style={{ borderColor: 'var(--chalk-dim)', color: copied ? 'var(--court)' : 'var(--muted)', background: 'white' }}
+              >
+                {copied ? 'Copied!' : 'Share picks'}
+              </button>
+            )}
+          </div>
+          {/* Legend below — mobile only */}
+          <p className="md:hidden mt-1" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+            {matchResults && Object.keys(matchResults).length > 0
+              ? 'Green = correct · Red = wrong · Gold = actual winner you missed'
+              : 'Results not yet available — check back after matches are played.'}
+          </p>
         </div>
       )}
 
