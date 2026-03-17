@@ -30,6 +30,12 @@ const ROUND_LABELS: Record<string, string> = {
   R16: 'R16', QF: 'Quarterfinals', SF: 'Semifinals', F: 'Final',
 }
 
+// Used in prose descriptions — full "Round of N" wording
+const ROUND_PROSE: Record<string, string> = {
+  R128: 'the Round of 128', R64: 'the Round of 64', R32: 'the Round of 32',
+  R16: 'the Round of 16', QF: 'the Quarterfinals', SF: 'the Semifinals', F: 'the Final',
+}
+
 const ROUND_ORDER = ['R128', 'R64', 'R32', 'R16', 'QF', 'SF', 'F']
 
 function buildFeedMap(matches: DrawMatch[]) {
@@ -237,20 +243,21 @@ export default function BracketPredictor({
       {/* Nav */}
       <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="flex items-center justify-between px-4 md:px-6 py-4">
-          <div className="flex items-center gap-3">
+          {/* Logo — always standalone top-left */}
+          <Link href="/dashboard" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)', whiteSpace: 'nowrap' }}>
+            Quiet Please
+          </Link>
+
+          <div className="flex items-center gap-2 ml-4">
+            {/* Back link for non-readOnly mode */}
             {!readOnly && (
               <Link
                 href={returnUrl ?? `/tournaments/${tournament.id}`}
-                style={{ fontSize: '0.8rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}
+                style={{ fontSize: '0.8rem', color: 'var(--muted)', whiteSpace: 'nowrap', marginRight: '0.25rem' }}
               >
                 ← Back
               </Link>
             )}
-            <Link href="/dashboard" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)', whiteSpace: 'nowrap' }}>
-              Quiet Please
-            </Link>
-          </div>
-          <div className="flex items-center gap-2 ml-4">
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
               {readOnly
                 ? correctPicks !== null && matchResults && Object.keys(matchResults).length > 0
@@ -382,108 +389,172 @@ export default function BracketPredictor({
         <p style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
           {readOnly
             ? 'View your picks round by round.'
-            : 'Pick winners round by round. Your QF picks carry through to the Semis and Final.'}
+            : (() => {
+                const firstRound = sortedRounds[0]
+                const lastRound = sortedRounds[sortedRounds.length - 1]
+                const firstLabel = ROUND_PROSE[firstRound] ?? firstRound
+                const lastLabel = ROUND_PROSE[lastRound] ?? lastRound
+                if (sortedRounds.length === 1) return `Pick the winner of ${lastLabel}.`
+                return `Pick winners round by round. Your picks from ${firstLabel} carry through to ${lastLabel}.`
+              })()
+          }
         </p>
       </div>
 
       {/* Matches */}
       <div className="max-w-2xl mx-auto px-4 md:px-6 py-6">
-        <div className="flex flex-col gap-4">
-          {matchesForRound(activeRound).map((match, i) => {
-            const p1 = getEffectivePlayer(match, 'player1')
-            const p2 = getEffectivePlayer(match, 'player2')
-            const pickedId = picks[match.matchId]
-            const actualWinnerId = matchResults?.[match.matchId]
-            const isLocked = !p1 && !p2
-
-            const s1 = getPickState(pickedId, p1?.externalId, actualWinnerId)
-            const s2 = getPickState(pickedId, p2?.externalId, actualWinnerId)
-
-            const renderPlayer = (player: Player | null, slot: 'player1' | 'player2', state: ReturnType<typeof getPickState>, withBorderBottom: boolean) => {
-              const style = PICK_STYLES[state]
-              const isClickable = !readOnly && !!player
-              return (
-                <button
-                  onClick={() => player && pickWinner(match.matchId, player.externalId)}
-                  disabled={!player || readOnly}
-                  className={`pick-btn w-full flex items-center justify-between px-4 py-4 text-left${withBorderBottom ? ' border-b' : ''}`}
-                  style={{
-                    borderColor: 'var(--chalk-dim)',
-                    background: style.bg,
-                    cursor: isClickable ? 'pointer' : 'default',
-                    opacity: !player ? 0.35 : 1,
-                  }}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    {player?.seed ? (
-                      <span style={{
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '0.6rem',
-                        fontWeight: 600,
-                        color: 'white',
-                        background: '#5a5a4a',
-                        minWidth: '18px',
-                        height: '18px',
-                        borderRadius: '2px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}>{player.seed}</span>
-                    ) : (
-                      <span style={{ minWidth: '18px', flexShrink: 0 }} />
-                    )}
-                    <span className="truncate" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', letterSpacing: '-0.01em', color: player ? 'var(--ink)' : 'var(--muted)' }}>
-                      {player?.name ?? 'TBD'}
-                    </span>
-                    {player?.country && (
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', flexShrink: 0, letterSpacing: '0.04em' }}>{player.country}</span>
-                    )}
-                  </div>
-                  {state !== 'none' && (
-                    <span style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '0.7rem',
-                      color: style.labelColor,
-                      background: style.labelBg,
-                      padding: '2px 8px',
-                      borderRadius: '2px',
-                      flexShrink: 0,
-                      marginLeft: '8px',
-                      border: state === 'winner' ? '1px solid #fcd34d' : undefined,
-                    }}>
-                      {state === 'correct' && matchPoints?.[match.matchId] != null
-                        ? '✓ +' + matchPoints[match.matchId] + ' pts'
-                        : style.label}
-                    </span>
-                  )}
-                </button>
+        <div className="flex flex-col gap-6">
+          {(() => {
+            // Group matches that share the same next-round match (bracket pairs)
+            const roundMatches = matchesForRound(activeRound)
+            const seen = new Set<string>()
+            const groups: DrawMatch[][] = []
+            for (const match of roundMatches) {
+              if (seen.has(match.matchId)) continue
+              seen.add(match.matchId)
+              const myFeed = feedMap[match.matchId]
+              if (!myFeed) { groups.push([match]); continue }
+              const sibling = roundMatches.find(m =>
+                !seen.has(m.matchId) && feedMap[m.matchId]?.nextMatchId === myFeed.nextMatchId
               )
+              if (sibling) {
+                seen.add(sibling.matchId)
+                // Ensure player1-slot match is first
+                groups.push(myFeed.slot === 'player1' ? [match, sibling] : [sibling, match])
+              } else {
+                groups.push([match])
+              }
             }
 
-            return (
-              <div key={match.matchId} className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
-                <div className="px-4 py-2 border-b flex items-center justify-between" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>
-                    MATCH {i + 1}
-                  </span>
-                  {isLocked && !readOnly && (
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
-                      Pick earlier rounds first
-                    </span>
+            let matchIndex = 0
+            return groups.map((group, gi) => {
+              const renderPlayer = (
+                match: DrawMatch,
+                player: Player | null,
+                slot: 'player1' | 'player2',
+                state: ReturnType<typeof getPickState>,
+                withBorderBottom: boolean,
+              ) => {
+                const style = PICK_STYLES[state]
+                const isClickable = !readOnly && !!player
+                return (
+                  <button
+                    onClick={() => player && pickWinner(match.matchId, player.externalId)}
+                    disabled={!player || readOnly}
+                    className={`pick-btn w-full flex items-center justify-between px-4 py-4 text-left${withBorderBottom ? ' border-b' : ''}`}
+                    style={{
+                      borderColor: 'var(--chalk-dim)',
+                      background: style.bg,
+                      cursor: isClickable ? 'pointer' : 'default',
+                      opacity: !player ? 0.35 : 1,
+                    }}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {player?.seed ? (
+                        <span style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '0.6rem',
+                          fontWeight: 600,
+                          color: 'white',
+                          background: '#5a5a4a',
+                          minWidth: '18px',
+                          height: '18px',
+                          borderRadius: '2px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}>{player.seed}</span>
+                      ) : (
+                        <span style={{ minWidth: '18px', flexShrink: 0 }} />
+                      )}
+                      <span className="truncate" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', letterSpacing: '-0.01em', color: player ? 'var(--ink)' : 'var(--muted)' }}>
+                        {player?.name ?? 'TBD'}
+                      </span>
+                      {player?.country && (
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', flexShrink: 0, letterSpacing: '0.04em' }}>{player.country}</span>
+                      )}
+                    </div>
+                    {state !== 'none' && (
+                      <span style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '0.7rem',
+                        color: style.labelColor,
+                        background: style.labelBg,
+                        padding: '2px 8px',
+                        borderRadius: '2px',
+                        flexShrink: 0,
+                        marginLeft: '8px',
+                        border: state === 'winner' ? '1px solid #fcd34d' : undefined,
+                      }}>
+                        {state === 'correct' && matchPoints?.[match.matchId] != null
+                          ? '✓ +' + matchPoints[match.matchId] + ' pts'
+                          : style.label}
+                      </span>
+                    )}
+                  </button>
+                )
+              }
+
+              return (
+                <div key={gi} className="flex items-stretch">
+                  {/* Match cards column */}
+                  <div className="flex flex-col gap-3 flex-1">
+                    {group.map((match) => {
+                      const i = matchIndex++
+                      const p1 = getEffectivePlayer(match, 'player1')
+                      const p2 = getEffectivePlayer(match, 'player2')
+                      const pickedId = picks[match.matchId]
+                      const actualWinnerId = matchResults?.[match.matchId]
+                      const isLocked = !p1 && !p2
+                      const s1 = getPickState(pickedId, p1?.externalId, actualWinnerId)
+                      const s2 = getPickState(pickedId, p2?.externalId, actualWinnerId)
+
+                      return (
+                        <div key={match.matchId} className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+                          <div className="px-4 py-2 border-b flex items-center justify-between" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>
+                              MATCH {i + 1}
+                            </span>
+                            {isLocked && !readOnly && (
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
+                                Pick earlier rounds first
+                              </span>
+                            )}
+                          </div>
+
+                          {renderPlayer(match, p1, 'player1', s1, true)}
+
+                          <div className="flex items-center justify-center py-1" style={{ background: '#fafaf8' }}>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.1em' }}>VS</span>
+                          </div>
+
+                          {renderPlayer(match, p2, 'player2', s2, false)}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Bracket connector — right-side ⊣ shape linking the two matches that feed the same next-round slot */}
+                  {group.length === 2 && (
+                    <div style={{ width: '20px', position: 'relative', flexShrink: 0, alignSelf: 'stretch' }}>
+                      <div style={{
+                        position: 'absolute',
+                        top: '25%',
+                        bottom: '25%',
+                        left: '4px',
+                        right: 0,
+                        borderTop: '1px solid var(--chalk-dim)',
+                        borderRight: '1px solid var(--chalk-dim)',
+                        borderBottom: '1px solid var(--chalk-dim)',
+                        borderRadius: '0 3px 3px 0',
+                      }} />
+                    </div>
                   )}
                 </div>
-
-                {renderPlayer(p1, 'player1', s1, true)}
-
-                <div className="flex items-center justify-center py-1" style={{ background: '#fafaf8' }}>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.1em' }}>VS</span>
-                </div>
-
-                {renderPlayer(p2, 'player2', s2, false)}
-              </div>
-            )
-          })}
+              )
+            })
+          })()}
         </div>
 
         {/* Round navigation */}
