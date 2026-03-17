@@ -544,9 +544,9 @@ export default function BracketPredictor({
                         bottom: '25%',
                         left: '4px',
                         right: 0,
-                        borderTop: '1px solid var(--chalk-dim)',
-                        borderRight: '1px solid var(--chalk-dim)',
-                        borderBottom: '1px solid var(--chalk-dim)',
+                        borderTop: '1.5px solid var(--muted)',
+                        borderRight: '1.5px solid var(--muted)',
+                        borderBottom: '1.5px solid var(--muted)',
                         borderRadius: '0 3px 3px 0',
                       }} />
                     </div>
