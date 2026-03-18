@@ -8,21 +8,34 @@
 -- separate rows, each with their own draws / results / predictions), we need:
 --   one row per (external_id, year) rather than one row per external_id.
 --
+-- Expression-based indexes (e.g. date_trunc('year', starts_at)) require
+-- IMMUTABLE functions, but all timestamptz manipulation is STABLE (timezone-
+-- dependent).  The clean solution: a real starts_year column that is set by
+-- application code on every insert/update of starts_at.
+--
 -- This migration:
---   1. Drops the old single-column UNIQUE constraint
---   2. Adds a composite unique index on (external_id, year-of starts_at)
+--   1. Drops the old single-column UNIQUE constraint on external_id
+--   2. Adds a starts_year smallint column
+--   3. Backfills starts_year for all existing rows
+--   4. Creates a composite unique index on (external_id, starts_year)
 
--- Drop existing single-column unique constraint
+-- 1. Drop existing single-column unique constraint
 ALTER TABLE public.tournaments
   DROP CONSTRAINT IF EXISTS tournaments_external_id_key;
 
--- New uniqueness: one row per (external_id, year).
--- NULL starts_at rows are treated as distinct from each other by PG unique
--- index semantics, so they will never conflict.
---
--- NOTE: starts_at is timestamptz. date_trunc(text, timestamptz) is STABLE
--- (timezone-dependent), not IMMUTABLE, so it cannot be used in an index
--- expression. Casting to ::timestamp (without time zone) uses the UTC
--- representation, which is what we want, and that overload IS immutable.
+-- 2. Add the year column (nullable — NULL means "year not known yet")
+ALTER TABLE public.tournaments
+  ADD COLUMN IF NOT EXISTS starts_year smallint;
+
+-- 3. Backfill starts_year for all rows that already have starts_at
+--    EXTRACT(YEAR FROM … AT TIME ZONE 'UTC') works fine in a plain UPDATE
+--    (STABLE is fine outside of index expressions)
+UPDATE public.tournaments
+  SET starts_year = EXTRACT(YEAR FROM starts_at AT TIME ZONE 'UTC')::smallint
+  WHERE starts_at IS NOT NULL;
+
+-- 4. New uniqueness: one row per (external_id, year).
+--    Plain columns — no expression immutability issues.
+--    NULL starts_year rows are treated as distinct (PG unique index NULL semantics).
 CREATE UNIQUE INDEX IF NOT EXISTS tournaments_external_id_year_key
-  ON public.tournaments (external_id, date_trunc('year', starts_at::timestamp));
+  ON public.tournaments (external_id, starts_year);

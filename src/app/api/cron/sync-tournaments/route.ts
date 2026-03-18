@@ -193,6 +193,7 @@ export async function GET(request: Request) {
         category:      normalizeCategory(name),
         surface:       null,        // No surface from API — set manually in admin
         starts_at:     startsAt,
+        starts_year:   year,        // Denormalized year for unique index (see migration 008)
         ends_at:       startsAt,   // Correct ends_at must be set manually
         draw_close_at: startsAt,   // Update manually before the draw opens
         status:        'upcoming',

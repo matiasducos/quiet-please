@@ -85,7 +85,11 @@ export async function updateTournamentDetails(
     }
     update.surface = s ?? null
   }
-  if ('starts_at' in fields)     update.starts_at     = fields.starts_at     ?? null
+  if ('starts_at' in fields) {
+    update.starts_at   = fields.starts_at ?? null
+    // Keep denormalized starts_year in sync — used by the (external_id, starts_year) unique index
+    update.starts_year = fields.starts_at ? new Date(fields.starts_at).getUTCFullYear() : null
+  }
   if ('ends_at' in fields)       update.ends_at       = fields.ends_at       ?? null
   if ('draw_close_at' in fields) update.draw_close_at = fields.draw_close_at ?? null
 
