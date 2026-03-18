@@ -9,6 +9,9 @@ import Nav from '@/components/Nav'
 type TournamentRow = Database['public']['Tables']['tournaments']['Row']
 
 // ── ISR cache — same for all users, refreshes every hour ──────────────────
+// Tags allow sync-draws to call revalidateTag(`tournament:${id}`) the moment
+// a new draw is saved, so users see the bracket immediately rather than
+// waiting up to an hour for the ISR window to expire.
 const getTournamentDetail = unstable_cache(
   async (id: string) => {
     const supabase = createAdminClient()
@@ -19,7 +22,7 @@ const getTournamentDetail = unstable_cache(
     return { tournament, draw }
   },
   ['tournament-detail'],
-  { revalidate: 3600 }
+  { revalidate: 3600, tags: ['tournament-detail'] }
 )
 
 // ── Shared style maps (mirrors TournamentCard) ────────────────────────────

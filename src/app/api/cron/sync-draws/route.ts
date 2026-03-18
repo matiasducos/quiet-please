@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { revalidateTag } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { tennisAdapter } from '@/lib/tennis'
 import { sendDrawOpenEmail } from '@/lib/email'
@@ -61,6 +62,10 @@ export async function GET(request: Request) {
           .from('draws')
           .upsert({ tournament_id: tournament.id, bracket_data: draw as unknown as Json, synced_at: new Date().toISOString() }, { onConflict: 'tournament_id' })
         if (drawError) { results.push({ name: tournament.name, status: 'error', error: drawError.message }); continue }
+
+        // Bust the ISR cache for this tournament's detail page so users see
+        // the draw immediately rather than waiting up to an hour.
+        revalidateTag('tournament-detail')
 
         // ── Backfill dates from fixture data if tournament is still "Date TBC" ──
         // get_tournaments sometimes omits tournament_date for future events; but
