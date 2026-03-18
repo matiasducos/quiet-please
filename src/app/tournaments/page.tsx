@@ -120,14 +120,17 @@ export default async function TournamentsPage({ searchParams }: { searchParams: 
           </div>
         ) : (() => {
           // ── Group tournaments by calendar month ──────────────────────────
-          // Key format: "YYYY-MM" (0-based month, zero-padded) — sorts correctly lexicographically
+          // Key format: "YYYY-MM" (1-based month, zero-padded) — sorts correctly lexicographically
+          const now = new Date()
+          const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
           const monthMap = new Map<string, { label: string; list: typeof tournaments }>()
           for (const t of tournaments) {
             let key: string
             let label: string
             if (t.starts_at) {
               const d = new Date(t.starts_at)
-              key   = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`
+              key   = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
               label = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
             } else {
               key   = '9999-99'
@@ -148,7 +151,7 @@ export default async function TournamentsPage({ searchParams }: { searchParams: 
                   key={group.key}
                   month={group.label}
                   count={group.list.length}
-                  defaultOpen={false}
+                  defaultOpen={group.key === currentMonthKey}
                 >
                   {group.list.map((t: any) => (
                     <TournamentCard key={t.id} t={t} />
