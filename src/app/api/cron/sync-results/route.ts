@@ -5,7 +5,7 @@ import { tennisAdapter } from '@/lib/tennis'
 function isAuthorized(request: Request): boolean {
   if (process.env.NODE_ENV === 'development') return true
   const cronSecret = process.env.CRON_SECRET
-  if (!cronSecret) return true
+  if (!cronSecret) return false  // Fail closed — never open if secret is missing
   return request.headers.get('authorization') === `Bearer ${cronSecret}`
 }
 
@@ -19,7 +19,7 @@ export async function GET(request: Request) {
 
     const { data: tournaments } = await supabase
       .from('tournaments')
-      .select('id, external_id, name')
+      .select('id, external_id, name, starts_at, ends_at')
       .in('status', ['accepting_predictions', 'in_progress'])
 
     if (!tournaments?.length) {
@@ -30,7 +30,10 @@ export async function GET(request: Request) {
 
     for (const tournament of tournaments) {
       try {
-        const matchResults = await tennisAdapter.getResults(tournament.external_id)
+        const matchResults = await tennisAdapter.getResults(tournament.external_id, {
+          startsAt: tournament.starts_at ?? undefined,
+          endsAt:   tournament.ends_at   ?? undefined,
+        })
 
         if (!matchResults.length) {
           results.push({ name: tournament.name, status: 'no_results' })

@@ -31,7 +31,7 @@ export interface Tournament {
   name: string
   tour: Tour
   category: TournamentCategory
-  surface: Surface
+  surface: Surface | null  // null = not set yet; managed manually via admin panel
   drawCloseAt: string
   startsAt: string
   endsAt: string

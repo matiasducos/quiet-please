@@ -21,7 +21,7 @@ import type { Json } from '@/types/database'
 function isAuthorized(request: Request): boolean {
   if (process.env.NODE_ENV === 'development') return true
   const cronSecret = process.env.CRON_SECRET
-  if (!cronSecret) return true
+  if (!cronSecret) return false  // Fail closed — never open if secret is missing
   return request.headers.get('authorization') === `Bearer ${cronSecret}`
 }
 
@@ -37,7 +37,7 @@ export async function GET(request: Request) {
     // Find past tournaments that haven't been progressed yet
     const { data: tournaments } = await supabase
       .from('tournaments')
-      .select('id, external_id, name')
+      .select('id, external_id, name, starts_at, ends_at')
       .in('status', ['upcoming', 'accepting_predictions', 'in_progress'])
       .lt('starts_at', now)
       .order('starts_at', { ascending: true })
@@ -54,7 +54,10 @@ export async function GET(request: Request) {
 
       try {
         // 1. Sync draw
-        const draw = await tennisAdapter.getDraw(tournament.external_id)
+        const draw = await tennisAdapter.getDraw(tournament.external_id, {
+          startsAt: tournament.starts_at ?? undefined,
+          endsAt:   tournament.ends_at   ?? undefined,
+        })
         if (draw.matches?.length) {
           await supabase
             .from('draws')
@@ -74,7 +77,10 @@ export async function GET(request: Request) {
 
       try {
         // 2. Sync results
-        const matchResults = await tennisAdapter.getResults(tournament.external_id)
+        const matchResults = await tennisAdapter.getResults(tournament.external_id, {
+          startsAt: tournament.starts_at ?? undefined,
+          endsAt:   tournament.ends_at   ?? undefined,
+        })
         if (matchResults.length) {
           const rows = matchResults.map(r => ({
             tournament_id:      tournament.id,

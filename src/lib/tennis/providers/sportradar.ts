@@ -1,4 +1,4 @@
-import { TennisProvider } from './base'
+import { TennisProvider, type FetchOpts } from './base'
 import type { Tournament, Draw, MatchResult } from '../types'
 
 // Sportradar Tennis v3 — implement when upgrading from api-tennis.com
@@ -12,11 +12,11 @@ export class SportradarProvider extends TennisProvider {
     throw new Error('SportradarProvider not yet implemented.')
   }
 
-  async getDraw(_tournamentExternalId: string): Promise<Draw> {
+  async getDraw(_tournamentExternalId: string, _opts?: FetchOpts): Promise<Draw> {
     throw new Error('SportradarProvider not yet implemented.')
   }
 
-  async getResults(_tournamentExternalId: string): Promise<MatchResult[]> {
+  async getResults(_tournamentExternalId: string, _opts?: FetchOpts): Promise<MatchResult[]> {
     throw new Error('SportradarProvider not yet implemented.')
   }
 }

@@ -6,7 +6,7 @@ import { sendPointsAwardedEmail } from '@/lib/email'
 function isAuthorized(request: Request): boolean {
   if (process.env.NODE_ENV === 'development') return true
   const cronSecret = process.env.CRON_SECRET
-  if (!cronSecret) return true
+  if (!cronSecret) return false  // Fail closed — never open if secret is missing
   return request.headers.get('authorization') === `Bearer ${cronSecret}`
 }
 

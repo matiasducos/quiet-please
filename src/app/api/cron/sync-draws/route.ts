@@ -7,7 +7,7 @@ import type { Json } from '@/types/database'
 function isAuthorized(request: Request): boolean {
   if (process.env.NODE_ENV === 'development') return true
   const cronSecret = process.env.CRON_SECRET
-  if (!cronSecret) return true
+  if (!cronSecret) return false  // Fail closed — never open if secret is missing
   const authHeader = request.headers.get('authorization')
   return authHeader === `Bearer ${cronSecret}`
 }
@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     const supabase = createAdminClient()
     const { data: tournaments, error: fetchError } = await supabase
       .from('tournaments')
-      .select('id, external_id, name, status, draw_close_at')
+      .select('id, external_id, name, status, draw_close_at, starts_at, ends_at')
       .in('status', ['upcoming', 'accepting_predictions'])
       .order('starts_at', { ascending: true })
     if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 })
@@ -31,7 +31,10 @@ export async function GET(request: Request) {
     const results = []
     for (const tournament of tournaments) {
       try {
-        const draw = await tennisAdapter.getDraw(tournament.external_id)
+        const draw = await tennisAdapter.getDraw(tournament.external_id, {
+          startsAt: tournament.starts_at ?? undefined,
+          endsAt:   tournament.ends_at   ?? undefined,
+        })
         if (!draw.matches || draw.matches.length === 0) {
           results.push({ name: tournament.name, status: 'no_draw' })
           continue
