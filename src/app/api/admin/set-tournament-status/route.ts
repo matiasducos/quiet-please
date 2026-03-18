@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
-const VALID_STATUSES = ['upcoming', 'in_progress', 'completed'] as const
+const VALID_STATUSES = ['upcoming', 'draw_published', 'accepting_predictions', 'in_progress', 'completed'] as const
 
 export async function POST(request: Request) {
   // In prod: verify the caller is an admin user

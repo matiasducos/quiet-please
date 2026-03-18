@@ -20,6 +20,7 @@ const SURFACE_COLORS = {
 
 const STATUS_LABELS: Record<string, string> = {
   upcoming:               'Upcoming',
+  draw_published:         'Draw published',
   accepting_predictions:  'Predict now',
   in_progress:            'In progress',
   completed:              'Completed',

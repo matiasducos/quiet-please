@@ -25,10 +25,11 @@ export async function GET(request: Request) {
 
     // Draws are never published more than ~2 weeks before a tournament starts,
     // so there's no point hitting the tennis API for events further out.
-    // Three buckets:
+    // Four buckets:
     //   1. accepting_predictions — draw already stored, keep it fresh
-    //   2. upcoming with starts_at within 14 days — draw might just have been published
-    //   3. upcoming with starts_at IS NULL ("Date TBC") — dates come from fixture data;
+    //   2. draw_published — qualifying/shell draw synced; keep polling for the main draw
+    //   3. upcoming with starts_at within 14 days — draw might just have been published
+    //   4. upcoming with starts_at IS NULL ("Date TBC") — dates come from fixture data;
     //      we use a 21-day look-ahead window when fetching, so any near-future tournament
     //      whose date the ATP hasn't officially announced yet is still discovered.
     const twoWeeksFromNow = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
@@ -38,6 +39,7 @@ export async function GET(request: Request) {
       .select('id, external_id, name, status, draw_close_at, starts_at, ends_at')
       .or(
         `status.eq.accepting_predictions,` +
+        `status.eq.draw_published,` +
         `and(status.eq.upcoming,starts_at.lte.${twoWeeksFromNow}),` +
         `and(status.eq.upcoming,starts_at.is.null)`
       )
@@ -96,11 +98,20 @@ export async function GET(request: Request) {
           }
         }
 
-        // Only notify when the draw first opens (status transitions from upcoming)
-        if (tournament.status === 'upcoming') {
+        // ── Smart status transition based on player data ───────────────────────
+        // Qualifying draws have player1/player2 = null for all matches (players TBD).
+        // Main draws have named players. Use this to distinguish the two.
+        const hasPlayers = draw.matches.some(m => m.player1 !== null || m.player2 !== null)
+
+        if (tournament.status === 'upcoming' && !hasPlayers) {
+          // Qualifying / shell bracket synced — move to draw_published but don't notify yet.
+          await supabase.from('tournaments').update({ status: 'draw_published' }).eq('id', tournament.id)
+          console.log(`[sync-draws] "${tournament.name}" → draw_published (qualifying draw, no players yet)`)
+
+        } else if ((tournament.status === 'upcoming' || tournament.status === 'draw_published') && hasPlayers) {
+          // Main draw now has named players — open predictions and notify all users.
           await supabase.from('tournaments').update({ status: 'accepting_predictions' }).eq('id', tournament.id)
 
-          // Fan-out: create draw_open notifications for all users + send emails
           try {
             const { data: { users: allUsers } } = await supabase.auth.admin.listUsers({ perPage: 1000 })
             if (allUsers.length > 0) {
@@ -132,6 +143,7 @@ export async function GET(request: Request) {
             console.error('[sync-draws] notification error:', notifyErr)
           }
         }
+        // If already accepting_predictions: no status change, just refresh draw data.
 
         results.push({ name: tournament.name, status: 'synced', matches: draw.matches.length })
       } catch (err) {

@@ -45,6 +45,7 @@ const SURFACE_COLORS: Record<string, { bg: string; text: string; label: string }
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
   upcoming:               { bg: '#f1efe8', text: '#5F5E5A', label: 'Upcoming' },
+  draw_published:         { bg: '#edf2fb', text: '#185FA5', label: 'Draw published' },
   accepting_predictions:  { bg: '#eaf3de', text: '#27500A', label: 'Predictions open' },
   in_progress:            { bg: '#faeeda', text: '#633806', label: 'In progress' },
   completed:              { bg: '#f1efe8', text: '#5F5E5A', label: 'Completed' },
@@ -296,9 +297,11 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                   <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1rem' }}>
                     {t.status === 'accepting_predictions'
                       ? 'Sign in to make your picks.'
-                      : t.status === 'upcoming'
-                      ? 'Draw is published — sign in to predict when picks open.'
-                      : 'This tournament has ended.'}
+                      : t.status === 'draw_published'
+                      ? 'The qualifying draw is live. Sign in — predictions open once the main draw is published.'
+                      : t.status === 'in_progress' || t.status === 'completed'
+                      ? 'This tournament has ended.'
+                      : 'Sign in to be notified when predictions open.'}
                   </p>
                   <div className="flex flex-col items-center gap-3">
                     {(t.status === 'accepting_predictions' || t.status === 'upcoming') && !user && (
@@ -338,6 +341,8 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                   <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
                     {t.status === 'accepting_predictions'
                       ? 'The draw is open. Sign in to pick your bracket and earn points.'
+                      : t.status === 'draw_published'
+                      ? 'The qualifying draw is live. Predictions open when the main draw is published.'
                       : t.status === 'upcoming'
                       ? 'Sign in to be notified when predictions open.'
                       : 'Sign in to track your predictions and compare with friends.'}
@@ -399,7 +404,9 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                 </div>
               ) : (
                 <p style={{ fontSize: '0.8rem', color: 'var(--muted)', lineHeight: 1.5 }}>
-                  {t.status === 'upcoming'
+                  {t.status === 'draw_published'
+                    ? 'The qualifying draw is live. Predictions will open once the main draw is published.'
+                    : t.status === 'upcoming'
                     ? 'Predictions will open when the draw is published.'
                     : t.status === 'completed'
                     ? 'This tournament has ended.'

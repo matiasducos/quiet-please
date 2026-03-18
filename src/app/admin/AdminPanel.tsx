@@ -19,11 +19,12 @@ type AsyncStatus = { type: 'idle' | 'loading' | 'success' | 'error'; message?: s
 
 // ── Tournament types ──────────────────────────────────────────────────────────
 
-const STATUSES = ['upcoming', 'accepting_predictions', 'in_progress', 'completed'] as const
+const STATUSES = ['upcoming', 'draw_published', 'accepting_predictions', 'in_progress', 'completed'] as const
 type TournamentStatus = typeof STATUSES[number]
 
 const STATUS_LABELS: Record<TournamentStatus, string> = {
   upcoming:               'Upcoming',
+  draw_published:         'Draw Published',
   accepting_predictions:  'Accepting Predictions',
   in_progress:            'In Progress',
   completed:              'Completed',
@@ -31,6 +32,7 @@ const STATUS_LABELS: Record<TournamentStatus, string> = {
 
 const STATUS_COLORS: Record<TournamentStatus, { bg: string; color: string }> = {
   upcoming:               { bg: '#f1f5f9', color: '#64748b' },
+  draw_published:         { bg: '#dbeafe', color: '#1e40af' },
   accepting_predictions:  { bg: '#fef3c7', color: '#92400e' },
   in_progress:            { bg: '#dcfce7', color: '#166534' },
   completed:              { bg: '#e2e8f0', color: '#475569' },

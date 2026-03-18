@@ -2,7 +2,7 @@ export type Tour = 'ATP' | 'WTA'
 export type Surface = 'hard' | 'clay' | 'grass'
 export type TournamentCategory = 'grand_slam' | 'masters_1000' | '500' | '250'
 export type Round = 'R128' | 'R64' | 'R32' | 'R16' | 'QF' | 'SF' | 'F'
-export type TournamentStatus = 'upcoming' | 'accepting_predictions' | 'in_progress' | 'completed'
+export type TournamentStatus = 'upcoming' | 'draw_published' | 'accepting_predictions' | 'in_progress' | 'completed'
 
 export interface Player {
   externalId: string

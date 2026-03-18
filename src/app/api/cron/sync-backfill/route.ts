@@ -38,7 +38,7 @@ export async function GET(request: Request) {
     const { data: tournaments } = await supabase
       .from('tournaments')
       .select('id, external_id, name, starts_at, ends_at')
-      .in('status', ['upcoming', 'accepting_predictions', 'in_progress'])
+      .in('status', ['upcoming', 'draw_published', 'accepting_predictions', 'in_progress'])
       .lt('starts_at', now)
       .order('starts_at', { ascending: true })
 
