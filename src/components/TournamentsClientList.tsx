@@ -1,0 +1,171 @@
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import TournamentCard from './TournamentCard'
+import TournamentMonthGroup from './TournamentMonthGroup'
+
+interface Props {
+  tournaments: any[]
+  activeTour: string
+  activeSurface: string
+}
+
+const SURFACES = [
+  { key: 'all',   label: 'All surfaces' },
+  { key: 'clay',  label: 'Clay',  color: '#993C1D', bg: '#fdf2ed' },
+  { key: 'grass', label: 'Grass', color: '#1a6b3c', bg: '#edf7f0' },
+  { key: 'hard',  label: 'Hard',  color: '#185FA5', bg: '#edf2fb' },
+]
+
+export default function TournamentsClientList({ tournaments, activeTour, activeSurface }: Props) {
+  const [query, setQuery] = useState('')
+
+  const q = query.trim().toLowerCase()
+  const filtered = q
+    ? tournaments.filter(t => t.name.toLowerCase().includes(q))
+    : tournaments
+
+  const now = new Date()
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const hasQuery = q.length > 0
+
+  // Group by calendar month
+  const monthMap = new Map<string, { label: string; list: typeof filtered }>()
+  for (const t of filtered) {
+    let key: string
+    let label: string
+    if (t.starts_at) {
+      const d = new Date(t.starts_at)
+      key   = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      label = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+    } else {
+      key   = '9999-99'
+      label = 'Date TBC'
+    }
+    if (!monthMap.has(key)) monthMap.set(key, { label, list: [] })
+    monthMap.get(key)!.list.push(t)
+  }
+
+  const groups = [...monthMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, { label, list }]) => ({ key, label, list }))
+
+  return (
+    <>
+      {/* ── Header row: title + search + tour toggle ── */}
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
+        <div>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+            Tournaments
+          </h1>
+          <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
+            Pick your bracket before the draw closes.
+          </p>
+        </div>
+
+        {/* Right side: search + ATP/WTA */}
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search…"
+            className="px-3 py-2 text-sm border rounded-sm bg-white"
+            style={{
+              borderColor: 'var(--chalk-dim)',
+              fontFamily: 'var(--font-mono)',
+              color: 'var(--ink)',
+              width: '160px',
+              outline: 'none',
+            }}
+          />
+
+          <div className="flex rounded-sm overflow-hidden border" style={{ borderColor: 'var(--chalk-dim)' }}>
+            {(['ATP', 'WTA'] as const).map(tour => (
+              <Link
+                key={tour}
+                href={`/tournaments?tour=${tour}${activeSurface !== 'all' ? `&surface=${activeSurface}` : ''}`}
+                className="px-6 py-2 text-sm font-medium transition-colors"
+                style={{
+                  background: activeTour === tour ? 'var(--court)' : 'white',
+                  color: activeTour === tour ? 'white' : 'var(--muted)',
+                  fontFamily: 'var(--font-mono)',
+                  letterSpacing: '0.05em',
+                }}
+              >
+                {tour}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Surface chips ── */}
+      <div className="flex items-center gap-2 mb-8 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+        {SURFACES.map(s => {
+          const active = activeSurface === s.key
+          const activeColor = (s as any).color ?? 'var(--ink)'
+          const activeBg    = (s as any).bg    ?? 'white'
+          return (
+            <Link
+              key={s.key}
+              href={`/tournaments?tour=${activeTour}${s.key !== 'all' ? `&surface=${s.key}` : ''}`}
+              className="flex-shrink-0 px-3 py-1.5 text-xs rounded-sm border transition-all"
+              style={{
+                fontFamily: 'var(--font-mono)',
+                letterSpacing: '0.04em',
+                borderColor: active ? activeColor : 'var(--chalk-dim)',
+                background:  active ? activeBg   : 'white',
+                color:       active ? activeColor : 'var(--muted)',
+                fontWeight:  active ? 600 : 400,
+              }}
+            >
+              {s.label}
+            </Link>
+          )
+        })}
+      </div>
+
+      {/* ── Tournament list ── */}
+      {filtered.length === 0 ? (
+        <div className="text-center py-24" style={{ color: 'var(--muted)' }}>
+          <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '0.5rem' }}>
+            {hasQuery
+              ? `No results for "${query}"`
+              : `No ${activeSurface !== 'all' ? `${activeSurface}-court ` : ''}${activeTour} tournaments`}
+          </p>
+          {hasQuery ? (
+            <button
+              onClick={() => setQuery('')}
+              style={{ fontSize: '0.875rem', color: 'var(--court)', background: 'none', border: 'none', cursor: 'pointer' }}
+            >
+              Clear search
+            </button>
+          ) : activeSurface !== 'all' ? (
+            <Link href={`/tournaments?tour=${activeTour}`} style={{ color: 'var(--court)', fontSize: '0.875rem' }}>
+              View all {activeTour} tournaments →
+            </Link>
+          ) : (
+            <p style={{ fontSize: '0.875rem' }}>Check back soon — the calendar syncs automatically.</p>
+          )}
+        </div>
+      ) : (
+        <>
+          {groups.map(group => (
+            <TournamentMonthGroup
+              key={group.key}
+              month={group.label}
+              count={group.list.length}
+              defaultOpen={hasQuery || group.key === currentMonthKey}
+            >
+              {group.list.map((t: any) => (
+                <TournamentCard key={t.id} t={t} />
+              ))}
+            </TournamentMonthGroup>
+          ))}
+        </>
+      )}
+    </>
+  )
+}
