@@ -19,5 +19,10 @@ ALTER TABLE public.tournaments
 -- New uniqueness: one row per (external_id, year).
 -- NULL starts_at rows are treated as distinct from each other by PG unique
 -- index semantics, so they will never conflict.
+--
+-- NOTE: starts_at is timestamptz. date_trunc(text, timestamptz) is STABLE
+-- (timezone-dependent), not IMMUTABLE, so it cannot be used in an index
+-- expression. Casting to ::timestamp (without time zone) uses the UTC
+-- representation, which is what we want, and that overload IS immutable.
 CREATE UNIQUE INDEX IF NOT EXISTS tournaments_external_id_year_key
-  ON public.tournaments (external_id, date_trunc('year', starts_at));
+  ON public.tournaments (external_id, date_trunc('year', starts_at::timestamp));
