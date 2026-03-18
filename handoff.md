@@ -1,8 +1,8 @@
 # Developer Handoff — Quiet Please
 
-## Current status (as of March 17, 2026 — Session 16)
+## Current status (as of March 18, 2026 — Session 17)
 
-The app is live in production. Phase 4, Phase 6 (Challenge a friend), and the ATP-style ranking system are now complete. Mobile responsive layouts addressed in Session 14.
+The app is live in production. All Phase 4–7 features are complete. All pending DB migrations (003, 004, 007) are now applied to production. Phase 5 UX polish (skeletons, empty states, admin enhancements, analytics) is done.
 
 ### What is working right now
 - ✅ Landing page with full design system (chalk bg, court green, DM Serif Display)
@@ -30,7 +30,7 @@ The app is live in production. Phase 4, Phase 6 (Challenge a friend), and the AT
 - ✅ Notifications (`/notifications`) — in-app notification dot in Nav, notifications page
 - ✅ Email notifications — draw opens + points awarded emails
 - ✅ Open Graph images — `/tournaments/[id]/opengraph-image.tsx`, tier/surface badges, tournament name, date range
-- ✅ Admin panel (`/admin`) — trigger sync-tournaments, sync-draws, sync-results, award-points, sync-backfill; protected by ADMIN_USER_IDS env var; "Admin" link shown in Nav for admin users
+- ✅ Admin panel (`/admin`) — trigger sync-tournaments, sync-draws, sync-results, award-points, sync-backfill; tournament status override (force in_progress/completed without waiting for sync); protected by ADMIN_USER_IDS env var; "Admin" link shown in Nav for admin users
 - ⚠️ 2026 ATP/WTA calendar incomplete — current free-tier API (api-tennis.com via RapidAPI) only returns a subset of events; 250-level events are missing because they're not included in the free plan. **Upgrade path**: api-tennis.com direct subscription (Starter $40/mo, 14-day free trial). Before paying, email contact@api-tennis.com to confirm ATP/WTA 250 coverage. The adapter layer is already built — only `TENNIS_API_KEY` env var + base URL need changing. No code changes required.
 - ✅ Cron: sync-tournaments, sync-draws, sync-results, award-points, sync-backfill — all working; award-points also scores + expires challenges
 - ✅ Points engine tested — awards correct per-round points, showing in nav and leaderboard
@@ -43,15 +43,16 @@ The app is live in production. Phase 4, Phase 6 (Challenge a friend), and the AT
 - ✅ Deployed to production at https://quiet-please.vercel.app
 - ✅ Vercel cron jobs configured (daily schedules — Hobby plan limit)
 - ✅ Supabase Auth redirect URLs updated for production
+- ✅ Vercel Analytics — page view tracking via `@vercel/analytics`; `<Analytics />` in root layout
 
 ### Known bugs / tech debt
 - TypeScript build errors suppressed via `ignoreBuildErrors: true` — fix properly by running `supabase gen types typescript` to regenerate DB types after applying migrations
 - Cron schedules are daily-only (Vercel Hobby plan limit) — upgrade to Vercel Pro ($20/mo) for sub-hourly syncs (sync-results every 30 min, award-points every 35 min). **Only matters when going fully public with live tournament data.**
 
 ### Pending manual steps (must do before public launch)
-1. **Apply migrations** to production Supabase — in order: `003_username_setup.sql` → `004_practice_predictions.sql` → `007_ranking_system.sql` (`006_challenges.sql` already run on prod)
-2. **Re-enable email confirmation** in Supabase dashboard → Auth → Email Provider (code is ready)
-3. **Run sync-backfill** to process past 2026 tournaments: `GET /api/cron/sync-backfill` with `Authorization: Bearer <CRON_SECRET>`
+1. ✅ **Apply migrations** — `003_username_setup.sql`, `004_practice_predictions.sql`, `007_ranking_system.sql` all run on prod (Session 17)
+2. ✅ **Re-enable email confirmation** — done (Session 17)
+3. **Run sync-backfill** to process past 2026 tournaments: `GET /api/cron/sync-backfill` with `Authorization: Bearer <CRON_SECRET>` (one-time, run whenever new past tournaments are seeded)
 
 ---
 
@@ -70,7 +71,7 @@ quiet-please/
 │   │   ├── setup-username/page.tsx + actions.ts         ✅ (OAuth username pick)
 │   │   ├── dashboard/page.tsx                           ✅
 │   │   ├── notifications/page.tsx                       ✅
-│   │   ├── admin/page.tsx + AdminPanel.tsx              ✅ (protected, 5 cron triggers)
+│   │   ├── admin/page.tsx + AdminPanel.tsx              ✅ (protected, 5 cron triggers, status override)
 │   │   ├── tournaments/
 │   │   │   ├── page.tsx                                 ✅ (public, ATP/WTA/surface filters)
 │   │   │   └── [id]/
@@ -86,8 +87,10 @@ quiet-please/
 │   │   ├── leaderboard/page.tsx                         ✅
 │   │   ├── leagues/
 │   │   │   ├── page.tsx                                 ✅
+│   │   │   ├── loading.tsx                              ✅
 │   │   │   ├── new/page.tsx + actions.ts                ✅
 │   │   │   ├── [id]/page.tsx                            ✅ (leaderboard + activity feed)
+│   │   │   ├── [id]/loading.tsx                         ✅
 │   │   │   └── join/page.tsx + actions.ts               ✅
 │   │   ├── friends/
 │   │   │   ├── page.tsx                                 ✅ (search, send/accept/decline, challenge btn)
@@ -101,12 +104,15 @@ quiet-please/
 │   │   │   └── actions.ts                               ✅ (updateLocation server action)
 │   │   ├── auth/callback/route.ts                       ✅
 │   │   ├── auth/logout/route.ts                         ✅
-│   │   └── api/cron/
-│   │       ├── sync-tournaments/route.ts                ✅
-│   │       ├── sync-draws/route.ts                      ✅
-│   │       ├── sync-results/route.ts                    ✅
-│   │       ├── sync-backfill/route.ts                   ✅
-│   │       └── award-points/route.ts                    ✅ (stamps expires_at, calls recalculate_ranking_points)
+│   │   └── api/
+│   │       ├── admin/
+│   │       │   └── set-tournament-status/route.ts       ✅ (auth-protected; force tournament status)
+│   │       └── cron/
+│   │           ├── sync-tournaments/route.ts             ✅
+│   │           ├── sync-draws/route.ts                   ✅
+│   │           ├── sync-results/route.ts                 ✅
+│   │           ├── sync-backfill/route.ts                ✅
+│   │           └── award-points/route.ts                 ✅ (stamps expires_at, calls recalculate_ranking_points)
 │   ├── components/Nav.tsx                               ✅ (notification dot)
 │   ├── lib/supabase/ (client, server, admin, middleware) ✅
 │   ├── lib/tennis/ (adapter, types, points, api-tennis provider) ✅
@@ -115,10 +121,10 @@ quiet-please/
 │   └── types/database.ts                               ✅
 └── supabase/migrations/
     ├── 001_initial_schema.sql                           ✅ run
-    ├── 003_username_setup.sql                           ✅ written, NOT YET run on prod
-    ├── 004_practice_predictions.sql                     ✅ written, NOT YET run on prod
-    ├── 006_challenges.sql                               ✅ written, run on prod
-    └── 007_ranking_system.sql                           ✅ written, NOT YET run on prod
+    ├── 003_username_setup.sql                           ✅ run on prod (Session 17)
+    ├── 004_practice_predictions.sql                     ✅ run on prod (Session 17)
+    ├── 006_challenges.sql                               ✅ run on prod
+    └── 007_ranking_system.sql                           ✅ run on prod (Session 17)
 ```
 
 ---
@@ -132,6 +138,7 @@ SUPABASE_SERVICE_ROLE_KEY=<secret key — Supabase Settings → API Keys>
 TENNIS_API_KEY=3c017f23c4mshcb90a92890cb23dp103ec3jsn3367cf2e71d1
 TENNIS_API_PROVIDER=api-tennis
 CRON_SECRET=dev-secret-123
+ADMIN_USER_IDS=<comma-separated Supabase user UUIDs — leave empty in dev (check skipped)>
 ```
 
 **Important notes:**
@@ -155,12 +162,12 @@ Rate limit: sequential requests with 500ms delay between ATP/WTA calls.
 
 ## Database migrations applied
 
-### 003_username_setup.sql (NOT YET RUN ON PROD)
+### 003_username_setup.sql (✅ RUN ON PROD — Session 17)
 - Adds `username_is_set boolean NOT NULL DEFAULT true` to `public.users`
 - Updates `handle_new_user()` trigger to set `username_is_set = false` for OAuth signups (no username in metadata)
 - Existing users (including current Google users) keep `username_is_set = true` via DEFAULT
 
-### 004_practice_predictions.sql (NOT YET RUN ON PROD)
+### 004_practice_predictions.sql (✅ RUN ON PROD — Session 17)
 - Adds `is_practice boolean NOT NULL DEFAULT false` to `public.predictions`
 - Practice predictions are scored immediately in the server action (not via cron)
 - Practice predictions never affect `users.total_points` or `league_members.total_points`
@@ -171,7 +178,7 @@ Rate limit: sequential requests with 500ms delay between ATP/WTA calls.
 - Both FKs on `challenges` are explicitly named (`challenges_challenger_id_fkey`, `challenges_challenged_id_fkey`) for PostgREST disambiguation
 - RLS policies: users can SELECT rows where they are a party; INSERT as requester/challenger; UPDATE as addressee/challenged only
 
-### 007_ranking_system.sql (NOT YET RUN ON PROD)
+### 007_ranking_system.sql (✅ RUN ON PROD — Session 17)
 - Adds `expires_at TIMESTAMPTZ` to `predictions` (stamped = starts_at + 364 days when points first awarded)
 - Adds to `users`: `ranking_points INT NOT NULL DEFAULT 0`, `atp_ranking_points INT NOT NULL DEFAULT 0`, `wta_ranking_points INT NOT NULL DEFAULT 0`, `country TEXT`, `city TEXT`
 - Creates `weekly_slots` table: `(user_id, circuit, iso_year, iso_week, tournament_id)` with UNIQUE(user_id, circuit, iso_year, iso_week) — enforces one ATP + one WTA slot per ISO week per user
@@ -212,20 +219,19 @@ All originally planned Phase 4 items are now shipped:
 - ✅ Admin panel for triggering syncs
 - ✅ Sticky bracket header
 
-## Phase 5 — Next things to work on
+## Phase 5 — UX & Infrastructure ✅ (complete as of Session 17)
 
-### High priority
 - ✅ **Mobile responsive layouts** — Nav (admin pill + sign-out hidden on mobile top row; sign-out added to mobile scrollable tab row), BracketPredictor (save draft hidden in sticky nav on mobile; practice + locked banners reflow: badge inline, long text wraps below), tournament detail h1 uses `text-3xl md:text-4xl` responsive sizing
 - ✅ **ATP-style ranking system** — rolling 52-week window, weekly slots, circuit breakdown, leaderboard scopes, country/city on profile (Session 15)
-- **Apply pending migrations to prod** — `003_username_setup.sql`, `004_practice_predictions.sql`, and `007_ranking_system.sql` are written but not yet run on production Supabase
-- **Re-enable email confirmation** in Supabase dashboard → Auth → Email Provider (code is ready; was disabled for testing)
+- ✅ **Apply pending migrations to prod** — `003_username_setup.sql`, `004_practice_predictions.sql`, `007_ranking_system.sql` all run on production Supabase (Session 17)
+- ✅ **Re-enable email confirmation** — done (Session 17)
+- ✅ **Tournament status override** — admin panel now lets you force any tournament to in_progress/completed without waiting for sync cron (Session 17)
+- ✅ **Loading skeletons** — all data-heavy pages have Suspense-boundary `loading.tsx` files: dashboard, tournaments, tournaments/[id], leaderboard, leagues, leagues/[id] (Session 17)
+- ✅ **Vercel Analytics** — page view tracking via `@vercel/analytics`; `<Analytics />` in root layout (Session 17)
 
-### Medium priority
-- **Complete tournament calendar** — Several tournaments are missing from the DB, including 250-level events (e.g. Houston Open, ATP Indian Wells 250 qualifier, WTA 250s throughout the year) and past Jan–March 2026 events (Australian Open should show as completed). Root cause: `seed-tournaments` route only hardcodes Grand Slams, Masters 1000, and a handful of 500s — no 250-level events were ever seeded. The RapidAPI calendar endpoint only returns the last ~11 events of the year (Nov–Dec), so it can't fill the gap. Fix: expand `src/app/api/admin/seed-tournaments/route.ts` to include all ATP 250 + WTA 250/500 events for 2026, plus past Jan–March tournaments (Australian Open ATP+WTA, Doha/Adelaide/etc.). After adding to seed: hit `/api/admin/seed-tournaments`, then run sync-backfill to mark past ones as completed with results.
-- **Override tournament status** in admin panel — manually set a tournament to in_progress/completed without waiting for sync
-- **Better empty states** — no predictions yet, no leagues yet, no completed tournaments
-- **Loading skeletons** for data-heavy pages (tournament list, leaderboard)
-- **Upgrade cron schedules** — Vercel Hobby plan limits to daily. Upgrade to Pro ($20/mo) for sub-hourly syncs (results every 30 min, award-points every 35 min). Only matters for live tournament coverage
+### Still pending
+- **Complete tournament calendar** — Several tournaments are missing from the DB, including 250-level events (e.g. Houston Open, ATP Indian Wells 250 qualifier, WTA 250s throughout the year) and past Jan–March 2026 events (Australian Open should show as completed). Root cause: `seed-tournaments` route only hardcodes Grand Slams, Masters 1000, and a handful of 500s — no 250-level events were ever seeded. Fix: expand `src/app/api/admin/seed-tournaments/route.ts` to include all ATP 250 + WTA 250/500 events for 2026, plus past Jan–March tournaments. After adding: hit `/api/admin/seed-tournaments`, then run sync-backfill.
+- **Upgrade cron schedules** — Vercel Hobby plan limits to daily. Upgrade to Pro ($20/mo) for sub-hourly syncs (results every 30 min, award-points every 35 min). Only matters for live tournament coverage.
 
 ### Lower priority / nice to have
 - All-time points view alongside rolling 52-week ranking (already stored in `predictions.points_earned` — just needs a different aggregate query)

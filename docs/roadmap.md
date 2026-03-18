@@ -39,12 +39,17 @@
 - ✅ Sticky bracket header (nav + banner + round tabs)
 - ✅ Practice mode (completed tournaments, picks scored immediately, no ranking_points)
 
-## Phase 5 — Mobile + UX ✅ (complete)
+## Phase 5 — Mobile + UX + Infrastructure ✅ (complete as of Session 17)
 - ✅ Mobile responsive Nav (admin/sign-out pill hidden on mobile, sign-out in tab row)
 - ✅ Mobile responsive BracketPredictor (banners reflow, save draft hidden in sticky nav)
 - ✅ Tournament list grouped by month (collapsed by default, expand on click)
 - ✅ City dropdown on profile location form (country-driven, 47 countries)
 - ✅ Points removed from Nav (visible on leaderboard + profile instead)
+- ✅ Applied pending DB migrations (003, 004, 007) to production Supabase
+- ✅ Re-enabled email confirmation in Supabase Auth settings
+- ✅ Tournament status override in admin panel (force in_progress/completed without sync)
+- ✅ Loading skeletons for all data-heavy pages (Suspense boundaries via loading.tsx)
+- ✅ Vercel Analytics (`@vercel/analytics`) added to root layout
 
 ## Phase 6 — Challenge a friend ✅ (complete)
 - ✅ Friendship/follow system (search by username, send/accept/decline)
@@ -65,18 +70,20 @@
 
 ---
 
-## Current priorities (as of March 2026)
+## Current priorities (as of March 2026 — Session 17)
 
 ### High priority
-- **Apply pending migrations to prod** — `003_username_setup.sql`, `004_practice_predictions.sql`, `007_ranking_system.sql` written but not yet run on production Supabase
-- **Re-enable email confirmation** — code is ready; was disabled for testing (Supabase dashboard → Auth → Email Provider)
 - **Complete tournament calendar** — seed file missing all 250-level events + past Jan–March 2026 tournaments (Australian Open etc.). Fix: expand `src/app/api/admin/seed-tournaments/route.ts` then hit `/api/admin/seed-tournaments` + run sync-backfill
 
 ### Medium priority
-- **Override tournament status** in admin panel — manually set to in_progress/completed without waiting for sync
-- **Better empty states** — no predictions yet, no leagues, no completed tournaments
-- **Loading skeletons** for data-heavy pages
-- **Upgrade cron schedules** — Vercel Pro ($20/mo) for sub-hourly syncs during live tournaments
+- **Upgrade cron schedules** — Vercel Pro ($20/mo) for sub-hourly syncs during live tournaments (results every 30 min, award-points every 35 min)
+
+### ✅ Recently completed (Session 17)
+- ✅ Apply pending migrations to prod (003, 004, 007)
+- ✅ Re-enable email confirmation
+- ✅ Tournament status override in admin panel
+- ✅ Loading skeletons for all data-heavy pages
+- ✅ Vercel Analytics
 
 ### Lower priority / nice to have
 - All-time points view alongside 52-week ranking
