@@ -7,12 +7,22 @@ import { triggerCron, setTournamentStatus, updateTournamentDetails, deleteTourna
 // ── Cron jobs ─────────────────────────────────────────────────────────────────
 
 const ENDPOINTS = [
-  { key: 'sync-tournaments', label: 'Sync Tournaments', description: 'Fetch ATP/WTA calendar and upsert tournaments' },
-  { key: 'sync-draws',       label: 'Sync Draws',       description: 'Fetch draws for upcoming tournaments, open predictions' },
-  { key: 'sync-results',     label: 'Sync Results',     description: 'Fetch match results for in-progress tournaments' },
-  { key: 'award-points',     label: 'Award Points',     description: 'Score correct predictions and update leaderboards' },
-  { key: 'sync-backfill',    label: 'Sync Backfill',    description: 'Process past tournaments (on-demand)' },
+  { key: 'sync-tournaments', label: 'Sync Tournaments', description: 'Fetch ATP/WTA calendar and upsert tournaments',      scheduleUtcHour: 6  },
+  { key: 'sync-draws',       label: 'Sync Draws',       description: 'Fetch draws for upcoming tournaments, open predictions', scheduleUtcHour: 9  },
+  { key: 'sync-results',     label: 'Sync Results',     description: 'Fetch match results for in-progress tournaments',    scheduleUtcHour: 12 },
+  { key: 'award-points',     label: 'Award Points',     description: 'Score correct predictions and update leaderboards',  scheduleUtcHour: 18 },
+  { key: 'sync-backfill',    label: 'Sync Backfill',    description: 'Process past tournaments (on-demand)',               scheduleUtcHour: null },
 ] as const
+
+// Format a UTC hour as a local CET/CEST time string — auto-handles summer time.
+function formatCronSchedule(utcHour: number | null): string {
+  if (utcHour === null) return 'On-demand only'
+  const d = new Date()
+  d.setUTCHours(utcHour, 0, 0, 0)
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })
+  const tz   = d.toLocaleTimeString('en-GB', { timeZoneName: 'short', timeZone: 'Europe/Paris' }).split(' ').pop() ?? 'CET'
+  return `Daily at ${time} ${tz}`
+}
 
 type EndpointKey = typeof ENDPOINTS[number]['key']
 type AsyncStatus = { type: 'idle' | 'loading' | 'success' | 'error'; message?: string }
@@ -261,8 +271,11 @@ export default function AdminPanel({ tournaments }: { tournaments: Tournament[] 
                     <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)', marginBottom: '2px' }}>
                       {endpoint.label}
                     </p>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '2px' }}>
                       {endpoint.description}
+                    </p>
+                    <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.03em' }}>
+                      {formatCronSchedule(endpoint.scheduleUtcHour)}
                     </p>
                   </div>
                   <button
