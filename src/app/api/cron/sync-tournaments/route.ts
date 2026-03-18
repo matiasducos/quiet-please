@@ -222,7 +222,7 @@ export async function GET(request: Request) {
   // ── 5. Insert genuinely new year entries ─────────────────────────────────
   // We use plain insert (not upsert) because the year-aware map check above
   // already filtered out all entries that exist in the DB.
-  // Unique constraint: (external_id, date_trunc('year', starts_at)) — see migration 008.
+  // Unique constraint: (external_id, starts_year) — see migration 008.
   let insertedCount = 0
   if (toInsert.length) {
     const { error: insertError } = await supabase
