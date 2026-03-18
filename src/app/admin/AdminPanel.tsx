@@ -97,6 +97,7 @@ export default function AdminPanel({ tournaments }: { tournaments: Tournament[] 
   }
   type DetailsEdit = {
     open: boolean
+    starts_at: string
     surface: string
     ends_at: string
     draw_close_at: string
@@ -123,6 +124,7 @@ export default function AdminPanel({ tournaments }: { tournaments: Tournament[] 
         t.id,
         {
           open: false,
+          starts_at:     toDateInput(t.starts_at),
           surface:       t.surface       ?? '',
           ends_at:       toDateInput(t.ends_at),
           draw_close_at: toDatetimeInput(t.draw_close_at),
@@ -131,6 +133,13 @@ export default function AdminPanel({ tournaments }: { tournaments: Tournament[] 
       ])
     )
   )
+
+  // ── Tournament filter ─────────────────────────────────────────────────────────
+  const [filter, setFilter] = useState('')
+  const filterLow = filter.toLowerCase()
+  const visibleTournaments = filter
+    ? tournaments.filter(t => t.name.toLowerCase().includes(filterLow))
+    : tournaments
 
   // ── Delete state ─────────────────────────────────────────────────────────────
   type DeleteState = { confirming: boolean; deleting: boolean; deleted: boolean; error?: string }
@@ -177,6 +186,7 @@ export default function AdminPanel({ tournaments }: { tournaments: Tournament[] 
     try {
       const d = detailsEdits[id]
       const { ok, error } = await updateTournamentDetails(id, {
+        starts_at:     fromDateInput(d.starts_at),
         surface:       d.surface       || null,
         ends_at:       fromDateInput(d.ends_at),
         draw_close_at: fromDatetimeInput(d.draw_close_at),
@@ -286,15 +296,32 @@ export default function AdminPanel({ tournaments }: { tournaments: Tournament[] 
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
             Tournaments
           </h2>
-          <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginTop: '0.4rem', marginBottom: '1.25rem' }}>
+          <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginTop: '0.4rem', marginBottom: '1rem' }}>
             Override status and set surface / dates for upcoming tournaments.
           </p>
 
+          {/* Search filter */}
+          <input
+            type="text"
+            placeholder="Filter by name…"
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            style={{
+              width: '100%', marginBottom: '1rem',
+              fontFamily: 'var(--font-mono)', fontSize: '0.8rem',
+              padding: '7px 10px', border: '1px solid var(--chalk-dim)',
+              borderRadius: '2px', background: 'white', color: 'var(--ink)',
+              outline: 'none',
+            }}
+          />
+
           <div className="flex flex-col gap-3">
-            {tournaments.length === 0 && (
-              <p style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>No tournaments found.</p>
+            {visibleTournaments.length === 0 && (
+              <p style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+                {filter ? `No tournaments matching "${filter}"` : 'No tournaments found.'}
+              </p>
             )}
-            {tournaments.filter(t => !hiddenIds.has(t.id)).map(t => {
+            {visibleTournaments.filter(t => !hiddenIds.has(t.id)).map(t => {
               const ov  = statusOverrides[t.id]
               const det = detailsEdits[t.id]
               const del = deleteStates[t.id]
@@ -432,6 +459,23 @@ export default function AdminPanel({ tournaments }: { tournaments: Tournament[] 
                       </p>
 
                       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+                        {/* Starts at */}
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.06em', color: 'var(--muted)', textTransform: 'uppercase' }}>
+                            Starts at
+                          </span>
+                          <input
+                            type="date"
+                            value={det.starts_at}
+                            onChange={e => setDetail(t.id, 'starts_at', e.target.value)}
+                            style={{
+                              fontFamily: 'var(--font-mono)', fontSize: '0.8rem',
+                              padding: '5px 8px', border: '1px solid var(--chalk-dim)',
+                              borderRadius: '2px', background: 'white', color: 'var(--ink)',
+                            }}
+                          />
+                        </label>
+
                         {/* Surface */}
                         <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.06em', color: 'var(--muted)', textTransform: 'uppercase' }}>
