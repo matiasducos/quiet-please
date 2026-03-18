@@ -144,6 +144,9 @@ export async function GET(request: Request) {
   const toMigrate: Array<{ id: string; newExternalId: string; name: string }> = []
   const toInsert: any[] = []
   const skipped: string[] = []
+  const alreadyInDb: string[] = []
+  const foundAtp: string[] = []
+  const foundWta: string[] = []
 
   // Track yearKeys queued for insert in this run to deduplicate API duplicates
   const insertedByYearKey = new Set<string>()
@@ -157,6 +160,10 @@ export async function GET(request: Request) {
     }
 
     const name: string = raw.tournament_name ?? 'Unknown'
+    // Track what ATP/WTA tournaments the API returned (before any year/DB filtering)
+    if (tour === 'ATP') foundAtp.push(name)
+    else if (tour === 'WTA') foundWta.push(name)
+
     const externalId    = String(raw.tournament_key)
     const normalizedName = normalizeName(name)
 
@@ -168,7 +175,10 @@ export async function GET(request: Request) {
     const yearKey = year ? `${externalId}::${year}` : null
 
     // ── Skip if this (external_id, year) already exists in DB ──
-    if (yearKey && dbByExternalIdYear.has(yearKey)) continue
+    if (yearKey && dbByExternalIdYear.has(yearKey)) {
+      alreadyInDb.push(name)
+      continue
+    }
 
     // ── Skip if we already queued this yearKey in this run (API duplicates) ──
     if (yearKey && insertedByYearKey.has(yearKey)) continue
@@ -237,12 +247,22 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({
-    message:        'Tournaments synced',
-    api_total:      apiTournaments.length,
-    migrated_count: migrated.length,
+    message:           'Tournaments synced',
+    api_total:         apiTournaments.length,
+    // Diagnostic: what ATP/WTA tournaments the API returned (sorted alphabetically)
+    found_atp:         foundAtp.sort(),
+    found_wta:         foundWta.sort(),
+    // Already in DB — silently skipped (existing year entries)
+    already_in_db_count: alreadyInDb.length,
+    already_in_db:     alreadyInDb.sort(),
+    // New inserts this run
+    inserted:          insertedCount,
+    inserted_names:    toInsert.map((t: any) => t.name).sort(),
+    // Migrations
+    migrated_count:    migrated.length,
     migrated,
-    inserted:       insertedCount,
-    skipped_count:  skipped.length,
+    // Filtered out (non-ATP/WTA)
+    skipped_count:     skipped.length,
     ...(errors.length ? { errors } : {}),
   })
 }

@@ -61,6 +61,20 @@ export async function setTournamentStatus(
   return error ? { ok: false, error: error.message } : { ok: true }
 }
 
+// ── Tournament delete ─────────────────────────────────────────────────────────
+
+export async function deleteTournament(
+  tournamentId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  await assertAdmin()
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('tournaments')
+    .delete()
+    .eq('id', tournamentId)
+  return error ? { ok: false, error: error.message } : { ok: true }
+}
+
 // ── Tournament details update ─────────────────────────────────────────────────
 
 const VALID_SURFACES = ['hard', 'clay', 'grass'] as const

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { triggerCron, setTournamentStatus, updateTournamentDetails } from './actions'
+import { triggerCron, setTournamentStatus, updateTournamentDetails, deleteTournament } from './actions'
 
 // ── Cron jobs ─────────────────────────────────────────────────────────────────
 
@@ -132,6 +132,13 @@ export default function AdminPanel({ tournaments }: { tournaments: Tournament[] 
     )
   )
 
+  // ── Delete state ─────────────────────────────────────────────────────────────
+  type DeleteState = { confirming: boolean; deleting: boolean; deleted: boolean; error?: string }
+  const [deleteStates, setDeleteStates] = useState<Record<string, DeleteState>>(
+    Object.fromEntries(tournaments.map(t => [t.id, { confirming: false, deleting: false, deleted: false }]))
+  )
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set())
+
   // ── Status override handlers ─────────────────────────────────────────────────
   function setSelectedStatus(id: string, status: TournamentStatus) {
     setStatusOverrides(s => ({ ...s, [id]: { ...s[id], selected: status } }))
@@ -180,6 +187,29 @@ export default function AdminPanel({ tournaments }: { tournaments: Tournament[] 
       }))
     } catch (err) {
       setDetailsEdits(s => ({ ...s, [id]: { ...s[id], result: { type: 'error', message: String(err) } } }))
+    }
+  }
+
+  // ── Delete handlers ──────────────────────────────────────────────────────────
+  function confirmDelete(id: string) {
+    setDeleteStates(s => ({ ...s, [id]: { ...s[id], confirming: true } }))
+  }
+  function cancelDelete(id: string) {
+    setDeleteStates(s => ({ ...s, [id]: { ...s[id], confirming: false } }))
+  }
+  async function doDelete(id: string) {
+    setDeleteStates(s => ({ ...s, [id]: { ...s[id], confirming: false, deleting: true } }))
+    try {
+      const { ok, error } = await deleteTournament(id)
+      if (ok) {
+        setDeleteStates(s => ({ ...s, [id]: { confirming: false, deleting: false, deleted: true } }))
+        // Hide row after short delay so user sees feedback
+        setTimeout(() => setHiddenIds(prev => new Set([...prev, id])), 800)
+      } else {
+        setDeleteStates(s => ({ ...s, [id]: { confirming: false, deleting: false, deleted: false, error } }))
+      }
+    } catch (err) {
+      setDeleteStates(s => ({ ...s, [id]: { confirming: false, deleting: false, deleted: false, error: String(err) } }))
     }
   }
 
@@ -264,10 +294,11 @@ export default function AdminPanel({ tournaments }: { tournaments: Tournament[] 
             {tournaments.length === 0 && (
               <p style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>No tournaments found.</p>
             )}
-            {tournaments.map(t => {
+            {tournaments.filter(t => !hiddenIds.has(t.id)).map(t => {
               const ov  = statusOverrides[t.id]
               const det = detailsEdits[t.id]
-              if (!ov || !det) return null
+              const del = deleteStates[t.id]
+              if (!ov || !det || !del) return null
               const currentStatusColor = STATUS_COLORS[t.status as TournamentStatus] ?? STATUS_COLORS.upcoming
 
               return (
@@ -339,7 +370,47 @@ export default function AdminPanel({ tournaments }: { tournaments: Tournament[] 
                     >
                       {det.open ? '▲ hide' : '▼ edit'}
                     </button>
+
+                    {/* Delete — two-step */}
+                    {del.deleted ? (
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#166534' }}>✓ deleted</span>
+                    ) : del.confirming ? (
+                      <>
+                        <button
+                          onClick={() => doDelete(t.id)}
+                          className="px-2 py-1 text-xs font-medium rounded-sm flex-shrink-0"
+                          style={{ background: '#ef4444', color: 'white' }}
+                        >
+                          Confirm delete
+                        </button>
+                        <button
+                          onClick={() => cancelDelete(t.id)}
+                          className="text-xs flex-shrink-0 transition-opacity hover:opacity-70"
+                          style={{ color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}
+                        >
+                          cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => confirmDelete(t.id)}
+                        disabled={del.deleting}
+                        className="text-xs flex-shrink-0 transition-opacity hover:opacity-70 disabled:opacity-40"
+                        style={{ color: '#ef4444', fontFamily: 'var(--font-mono)' }}
+                      >
+                        {del.deleting ? 'deleting…' : '✕ delete'}
+                      </button>
+                    )}
                   </div>
+
+                  {/* Delete error */}
+                  {del.error && (
+                    <div className="mt-2 px-3 py-1.5 rounded-sm" style={{ background: '#fee2e2', borderLeft: '3px solid #ef4444' }}>
+                      <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#991b1b', margin: 0 }}>
+                        Delete failed: {del.error}
+                      </p>
+                    </div>
+                  )}
 
                   {/* Status inline result */}
                   {ov.result.type !== 'idle' && ov.result.type !== 'loading' && ov.result.message && (
