@@ -21,16 +21,23 @@ export async function GET(request: Request) {
   }
   try {
     const supabase = createAdminClient()
+
+    // Draws are never published more than ~2 weeks before a tournament starts,
+    // so there's no point hitting the tennis API for events further out.
+    // Always include accepting_predictions (draw already exists, keep it fresh)
+    // and only include upcoming tournaments starting within the next 14 days.
+    const twoWeeksFromNow = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+
     const { data: tournaments, error: fetchError } = await supabase
       .from('tournaments')
       .select('id, external_id, name, status, draw_close_at, starts_at, ends_at')
-      .in('status', ['upcoming', 'accepting_predictions'])
+      .or(`status.eq.accepting_predictions,and(status.eq.upcoming,starts_at.lte.${twoWeeksFromNow})`)
       .order('starts_at', { ascending: true })
     if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 })
     if (!tournaments || tournaments.length === 0) {
       return NextResponse.json({ message: 'No tournaments to sync', synced: 0 })
     }
-    console.log(`[sync-draws] Syncing ${tournaments.length} tournaments`)
+    console.log(`[sync-draws] Syncing ${tournaments.length} tournaments (within 14-day window + active)`)
     const results = []
     for (const tournament of tournaments) {
       try {
