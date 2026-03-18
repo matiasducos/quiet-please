@@ -25,6 +25,26 @@ export default function Nav({ username, points = 0, activePage, userId }: NavPro
 
   return (
     <nav className="sticky top-0 z-50 bg-white border-b" style={{ borderColor: 'var(--chalk-dim)' }}>
+      <style>{`
+        .nav-link {
+          display: inline-block;
+          transition: color 0.15s ease, transform 0.15s ease;
+        }
+        .nav-link:not(.nav-link-active):hover {
+          color: var(--ink) !important;
+          transform: translateY(-1px);
+        }
+        .nav-link-active {
+          color: var(--ink) !important;
+        }
+        .sign-out-btn {
+          transition: background 0.15s ease, border-color 0.15s ease;
+        }
+        .sign-out-btn:hover {
+          background: var(--chalk) !important;
+          border-color: var(--muted) !important;
+        }
+      `}</style>
 
       {/* Main row: logo + (desktop links) + user area */}
       <div className="flex items-center justify-between px-4 md:px-8 py-3 md:py-5">
@@ -44,6 +64,7 @@ export default function Nav({ username, points = 0, activePage, userId }: NavPro
               <Link
                 key={link.page}
                 href={link.href}
+                className={`nav-link${activePage === link.page ? ' nav-link-active' : ''}`}
                 style={{
                   fontSize: '0.875rem',
                   color: activePage === link.page ? 'var(--ink)' : 'var(--muted)',
@@ -90,7 +111,19 @@ export default function Nav({ username, points = 0, activePage, userId }: NavPro
               <form action="/auth/logout" method="post" className="hidden md:block">
                 <button
                   type="submit"
-                  style={{ fontSize: '0.8rem', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  className="sign-out-btn"
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '0.72rem',
+                    letterSpacing: '0.03em',
+                    color: 'var(--ink)',
+                    background: 'white',
+                    border: '1px solid var(--chalk-dim)',
+                    borderRadius: '2px',
+                    cursor: 'pointer',
+                    padding: '4px 10px',
+                    lineHeight: 1,
+                  }}
                 >
                   Sign out
                 </button>
