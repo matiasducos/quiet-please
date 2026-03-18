@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import Nav from '@/components/Nav'
 import SandboxClient from './SandboxClient'
 
 export default async function SandboxPage() {
@@ -14,11 +15,24 @@ export default async function SandboxPage() {
         .then(r => r.data)
     : null
 
+  // Nav is a server component (renders NotificationBell which uses next/headers).
+  // We pass it as a ReactNode prop so SandboxClient never needs to import Nav
+  // directly — that would pull next/headers into the client bundle.
+  const nav = (
+    <Nav
+      username={profile?.username}
+      points={profile?.ranking_points ?? 0}
+      activePage="test"
+      userId={user?.id}
+    />
+  )
+
   return (
     <SandboxClient
       userId={user?.id ?? null}
       username={profile?.username ?? null}
       points={profile?.ranking_points ?? 0}
+      nav={nav}
     />
   )
 }

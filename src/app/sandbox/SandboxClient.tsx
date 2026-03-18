@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import Link from 'next/link'
-import Nav from '@/components/Nav'
 import BracketPredictor from '@/app/tournaments/[id]/predict/BracketPredictor'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -274,10 +274,14 @@ export default function SandboxClient({
   userId,
   username,
   points = 0,
+  nav,
 }: {
   userId: string | null
   username: string | null
   points?: number
+  /** Server-rendered <Nav> passed from the server page to avoid importing
+   *  server-only modules (next/headers) into this client component. */
+  nav?: ReactNode
 }) {
   const [activeTab, setActiveTab]     = useState('atp250')
   const [phase, setPhase]             = useState<Phase>('idle')
@@ -362,7 +366,7 @@ export default function SandboxClient({
 
     return (
       <div className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-        <Nav username={username} points={points} activePage="test" userId={userId} />
+        {nav}
 
         <div className="max-w-3xl mx-auto px-4 md:px-8 py-10">
 
