@@ -8,17 +8,19 @@ import TournamentMonthGroup from './TournamentMonthGroup'
 interface Props {
   tournaments: any[]
   activeTour: string
-  activeSurface: string
+  activeStatus: string
 }
 
-const SURFACES = [
-  { key: 'all',   label: 'All surfaces' },
-  { key: 'clay',  label: 'Clay',  color: '#993C1D', bg: '#fdf2ed' },
-  { key: 'grass', label: 'Grass', color: '#1a6b3c', bg: '#edf7f0' },
-  { key: 'hard',  label: 'Hard',  color: '#185FA5', bg: '#edf2fb' },
+const STATUSES = [
+  { key: 'all',                   label: 'All'            },
+  { key: 'upcoming',              label: 'Upcoming',       color: '#4a5568', bg: '#f3f3f1' },
+  { key: 'draw_published',        label: 'Draw published', color: '#185FA5', bg: '#edf2fb' },
+  { key: 'accepting_predictions', label: 'Predict now',    color: '#1a6b3c', bg: '#edf7f0' },
+  { key: 'in_progress',           label: 'In progress',    color: '#993C1D', bg: '#fdf2ed' },
+  { key: 'completed',             label: 'Completed',      color: '#4a5568', bg: '#ebebea' },
 ]
 
-export default function TournamentsClientList({ tournaments, activeTour, activeSurface }: Props) {
+export default function TournamentsClientList({ tournaments, activeTour, activeStatus }: Props) {
   const [query, setQuery] = useState('')
 
   const q = query.trim().toLowerCase()
@@ -50,6 +52,8 @@ export default function TournamentsClientList({ tournaments, activeTour, activeS
   const groups = [...monthMap.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, { label, list }]) => ({ key, label, list }))
+
+  const activeStatusMeta = STATUSES.find(s => s.key === activeStatus)
 
   return (
     <>
@@ -85,7 +89,7 @@ export default function TournamentsClientList({ tournaments, activeTour, activeS
             {(['ATP', 'WTA'] as const).map(tour => (
               <Link
                 key={tour}
-                href={`/tournaments?tour=${tour}${activeSurface !== 'all' ? `&surface=${activeSurface}` : ''}`}
+                href={`/tournaments?tour=${tour}${activeStatus !== 'all' ? `&status=${activeStatus}` : ''}`}
                 className="px-6 py-2 text-sm font-medium transition-colors"
                 style={{
                   background: activeTour === tour ? 'var(--court)' : 'white',
@@ -101,16 +105,16 @@ export default function TournamentsClientList({ tournaments, activeTour, activeS
         </div>
       </div>
 
-      {/* ── Surface chips ── */}
+      {/* ── Status chips ── */}
       <div className="flex items-center gap-2 mb-8 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-        {SURFACES.map(s => {
-          const active = activeSurface === s.key
+        {STATUSES.map(s => {
+          const active = activeStatus === s.key
           const activeColor = (s as any).color ?? 'var(--ink)'
           const activeBg    = (s as any).bg    ?? 'white'
           return (
             <Link
               key={s.key}
-              href={`/tournaments?tour=${activeTour}${s.key !== 'all' ? `&surface=${s.key}` : ''}`}
+              href={`/tournaments?tour=${activeTour}${s.key !== 'all' ? `&status=${s.key}` : ''}`}
               className="flex-shrink-0 px-3 py-1.5 text-xs rounded-sm border transition-all"
               style={{
                 fontFamily: 'var(--font-mono)',
@@ -133,7 +137,7 @@ export default function TournamentsClientList({ tournaments, activeTour, activeS
           <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '0.5rem' }}>
             {hasQuery
               ? `No results for "${query}"`
-              : `No ${activeSurface !== 'all' ? `${activeSurface}-court ` : ''}${activeTour} tournaments`}
+              : `No ${activeStatusMeta && activeStatus !== 'all' ? `"${activeStatusMeta.label}" ` : ''}${activeTour} tournaments`}
           </p>
           {hasQuery ? (
             <button
@@ -142,7 +146,7 @@ export default function TournamentsClientList({ tournaments, activeTour, activeS
             >
               Clear search
             </button>
-          ) : activeSurface !== 'all' ? (
+          ) : activeStatus !== 'all' ? (
             <Link href={`/tournaments?tour=${activeTour}`} style={{ color: 'var(--court)', fontSize: '0.875rem' }}>
               View all {activeTour} tournaments →
             </Link>

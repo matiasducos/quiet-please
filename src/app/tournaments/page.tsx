@@ -4,12 +4,14 @@ import { unstable_cache } from 'next/cache'
 import Nav from '@/components/Nav'
 import TournamentsClientList from '@/components/TournamentsClientList'
 
+const VALID_STATUSES = ['upcoming', 'draw_published', 'accepting_predictions', 'in_progress', 'completed'] as const
+
 // Cached — same data for all users, refreshes every hour
 const getTournaments = unstable_cache(
-  async (tour: string, surface: string) => {
+  async (tour: string, status: string) => {
     const supabase = createAdminClient()
     let q = supabase.from('tournaments').select('*').eq('tour', tour).order('starts_at', { ascending: true, nullsFirst: false })
-    if (surface !== 'all') q = (q as any).eq('surface', surface)
+    if (status !== 'all') q = (q as any).eq('status', status)
     const { data } = await q
     return data ?? []
   },
@@ -17,16 +19,16 @@ const getTournaments = unstable_cache(
   { revalidate: 3600 }
 )
 
-export default async function TournamentsPage({ searchParams }: { searchParams: Promise<{ tour?: string; surface?: string }> }) {
+export default async function TournamentsPage({ searchParams }: { searchParams: Promise<{ tour?: string; status?: string }> }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const params        = await searchParams
-  const activeTour    = params.tour === 'WTA' ? 'WTA' : 'ATP'
-  const activeSurface = ['clay', 'grass', 'hard'].includes(params.surface ?? '') ? params.surface! : 'all'
+  const params       = await searchParams
+  const activeTour   = params.tour === 'WTA' ? 'WTA' : 'ATP'
+  const activeStatus = VALID_STATUSES.includes(params.status as any) ? params.status! : 'all'
 
   const [tournaments, profile] = await Promise.all([
-    getTournaments(activeTour, activeSurface),
+    getTournaments(activeTour, activeStatus),
     user
       ? supabase.from('users').select('username, ranking_points').eq('id', user.id).single().then(r => r.data)
       : Promise.resolve(null),
@@ -40,7 +42,7 @@ export default async function TournamentsPage({ searchParams }: { searchParams: 
         <TournamentsClientList
           tournaments={tournaments}
           activeTour={activeTour}
-          activeSurface={activeSurface}
+          activeStatus={activeStatus}
         />
       </div>
     </main>
