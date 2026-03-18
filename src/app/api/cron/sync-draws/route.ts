@@ -24,14 +24,22 @@ export async function GET(request: Request) {
 
     // Draws are never published more than ~2 weeks before a tournament starts,
     // so there's no point hitting the tennis API for events further out.
-    // Always include accepting_predictions (draw already exists, keep it fresh)
-    // and only include upcoming tournaments starting within the next 14 days.
+    // Three buckets:
+    //   1. accepting_predictions — draw already stored, keep it fresh
+    //   2. upcoming with starts_at within 14 days — draw might just have been published
+    //   3. upcoming with starts_at IS NULL ("Date TBC") — dates come from fixture data;
+    //      we use a 21-day look-ahead window when fetching, so any near-future tournament
+    //      whose date the ATP hasn't officially announced yet is still discovered.
     const twoWeeksFromNow = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
 
     const { data: tournaments, error: fetchError } = await supabase
       .from('tournaments')
       .select('id, external_id, name, status, draw_close_at, starts_at, ends_at')
-      .or(`status.eq.accepting_predictions,and(status.eq.upcoming,starts_at.lte.${twoWeeksFromNow})`)
+      .or(
+        `status.eq.accepting_predictions,` +
+        `and(status.eq.upcoming,starts_at.lte.${twoWeeksFromNow}),` +
+        `and(status.eq.upcoming,starts_at.is.null)`
+      )
       .order('starts_at', { ascending: true })
     if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 })
     if (!tournaments || tournaments.length === 0) {
@@ -53,6 +61,35 @@ export async function GET(request: Request) {
           .from('draws')
           .upsert({ tournament_id: tournament.id, bracket_data: draw as unknown as Json, synced_at: new Date().toISOString() }, { onConflict: 'tournament_id' })
         if (drawError) { results.push({ name: tournament.name, status: 'error', error: drawError.message }); continue }
+
+        // ── Backfill dates from fixture data if tournament is still "Date TBC" ──
+        // get_tournaments sometimes omits tournament_date for future events; but
+        // get_fixtures (called inside getDraw) returns event_date per match.
+        // Derive starts_at = min(event_date), ends_at = max(event_date) and write
+        // them back so the tournament moves out of the "Date TBC" bucket.
+        if (!tournament.starts_at && draw.matches.length > 0) {
+          const matchDates = draw.matches
+            .map(m => m.scheduledAt)
+            .filter((d): d is string => typeof d === 'string' && d.length > 0)
+            .sort()
+          if (matchDates.length > 0) {
+            const newStartsAt = matchDates[0]
+            const newEndsAt   = matchDates[matchDates.length - 1]
+            const newYear     = new Date(newStartsAt).getUTCFullYear()
+            await supabase
+              .from('tournaments')
+              .update({
+                starts_at:     newStartsAt,
+                ends_at:       newEndsAt,
+                starts_year:   newYear,
+                draw_close_at: newStartsAt,   // sensible default; adjust manually if needed
+              })
+              .eq('id', tournament.id)
+            console.log(`[sync-draws] Backfilled dates for "${tournament.name}": ${newStartsAt} → ${newEndsAt}`)
+            // Reflect the new date in the local object so the status transition below works
+            tournament.starts_at = newStartsAt
+          }
+        }
 
         // Only notify when the draw first opens (status transitions from upcoming)
         if (tournament.status === 'upcoming') {
