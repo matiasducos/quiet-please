@@ -107,25 +107,46 @@ export async function GET(request: Request) {
     }, { status: 500 })
   }
 
-  // ── 2. Load all existing DB rows for name-based migration ────────────────
+  // ── 2. Load all existing DB rows ─────────────────────────────────────────
   const supabase = createAdminClient()
   const { data: dbTournaments, error: dbError } = await supabase
     .from('tournaments')
-    .select('id, name, external_id')
+    .select('id, name, external_id, starts_at')
 
   if (dbError) {
     return NextResponse.json({ error: dbError.message }, { status: 500 })
   }
 
-  // normalizedName → { id, external_id }
-  const dbByName = new Map<string, { id: string; external_id: string }>(
-    (dbTournaments ?? []).map(t => [normalizeName(t.name), { id: t.id, external_id: t.external_id }])
-  )
+  // Primary map: "external_id::year" → DB row
+  //   Used to check if we already have this year's entry — if so, skip entirely.
+  //   api-tennis.com uses a stable key per tournament; tournament_date is always
+  //   the CURRENT year's occurrence. So Australian Open 2025 and 2026 both have
+  //   the same external_id but different years in starts_at.
+  const dbByExternalIdYear = new Map<string, { id: string; external_id: string }>()
 
-  // ── 3. Classify each API tournament as migrate / insert / skip ───────────
+  // Secondary map: normalizedName → DB row
+  //   Used to migrate legacy rows that have a null or stale external_id.
+  //   First match wins (keeps whichever row was inserted first).
+  const dbByName = new Map<string, { id: string; external_id: string | null }>()
+
+  for (const t of dbTournaments ?? []) {
+    const nameKey = normalizeName(t.name)
+    if (!dbByName.has(nameKey)) {
+      dbByName.set(nameKey, { id: t.id, external_id: t.external_id })
+    }
+    if (t.external_id && t.starts_at) {
+      const year = new Date(t.starts_at).getUTCFullYear()
+      dbByExternalIdYear.set(`${t.external_id}::${year}`, { id: t.id, external_id: t.external_id })
+    }
+  }
+
+  // ── 3. Classify each API entry as migrate / insert / skip ────────────────
   const toMigrate: Array<{ id: string; newExternalId: string; name: string }> = []
   const toInsert: any[] = []
   const skipped: string[] = []
+
+  // Track yearKeys queued for insert in this run to deduplicate API duplicates
+  const insertedByYearKey = new Set<string>()
 
   for (const raw of apiTournaments) {
     const tour = normalizeTour(raw.event_type_type ?? '')
@@ -135,35 +156,48 @@ export async function GET(request: Request) {
       continue
     }
 
-    const name: string   = raw.tournament_name ?? 'Unknown'
-    const externalId     = String(raw.tournament_key)
+    const name: string = raw.tournament_name ?? 'Unknown'
+    const externalId    = String(raw.tournament_key)
     const normalizedName = normalizeName(name)
-    const existing       = dbByName.get(normalizedName)
 
-    if (existing) {
-      // Already in DB — migrate external_id if it's still the old RapidAPI value
-      if (existing.external_id !== externalId) {
-        toMigrate.push({ id: existing.id, newExternalId: externalId, name })
-      }
-      // Never touch status, surface, dates — those are managed manually
-    } else {
-      // Not in DB — prepare new row
-      // tournament_date may or may not be present depending on API plan
-      const startsAt = raw.tournament_date
-        ? new Date(raw.tournament_date).toISOString()
-        : null
+    // tournament_date is the CURRENT year's occurrence date for this tournament
+    const startsAt = raw.tournament_date
+      ? new Date(raw.tournament_date).toISOString()
+      : null
+    const year = startsAt ? new Date(startsAt).getUTCFullYear() : null
+    const yearKey = year ? `${externalId}::${year}` : null
 
+    // ── Skip if this (external_id, year) already exists in DB ──
+    if (yearKey && dbByExternalIdYear.has(yearKey)) continue
+
+    // ── Skip if we already queued this yearKey in this run (API duplicates) ──
+    if (yearKey && insertedByYearKey.has(yearKey)) continue
+
+    // ── Migrate external_id on the name-matched row if it's stale ──
+    // (Handles legacy rows seeded with old RapidAPI external_ids or null)
+    const nameMatch = dbByName.get(normalizedName)
+    if (nameMatch && nameMatch.external_id !== externalId) {
+      toMigrate.push({ id: nameMatch.id, newExternalId: externalId, name })
+    }
+
+    // ── Queue new row for insertion ──
+    // When yearKey is present: always insert — this is a genuinely new year entry
+    //   (Australian Open 2026 when DB only has Australian Open 2025, for example).
+    // When tournament_date is missing (yearKey null): only insert if there's no
+    //   name-matched row at all, to avoid creating a duplicate of an unknown year.
+    if (yearKey || !nameMatch) {
       toInsert.push({
         external_id:   externalId,
         name,
         tour,
         category:      normalizeCategory(name),
-        surface:       null,        // No surface from api-tennis.com — set manually in admin
+        surface:       null,        // No surface from API — set manually in admin
         starts_at:     startsAt,
-        ends_at:       startsAt,   // Correct ends_at must be set manually (or via sync-backfill)
+        ends_at:       startsAt,   // Correct ends_at must be set manually
         draw_close_at: startsAt,   // Update manually before the draw opens
         status:        'upcoming',
       })
+      if (yearKey) insertedByYearKey.add(yearKey)
     }
   }
 
@@ -184,19 +218,20 @@ export async function GET(request: Request) {
     }
   }
 
-  // ── 5. Insert genuinely new tournaments ─────────────────────────────────
+  // ── 5. Insert genuinely new year entries ─────────────────────────────────
+  // We use plain insert (not upsert) because the year-aware map check above
+  // already filtered out all entries that exist in the DB.
+  // Unique constraint: (external_id, date_trunc('year', starts_at)) — see migration 008.
   let insertedCount = 0
   if (toInsert.length) {
-    const { error: insertError, count } = await supabase
+    const { error: insertError } = await supabase
       .from('tournaments')
-      // ignoreDuplicates: preserve any manually-set data if somehow run twice
-      .upsert(toInsert, { onConflict: 'external_id', ignoreDuplicates: true })
-      .select('id', { count: 'exact' })
+      .insert(toInsert)
 
     if (insertError) {
       errors.push(`Insert error: ${insertError.message}`)
     } else {
-      insertedCount = count ?? 0
+      insertedCount = toInsert.length
     }
   }
 
