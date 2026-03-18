@@ -4,6 +4,9 @@ import { tennisAdapter } from '@/lib/tennis'
 import { sendDrawOpenEmail } from '@/lib/email'
 import type { Json } from '@/types/database'
 
+// Allow up to 60 s — sequential getDraw() calls across many tournaments need headroom.
+export const maxDuration = 60
+
 function isAuthorized(request: Request): boolean {
   if (process.env.NODE_ENV === 'development') return true
   const cronSecret = process.env.CRON_SECRET
@@ -60,17 +63,22 @@ export async function GET(request: Request) {
               }))
               await (supabase as any).from('notifications').insert(notificationRows)
             }
-            for (const u of allUsers) {
-              if (u.email) {
-                await sendDrawOpenEmail({
+            // Send all emails in parallel — avoids O(n) sequential await per user.
+            const emailResults = await Promise.allSettled(
+              allUsers
+                .filter((u: any) => u.email)
+                .map((u: any) => sendDrawOpenEmail({
                   to:             u.email,
                   tournamentName: tournament.name,
                   tournamentId:   tournament.id,
                   closeDate:      tournament.draw_close_at ?? null,
-                })
-              }
-            }
-            console.log(`[sync-draws] Notified ${allUsers.length} users for ${tournament.name}`)
+                })),
+            )
+            const emailFailed = emailResults.filter(r => r.status === 'rejected').length
+            console.log(
+              `[sync-draws] Notified ${allUsers.length} users for ${tournament.name}` +
+              (emailFailed ? ` (${emailFailed} email errors)` : ''),
+            )
           } catch (notifyErr) {
             console.error('[sync-draws] notification error:', notifyErr)
           }

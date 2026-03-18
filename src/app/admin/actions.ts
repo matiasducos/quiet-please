@@ -30,14 +30,19 @@ export async function triggerCron(key: string): Promise<{ ok: boolean; data: unk
   const headers: Record<string, string> = cronSecret
     ? { Authorization: `Bearer ${cronSecret}` }
     : {}
-  const res = await fetch(`${getBaseUrl()}/api/cron/${key}`, {
-    headers,
-    cache: 'no-store',
-    // Give cron routes enough time; still bounded by the Vercel function limit.
-    signal: AbortSignal.timeout(55_000),
-  })
-  const data = await res.json().catch(() => ({ error: 'Non-JSON response' }))
-  return { ok: res.ok, data }
+  try {
+    const res = await fetch(`${getBaseUrl()}/api/cron/${key}`, {
+      headers,
+      cache: 'no-store',
+      // Give cron routes enough time; still bounded by the Vercel function limit.
+      signal: AbortSignal.timeout(55_000),
+    })
+    const data = await res.json().catch(() => ({ error: 'Non-JSON response' }))
+    return { ok: res.ok, data }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    return { ok: false, data: { error: message } }
+  }
 }
 
 // ── Tournament status override ────────────────────────────────────────────────
