@@ -1,7 +1,7 @@
 # Database schema
 
 All tables live in Supabase (PostgreSQL). Row Level Security (RLS) is enabled on all tables.
-Schema is built across 7 migrations (see `supabase/migrations/`).
+Schema is built across 9 migrations (see `supabase/migrations/`).
 
 ## Tables
 
@@ -41,9 +41,24 @@ One row per ATP/WTA tournament edition.
 | draw_close_at | timestamptz | Predictions lock at this time |
 | starts_at | timestamptz | |
 | ends_at | timestamptz | |
-| status | text | `upcoming` → `accepting_predictions` → `in_progress` → `completed` |
+| status | text | `upcoming` → `draw_published` → `accepting_predictions` → `in_progress` → `completed` |
 
-**Status lifecycle**: managed by cron jobs. `sync-backfill` can bulk-advance past tournaments to `completed`.
+**Status lifecycle**: managed by cron jobs. `sync-backfill` can bulk-advance past tournaments to `completed`. Added in migration `009_draw_published_status.sql`.
+
+| Status | Draw visible? | Players named? | Predictions open? | Matches playing? |
+|---|---|---|---|---|
+| `upcoming` | No | — | No | No |
+| `draw_published` | Yes (bracket shell) | ❌ All null (qualifying week) | No | No |
+| `accepting_predictions` | Yes (main draw) | ✅ Named players | ✅ Yes | No |
+| `in_progress` | Yes | ✅ Named players | ❌ Locked | ✅ Yes |
+| `completed` | Yes | ✅ Named players | ❌ Locked | ❌ Done |
+
+**Automatic transitions (via `sync-draws` cron)**:
+- `upcoming` + draw found but **all players null** → `draw_published` (qualifying bracket synced, no notification)
+- `upcoming` or `draw_published` + draw found **with named players** → `accepting_predictions` (main draw open, users notified by email + in-app)
+- `accepting_predictions`: no auto-advance — set manually via admin panel or `set-tournament-status` API
+
+**Manual transitions**: use `/admin` panel or `POST /api/admin/set-tournament-status`.
 
 ### `draws`
 Raw bracket data for a tournament. One row per tournament (unique constraint on `tournament_id`).
