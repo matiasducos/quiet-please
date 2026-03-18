@@ -15,15 +15,13 @@ export default async function AdminPage() {
 
   if (!isAdmin) redirect('/dashboard')
 
-  const cronSecret = process.env.CRON_SECRET ?? ''
-
-  // Fetch tournaments for status override (2026 onwards, newest first)
   const admin = createAdminClient()
+  // Show all non-completed tournaments (need manual edits) + most-recent completed ones
   const { data: tournaments } = await admin
     .from('tournaments')
-    .select('id, name, status, start_date, tour')
-    .gte('start_date', '2026-01-01')
-    .order('start_date', { ascending: false })
+    .select('id, name, status, starts_at, ends_at, draw_close_at, surface, tour')
+    .not('status', 'eq', 'completed')
+    .order('starts_at', { ascending: true })
 
-  return <AdminPanel cronSecret={cronSecret} tournaments={tournaments ?? []} />
+  return <AdminPanel tournaments={tournaments ?? []} />
 }

@@ -2,6 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { triggerCron, setTournamentStatus, updateTournamentDetails } from './actions'
+
+// ── Cron jobs ─────────────────────────────────────────────────────────────────
 
 const ENDPOINTS = [
   { key: 'sync-tournaments', label: 'Sync Tournaments', description: 'Fetch ATP/WTA calendar and upsert tournaments' },
@@ -12,96 +15,175 @@ const ENDPOINTS = [
 ] as const
 
 type EndpointKey = typeof ENDPOINTS[number]['key']
-type CronStatus = { type: 'idle' | 'loading' | 'success' | 'error'; message?: string }
+type AsyncStatus = { type: 'idle' | 'loading' | 'success' | 'error'; message?: string }
 
-const STATUSES = ['upcoming', 'in_progress', 'completed'] as const
+// ── Tournament types ──────────────────────────────────────────────────────────
+
+const STATUSES = ['upcoming', 'accepting_predictions', 'in_progress', 'completed'] as const
 type TournamentStatus = typeof STATUSES[number]
 
 const STATUS_LABELS: Record<TournamentStatus, string> = {
-  upcoming:    'Upcoming',
-  in_progress: 'In Progress',
-  completed:   'Completed',
+  upcoming:               'Upcoming',
+  accepting_predictions:  'Accepting Predictions',
+  in_progress:            'In Progress',
+  completed:              'Completed',
 }
 
 const STATUS_COLORS: Record<TournamentStatus, { bg: string; color: string }> = {
-  upcoming:    { bg: '#f1f5f9', color: '#64748b' },
-  in_progress: { bg: '#dcfce7', color: '#166534' },
-  completed:   { bg: '#e2e8f0', color: '#475569' },
+  upcoming:               { bg: '#f1f5f9', color: '#64748b' },
+  accepting_predictions:  { bg: '#fef3c7', color: '#92400e' },
+  in_progress:            { bg: '#dcfce7', color: '#166534' },
+  completed:              { bg: '#e2e8f0', color: '#475569' },
 }
 
 interface Tournament {
   id: string
   name: string
   status: string
-  start_date: string
+  starts_at: string | null
+  ends_at: string | null
+  draw_close_at: string | null
+  surface: string | null
   tour: string
 }
 
-type OverrideState = {
-  selected: TournamentStatus
-  result: { type: 'idle' | 'loading' | 'success' | 'error'; message?: string }
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function toDateInput(iso: string | null | undefined): string {
+  if (!iso) return ''
+  return iso.slice(0, 10) // YYYY-MM-DD
 }
 
-export default function AdminPanel({
-  cronSecret,
-  tournaments,
-}: {
-  cronSecret: string
-  tournaments: Tournament[]
-}) {
-  const [cronStatuses, setCronStatuses] = useState<Record<EndpointKey, CronStatus>>(
-    Object.fromEntries(ENDPOINTS.map(e => [e.key, { type: 'idle' }])) as Record<EndpointKey, CronStatus>
+function toDatetimeInput(iso: string | null | undefined): string {
+  if (!iso) return ''
+  return iso.slice(0, 16) // YYYY-MM-DDTHH:MM
+}
+
+// Convert a `YYYY-MM-DD` date input value → ISO timestamp (start of day UTC)
+function fromDateInput(val: string): string | null {
+  return val ? val + 'T00:00:00.000Z' : null
+}
+
+// Convert a `YYYY-MM-DDTHH:MM` datetime-local input → ISO timestamp
+function fromDatetimeInput(val: string): string | null {
+  return val ? val + ':00.000Z' : null
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+export default function AdminPanel({ tournaments }: { tournaments: Tournament[] }) {
+  // ── Cron state ──────────────────────────────────────────────────────────────
+  const [cronStatuses, setCronStatuses] = useState<Record<EndpointKey, AsyncStatus>>(
+    Object.fromEntries(ENDPOINTS.map(e => [e.key, { type: 'idle' }])) as Record<EndpointKey, AsyncStatus>
   )
 
-  const [overrides, setOverrides] = useState<Record<string, OverrideState>>(
-    Object.fromEntries(
-      tournaments.map(t => [
-        t.id,
-        { selected: (STATUSES.includes(t.status as TournamentStatus) ? t.status : 'upcoming') as TournamentStatus, result: { type: 'idle' } },
-      ])
-    )
-  )
-
-  // ── Cron trigger ──────────────────────────────────────────────────────────
-  async function triggerCron(key: EndpointKey) {
+  async function handleTriggerCron(key: EndpointKey) {
     setCronStatuses(s => ({ ...s, [key]: { type: 'loading' } }))
     try {
-      const res = await fetch(`/api/cron/${key}`, {
-        headers: { Authorization: `Bearer ${cronSecret}` },
-      })
-      const json = await res.json()
+      const { ok, data } = await triggerCron(key)
       setCronStatuses(s => ({
         ...s,
-        [key]: { type: res.ok ? 'success' : 'error', message: JSON.stringify(json, null, 2) },
+        [key]: { type: ok ? 'success' : 'error', message: JSON.stringify(data, null, 2) },
       }))
     } catch (err) {
       setCronStatuses(s => ({ ...s, [key]: { type: 'error', message: String(err) } }))
     }
   }
 
-  // ── Tournament status override ─────────────────────────────────────────────
-  function setSelected(id: string, status: TournamentStatus) {
-    setOverrides(s => ({ ...s, [id]: { ...s[id], selected: status } }))
+  // ── Tournament state ─────────────────────────────────────────────────────────
+  type StatusOverride = {
+    selected: TournamentStatus
+    result: AsyncStatus
+  }
+  type DetailsEdit = {
+    open: boolean
+    surface: string
+    ends_at: string
+    draw_close_at: string
+    result: AsyncStatus
+  }
+
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, StatusOverride>>(
+    Object.fromEntries(
+      tournaments.map(t => [
+        t.id,
+        {
+          selected: (STATUSES.includes(t.status as TournamentStatus)
+            ? t.status
+            : 'upcoming') as TournamentStatus,
+          result: { type: 'idle' },
+        },
+      ])
+    )
+  )
+
+  const [detailsEdits, setDetailsEdits] = useState<Record<string, DetailsEdit>>(
+    Object.fromEntries(
+      tournaments.map(t => [
+        t.id,
+        {
+          open: false,
+          surface:       t.surface       ?? '',
+          ends_at:       toDateInput(t.ends_at),
+          draw_close_at: toDatetimeInput(t.draw_close_at),
+          result:        { type: 'idle' },
+        },
+      ])
+    )
+  )
+
+  // ── Status override handlers ─────────────────────────────────────────────────
+  function setSelectedStatus(id: string, status: TournamentStatus) {
+    setStatusOverrides(s => ({ ...s, [id]: { ...s[id], selected: status } }))
   }
 
   async function applyStatus(id: string) {
-    setOverrides(s => ({ ...s, [id]: { ...s[id], result: { type: 'loading' } } }))
+    setStatusOverrides(s => ({ ...s, [id]: { ...s[id], result: { type: 'loading' } } }))
     try {
-      const res = await fetch('/api/admin/set-tournament-status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tournamentId: id, status: overrides[id].selected }),
-      })
-      const json = await res.json()
-      setOverrides(s => ({
+      const { ok, error } = await setTournamentStatus(id, statusOverrides[id].selected)
+      setStatusOverrides(s => ({
         ...s,
-        [id]: { ...s[id], result: { type: res.ok ? 'success' : 'error', message: res.ok ? `Set to "${overrides[id].selected}"` : json.error } },
+        [id]: {
+          ...s[id],
+          result: {
+            type: ok ? 'success' : 'error',
+            message: ok ? `Set to "${statusOverrides[id].selected}"` : error,
+          },
+        },
       }))
     } catch (err) {
-      setOverrides(s => ({ ...s, [id]: { ...s[id], result: { type: 'error', message: String(err) } } }))
+      setStatusOverrides(s => ({ ...s, [id]: { ...s[id], result: { type: 'error', message: String(err) } } }))
     }
   }
 
+  // ── Details edit handlers ────────────────────────────────────────────────────
+  function toggleDetails(id: string) {
+    setDetailsEdits(s => ({ ...s, [id]: { ...s[id], open: !s[id].open } }))
+  }
+
+  function setDetail<K extends keyof DetailsEdit>(id: string, key: K, val: DetailsEdit[K]) {
+    setDetailsEdits(s => ({ ...s, [id]: { ...s[id], [key]: val } }))
+  }
+
+  async function saveDetails(id: string) {
+    setDetailsEdits(s => ({ ...s, [id]: { ...s[id], result: { type: 'loading' } } }))
+    try {
+      const d = detailsEdits[id]
+      const { ok, error } = await updateTournamentDetails(id, {
+        surface:       d.surface       || null,
+        ends_at:       fromDateInput(d.ends_at),
+        draw_close_at: fromDatetimeInput(d.draw_close_at),
+      })
+      setDetailsEdits(s => ({
+        ...s,
+        [id]: { ...s[id], result: { type: ok ? 'success' : 'error', message: ok ? 'Saved' : error } },
+      }))
+    } catch (err) {
+      setDetailsEdits(s => ({ ...s, [id]: { ...s[id], result: { type: 'error', message: String(err) } } }))
+    }
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
@@ -115,7 +197,7 @@ export default function AdminPanel({
         </div>
       </nav>
 
-      <div className="max-w-2xl mx-auto px-4 md:px-8 py-10">
+      <div className="max-w-3xl mx-auto px-4 md:px-8 py-10">
 
         {/* ── Cron jobs ── */}
         <div className="mb-8">
@@ -123,7 +205,7 @@ export default function AdminPanel({
             Admin panel
           </h1>
           <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginTop: '0.4rem' }}>
-            Manually trigger cron jobs.
+            Manually trigger cron jobs and manage tournament data.
           </p>
         </div>
 
@@ -142,7 +224,7 @@ export default function AdminPanel({
                     </p>
                   </div>
                   <button
-                    onClick={() => triggerCron(endpoint.key)}
+                    onClick={() => handleTriggerCron(endpoint.key)}
                     disabled={status.type === 'loading'}
                     className="px-4 py-2 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40 flex-shrink-0"
                     style={{ background: 'var(--court)', color: 'white' }}
@@ -169,13 +251,13 @@ export default function AdminPanel({
           })}
         </div>
 
-        {/* ── Tournament status override ── */}
+        {/* ── Tournaments ── */}
         <div className="mt-12">
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-            Tournament status
+            Tournaments
           </h2>
           <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginTop: '0.4rem', marginBottom: '1.25rem' }}>
-            Override the status set by sync cron.
+            Override status and set surface / dates for upcoming tournaments.
           </p>
 
           <div className="flex flex-col gap-3">
@@ -183,27 +265,23 @@ export default function AdminPanel({
               <p style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>No tournaments found.</p>
             )}
             {tournaments.map(t => {
-              const ov = overrides[t.id]
-              if (!ov) return null
+              const ov  = statusOverrides[t.id]
+              const det = detailsEdits[t.id]
+              if (!ov || !det) return null
               const currentStatusColor = STATUS_COLORS[t.status as TournamentStatus] ?? STATUS_COLORS.upcoming
-              const result = ov.result
 
               return (
                 <div key={t.id} className="bg-white rounded-sm border p-4" style={{ borderColor: 'var(--chalk-dim)' }}>
+
+                  {/* ── Row header ── */}
                   <div className="flex items-center gap-3 flex-wrap">
                     {/* Tour badge */}
-                    <span
-                      style={{
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '0.65rem',
-                        letterSpacing: '0.06em',
-                        padding: '2px 6px',
-                        borderRadius: '2px',
-                        background: t.tour === 'ATP' ? '#dbeafe' : '#fce7f3',
-                        color: t.tour === 'ATP' ? '#1e40af' : '#9d174d',
-                        flexShrink: 0,
-                      }}
-                    >
+                    <span style={{
+                      fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.06em',
+                      padding: '2px 6px', borderRadius: '2px', flexShrink: 0,
+                      background: t.tour === 'ATP' ? '#dbeafe' : '#fce7f3',
+                      color:      t.tour === 'ATP' ? '#1e40af' : '#9d174d',
+                    }}>
                       {t.tour}
                     </span>
 
@@ -212,41 +290,31 @@ export default function AdminPanel({
                       <span style={{ fontSize: '0.875rem', color: 'var(--ink)', fontWeight: 500 }}>
                         {t.name}
                       </span>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--muted)', marginLeft: '0.5rem' }}>
-                        {t.start_date.slice(0, 10)}
-                      </span>
+                      {t.starts_at && (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--muted)', marginLeft: '0.5rem' }}>
+                          {t.starts_at.slice(0, 10)}
+                        </span>
+                      )}
                     </div>
 
                     {/* Current status badge */}
-                    <span
-                      style={{
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '0.65rem',
-                        letterSpacing: '0.04em',
-                        padding: '2px 7px',
-                        borderRadius: '2px',
-                        background: currentStatusColor.bg,
-                        color: currentStatusColor.color,
-                        flexShrink: 0,
-                      }}
-                    >
+                    <span style={{
+                      fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.04em',
+                      padding: '2px 7px', borderRadius: '2px', flexShrink: 0,
+                      background: currentStatusColor.bg, color: currentStatusColor.color,
+                    }}>
                       {t.status}
                     </span>
 
-                    {/* Select + button */}
+                    {/* Status select + Set button */}
                     <select
                       value={ov.selected}
-                      onChange={e => setSelected(t.id, e.target.value as TournamentStatus)}
-                      disabled={result.type === 'loading'}
+                      onChange={e => setSelectedStatus(t.id, e.target.value as TournamentStatus)}
+                      disabled={ov.result.type === 'loading'}
                       style={{
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '0.75rem',
-                        padding: '4px 8px',
-                        border: '1px solid var(--chalk-dim)',
-                        borderRadius: '2px',
-                        background: 'white',
-                        color: 'var(--ink)',
-                        cursor: 'pointer',
+                        fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
+                        padding: '4px 8px', border: '1px solid var(--chalk-dim)',
+                        borderRadius: '2px', background: 'white', color: 'var(--ink)', cursor: 'pointer',
                       }}
                     >
                       {STATUSES.map(s => (
@@ -256,26 +324,119 @@ export default function AdminPanel({
 
                     <button
                       onClick={() => applyStatus(t.id)}
-                      disabled={result.type === 'loading' || ov.selected === t.status}
+                      disabled={ov.result.type === 'loading' || ov.selected === t.status}
                       className="px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40 flex-shrink-0"
                       style={{ background: 'var(--ink)', color: 'white' }}
                     >
-                      {result.type === 'loading' ? '…' : 'Set'}
+                      {ov.result.type === 'loading' ? '…' : 'Set'}
+                    </button>
+
+                    {/* Edit details toggle */}
+                    <button
+                      onClick={() => toggleDetails(t.id)}
+                      className="text-xs flex-shrink-0 transition-opacity hover:opacity-70"
+                      style={{ color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}
+                    >
+                      {det.open ? '▲ hide' : '▼ edit'}
                     </button>
                   </div>
 
-                  {/* Inline result */}
-                  {result.type !== 'idle' && result.type !== 'loading' && result.message && (
-                    <div
-                      className="mt-2 px-3 py-1.5 rounded-sm"
-                      style={{
-                        background: result.type === 'error' ? '#fee2e2' : '#f0fdf4',
-                        borderLeft: `3px solid ${result.type === 'error' ? '#ef4444' : '#22c55e'}`,
-                      }}
-                    >
-                      <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: result.type === 'error' ? '#991b1b' : '#166534', margin: 0 }}>
-                        {result.message}
+                  {/* Status inline result */}
+                  {ov.result.type !== 'idle' && ov.result.type !== 'loading' && ov.result.message && (
+                    <div className="mt-2 px-3 py-1.5 rounded-sm" style={{
+                      background: ov.result.type === 'error' ? '#fee2e2' : '#f0fdf4',
+                      borderLeft: `3px solid ${ov.result.type === 'error' ? '#ef4444' : '#22c55e'}`,
+                    }}>
+                      <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: ov.result.type === 'error' ? '#991b1b' : '#166534', margin: 0 }}>
+                        {ov.result.message}
                       </p>
+                    </div>
+                  )}
+
+                  {/* ── Details edit panel ── */}
+                  {det.open && (
+                    <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--chalk-dim)' }}>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--muted)', marginBottom: '0.75rem' }}>
+                        Surface, end date, and draw-close time. Leave blank to clear.
+                      </p>
+
+                      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+                        {/* Surface */}
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.06em', color: 'var(--muted)', textTransform: 'uppercase' }}>
+                            Surface
+                          </span>
+                          <select
+                            value={det.surface}
+                            onChange={e => setDetail(t.id, 'surface', e.target.value)}
+                            style={{
+                              fontFamily: 'var(--font-mono)', fontSize: '0.8rem',
+                              padding: '5px 8px', border: '1px solid var(--chalk-dim)',
+                              borderRadius: '2px', background: 'white', color: 'var(--ink)',
+                            }}
+                          >
+                            <option value="">— unset —</option>
+                            <option value="hard">Hard</option>
+                            <option value="clay">Clay</option>
+                            <option value="grass">Grass</option>
+                          </select>
+                        </label>
+
+                        {/* Ends at */}
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.06em', color: 'var(--muted)', textTransform: 'uppercase' }}>
+                            Ends at
+                          </span>
+                          <input
+                            type="date"
+                            value={det.ends_at}
+                            onChange={e => setDetail(t.id, 'ends_at', e.target.value)}
+                            style={{
+                              fontFamily: 'var(--font-mono)', fontSize: '0.8rem',
+                              padding: '5px 8px', border: '1px solid var(--chalk-dim)',
+                              borderRadius: '2px', background: 'white', color: 'var(--ink)',
+                            }}
+                          />
+                        </label>
+
+                        {/* Draw close at */}
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.06em', color: 'var(--muted)', textTransform: 'uppercase' }}>
+                            Draw closes
+                          </span>
+                          <input
+                            type="datetime-local"
+                            value={det.draw_close_at}
+                            onChange={e => setDetail(t.id, 'draw_close_at', e.target.value)}
+                            style={{
+                              fontFamily: 'var(--font-mono)', fontSize: '0.8rem',
+                              padding: '5px 8px', border: '1px solid var(--chalk-dim)',
+                              borderRadius: '2px', background: 'white', color: 'var(--ink)',
+                            }}
+                          />
+                        </label>
+                      </div>
+
+                      <div className="flex items-center gap-3 mt-3">
+                        <button
+                          onClick={() => saveDetails(t.id)}
+                          disabled={det.result.type === 'loading'}
+                          className="px-4 py-1.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
+                          style={{ background: 'var(--court)', color: 'white' }}
+                        >
+                          {det.result.type === 'loading' ? 'Saving…' : 'Save details'}
+                        </button>
+
+                        {/* Inline result for details save */}
+                        {det.result.type !== 'idle' && det.result.type !== 'loading' && det.result.message && (
+                          <span style={{
+                            fontFamily: 'var(--font-mono)', fontSize: '0.7rem',
+                            color: det.result.type === 'error' ? '#991b1b' : '#166534',
+                          }}>
+                            {det.result.type === 'success' ? '✓ ' : '✗ '}{det.result.message}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
