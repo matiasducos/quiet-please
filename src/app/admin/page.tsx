@@ -20,7 +20,6 @@ export default async function AdminPage() {
   const { data: tournaments } = await admin
     .from('tournaments')
     .select('id, name, status, starts_at, ends_at, draw_close_at, surface, tour')
-    .not('status', 'eq', 'completed')
     .order('starts_at', { ascending: true })
 
   return <AdminPanel tournaments={tournaments ?? []} />
