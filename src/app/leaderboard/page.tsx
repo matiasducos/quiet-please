@@ -118,8 +118,8 @@ export default async function LeaderboardPage({
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
             Leaderboard
           </h1>
-          <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
-            {scopeLabel}
+          <p style={{ color: 'var(--muted)', fontSize: '0.875rem', marginTop: '0.4rem', lineHeight: 1.65, maxWidth: '520px' }}>
+            See how your prediction accuracy stacks up against every other player. Rankings update after each match result and roll over a 52-week window.
           </p>
         </div>
 
