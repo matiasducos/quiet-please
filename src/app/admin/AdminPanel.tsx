@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { triggerCron, setTournamentStatus, updateTournamentDetails, deleteTournament, sendTestNotification, NOTIFICATION_TYPES } from './actions'
-import type { NotificationType } from './actions'
+import { triggerCron, setTournamentStatus, updateTournamentDetails, deleteTournament, sendTestNotification } from './actions'
+import { NOTIFICATION_TYPES } from './constants'
+import type { NotificationType } from './constants'
 import DrawEditor from './DrawEditor'
 
 // ── Cron jobs ─────────────────────────────────────────────────────────────────
