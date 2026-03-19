@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { triggerCron, setTournamentStatus, updateTournamentDetails, deleteTournament } from './actions'
+import DrawEditor from './DrawEditor'
 
 // ── Cron jobs ─────────────────────────────────────────────────────────────────
 
@@ -50,6 +51,7 @@ const STATUS_COLORS: Record<TournamentStatus, { bg: string; color: string }> = {
 
 interface Tournament {
   id: string
+  external_id: string
   name: string
   status: string
   starts_at: string | null
@@ -159,6 +161,15 @@ export default function AdminPanel({ tournaments }: { tournaments: Tournament[] 
     Object.fromEntries(tournaments.map(t => [t.id, { confirming: false, deleting: false, deleted: false }]))
   )
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set())
+
+  // ── Draw editor open state ───────────────────────────────────────────────────
+  const [drawEditorOpen, setDrawEditorOpen] = useState<Record<string, boolean>>(
+    Object.fromEntries(tournaments.map(t => [t.id, false]))
+  )
+
+  function toggleDrawEditor(id: string) {
+    setDrawEditorOpen(s => ({ ...s, [id]: !s[id] }))
+  }
 
   // ── Status override handlers ─────────────────────────────────────────────────
   function setSelectedStatus(id: string, status: TournamentStatus) {
@@ -413,6 +424,15 @@ export default function AdminPanel({ tournaments }: { tournaments: Tournament[] 
                       {det.open ? '▲ hide' : '▼ edit'}
                     </button>
 
+                    {/* Draw editor toggle */}
+                    <button
+                      onClick={() => toggleDrawEditor(t.id)}
+                      className="text-xs flex-shrink-0 transition-opacity hover:opacity-70"
+                      style={{ color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}
+                    >
+                      {drawEditorOpen[t.id] ? '▲ draw' : '▼ draw'}
+                    </button>
+
                     {/* Delete — two-step */}
                     {del.deleted ? (
                       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#166534' }}>✓ deleted</span>
@@ -464,6 +484,17 @@ export default function AdminPanel({ tournaments }: { tournaments: Tournament[] 
                         {ov.result.message}
                       </p>
                     </div>
+                  )}
+
+                  {/* ── Draw editor ── */}
+                  {drawEditorOpen[t.id] && (
+                    <DrawEditor
+                      tournamentId={t.id}
+                      externalId={t.external_id}
+                      name={t.name}
+                      status={t.status}
+                      onClose={() => toggleDrawEditor(t.id)}
+                    />
                   )}
 
                   {/* ── Details edit panel ── */}

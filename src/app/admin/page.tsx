@@ -19,7 +19,7 @@ export default async function AdminPage() {
   // Show all non-completed tournaments (need manual edits) + most-recent completed ones
   const { data: tournaments } = await admin
     .from('tournaments')
-    .select('id, name, status, starts_at, ends_at, draw_close_at, surface, tour')
+    .select('id, name, status, starts_at, ends_at, draw_close_at, surface, tour, external_id')
     .order('starts_at', { ascending: true })
 
   return <AdminPanel tournaments={tournaments ?? []} />
