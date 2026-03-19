@@ -141,7 +141,7 @@ export default async function ChallengesPage() {
         <div className="flex items-end justify-between mb-8">
           <div>
             <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>Challenges</h1>
-            <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>Head-to-head tournament predictions with friends.</p>
+            <p style={{ color: 'var(--muted)', fontSize: '0.875rem', marginTop: '0.4rem', lineHeight: 1.65, maxWidth: '520px' }}>Pick a friend and go head-to-head on any open tournament. You each lock in your bracket — whoever scores more points when it&apos;s over wins the challenge.</p>
           </div>
           <div className="flex gap-3">
             <Link

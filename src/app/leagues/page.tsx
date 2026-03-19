@@ -34,7 +34,7 @@ export default async function LeaguesPage() {
         <div className="flex items-end justify-between mb-8">
           <div>
             <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>Leagues</h1>
-            <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>Compete with friends across the full season.</p>
+            <p style={{ color: 'var(--muted)', fontSize: '0.875rem', marginTop: '0.4rem', lineHeight: 1.65, maxWidth: '520px' }}>Create a private league with friends and track who makes the sharpest calls across the full season. Your picks in any tournament you enter count toward the league standings.</p>
           </div>
           <div className="flex gap-3">
             <Link
