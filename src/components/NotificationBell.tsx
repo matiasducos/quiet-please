@@ -66,14 +66,14 @@ export default async function NotificationBell({ userId }: { userId: string }) {
         <span
           style={{
             position:     'absolute',
-            top:          '-3px',
-            right:        '-3px',
-            width:        '7px',
-            height:       '7px',
+            top:          '-4px',
+            right:        '-4px',
+            width:        '10px',
+            height:       '10px',
             borderRadius: '50%',
-            background:   '#e53e3e',
+            background:   '#e8120c',
             display:      'block',
-            border:       '1.5px solid var(--chalk, #f5f2eb)',
+            border:       '2px solid var(--chalk, #f5f2eb)',
           }}
           aria-label={`${unreadCount} unread`}
         />
