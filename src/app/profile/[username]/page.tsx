@@ -69,6 +69,11 @@ export default async function ProfilePage({
   const isOwnProfile = user.id === profile.id
   const memberSince  = new Date(profile.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 
+  // Admin detection — only relevant on own profile
+  const adminIds = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean)
+  const isDev    = process.env.NODE_ENV === 'development'
+  const isAdmin  = isOwnProfile && (isDev || adminIds.includes(user.id))
+
   // Friendship status
   type FriendStatus = 'none' | 'friends' | 'sent' | 'received'
   let friendStatus: FriendStatus = 'none'
@@ -142,7 +147,7 @@ export default async function ProfilePage({
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={currentProfile?.username} points={currentProfile?.ranking_points ?? 0} />
+      <Nav username={currentProfile?.username} points={currentProfile?.ranking_points ?? 0} userId={user.id} />
 
       <div className="max-w-3xl mx-auto px-8 py-10">
 
@@ -174,6 +179,14 @@ export default async function ProfilePage({
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--court)', background: '#eaf3de', padding: '2px 8px', borderRadius: '2px', marginLeft: '0.75rem', verticalAlign: 'middle' }}>
                     you
                   </span>
+                )}
+                {isAdmin && (
+                  <Link
+                    href="/admin"
+                    style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: '#fafaf8', padding: '2px 7px', border: '1px solid var(--chalk-dim)', borderRadius: '2px', marginLeft: '0.5rem', verticalAlign: 'middle', textDecoration: 'none', display: 'inline-block' }}
+                  >
+                    admin
+                  </Link>
                 )}
               </h1>
               <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: '0.4rem', fontFamily: 'var(--font-mono)' }}>
