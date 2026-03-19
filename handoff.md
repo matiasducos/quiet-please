@@ -334,6 +334,14 @@ All originally planned Phase 4 items are now shipped:
 
 ---
 
+## Security & vulnerabilities
+
+Tracked checklist (npm audit, OAuth redirect hardening, test routes, Supabase advisor, ads/compliance): **`docs/vulnerabilities-todo.md`**.
+
+Quick hits before scaling paid traffic: patch **Next.js** past 16.1.6, validate **`next`** in auth callback redirects, gate or remove **`/test-tournaments`** in prod, run **Supabase Security Advisor**, confirm **env secrets** and **billing alerts**.
+
+---
+
 ## Design system
 
 CSS variables in `src/app/globals.css` (Tailwind v4 format — @imports must be first):
