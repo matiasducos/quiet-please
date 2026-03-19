@@ -17,8 +17,22 @@ async function markAllRead(userId: string) {
 }
 
 const TYPE_META: Record<string, { label: string; color: string }> = {
-  draw_open:       { label: 'Draw open',       color: '#27500A' },
-  points_awarded:  { label: 'Points awarded',  color: '#185FA5' },
+  draw_open:           { label: 'Draw open',       color: '#27500A' },
+  points_awarded:      { label: 'Points awarded',  color: '#185FA5' },
+  challenge_received:  { label: 'Challenge',        color: '#993C1D' },
+  friend_request:      { label: 'Friend request',  color: '#7c2d7c' },
+  friend_accepted:     { label: 'New friend',       color: '#27500A' },
+  friend_picks_locked: { label: "Friend's picks",   color: '#185FA5' },
+}
+
+function getHref(n: { type: string; tournament_id: string | null; meta: Record<string, string | number> }): string {
+  if (n.type === 'friend_request' || n.type === 'friend_accepted') return '/friends'
+  if (n.type === 'challenge_received') return '/challenges'
+  if (n.type === 'friend_picks_locked' && n.tournament_id && n.meta.username) {
+    return `/tournaments/${n.tournament_id}/picks/${n.meta.username}`
+  }
+  if (n.tournament_id) return `/tournaments/${n.tournament_id}`
+  return '/tournaments'
 }
 
 function formatRelative(dateStr: string) {
@@ -68,7 +82,7 @@ export default async function NotificationsPage() {
               All caught up
             </p>
             <p style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
-              You&apos;ll be notified here when draws open and points are awarded.
+              You&apos;ll be notified here when draws open, friends lock their picks, or you receive challenges.
             </p>
           </div>
         ) : (
@@ -77,7 +91,7 @@ export default async function NotificationsPage() {
               const meta = (n.meta ?? {}) as Record<string, string | number>
               const typeMeta = TYPE_META[n.type] ?? { label: n.type, color: 'var(--ink)' }
               const isUnread = !n.read_at
-              const href = n.tournament_id ? `/tournaments/${n.tournament_id}` : '/tournaments'
+              const href = getHref({ type: n.type, tournament_id: n.tournament_id, meta })
 
               return (
                 <Link
@@ -114,6 +128,18 @@ export default async function NotificationsPage() {
                         )}
                         {n.type === 'points_awarded' && (
                           <>You earned <strong>{meta.points ?? 0} pts</strong> for {meta.tournament_name ?? 'a tournament'}.</>
+                        )}
+                        {n.type === 'challenge_received' && (
+                          <><strong>{meta.challenger_username ?? 'Someone'}</strong> challenged you for <strong>{meta.tournament_name ?? 'a tournament'}</strong>.</>
+                        )}
+                        {n.type === 'friend_request' && (
+                          <><strong>{meta.from_username ?? 'Someone'}</strong> sent you a friend request.</>
+                        )}
+                        {n.type === 'friend_accepted' && (
+                          <><strong>{meta.friend_username ?? 'Someone'}</strong> accepted your friend request. You&apos;re now friends.</>
+                        )}
+                        {n.type === 'friend_picks_locked' && (
+                          <><strong>{meta.username ?? 'A friend'}</strong> locked in their picks for <strong>{meta.tournament_name ?? 'a tournament'}</strong>.</>
                         )}
                       </p>
                     </div>

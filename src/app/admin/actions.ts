@@ -23,6 +23,53 @@ function getBaseUrl(): string {
   return 'http://localhost:3000'
 }
 
+// ── Test notifications ────────────────────────────────────────────────────────
+
+export const NOTIFICATION_TYPES = [
+  'draw_open',
+  'points_awarded',
+  'challenge_received',
+  'friend_request',
+  'friend_accepted',
+  'friend_picks_locked',
+] as const
+
+export type NotificationType = typeof NOTIFICATION_TYPES[number]
+
+export async function sendTestNotification(
+  type: NotificationType,
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  await assertAdmin()
+  const admin = createAdminClient()
+  try {
+    const { data: { users: allUsers } } = await admin.auth.admin.listUsers({ perPage: 1000 })
+    if (!allUsers.length) return { ok: true, count: 0 }
+
+    const meta: Record<string, unknown> = {
+      test:                true,
+      tournament_name:     'Test Tournament',
+      challenger_username: 'test_user',
+      from_username:       'test_user',
+      friend_username:     'test_user',
+      username:            'test_user',
+      points:              100,
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = allUsers.map((u: any) => ({
+      user_id: u.id,
+      type,
+      meta,
+    }))
+
+    const { error } = await admin.from('notifications').insert(rows)
+    if (error) return { ok: false, error: error.message }
+    return { ok: true, count: allUsers.length }
+  } catch (err) {
+    return { ok: false, error: String(err) }
+  }
+}
+
 // ── Cron trigger ──────────────────────────────────────────────────────────────
 
 export async function triggerCron(key: string): Promise<{ ok: boolean; data: unknown }> {

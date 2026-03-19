@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { triggerCron, setTournamentStatus, updateTournamentDetails, deleteTournament } from './actions'
+import { triggerCron, setTournamentStatus, updateTournamentDetails, deleteTournament, sendTestNotification, NOTIFICATION_TYPES } from './actions'
+import type { NotificationType } from './actions'
 import DrawEditor from './DrawEditor'
 
 // ── Cron jobs ─────────────────────────────────────────────────────────────────
@@ -169,6 +170,23 @@ export default function AdminPanel({ tournaments }: { tournaments: Tournament[] 
 
   function toggleDrawEditor(id: string) {
     setDrawEditorOpen(s => ({ ...s, [id]: !s[id] }))
+  }
+
+  // ── Test notifications state ─────────────────────────────────────────────────
+  const [testNotifType, setTestNotifType] = useState<NotificationType>('draw_open')
+  const [testNotifStatus, setTestNotifStatus] = useState<AsyncStatus>({ type: 'idle' })
+
+  async function handleSendTestNotification() {
+    setTestNotifStatus({ type: 'loading' })
+    try {
+      const { ok, count, error } = await sendTestNotification(testNotifType)
+      setTestNotifStatus({
+        type:    ok ? 'success' : 'error',
+        message: ok ? `Sent to ${count} user${count === 1 ? '' : 's'}` : error,
+      })
+    } catch (err) {
+      setTestNotifStatus({ type: 'error', message: String(err) })
+    }
   }
 
   // ── Status override handlers ─────────────────────────────────────────────────
@@ -603,6 +621,52 @@ export default function AdminPanel({ tournaments }: { tournaments: Tournament[] 
                 </div>
               )
             })}
+          </div>
+        </div>
+
+        {/* ── Test Notifications ── */}
+        <div className="mt-10">
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em', marginBottom: '0.75rem' }}>
+            Test notifications
+          </h2>
+          <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '16px' }}>
+              Sends a test notification of the selected type to <strong>all users</strong>.
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <select
+                value={testNotifType}
+                onChange={e => setTestNotifType(e.target.value as NotificationType)}
+                style={{
+                  fontFamily: 'var(--font-mono)', fontSize: '0.8rem',
+                  padding: '6px 10px', border: '1px solid var(--chalk-dim)',
+                  borderRadius: '2px', background: 'white', color: 'var(--ink)',
+                  cursor: 'pointer',
+                }}
+              >
+                {NOTIFICATION_TYPES.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+
+              <button
+                onClick={handleSendTestNotification}
+                disabled={testNotifStatus.type === 'loading'}
+                className="px-4 py-1.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
+                style={{ background: 'var(--court)', color: 'white' }}
+              >
+                {testNotifStatus.type === 'loading' ? 'Sending…' : 'Send to all users'}
+              </button>
+
+              {testNotifStatus.type !== 'idle' && testNotifStatus.type !== 'loading' && (
+                <span style={{
+                  fontFamily: 'var(--font-mono)', fontSize: '0.7rem',
+                  color: testNotifStatus.type === 'error' ? '#991b1b' : '#166534',
+                }}>
+                  {testNotifStatus.type === 'success' ? '✓ ' : '✗ '}{testNotifStatus.message}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { insertNotifications } from '@/lib/notifications'
 
 export async function sendFriendRequest(formData: FormData) {
   const supabase = await createClient()
@@ -50,6 +51,13 @@ export async function sendFriendRequest(formData: FormData) {
         .from('friendships')
         .update({ status: 'accepted', updated_at: new Date().toISOString() })
         .eq('id', existing.id)
+      // Notify the original requester that their request was accepted
+      const { data: acceptorProfile } = await admin.from('users').select('username').eq('id', user.id).single()
+      await insertNotifications([{
+        user_id: target.id,
+        type:    'friend_accepted',
+        meta:    { friend_username: acceptorProfile?.username ?? 'Someone' },
+      }])
       revalidatePath('/friends')
       redirect(`${returnTo}?msg=You+are+now+friends+with+${encodeURIComponent(target.username)}&type=success`)
     }
@@ -65,6 +73,14 @@ export async function sendFriendRequest(formData: FormData) {
 
   if (error) redirect(`${returnTo}?msg=${encodeURIComponent(error.message)}&type=error`)
 
+  // Notify the target user of the new friend request
+  const { data: requesterProfile } = await admin.from('users').select('username').eq('id', user.id).single()
+  await insertNotifications([{
+    user_id: target.id,
+    type:    'friend_request',
+    meta:    { from_username: requesterProfile?.username ?? 'Someone' },
+  }])
+
   revalidatePath('/friends')
   redirect(`${returnTo}?msg=Friend+request+sent+to+${encodeURIComponent(target.username)}&type=success`)
 }
@@ -78,11 +94,29 @@ export async function acceptFriendRequest(formData: FormData) {
   const returnTo = (formData.get('return_to') as string) || '/friends'
   const admin = createAdminClient()
 
+  // Fetch friendship so we know who the requester is
+  const { data: friendship } = await admin
+    .from('friendships')
+    .select('requester_id')
+    .eq('id', friendshipId)
+    .eq('addressee_id', user.id)
+    .single()
+
   await admin
     .from('friendships')
     .update({ status: 'accepted', updated_at: new Date().toISOString() })
     .eq('id', friendshipId)
     .eq('addressee_id', user.id)
+
+  // Notify the original requester that their request was accepted
+  if (friendship?.requester_id) {
+    const { data: acceptorProfile } = await admin.from('users').select('username').eq('id', user.id).single()
+    await insertNotifications([{
+      user_id: friendship.requester_id,
+      type:    'friend_accepted',
+      meta:    { friend_username: acceptorProfile?.username ?? 'Someone' },
+    }])
+  }
 
   revalidatePath('/friends')
   redirect(`${returnTo}?msg=Friend+request+accepted&type=success`)

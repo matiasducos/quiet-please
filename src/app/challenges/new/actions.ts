@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
+import { insertNotifications } from '@/lib/notifications'
 
 export async function createChallenge(formData: FormData) {
   const supabase = await createClient()
@@ -49,6 +50,25 @@ export async function createChallenge(formData: FormData) {
     })
 
   if (error) return { error: error.message }
+
+  // Notify the challenged user
+  try {
+    const [{ data: challengerProfile }, { data: tournamentForNotif }] = await Promise.all([
+      admin.from('users').select('username').eq('id', user.id).single(),
+      admin.from('tournaments').select('name').eq('id', tournamentId).single(),
+    ])
+    await insertNotifications([{
+      user_id:       friendId,
+      type:          'challenge_received',
+      tournament_id: tournamentId,
+      meta: {
+        challenger_username: challengerProfile?.username ?? 'Someone',
+        tournament_name:     tournamentForNotif?.name    ?? 'a tournament',
+      },
+    }])
+  } catch (e) {
+    console.error('[createChallenge] notification error', e)
+  }
 
   redirect('/challenges')
 }
