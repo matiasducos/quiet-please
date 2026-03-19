@@ -5,8 +5,8 @@ import { createClient } from '@/lib/supabase/server'
 function BellIcon() {
   return (
     <svg
-      width="17"
-      height="17"
+      width="22"
+      height="22"
       viewBox="0 0 17 17"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
@@ -16,14 +16,14 @@ function BellIcon() {
       <path
         d="M8.5 1.5C6.29 1.5 4.5 3.29 4.5 5.5V9.5L3 11V11.75H14V11L12.5 9.5V5.5C12.5 3.29 10.71 1.5 8.5 1.5Z"
         stroke="currentColor"
-        strokeWidth="1.2"
+        strokeWidth="1.1"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M7 11.75V12.25C7 13.08 7.67 13.75 8.5 13.75C9.33 13.75 10 13.08 10 12.25V11.75"
         stroke="currentColor"
-        strokeWidth="1.2"
+        strokeWidth="1.1"
         strokeLinecap="round"
       />
     </svg>
