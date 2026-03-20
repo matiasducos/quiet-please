@@ -132,6 +132,7 @@ export default function BracketPredictor({
   const [copied, setCopied] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [locked, setLocked] = useState(false)
   const [slotError, setSlotError] = useState<string | null>(null)
   const [activeRound, setActiveRound] = useState(() => {
     const sorted = draw.rounds.slice().sort((a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b))
@@ -238,7 +239,12 @@ export default function BracketPredictor({
     try {
       const result = await savePrediction({ tournamentId: tournament.id, picks, predictionId, lock: true, isPractice })
       if (result.success) {
-        startTransition(() => router.push(returnUrl ?? `/tournaments/${tournament.id}`))
+        if (isPractice) {
+          startTransition(() => router.push(returnUrl ?? `/tournaments/${tournament.id}`))
+        } else {
+          setLocked(true)
+          setSaving(false)
+        }
       } else if (result.error === 'slot_taken') {
         setSlotError(
           `Your ${tournament.tour} slot this week is already taken by ${result.conflictingTournamentName}. ` +
@@ -290,14 +296,21 @@ export default function BracketPredictor({
                   : `${pickedCount} picks`
                 : `${pickedCount}/${totalMatches} picks`}
             </span>
-            {readOnly ? (
-              <Link
-                href={returnUrl ?? `/tournaments/${tournament.id}`}
-                className="px-3 py-1.5 text-xs rounded-sm border whitespace-nowrap"
-                style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
-              >
-                ← Back
-              </Link>
+            {readOnly || locked ? (
+              <>
+                {locked && (
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.05em', color: 'var(--court)', whiteSpace: 'nowrap' }}>
+                    LOCKED ✓
+                  </span>
+                )}
+                <Link
+                  href={returnUrl ?? `/tournaments/${tournament.id}`}
+                  className="px-3 py-1.5 text-xs rounded-sm border whitespace-nowrap"
+                  style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
+                >
+                  ← Back
+                </Link>
+              </>
             ) : (
               <>
                 {!isPractice && (
@@ -465,11 +478,11 @@ export default function BracketPredictor({
               ) => {
                 const style = PICK_STYLES[state]
                 const isBye = byeMatchIds.has(match.matchId)
-                const isClickable = !readOnly && !!player && !isBye
+                const isClickable = !readOnly && !locked && !!player && !isBye
                 return (
                   <button
                     onClick={() => player && pickWinner(match.matchId, player.externalId)}
-                    disabled={!player || readOnly || isBye}
+                    disabled={!player || readOnly || locked || isBye}
                     className={`pick-btn w-full flex items-center justify-between px-4 py-4 text-left${withBorderBottom ? ' border-b' : ''}`}
                     style={{
                       borderColor: 'var(--chalk-dim)',
@@ -618,7 +631,7 @@ export default function BracketPredictor({
         </div>
 
         {/* Submit area — hidden in readOnly mode */}
-        {!readOnly && (
+        {!readOnly && !locked && (
           <div className="mt-8 pt-6 border-t flex flex-col gap-3" style={{ borderColor: 'var(--chalk-dim)' }}>
             {/* Slot conflict error */}
             {slotError && (
@@ -656,6 +669,27 @@ export default function BracketPredictor({
                 ? 'Your score is calculated immediately against actual results. No points are awarded.'
                 : 'Once locked, your picks cannot be changed.'}
             </p>
+          </div>
+        )}
+
+        {/* Locked confirmation */}
+        {locked && (
+          <div className="mt-8 pt-6 border-t text-center flex flex-col items-center gap-3" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <div className="flex items-center gap-2">
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', letterSpacing: '0.06em', color: 'var(--court)', fontWeight: 600 }}>
+                PICKS LOCKED ✓
+              </span>
+            </div>
+            <p style={{ fontSize: '0.85rem', color: 'var(--muted)', maxWidth: '360px' }}>
+              Your bracket is set. Good luck!
+            </p>
+            <Link
+              href={returnUrl ?? `/tournaments/${tournament.id}`}
+              className="px-5 py-2.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90"
+              style={{ background: 'var(--court)', color: 'white', textDecoration: 'none' }}
+            >
+              Back to tournament →
+            </Link>
           </div>
         )}
 
