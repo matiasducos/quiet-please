@@ -398,6 +398,7 @@ export default function DrawBuilder({ tournamentId, tournamentName, drawSize, to
   })
 
   const [status, setStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error'; message?: string }>({ type: 'idle' })
+  const [lastSaveMessage, setLastSaveMessage] = useState<string | null>(null)
 
   // Track all selected player external_ids to prevent duplicates
   const existingSelections = new Set<string>()
@@ -425,7 +426,8 @@ export default function DrawBuilder({ tournamentId, tournamentName, drawSize, to
       }))
       const { ok, error, matchCount: mc } = await buildDraw(tournamentId, payload)
       if (ok) {
-        setStatus({ type: 'success', message: `Draw saved with ${mc} matches. Predictions are now open.` })
+        setLastSaveMessage(`Draw saved with ${mc} matches. Predictions are now open.`)
+        setStatus({ type: 'idle' })  // Reset so Save button stays visible for further edits
       } else {
         setStatus({ type: 'error', message: error ?? 'Failed to save draw' })
       }
@@ -475,16 +477,14 @@ export default function DrawBuilder({ tournamentId, tournamentName, drawSize, to
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
                 {filledCount}/{matchCount} matches
               </span>
-              {status.type !== 'success' && (
-                <button
-                  onClick={handleSave}
-                  disabled={status.type === 'loading' || filledCount === 0}
-                  className="px-4 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
-                  style={{ background: 'var(--court)', color: 'white' }}
-                >
-                  {status.type === 'loading' ? 'Saving...' : 'Save Draw'}
-                </button>
-              )}
+              <button
+                onClick={handleSave}
+                disabled={status.type === 'loading' || filledCount === 0}
+                className="px-4 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
+                style={{ background: 'var(--court)', color: 'white' }}
+              >
+                {status.type === 'loading' ? 'Saving...' : 'Save Draw'}
+              </button>
             </div>
           </div>
         </nav>
@@ -600,10 +600,10 @@ export default function DrawBuilder({ tournamentId, tournamentName, drawSize, to
           </div>
         )}
 
-        {status.type === 'success' && (
+        {lastSaveMessage && (
           <div className="mt-4 p-3 rounded-sm" style={{ background: '#f0fdf4', borderLeft: '3px solid #22c55e' }}>
             <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: '#166534' }}>
-              {status.message}
+              {lastSaveMessage}
             </p>
             <div className="flex gap-3 mt-2">
               <Link
@@ -622,22 +622,20 @@ export default function DrawBuilder({ tournamentId, tournamentName, drawSize, to
           </div>
         )}
 
-        {/* Bottom save button */}
-        {status.type !== 'success' && (
-          <div className="mt-8 pt-6 border-t flex items-center justify-between" style={{ borderColor: 'var(--chalk-dim)' }}>
-            <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
-              {filledCount} of {matchCount} matches filled
-            </span>
-            <button
-              onClick={handleSave}
-              disabled={status.type === 'loading' || filledCount === 0}
-              className="px-6 py-2.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
-              style={{ background: 'var(--court)', color: 'white' }}
-            >
-              {status.type === 'loading' ? 'Saving...' : 'Save Draw'}
-            </button>
-          </div>
-        )}
+        {/* Bottom save button — always visible */}
+        <div className="mt-8 pt-6 border-t flex items-center justify-between" style={{ borderColor: 'var(--chalk-dim)' }}>
+          <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
+            {filledCount} of {matchCount} matches filled
+          </span>
+          <button
+            onClick={handleSave}
+            disabled={status.type === 'loading' || filledCount === 0}
+            className="px-6 py-2.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
+            style={{ background: 'var(--court)', color: 'white' }}
+          >
+            {status.type === 'loading' ? 'Saving...' : 'Save Draw'}
+          </button>
+        </div>
       </div>
     </main>
   )

@@ -6,6 +6,17 @@ export const maxDuration = 60
 
 const BASE_URL = 'https://api.api-tennis.com/tennis/'
 
+/** Decode common HTML entities the Tennis API encodes in player/country names */
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+}
+
 async function callApi(apiKey: string, params: Record<string, string>, timeoutMs = 12_000) {
   const url = new URL(BASE_URL)
   url.searchParams.set('APIkey', apiKey)
@@ -127,8 +138,8 @@ async function handleBatch(apiKey: string, tournaments: { key: string; tour: 'AT
         const pk = String(p.player_key ?? '').trim()
         if (pk && !players.has(pk)) {
           players.set(pk, {
-            name: String(p.player_name ?? '').trim(),
-            country: String(p.player_country ?? '').trim(),
+            name: decodeEntities(String(p.player_name ?? '').trim()),
+            country: decodeEntities(String(p.player_country ?? '').trim()),
             tour: r.value.tour,
           })
         }

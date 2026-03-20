@@ -5,6 +5,17 @@ import type { Tournament, Draw, DrawMatch, MatchResult, Round, TournamentCategor
 // Docs: https://api-tennis.com/documentation
 const BASE_URL = 'https://api.api-tennis.com/tennis/'
 
+/** Decode common HTML entities the Tennis API sometimes encodes in player names */
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+}
+
 // Add days to a YYYY-MM-DD string and return YYYY-MM-DD
 function addDays(dateStr: string, days: number): string {
   const d = new Date(dateStr)
@@ -135,13 +146,13 @@ export class ApiTennisProvider extends TennisProvider {
       round:       this.normalizeRound(raw.tournament_round ?? ''),
       player1:     raw.event_home_team ? {
         externalId: String(raw.event_home_team_key ?? raw.event_home_team),
-        name:       String(raw.event_home_team),
-        country:    raw.event_home_team_country ?? '',
+        name:       decodeEntities(String(raw.event_home_team)),
+        country:    decodeEntities(String(raw.event_home_team_country ?? '')),
       } : null,
       player2:     raw.event_away_team ? {
         externalId: String(raw.event_away_team_key ?? raw.event_away_team),
-        name:       String(raw.event_away_team),
-        country:    raw.event_away_team_country ?? '',
+        name:       decodeEntities(String(raw.event_away_team)),
+        country:    decodeEntities(String(raw.event_away_team_country ?? '')),
       } : null,
       scheduledAt: raw.event_date ?? undefined,
     }
