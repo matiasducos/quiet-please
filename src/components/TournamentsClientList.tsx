@@ -57,15 +57,17 @@ export default function TournamentsClientList({ tournaments, activeTour, activeS
 
   return (
     <>
-      {/* ── Header: title + controls on top row, description below ── */}
+      {/* ── Header: title, description, then controls ── */}
       <div className="mb-5">
-        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 mb-2">
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-            Tournaments
-          </h1>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+          Tournaments
+        </h1>
+        <p style={{ color: 'var(--muted)', fontSize: '0.875rem', lineHeight: 1.65, maxWidth: '520px', marginTop: '0.4rem' }}>
+          Browse every ATP and WTA tournament of the season and submit your bracket before the draw closes. Points you earn count toward the global leaderboard and your season ranking.
+        </p>
 
-          {/* Right side: search + ATP/WTA */}
-          <div className="flex items-center gap-2">
+        {/* Search + ATP/WTA */}
+        <div className="flex items-center gap-2 mt-4">
           <input
             type="text"
             value={query}
@@ -98,11 +100,7 @@ export default function TournamentsClientList({ tournaments, activeTour, activeS
               </Link>
             ))}
           </div>
-          </div>
         </div>
-        <p style={{ color: 'var(--muted)', fontSize: '0.875rem', lineHeight: 1.65, maxWidth: '520px' }}>
-          Browse every ATP and WTA tournament of the season and submit your bracket before the draw closes. Points you earn count toward the global leaderboard and your season ranking.
-        </p>
       </div>
 
       {/* ── Status chips ── */}

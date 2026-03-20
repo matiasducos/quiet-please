@@ -32,26 +32,24 @@ export default async function LeaguesPage() {
 
       <div className="max-w-3xl mx-auto px-8 py-10">
         <div className="mb-8">
-          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 mb-2">
-            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>Leagues</h1>
-            <div className="flex gap-3">
-              <Link
-                href="/leagues/join"
-                className="px-4 py-2 text-sm rounded-sm border transition-colors whitespace-nowrap"
-                style={{ background: 'white', borderColor: 'var(--chalk-dim)', color: 'var(--ink)', textDecoration: 'none' }}
-              >
-                Join with code
-              </Link>
-              <Link
-                href="/leagues/new"
-                className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90 whitespace-nowrap"
-                style={{ background: 'var(--court)', textDecoration: 'none' }}
-              >
-                Create league
-              </Link>
-            </div>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>Leagues</h1>
+          <p style={{ color: 'var(--muted)', fontSize: '0.875rem', lineHeight: 1.65, maxWidth: '520px', marginTop: '0.4rem' }}>Create a private league with friends and track who makes the sharpest calls across the full season. Your picks in any tournament you enter count toward the league standings.</p>
+          <div className="flex gap-3 mt-4">
+            <Link
+              href="/leagues/join"
+              className="px-4 py-2 text-sm rounded-sm border transition-colors whitespace-nowrap"
+              style={{ background: 'white', borderColor: 'var(--chalk-dim)', color: 'var(--ink)', textDecoration: 'none' }}
+            >
+              Join with code
+            </Link>
+            <Link
+              href="/leagues/new"
+              className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90 whitespace-nowrap"
+              style={{ background: 'var(--court)', textDecoration: 'none' }}
+            >
+              Create league
+            </Link>
           </div>
-          <p style={{ color: 'var(--muted)', fontSize: '0.875rem', lineHeight: 1.65, maxWidth: '520px' }}>Create a private league with friends and track who makes the sharpest calls across the full season. Your picks in any tournament you enter count toward the league standings.</p>
         </div>
 
         {leagues.length === 0 ? (

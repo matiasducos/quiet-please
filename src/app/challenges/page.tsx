@@ -139,28 +139,26 @@ export default async function ChallengesPage() {
 
       <div className="max-w-3xl mx-auto px-8 py-10">
         <div className="mb-8">
-          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 mb-2">
-            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>Challenges</h1>
-            <div className="flex gap-3">
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>Challenges</h1>
+          <p style={{ color: 'var(--muted)', fontSize: '0.875rem', lineHeight: 1.65, maxWidth: '520px', marginTop: '0.4rem' }}>Pick a friend and go head-to-head on any open tournament. You each lock in your bracket — whoever scores more points when it&apos;s over wins the challenge.</p>
+          <div className="flex gap-3 mt-4">
+            <Link
+              href="/friends"
+              className="px-4 py-2 text-sm rounded-sm border transition-colors whitespace-nowrap"
+              style={{ background: 'white', borderColor: 'var(--chalk-dim)', color: 'var(--ink)', textDecoration: 'none' }}
+            >
+              Friends
+            </Link>
+            {hasFriends && (
               <Link
-                href="/friends"
-                className="px-4 py-2 text-sm rounded-sm border transition-colors whitespace-nowrap"
-                style={{ background: 'white', borderColor: 'var(--chalk-dim)', color: 'var(--ink)', textDecoration: 'none' }}
+                href="/challenges/new"
+                className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90 whitespace-nowrap"
+                style={{ background: 'var(--court)', textDecoration: 'none' }}
               >
-                Friends
+                New challenge
               </Link>
-              {hasFriends && (
-                <Link
-                  href="/challenges/new"
-                  className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90 whitespace-nowrap"
-                  style={{ background: 'var(--court)', textDecoration: 'none' }}
-                >
-                  New challenge
-                </Link>
-              )}
-            </div>
+            )}
           </div>
-          <p style={{ color: 'var(--muted)', fontSize: '0.875rem', lineHeight: 1.65, maxWidth: '520px' }}>Pick a friend and go head-to-head on any open tournament. You each lock in your bracket — whoever scores more points when it&apos;s over wins the challenge.</p>
         </div>
 
         {/* No friends yet */}
