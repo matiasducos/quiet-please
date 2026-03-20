@@ -299,8 +299,10 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                       ? 'Sign in to make your picks.'
                       : t.status === 'draw_published'
                       ? 'The qualifying draw is live. Sign in — predictions open once the main draw is published.'
-                      : t.status === 'in_progress' || t.status === 'completed'
+                      : t.status === 'completed'
                       ? 'This tournament has ended.'
+                      : t.status === 'in_progress'
+                      ? 'This tournament is in progress. Predictions are closed.'
                       : 'Sign in to be notified when predictions open.'}
                   </p>
                   <div className="flex flex-col items-center gap-3">
@@ -410,6 +412,8 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                     ? 'Predictions will open when the draw is published.'
                     : t.status === 'completed'
                     ? 'This tournament has ended.'
+                    : t.status === 'in_progress'
+                    ? 'This tournament is in progress. Predictions are closed.'
                     : 'Predictions are closed for this tournament.'}
                 </p>
               )}
