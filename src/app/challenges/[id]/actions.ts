@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { insertNotifications } from '@/lib/notifications'
 
 export async function cancelChallenge(formData: FormData) {
   const supabase = await createClient()
@@ -18,7 +19,7 @@ export async function cancelChallenge(formData: FormData) {
   // Verify: this user is the challenger and challenge is still pending
   const { data: challenge } = await admin
     .from('challenges')
-    .select('id, status')
+    .select('id, challenged_id, tournament_id, status')
     .eq('id', challengeId)
     .eq('challenger_id', user.id)
     .eq('status', 'pending')
@@ -30,6 +31,25 @@ export async function cancelChallenge(formData: FormData) {
     .from('challenges')
     .update({ status: 'cancelled', updated_at: new Date().toISOString() })
     .eq('id', challengeId)
+
+  // Notify the challenged user
+  try {
+    const [{ data: challengerProfile }, { data: tournament }] = await Promise.all([
+      admin.from('users').select('username').eq('id', user.id).single(),
+      admin.from('tournaments').select('name').eq('id', challenge.tournament_id).single(),
+    ])
+    await insertNotifications([{
+      user_id:       challenge.challenged_id,
+      type:          'challenge_cancelled',
+      tournament_id: challenge.tournament_id,
+      meta: {
+        challenger_username: challengerProfile?.username ?? 'Someone',
+        tournament_name:     tournament?.name            ?? 'a tournament',
+      },
+    }])
+  } catch (e) {
+    console.error('[cancelChallenge] notification error', e)
+  }
 
   revalidatePath(`/challenges/${challengeId}`)
   revalidatePath('/challenges')
