@@ -856,13 +856,17 @@ export async function createTournament(data: {
       ends_at: endsAt.toISOString(),
       starts_year,
       draw_size: data.drawSize,
-      is_manual: true,
       status: 'upcoming',
     })
     .select('id')
     .single()
 
-  if (error) return { ok: false, error: error.message }
+  if (error) {
+    if (error.code === '23505') {
+      return { ok: false, error: `A tournament with slug "${external_id}" already exists for ${starts_year}. Try a different name.` }
+    }
+    return { ok: false, error: error.message }
+  }
   return { ok: true, tournamentId: tournament.id }
 }
 
@@ -879,7 +883,7 @@ export async function getManualTournaments(): Promise<{
   const { data } = await admin
     .from('tournaments')
     .select('id, name, tour, category, status, draw_size, starts_at, surface, draws(id)')
-    .eq('is_manual', true)
+    .not('draw_size', 'is', null)
     .order('created_at', { ascending: false })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

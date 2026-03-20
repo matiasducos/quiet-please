@@ -12,7 +12,7 @@ export default async function DrawPage({ params }: { params: Promise<{ id: strin
     .from('tournaments')
     .select('id, name, draw_size, tour')
     .eq('id', id)
-    .eq('is_manual', true)
+    .not('draw_size', 'is', null)
     .single()
 
   if (!tournament) redirect('/admin')
