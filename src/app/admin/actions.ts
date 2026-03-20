@@ -918,6 +918,89 @@ export async function getManualTournaments(): Promise<{
   }
 }
 
+export async function getTournament(tournamentId: string): Promise<{
+  ok: boolean
+  tournament?: {
+    id: string; name: string; tour: string; category: string
+    country: string; city: string; surface: string | null
+    starts_at: string | null; draw_size: number | null; status: string
+  }
+  error?: string
+}> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  const { data: tournament, error } = await admin
+    .from('tournaments')
+    .select('id, name, tour, category, location, surface, starts_at, draw_size, status')
+    .eq('id', tournamentId)
+    .single()
+
+  if (error || !tournament) return { ok: false, error: error?.message ?? 'Tournament not found' }
+
+  // Parse "City, Country" from location field
+  const location = (tournament.location as string) ?? ''
+  const commaIdx = location.indexOf(',')
+  const city = commaIdx >= 0 ? location.slice(0, commaIdx).trim() : ''
+  const country = commaIdx >= 0 ? location.slice(commaIdx + 1).trim() : location.trim()
+
+  return {
+    ok: true,
+    tournament: {
+      id: tournament.id,
+      name: tournament.name,
+      tour: tournament.tour,
+      category: tournament.category,
+      country,
+      city,
+      surface: tournament.surface,
+      starts_at: tournament.starts_at,
+      draw_size: tournament.draw_size as number | null,
+      status: tournament.status,
+    },
+  }
+}
+
+export async function updateTournament(
+  tournamentId: string,
+  data: {
+    name: string
+    tour: 'ATP' | 'WTA'
+    category: 'grand_slam' | 'masters_1000' | '500' | '250'
+    country: string
+    city: string
+    surface: 'hard' | 'clay' | 'grass'
+    startsAt: string
+    drawSize: 32 | 64 | 128
+  },
+): Promise<{ ok: boolean; error?: string }> {
+  await assertAdmin()
+
+  const startsAt = new Date(data.startsAt)
+  const starts_year = startsAt.getUTCFullYear()
+  const durationDays = data.category === 'grand_slam' ? 14 : 7
+  const endsAt = new Date(startsAt.getTime() + durationDays * 24 * 60 * 60 * 1000)
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('tournaments')
+    .update({
+      name: data.name.trim(),
+      tour: data.tour,
+      category: data.category,
+      surface: data.surface,
+      location: `${data.city.trim()}, ${data.country.trim()}`,
+      starts_at: startsAt.toISOString(),
+      ends_at: endsAt.toISOString(),
+      starts_year,
+      draw_size: data.drawSize,
+    })
+    .eq('id', tournamentId)
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
 export async function getTournamentWithDraw(tournamentId: string): Promise<{
   ok: boolean
   tournament?: {

@@ -167,6 +167,13 @@ export default function AdminPanel({ tournaments }: { tournaments: ManualTournam
                     </div>
                     <div className="flex gap-2 flex-shrink-0">
                       <Link
+                        href={`/admin/tournaments/${t.id}/edit`}
+                        className="px-3 py-1.5 rounded-sm transition-opacity hover:opacity-90"
+                        style={{ border: '1px solid var(--chalk-dim)', color: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
+                      >
+                        Edit
+                      </Link>
+                      <Link
                         href={`/admin/tournaments/${t.id}/draw`}
                         className="px-3 py-1.5 rounded-sm transition-opacity hover:opacity-90"
                         style={{ background: t.has_draw ? '#111' : 'var(--court)', color: 'white', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}

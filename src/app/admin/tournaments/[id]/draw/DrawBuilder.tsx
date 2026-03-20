@@ -11,6 +11,10 @@ interface DrawBuilderProps {
   tournamentName: string
   drawSize: number
   tour: 'ATP' | 'WTA'
+  existingSlots?: Array<{
+    player1: PlayerOption | 'BYE' | null
+    player2: PlayerOption | 'BYE' | null
+  }>
 }
 
 const ROUND_ORDER = ['R128', 'R64', 'R32', 'R16', 'QF', 'SF', 'F']
@@ -369,7 +373,7 @@ function BracketConnector() {
 
 // ── Main DrawBuilder ──────────────────────────────────────────────────────────
 
-export default function DrawBuilder({ tournamentId, tournamentName, drawSize, tour }: DrawBuilderProps) {
+export default function DrawBuilder({ tournamentId, tournamentName, drawSize, tour, existingSlots }: DrawBuilderProps) {
   const matchCount = drawSize / 2
   type Slot = PlayerOption | 'BYE' | null
 
@@ -385,10 +389,13 @@ export default function DrawBuilder({ tournamentId, tournamentName, drawSize, to
     roundMatchCount = Math.ceil(roundMatchCount / 2)
   }
 
-  // State for first-round matches only
-  const [slots, setSlots] = useState<Array<{ player1: Slot; player2: Slot }>>(
-    Array.from({ length: matchCount }, () => ({ player1: null, player2: null }))
-  )
+  // State for first-round matches — initialized from existing draw data if available
+  const [slots, setSlots] = useState<Array<{ player1: Slot; player2: Slot }>>(() => {
+    if (existingSlots && existingSlots.length === matchCount) {
+      return existingSlots
+    }
+    return Array.from({ length: matchCount }, () => ({ player1: null, player2: null }))
+  })
 
   const [status, setStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error'; message?: string }>({ type: 'idle' })
 
