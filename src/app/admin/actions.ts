@@ -3,6 +3,14 @@
 import { revalidateTag } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { COUNTRIES, codeToFlag } from './countries'
+
+/** Look up a country name and return its flag emoji, or null if not found. */
+function flagForCountry(countryName: string): string | null {
+  const trimmed = countryName.trim().toLowerCase()
+  const match = COUNTRIES.find(c => c.name.toLowerCase() === trimmed)
+  return match ? codeToFlag(match.code) : null
+}
 
 // ── Auth guard ────────────────────────────────────────────────────────────────
 
@@ -847,6 +855,8 @@ export async function createTournament(data: {
   const endsAt = new Date(startsAt.getTime() + durationDays * 24 * 60 * 60 * 1000)
 
   const admin = createAdminClient()
+  const flag = flagForCountry(data.country)
+
   const { data: tournament, error } = await admin
     .from('tournaments')
     .insert({
@@ -856,6 +866,7 @@ export async function createTournament(data: {
       category: data.category,
       surface: data.surface,
       location: `${data.city.trim()}, ${data.country.trim()}`,
+      flag_emoji: flag,
       starts_at: startsAt.toISOString(),
       ends_at: endsAt.toISOString(),
       starts_year,
@@ -985,6 +996,8 @@ export async function updateTournament(
   const durationDays = data.category === 'grand_slam' ? 14 : 7
   const endsAt = new Date(startsAt.getTime() + durationDays * 24 * 60 * 60 * 1000)
 
+  const flag = flagForCountry(data.country)
+
   const admin = createAdminClient()
   const { error } = await admin
     .from('tournaments')
@@ -994,6 +1007,7 @@ export async function updateTournament(
       category: data.category,
       surface: data.surface,
       location: `${data.city.trim()}, ${data.country.trim()}`,
+      flag_emoji: flag,
       starts_at: startsAt.toISOString(),
       ends_at: endsAt.toISOString(),
       starts_year,
