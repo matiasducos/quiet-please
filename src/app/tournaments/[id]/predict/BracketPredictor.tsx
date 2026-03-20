@@ -107,8 +107,6 @@ export default function BracketPredictor({
   matchPoints,
   readOnly = false,
   shareUrl,
-  onSimulateSubmit,
-  customBanner,
 }: {
   tournament: any
   draw: Draw
@@ -121,10 +119,6 @@ export default function BracketPredictor({
   matchPoints?: Record<string, number>   // matchId → points earned
   readOnly?: boolean
   shareUrl?: string
-  /** Sandbox: intercept Submit & lock, receive picks without writing to DB */
-  onSimulateSubmit?: (picks: Record<string, string>) => void
-  /** Sandbox: custom banner replacing the practice/readOnly banner */
-  customBanner?: React.ReactNode
 }) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -204,7 +198,7 @@ export default function BracketPredictor({
   }
 
   const handleSave = async () => {
-    if (isPractice || readOnly || onSimulateSubmit) return  // no-op in sandbox simulation mode
+    if (isPractice || readOnly) return
     setSaving(true)
     setSlotError(null)
     try {
@@ -225,11 +219,6 @@ export default function BracketPredictor({
 
   const handleSubmit = async () => {
     if (readOnly) return
-    // Sandbox simulation mode — hand picks back to parent, skip DB write
-    if (onSimulateSubmit) {
-      onSimulateSubmit(picks)
-      return
-    }
     const msg = isPractice
       ? 'Score your picks against the actual results? This will show you how many points you would have earned.'
       : 'Lock your picks? This cannot be undone.'
@@ -337,11 +326,8 @@ export default function BracketPredictor({
         </div>
       </nav>
 
-      {/* Custom banner — sandbox simulation mode (replaces practice/readOnly banners) */}
-      {customBanner}
-
       {/* Practice mode banner */}
-      {isPractice && !readOnly && !customBanner && (
+      {isPractice && !readOnly && (
         <div className="px-4 md:px-6 py-2.5" style={{ background: '#f3e8ff', borderBottom: '1px solid #e9d5ff' }}>
           <div className="flex items-center gap-2">
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: '#7c2d7c', fontWeight: 600, flexShrink: 0 }}>
@@ -358,7 +344,7 @@ export default function BracketPredictor({
       )}
 
       {/* Read-only banner */}
-      {readOnly && !customBanner && (
+      {readOnly && (
         <div className="px-4 md:px-6 py-2.5" style={{ background: '#f1efe8', borderBottom: '1px solid var(--chalk-dim)' }}>
           {/* First row: badge + (desktop legend) + share button */}
           <div className="flex items-center gap-3">
