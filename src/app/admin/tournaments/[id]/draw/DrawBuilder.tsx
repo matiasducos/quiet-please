@@ -13,6 +13,19 @@ interface DrawBuilderProps {
   tour: 'ATP' | 'WTA'
 }
 
+const ROUND_ORDER = ['R128', 'R64', 'R32', 'R16', 'QF', 'SF', 'F']
+const ROUND_LABELS: Record<string, string> = {
+  R128: 'R128', R64: 'R64', R32: 'R32',
+  R16: 'R16', QF: 'Quarterfinals', SF: 'Semifinals', F: 'Final',
+}
+
+// Compute which rounds exist for a given draw size
+function getRounds(drawSize: number): string[] {
+  const startMap: Record<number, number> = { 128: 0, 64: 1, 32: 2 }
+  const startIdx = startMap[drawSize] ?? 2
+  return ROUND_ORDER.slice(startIdx)
+}
+
 // ── Searchable player combobox ─────────────────────────────────────────────────
 
 function PlayerCombobox({
@@ -108,7 +121,7 @@ function PlayerCombobox({
   // Show selected value
   if (value === 'BYE') {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 px-3 py-2.5">
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', fontStyle: 'italic' }}>BYE</span>
         <button type="button" onClick={clearSelection} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#991b1b', cursor: 'pointer', background: 'none', border: 'none' }}>✕</button>
       </div>
@@ -117,16 +130,16 @@ function PlayerCombobox({
 
   if (value) {
     return (
-      <div className="flex items-center gap-2">
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--ink)' }}>{value.name}</span>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>{value.country}</span>
-        <button type="button" onClick={clearSelection} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#991b1b', cursor: 'pointer', background: 'none', border: 'none' }}>✕</button>
+      <div className="flex items-center gap-2 px-3 py-2.5">
+        <span style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', letterSpacing: '-0.01em', color: 'var(--ink)' }}>{value.name}</span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.04em' }}>{value.country}</span>
+        <button type="button" onClick={clearSelection} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#991b1b', cursor: 'pointer', background: 'none', border: 'none', marginLeft: 'auto' }}>✕</button>
       </div>
     )
   }
 
   return (
-    <div ref={ref} style={{ position: 'relative', flex: 1 }}>
+    <div ref={ref} style={{ position: 'relative' }}>
       <input
         value={query}
         onChange={e => handleInputChange(e.target.value)}
@@ -134,8 +147,9 @@ function PlayerCombobox({
         placeholder={placeholder}
         style={{
           fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
-          padding: '4px 8px', border: '1px solid var(--chalk-dim)',
-          borderRadius: '2px', width: '100%', background: 'white',
+          padding: '8px 12px', border: 'none',
+          width: '100%', background: 'transparent',
+          outline: 'none',
         }}
       />
       {open && (
@@ -238,12 +252,140 @@ function PlayerCombobox({
   )
 }
 
+// ── Match card (editable first-round slot) ──────────────────────────────────────
+
+function MatchCard({
+  matchNumber,
+  player1,
+  player2,
+  onChangeP1,
+  onChangeP2,
+  tour,
+  existingSelections,
+}: {
+  matchNumber: number
+  player1: PlayerOption | 'BYE' | null
+  player2: PlayerOption | 'BYE' | null
+  onChangeP1: (v: PlayerOption | 'BYE' | null) => void
+  onChangeP2: (v: PlayerOption | 'BYE' | null) => void
+  tour: 'ATP' | 'WTA'
+  existingSelections: Set<string>
+}) {
+  const isFilled = player1 !== null && player2 !== null
+
+  return (
+    <div
+      className="bg-white rounded-sm border overflow-hidden"
+      style={{
+        borderColor: isFilled ? 'var(--court)' : 'var(--chalk-dim)',
+        borderLeftWidth: '3px',
+        borderLeftColor: isFilled ? 'var(--court)' : 'transparent',
+      }}
+    >
+      {/* Match header */}
+      <div className="px-3 py-1.5 border-b flex items-center justify-between" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>
+          MATCH {matchNumber}
+        </span>
+        {isFilled && (
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.55rem', color: 'var(--court)', letterSpacing: '0.04em' }}>
+            ✓
+          </span>
+        )}
+      </div>
+
+      {/* Player 1 */}
+      <div className="border-b" style={{ borderColor: 'var(--chalk-dim)' }}>
+        <PlayerCombobox
+          value={player1}
+          onChange={onChangeP1}
+          tour={tour}
+          placeholder="Player 1..."
+          existingSelections={existingSelections}
+        />
+      </div>
+
+      {/* VS divider */}
+      <div className="flex items-center justify-center py-0.5" style={{ background: '#fafaf8' }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.55rem', color: 'var(--muted)', letterSpacing: '0.1em' }}>VS</span>
+      </div>
+
+      {/* Player 2 */}
+      <div>
+        <PlayerCombobox
+          value={player2}
+          onChange={onChangeP2}
+          tour={tour}
+          placeholder="Player 2..."
+          existingSelections={existingSelections}
+        />
+      </div>
+    </div>
+  )
+}
+
+// ── TBD match card (later rounds, non-editable) ─────────────────────────────────
+
+function TBDMatchCard({ matchNumber }: { matchNumber: number }) {
+  return (
+    <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)', opacity: 0.5 }}>
+      <div className="px-3 py-1.5 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>
+          MATCH {matchNumber}
+        </span>
+      </div>
+      <div className="px-3 py-2.5 border-b" style={{ borderColor: 'var(--chalk-dim)' }}>
+        <span style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--muted)' }}>TBD</span>
+      </div>
+      <div className="flex items-center justify-center py-0.5" style={{ background: '#fafaf8' }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.55rem', color: 'var(--muted)', letterSpacing: '0.1em' }}>VS</span>
+      </div>
+      <div className="px-3 py-2.5">
+        <span style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--muted)' }}>TBD</span>
+      </div>
+    </div>
+  )
+}
+
+// ── Bracket connector (right-side ⊣ shape) ──────────────────────────────────────
+
+function BracketConnector() {
+  return (
+    <div style={{ width: '20px', position: 'relative', flexShrink: 0, alignSelf: 'stretch' }}>
+      <div style={{
+        position: 'absolute',
+        top: '25%',
+        bottom: '25%',
+        left: '4px',
+        right: 0,
+        borderTop: '1.5px solid var(--muted)',
+        borderRight: '1.5px solid var(--muted)',
+        borderBottom: '1.5px solid var(--muted)',
+        borderRadius: '0 3px 3px 0',
+      }} />
+    </div>
+  )
+}
+
 // ── Main DrawBuilder ──────────────────────────────────────────────────────────
 
 export default function DrawBuilder({ tournamentId, tournamentName, drawSize, tour }: DrawBuilderProps) {
   const matchCount = drawSize / 2
   type Slot = PlayerOption | 'BYE' | null
 
+  const rounds = getRounds(drawSize)
+  const firstRound = rounds[0]
+  const [activeRound, setActiveRound] = useState(firstRound)
+
+  // Compute match counts per round
+  const matchesByRound: Record<string, number> = {}
+  let roundMatchCount = matchCount
+  for (const round of rounds) {
+    matchesByRound[round] = roundMatchCount
+    roundMatchCount = Math.ceil(roundMatchCount / 2)
+  }
+
+  // State for first-round matches only
   const [slots, setSlots] = useState<Array<{ player1: Slot; player2: Slot }>>(
     Array.from({ length: matchCount }, () => ({ player1: null, player2: null }))
   )
@@ -265,7 +407,6 @@ export default function DrawBuilder({ tournamentId, tournamentName, drawSize, to
     })
   }
 
-  // Count filled slots
   const filledCount = slots.filter(s => s.player1 !== null && s.player2 !== null).length
 
   async function handleSave() {
@@ -286,63 +427,164 @@ export default function DrawBuilder({ tournamentId, tournamentName, drawSize, to
     }
   }
 
+  // Group matches into bracket pairs for active round
+  function getGroups(): number[][] {
+    const count = matchesByRound[activeRound] ?? 0
+    const groups: number[][] = []
+    for (let i = 0; i < count; i += 2) {
+      if (i + 1 < count) {
+        groups.push([i, i + 1])
+      } else {
+        groups.push([i])
+      }
+    }
+    return groups
+  }
+
+  // Compute global match number offset for non-first rounds
+  function getGlobalMatchOffset(round: string): number {
+    let offset = 0
+    for (const r of rounds) {
+      if (r === round) return offset
+      offset += matchesByRound[r]
+    }
+    return offset
+  }
+
+  const isFirstRound = activeRound === firstRound
+  const groups = getGroups()
+  const globalOffset = getGlobalMatchOffset(activeRound)
+
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
-        <div className="flex items-center justify-between px-6 py-4">
-          <Link href="/admin" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)' }}>
-            &larr; Admin
-          </Link>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: 'var(--muted)', textTransform: 'uppercase' }}>
-            Build Draw
-          </span>
-        </div>
-      </nav>
+      {/* Sticky top: nav + round tabs */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+        <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
+          <div className="flex items-center justify-between px-4 md:px-6 py-4">
+            <Link href="/admin" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)' }}>
+              &larr; Admin
+            </Link>
+            <div className="flex items-center gap-3">
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
+                {filledCount}/{matchCount} matches
+              </span>
+              {status.type !== 'success' && (
+                <button
+                  onClick={handleSave}
+                  disabled={status.type === 'loading' || filledCount === 0}
+                  className="px-4 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
+                  style={{ background: 'var(--court)', color: 'white' }}
+                >
+                  {status.type === 'loading' ? 'Saving...' : 'Save Draw'}
+                </button>
+              )}
+            </div>
+          </div>
+        </nav>
 
-      <div className="max-w-3xl mx-auto px-4 md:px-8 py-10">
-        <div className="mb-6">
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-            {tournamentName}
-          </h1>
-          <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginTop: '0.4rem' }}>
-            Build the first-round draw ({matchCount} matches, {drawSize}-player bracket). Select players or mark as BYE.
-          </p>
-          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', marginTop: '0.25rem' }}>
-            {filledCount}/{matchCount} matches filled
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          {slots.map((slot, i) => (
-            <div key={i} className="bg-white rounded-sm border p-3" style={{ borderColor: 'var(--chalk-dim)' }}>
-              <div className="flex items-center gap-3">
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', width: '28px', textAlign: 'right', flexShrink: 0 }}>
-                  M{i + 1}
+        {/* Round tabs */}
+        <div className="flex border-b bg-white overflow-x-auto" style={{ borderColor: 'var(--chalk-dim)', scrollbarWidth: 'none' }}>
+          {rounds.map(round => (
+            <button
+              key={round}
+              onClick={() => setActiveRound(round)}
+              className="px-5 py-3 text-xs whitespace-nowrap border-b-2 transition-colors flex-shrink-0"
+              style={{
+                borderBottomColor: activeRound === round ? 'var(--court)' : 'transparent',
+                color: activeRound === round ? 'var(--court)' : 'var(--muted)',
+                fontFamily: 'var(--font-mono)',
+                letterSpacing: '0.04em',
+              }}
+            >
+              {ROUND_LABELS[round] ?? round}
+              {round === firstRound && (
+                <span style={{ marginLeft: '4px', fontSize: '0.6rem', opacity: 0.6 }}>
+                  ({matchesByRound[round]})
                 </span>
-                <div style={{ flex: 1 }}>
-                  <PlayerCombobox
-                    value={slot.player1}
-                    onChange={v => updateSlot(i, 'player1', v)}
-                    tour={tour}
-                    placeholder="Player 1..."
-                    existingSelections={existingSelections}
-                  />
-                </div>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>vs</span>
-                <div style={{ flex: 1 }}>
-                  <PlayerCombobox
-                    value={slot.player2}
-                    onChange={v => updateSlot(i, 'player2', v)}
-                    tour={tour}
-                    placeholder="Player 2..."
-                    existingSelections={existingSelections}
-                  />
-                </div>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Header */}
+      <div className="px-4 md:px-6 py-5 border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.02em' }}>
+          {tournamentName}
+        </h1>
+        <p style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+          {isFirstRound
+            ? `Build the first-round draw (${matchCount} matches, ${drawSize}-player bracket). Select players or mark as BYE.`
+            : `${ROUND_LABELS[activeRound] ?? activeRound} — ${matchesByRound[activeRound]} matches. These are filled automatically when results are entered.`
+          }
+        </p>
+      </div>
+
+      {/* Match cards */}
+      <div className="max-w-2xl mx-auto px-4 md:px-6 py-6">
+        <div className="flex flex-col gap-6">
+          {groups.map((group, gi) => (
+            <div key={gi} className="flex items-stretch">
+              {/* Match cards column */}
+              <div className="flex flex-col gap-3 flex-1">
+                {group.map(idx => {
+                  const matchNum = globalOffset + idx + 1
+
+                  if (isFirstRound) {
+                    return (
+                      <MatchCard
+                        key={idx}
+                        matchNumber={matchNum}
+                        player1={slots[idx].player1}
+                        player2={slots[idx].player2}
+                        onChangeP1={v => updateSlot(idx, 'player1', v)}
+                        onChangeP2={v => updateSlot(idx, 'player2', v)}
+                        tour={tour}
+                        existingSelections={existingSelections}
+                      />
+                    )
+                  }
+
+                  return <TBDMatchCard key={idx} matchNumber={matchNum} />
+                })}
               </div>
+
+              {/* Bracket connector between paired matches */}
+              {group.length === 2 && <BracketConnector />}
             </div>
           ))}
         </div>
 
+        {/* Round navigation */}
+        <div className="flex items-center justify-between mt-6">
+          <button
+            onClick={() => {
+              const idx = rounds.indexOf(activeRound)
+              if (idx > 0) setActiveRound(rounds[idx - 1])
+            }}
+            disabled={rounds.indexOf(activeRound) === 0}
+            className="px-4 py-2 text-sm rounded-sm border transition-colors disabled:opacity-30"
+            style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
+          >
+            ← Previous
+          </button>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
+            {ROUND_LABELS[activeRound] ?? activeRound}
+          </span>
+          <button
+            onClick={() => {
+              const idx = rounds.indexOf(activeRound)
+              if (idx < rounds.length - 1) setActiveRound(rounds[idx + 1])
+            }}
+            disabled={rounds.indexOf(activeRound) === rounds.length - 1}
+            className="px-4 py-2 text-sm rounded-sm border transition-colors disabled:opacity-30"
+            style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
+          >
+            Next →
+          </button>
+        </div>
+
+        {/* Status messages */}
         {status.type === 'error' && (
           <div className="mt-4 p-3 rounded-sm" style={{ background: '#fee2e2', borderLeft: '3px solid #ef4444' }}>
             <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: '#991b1b' }}>
@@ -373,15 +615,21 @@ export default function DrawBuilder({ tournamentId, tournamentName, drawSize, to
           </div>
         )}
 
+        {/* Bottom save button */}
         {status.type !== 'success' && (
-          <button
-            onClick={handleSave}
-            disabled={status.type === 'loading' || filledCount === 0}
-            className="mt-6 px-6 py-2 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
-            style={{ background: 'var(--court)', color: 'white' }}
-          >
-            {status.type === 'loading' ? 'Saving...' : `Save Draw (${filledCount}/${matchCount} matches)`}
-          </button>
+          <div className="mt-8 pt-6 border-t flex items-center justify-between" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
+              {filledCount} of {matchCount} matches filled
+            </span>
+            <button
+              onClick={handleSave}
+              disabled={status.type === 'loading' || filledCount === 0}
+              className="px-6 py-2.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
+              style={{ background: 'var(--court)', color: 'white' }}
+            >
+              {status.type === 'loading' ? 'Saving...' : 'Save Draw'}
+            </button>
+          </div>
         )}
       </div>
     </main>
