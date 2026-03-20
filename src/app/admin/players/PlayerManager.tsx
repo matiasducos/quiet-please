@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
-import { createPlayer, searchPlayers, seedPlayersFromDraws, seedPlayersFromApi, resetAndImportPlayers } from '../actions'
+import { createPlayer, searchPlayers, seedPlayersFromDraws, seedPlayersFromApi } from '../actions'
 
 type Player = { id: string; external_id: string; name: string; country: string; tour: string }
 
@@ -59,16 +59,18 @@ export default function PlayerManager() {
     if (!confirm('This will delete ALL existing players and re-import from the Tennis API. Continue?')) return
     setResetImportStatus({ type: 'loading' })
     try {
-      const { ok, deleted, imported, tournamentsScanned, error } = await resetAndImportPlayers()
-      if (ok) {
+      // Call the API route directly — it has maxDuration=120s and parallel fetching
+      const res = await fetch('/api/admin/import-players', { method: 'POST' })
+      const data = await res.json()
+      if (data.ok) {
         setResetImportStatus({
           type: 'success',
-          message: `Deleted ${deleted}, imported ${imported} players from ${tournamentsScanned} tournaments`,
+          message: `Deleted ${data.deleted}, imported ${data.imported} players from ${data.tournamentsScanned} tournaments`,
         })
         // Refresh search if there's an active query
         if (query.trim()) doSearch(query)
       } else {
-        setResetImportStatus({ type: 'error', message: error ?? 'Failed' })
+        setResetImportStatus({ type: 'error', message: data.error ?? 'Failed' })
       }
     } catch (err) {
       setResetImportStatus({ type: 'error', message: String(err) })
