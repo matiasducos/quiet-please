@@ -700,10 +700,10 @@ export async function seedPlayersFromApi(): Promise<{ ok: boolean; imported: num
     const url = new URL(BASE_URL)
     url.searchParams.set('APIkey', apiKey!)
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
-    const res = await fetch(url.toString(), { cache: 'no-store', signal: AbortSignal.timeout(15000) })
+    const res = await fetch(url.toString(), { cache: 'no-store', signal: AbortSignal.timeout(30000) })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const json = await res.json()
-    if (!json.success) throw new Error(json.error ?? 'API error')
+    if (Number(json.success) !== 1) throw new Error(json.error ?? 'API error')
     return json.result ?? []
   }
 
@@ -714,58 +714,87 @@ export async function seedPlayersFromApi(): Promise<{ ok: boolean; imported: num
   // 2. Filter to ATP/WTA singles only
   const validTours: Record<string, 'ATP' | 'WTA'> = {}
   for (const t of allTournaments) {
-    const type = (t.event_type_type ?? '').toLowerCase()
-    if (type.includes('atp') && !type.includes('double') && !type.includes('challenger')) {
+    const type = ((t.event_type_type ?? '') as string).toUpperCase()
+    if (type.includes('ATP') && !type.includes('CHALLENGER') && !type.includes('DOUBLES')) {
       validTours[String(t.tournament_key)] = 'ATP'
-    } else if (type.includes('wta') && !type.includes('double') && !type.includes('itf')) {
+    } else if (type.includes('WTA') && !type.includes('DOUBLES')) {
       validTours[String(t.tournament_key)] = 'WTA'
     }
   }
 
   const tournamentKeys = Object.keys(validTours)
+  if (tournamentKeys.length === 0) {
+    return { ok: false, imported: 0, tournamentsScanned: 0, error: `Found ${allTournaments.length} tournaments but none matched ATP/WTA singles filter` }
+  }
+
   const seen = new Map<string, { name: string; country: string; tour: 'ATP' | 'WTA' }>()
 
-  // 3. Fetch fixtures for each tournament (batch in groups of 5 to avoid rate limits)
+  // 3. Fetch fixtures one at a time with delay to avoid rate limits
   const today = new Date().toISOString().slice(0, 10)
   const yearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   let scanned = 0
+  let errors = 0
+  let emptyResults = 0
+  let firstError = ''
 
-  for (let i = 0; i < tournamentKeys.length; i += 5) {
-    const batch = tournamentKeys.slice(i, i + 5)
-    const results = await Promise.allSettled(
-      batch.map(key =>
-        fetchApi({ method: 'get_fixtures', tournament_key: key, date_start: yearAgo, date_stop: today })
-      )
-    )
+  for (const key of tournamentKeys) {
+    scanned++
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fixtures: any[] = await fetchApi({
+        method: 'get_fixtures',
+        tournament_key: key,
+        date_start: yearAgo,
+        date_stop: today,
+      })
 
-    for (let j = 0; j < results.length; j++) {
-      const result = results[j]
-      const tour = validTours[batch[j]]
-      scanned++
-      if (result.status !== 'fulfilled' || !Array.isArray(result.value)) continue
+      if (!Array.isArray(fixtures) || fixtures.length === 0) {
+        emptyResults++
+        continue
+      }
 
-      for (const f of result.value) {
-        if (f.event_home_team && f.event_home_team_key) {
-          const eid = String(f.event_home_team_key)
-          if (!seen.has(eid)) {
-            seen.set(eid, { name: String(f.event_home_team), country: f.event_home_team_country ?? '', tour })
+      const tour = validTours[key]
+      for (const f of fixtures) {
+        // Use player key if available, otherwise use normalised name
+        const homeName = f.event_home_team
+        const homeKey = f.event_home_team_key
+        if (homeName && String(homeName).trim()) {
+          const eid = homeKey ? String(homeKey) : normalizePlayerId(String(homeName))
+          if (eid && !seen.has(eid)) {
+            seen.set(eid, { name: String(homeName), country: f.event_home_team_country ?? '', tour })
           }
         }
-        if (f.event_away_team && f.event_away_team_key) {
-          const eid = String(f.event_away_team_key)
-          if (!seen.has(eid)) {
-            seen.set(eid, { name: String(f.event_away_team), country: f.event_away_team_country ?? '', tour })
+        const awayName = f.event_away_team
+        const awayKey = f.event_away_team_key
+        if (awayName && String(awayName).trim()) {
+          const eid = awayKey ? String(awayKey) : normalizePlayerId(String(awayName))
+          if (eid && !seen.has(eid)) {
+            seen.set(eid, { name: String(awayName), country: f.event_away_team_country ?? '', tour })
           }
         }
       }
-
-      // Stop early if we have enough
-      if (seen.size >= 500) break
+    } catch (err) {
+      errors++
+      if (!firstError) firstError = String(err)
+      // If too many consecutive errors, stop early
+      if (errors >= 10 && seen.size === 0) {
+        return { ok: false, imported: 0, tournamentsScanned: scanned, error: `API failing (${errors} errors). First: ${firstError}` }
+      }
     }
+
+    // Stop early if we have enough
     if (seen.size >= 500) break
+
+    // Small delay between requests to be kind to the API
+    await new Promise(r => setTimeout(r, 200))
   }
 
-  if (seen.size === 0) return { ok: true, imported: 0, tournamentsScanned: scanned }
+  if (seen.size === 0) {
+    return {
+      ok: false, imported: 0, tournamentsScanned: scanned,
+      error: `No players found. ${errors} errors, ${emptyResults} empty.${firstError ? ` First error: ${firstError}` : ''}`,
+    }
+  }
 
   // 4. Bulk upsert
   const admin = createAdminClient()
