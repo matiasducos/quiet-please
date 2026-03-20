@@ -5,6 +5,37 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 
+export async function cancelChallenge(formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const challengeId = formData.get('challenge_id') as string
+  if (!challengeId) return { error: 'Invalid request' }
+
+  const admin = createAdminClient()
+
+  // Verify: this user is the challenger and challenge is still pending
+  const { data: challenge } = await admin
+    .from('challenges')
+    .select('id, status')
+    .eq('id', challengeId)
+    .eq('challenger_id', user.id)
+    .eq('status', 'pending')
+    .single()
+
+  if (!challenge) return { error: 'Challenge not found or cannot be cancelled' }
+
+  await admin
+    .from('challenges')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('id', challengeId)
+
+  revalidatePath(`/challenges/${challengeId}`)
+  revalidatePath('/challenges')
+  redirect('/challenges')
+}
+
 export async function respondToChallenge(formData: FormData) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
-import { respondToChallenge } from './actions'
+import { respondToChallenge, cancelChallenge } from './actions'
 
 export default async function ChallengeDetailPage({
   params,
@@ -140,9 +140,19 @@ export default async function ChallengeDetailPage({
 
         {effectiveStatus === 'pending' && isChallenger && (
           <div className="bg-white rounded-sm border p-6 mb-6 text-center" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
-            <p style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
+            <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1rem' }}>
               Waiting for <strong>{theirUsername}</strong> to accept your challenge.
             </p>
+            <form action={cancelChallenge}>
+              <input type="hidden" name="challenge_id" value={challenge.id} />
+              <button
+                type="submit"
+                className="px-5 py-2 text-sm rounded-sm border hover:bg-gray-50 transition-colors"
+                style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white' }}
+              >
+                Cancel challenge
+              </button>
+            </form>
           </div>
         )}
 
@@ -152,6 +162,18 @@ export default async function ChallengeDetailPage({
             <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.25rem' }}>Challenge expired</p>
             <p style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
               {tournament?.name} has already started. Challenges must be accepted before the tournament begins.
+            </p>
+          </div>
+        )}
+
+        {/* ── Cancelled ───────────────────────────────────────────────────── */}
+        {effectiveStatus === 'cancelled' && (
+          <div className="bg-white rounded-sm border p-6 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.25rem' }}>Challenge cancelled</p>
+            <p style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
+              {isChallenger
+                ? 'You cancelled this challenge.'
+                : `${challengerProfile?.username} cancelled this challenge.`}
             </p>
           </div>
         )}

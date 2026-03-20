@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
+import { cancelChallenge } from './[id]/actions'
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -25,6 +26,7 @@ function statusLabel(status: string, isChallenger: boolean): { text: string; col
   if (status === 'completed') return { text: 'Completed', color: 'var(--muted)' }
   if (status === 'declined')  return { text: 'Declined',  color: '#c84b31' }
   if (status === 'expired')   return { text: 'Expired',   color: 'var(--muted)' }
+  if (status === 'cancelled') return { text: 'Cancelled', color: 'var(--muted)' }
   return { text: status, color: 'var(--muted)' }
 }
 
@@ -82,7 +84,7 @@ export default async function ChallengesPage() {
   const needsAction = challenges.filter(c => c.status === 'pending' && !c.isChallenger)
   const active      = challenges.filter(c => c.status === 'accepted')
   const waiting     = challenges.filter(c => c.status === 'pending' && c.isChallenger)
-  const closed      = challenges.filter(c => ['completed', 'declined', 'expired'].includes(c.status))
+  const closed      = challenges.filter(c => ['completed', 'declined', 'expired', 'cancelled'].includes(c.status))
 
   // Check if user has any accepted friends
   const { count: friendCount } = await admin
@@ -209,7 +211,42 @@ export default async function ChallengesPage() {
               Waiting for response
             </h2>
             <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
-              {waiting.map(c => <ChallengeCard key={c.id} c={c} />)}
+              {waiting.map(c => (
+                <div key={c.id} className="flex items-center border-b last:border-0" style={{ borderColor: 'var(--chalk-dim)' }}>
+                  <Link
+                    href={`/challenges/${c.id}`}
+                    className="flex items-center justify-between flex-1 min-w-0 px-5 py-4 tournament-card"
+                    style={{ textDecoration: 'none' }}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)' }}>
+                          {c.opponentName}
+                        </span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'var(--chalk)', padding: '1px 5px', borderRadius: '2px' }}>
+                          you challenged
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+                        {c.tournament.name} · {timeAgo(c.created_at)}
+                      </div>
+                    </div>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.03em', marginLeft: '1rem' }}>
+                      Awaiting response
+                    </span>
+                  </Link>
+                  <form action={cancelChallenge} className="flex-shrink-0 pr-4">
+                    <input type="hidden" name="challenge_id" value={c.id} />
+                    <button
+                      type="submit"
+                      className="px-3 py-1.5 text-xs rounded-sm border hover:bg-gray-50 transition-colors"
+                      style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white', whiteSpace: 'nowrap' }}
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                </div>
+              ))}
             </div>
           </div>
         )}
