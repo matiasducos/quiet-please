@@ -101,6 +101,7 @@ export default function BracketPredictor({
   draw,
   existingPicks,
   predictionId,
+  username,
   returnUrl,
   isPractice = false,
   matchResults,
@@ -408,14 +409,14 @@ export default function BracketPredictor({
         <div className="flex items-center gap-2 mb-1" style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
           <Link href={`/tournaments/${tournament.id}`} style={{ color: 'var(--muted)' }}>{tournament.name}</Link>
           <span>/</span>
-          <span>{readOnly ? 'Your picks' : isPractice ? 'Practice picks' : 'Your picks'}</span>
+          <span>{readOnly ? `${username}'s picks` : isPractice ? 'Practice picks' : 'Your picks'}</span>
         </div>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.02em' }}>
-          {readOnly ? 'Your locked picks' : isPractice ? 'Practice your bracket' : 'Make your predictions'}
+          {readOnly ? `${username}'s picks` : isPractice ? 'Practice your bracket' : 'Make your predictions'}
         </h1>
         <p style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
           {readOnly
-            ? 'View your picks round by round.'
+            ? `View ${username}'s picks round by round.`
             : (() => {
                 const firstRound = sortedRounds[0]
                 const lastRound = sortedRounds[sortedRounds.length - 1]
