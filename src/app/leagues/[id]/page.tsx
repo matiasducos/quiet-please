@@ -76,8 +76,8 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
         .from('predictions')
         .select('user_id, tournament_id, submitted_at, users(username), tournaments(name)')
         .in('user_id', memberIds)
-        .eq('is_locked', true)
-        .eq('is_practice', false)
+        .eq('is_fully_locked', true)
+        .is('challenge_id', null)
         .order('submitted_at', { ascending: false })
         .limit(50),
       admin

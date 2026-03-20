@@ -29,7 +29,8 @@ export async function createChallenge(formData: FormData) {
 
   if (!friendship) return { error: 'No accepted friendship with this user' }
 
-  // Verify tournament is upcoming or accepting_predictions
+  // Allow challenges for upcoming, accepting_predictions, AND in_progress tournaments
+  // (users can still predict unplayed matches during in_progress)
   const { data: tournament } = await admin
     .from('tournaments')
     .select('id, status')
@@ -37,8 +38,8 @@ export async function createChallenge(formData: FormData) {
     .single()
 
   if (!tournament) return { error: 'Tournament not found' }
-  if (tournament.status === 'completed' || tournament.status === 'in_progress') {
-    return { error: 'Challenges can only be created for upcoming tournaments' }
+  if (tournament.status === 'completed') {
+    return { error: 'Cannot create challenges for completed tournaments' }
   }
 
   const { error } = await admin

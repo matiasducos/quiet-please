@@ -3,80 +3,165 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
-import { getPointsForRound } from '@/lib/tennis'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
 import { insertNotifications } from '@/lib/notifications'
 
 export type SaveResult =
-  | { success: true }
+  | { success: true; predictionId?: string }
   | { success: false; error: 'slot_taken'; conflictingTournamentName: string }
+  | { success: false; error: 'played_matches'; matchIds: string[] }
   | { success: false; error: 'unknown'; message: string }
 
+/**
+ * Save or update a bracket prediction.
+ *
+ * Supports:
+ * - Global predictions (challengeId = null) — affect leaderboard, leagues, rankings
+ * - Challenge predictions (challengeId = UUID) — separate picks per challenge
+ * - Per-pick voluntary locks (lockMatchIds)
+ * - Full bracket lock-all (lockAll)
+ * - Importing global picks into a new challenge prediction (importFromGlobal)
+ */
 export async function savePrediction({
   tournamentId,
   picks,
   predictionId,
-  lock = false,
-  isPractice = false,
+  challengeId = null,
+  lockMatchIds,
+  lockAll = false,
+  importFromGlobal = false,
 }: {
   tournamentId: string
   picks: Record<string, string>
   predictionId: string | null
-  lock?: boolean
-  isPractice?: boolean
+  challengeId?: string | null
+  lockMatchIds?: string[]
+  lockAll?: boolean
+  importFromGlobal?: boolean
 }): Promise<SaveResult> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: 'unknown', message: 'Not authenticated' }
 
-  // Practice mode: score immediately against existing match_results (all results
-  // are already in the DB for completed tournaments — no cron needed).
-  let pointsEarned = 0
-  if (lock && isPractice) {
-    const [{ data: tournament }, { data: matchResults }] = await Promise.all([
-      supabase.from('tournaments').select('category').eq('id', tournamentId).single(),
-      supabase.from('match_results').select('round, winner_external_id, score').eq('tournament_id', tournamentId),
-    ])
-    for (const result of matchResults ?? []) {
-      // Skip BYE matches — auto-advances don't award points
-      if ((result as any).score === 'BYE') continue
-      if (Object.values(picks).includes(result.winner_external_id)) {
-        const isWinner = result.round === 'F'
-        pointsEarned += getPointsForRound(
-          tournament!.category as any,
-          result.round as any,
-          isWinner,
-        )
+  // ── 1. Guard against changing picks for played matches ─────────────────
+  // Fetch match results for this tournament to determine which picks are frozen
+  const { data: matchResultRows } = await supabase
+    .from('match_results')
+    .select('external_match_id')
+    .eq('tournament_id', tournamentId)
+
+  const playedMatchIds = new Set(
+    (matchResultRows ?? []).map((r: any) => r.external_match_id)
+  )
+
+  // If the user is submitting changed picks for played matches, reject
+  if (predictionId) {
+    const { data: existingPred } = await supabase
+      .from('predictions')
+      .select('picks')
+      .eq('id', predictionId)
+      .single()
+
+    if (existingPred) {
+      const oldPicks = (existingPred.picks as Record<string, string>) ?? {}
+      const changedPlayedMatches: string[] = []
+      for (const matchId of playedMatchIds) {
+        if (matchId in picks && matchId in oldPicks && picks[matchId] !== oldPicks[matchId]) {
+          changedPlayedMatches.push(matchId)
+        }
+      }
+      if (changedPlayedMatches.length > 0) {
+        return { success: false, error: 'played_matches', matchIds: changedPlayedMatches }
       }
     }
   }
 
+  // ── 2. Build lock state ────────────────────────────────────────────────
+  let pickLocksUpdate: Record<string, string> | undefined
+  let isFullyLocked = false
+  let fullyLockedAt: string | undefined
+
+  if (lockAll) {
+    // Lock entire bracket: stamp every current pick as "auto_lock_all"
+    isFullyLocked = true
+    fullyLockedAt = new Date().toISOString()
+    pickLocksUpdate = {}
+    for (const matchId of Object.keys(picks)) {
+      pickLocksUpdate[matchId] = 'auto_lock_all'
+    }
+  } else if (lockMatchIds && lockMatchIds.length > 0) {
+    // Per-pick voluntary lock: only lock specific matches
+    // Don't allow locking matches that are already auto-locked (played)
+    pickLocksUpdate = {}
+    for (const matchId of lockMatchIds) {
+      if (!playedMatchIds.has(matchId)) {
+        pickLocksUpdate[matchId] = 'voluntary'
+      }
+    }
+  }
+
+  // ── 3. Build the row ──────────────────────────────────────────────────
   const row: Record<string, any> = {
     user_id:       user.id,
     tournament_id: tournamentId,
     picks,
-    is_locked:     lock,
-    is_practice:   isPractice,
     updated_at:    new Date().toISOString(),
   }
-  if (lock && isPractice) row.points_earned = pointsEarned
+  if (challengeId) row.challenge_id = challengeId
+
+  if (isFullyLocked) {
+    row.is_fully_locked = true
+    row.fully_locked_at = fullyLockedAt
+  }
+
+  // ── 4. UPDATE or INSERT ──────────────────────────────────────────────
+  let insertedPredictionId: string | undefined
 
   if (predictionId) {
-    // ── UPDATE existing prediction ──────────────────────────────────────────
+    // Merge lock state: fetch existing pick_locks first, then merge new locks
+    if (pickLocksUpdate) {
+      const { data: existingPred } = await supabase
+        .from('predictions')
+        .select('pick_locks')
+        .eq('id', predictionId)
+        .single()
+
+      const existingLocks = (existingPred?.pick_locks as Record<string, string>) ?? {}
+      row.pick_locks = { ...existingLocks, ...pickLocksUpdate }
+    }
+
     const { error } = await supabase
       .from('predictions')
       .update(row)
       .eq('id', predictionId)
       .eq('user_id', user.id)
-      .eq('is_locked', false)
+      .eq('is_fully_locked', false)   // Can't update a fully locked prediction
+
     if (error) return { success: false, error: 'unknown', message: error.message }
 
   } else {
-    // ── INSERT new prediction ───────────────────────────────────────────────
-    // For real (non-practice) tournaments: enforce the one-slot-per-circuit-per-week rule.
-    // Manual tournaments (created via admin for testing) are exempt from slot enforcement.
-    if (!isPractice) {
-      // Fetch tournament metadata needed for slot calculation
+    // ── 5. INSERT new prediction ──────────────────────────────────────────
+
+    // Import global picks into challenge prediction if requested
+    if (importFromGlobal && challengeId) {
+      const { data: globalPred } = await supabase
+        .from('predictions')
+        .select('picks')
+        .eq('user_id', user.id)
+        .eq('tournament_id', tournamentId)
+        .is('challenge_id', null)
+        .single()
+
+      if (globalPred?.picks) {
+        // Start with global picks, overlay any explicit picks the user sent
+        const globalPicks = globalPred.picks as Record<string, string>
+        row.picks = { ...globalPicks, ...picks }
+      }
+    }
+
+    // Weekly slot enforcement: only for global (non-challenge) predictions
+    // Manual tournaments and challenge predictions are exempt
+    if (!challengeId) {
       const { data: tournament, error: tErr } = await supabase
         .from('tournaments')
         .select('tour, starts_at, ends_at, name, is_manual')
@@ -87,13 +172,10 @@ export async function savePrediction({
         return { success: false, error: 'unknown', message: 'Tournament not found' }
       }
 
-      // Skip slot enforcement for manual (admin-created) tournaments
       if (!tournament.is_manual) {
         const circuit = tournament.tour as 'ATP' | 'WTA'
         const weeks = getTournamentISOWeeks(tournament.starts_at, tournament.ends_at)
 
-        // Check each ISO week: is there already a slot for this user + circuit
-        // pointing to a DIFFERENT tournament?
         for (const w of weeks) {
           const { data: existing } = await supabase
             .from('weekly_slots')
@@ -111,7 +193,7 @@ export async function savePrediction({
           }
         }
 
-        // No conflict — upsert slot rows (idempotent: same tournament re-saves are silently ignored)
+        // No conflict — upsert slot rows
         const slotRows = weeks.map(w => ({
           user_id:       user.id,
           circuit,
@@ -126,16 +208,26 @@ export async function savePrediction({
       }
     }
 
-    const { error } = await supabase
+    // Set initial pick_locks if any locks were requested
+    if (pickLocksUpdate) {
+      row.pick_locks = pickLocksUpdate
+    }
+
+    const { data: newPred, error } = await supabase
       .from('predictions')
       .insert({ ...row, submitted_at: new Date().toISOString() } as any)
+      .select('id')
+      .single()
     if (error) return { success: false, error: 'unknown', message: error.message }
+
+    insertedPredictionId = newPred?.id
   }
 
   revalidatePath(`/tournaments/${tournamentId}`)
+  if (challengeId) revalidatePath('/challenges')
 
-  // When a real prediction is locked, notify all accepted friends
-  if (lock && !isPractice) {
+  // ── 6. Notifications: when a global prediction is fully locked ─────────
+  if (lockAll && !challengeId) {
     try {
       const admin = createAdminClient()
       const [{ data: friendships }, { data: currentUserProfile }, { data: tournamentMeta }] = await Promise.all([
@@ -168,5 +260,31 @@ export async function savePrediction({
     }
   }
 
-  return { success: true }
+  return { success: true, predictionId: insertedPredictionId }
+}
+
+/**
+ * Import global picks into a challenge prediction.
+ * Returns the global picks map so the UI can pre-fill the bracket.
+ */
+export async function importGlobalPicks(
+  tournamentId: string,
+): Promise<{ picks: Record<string, string> } | { error: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const { data: globalPred } = await supabase
+    .from('predictions')
+    .select('picks')
+    .eq('user_id', user.id)
+    .eq('tournament_id', tournamentId)
+    .is('challenge_id', null)
+    .single()
+
+  if (!globalPred?.picks) {
+    return { error: 'No global prediction found for this tournament' }
+  }
+
+  return { picks: globalPred.picks as Record<string, string> }
 }

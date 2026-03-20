@@ -73,7 +73,7 @@ export async function respondToChallenge(formData: FormData) {
   // Verify: this user is the challenged party and challenge is pending
   const { data: challenge } = await admin
     .from('challenges')
-    .select('id, tournament_id, status')
+    .select('id, challenger_id, tournament_id, status')
     .eq('id', challengeId)
     .eq('challenged_id', user.id)
     .eq('status', 'pending')
@@ -81,7 +81,8 @@ export async function respondToChallenge(formData: FormData) {
 
   if (!challenge) return { error: 'Challenge not found or already responded' }
 
-  // If accepting, check tournament hasn't started yet
+  // If accepting, only block for completed tournaments
+  // (in_progress is now allowed — users can predict unplayed matches)
   if (response === 'accepted') {
     const { data: tournament } = await admin
       .from('tournaments')
@@ -89,13 +90,12 @@ export async function respondToChallenge(formData: FormData) {
       .eq('id', challenge.tournament_id)
       .single()
 
-    if (tournament?.status === 'in_progress' || tournament?.status === 'completed') {
-      // Auto-expire instead
+    if (tournament?.status === 'completed') {
       await admin
         .from('challenges')
         .update({ status: 'expired', updated_at: new Date().toISOString() })
         .eq('id', challengeId)
-      return { error: 'This challenge has expired — the tournament has already started.' }
+      return { error: 'This challenge has expired — the tournament has already completed.' }
     }
   }
 
@@ -108,12 +108,42 @@ export async function respondToChallenge(formData: FormData) {
   revalidatePath('/challenges')
 
   if (response === 'accepted') {
-    // Redirect to make their picks
-    const { data: challenge2 } = await admin
-      .from('challenges')
-      .select('tournament_id')
-      .eq('id', challengeId)
-      .single()
-    if (challenge2) redirect(`/tournaments/${challenge2.tournament_id}/predict`)
+    // Create a challenge-specific prediction row for the accepting user
+    // (empty picks — they'll fill it in on the predict page)
+    await admin
+      .from('predictions')
+      .insert({
+        user_id:       user.id,
+        tournament_id: challenge.tournament_id,
+        challenge_id:  challengeId,
+        picks:         {},
+        pick_locks:    {},
+        submitted_at:  new Date().toISOString(),
+      } as any)
+
+    // Also create one for the challenger if they don't have one yet
+    const { data: challengerPred } = await admin
+      .from('predictions')
+      .select('id')
+      .eq('user_id', challenge.challenger_id)
+      .eq('tournament_id', challenge.tournament_id)
+      .eq('challenge_id', challengeId)
+      .maybeSingle()
+
+    if (!challengerPred) {
+      await admin
+        .from('predictions')
+        .insert({
+          user_id:       challenge.challenger_id,
+          tournament_id: challenge.tournament_id,
+          challenge_id:  challengeId,
+          picks:         {},
+          pick_locks:    {},
+          submitted_at:  new Date().toISOString(),
+        } as any)
+    }
+
+    // Redirect to make their picks for this challenge
+    redirect(`/tournaments/${challenge.tournament_id}/predict?challenge=${challengeId}`)
   }
 }

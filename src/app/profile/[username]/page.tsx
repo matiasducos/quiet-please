@@ -57,8 +57,8 @@ export default async function ProfilePage({
     .from('predictions')
     .select('id, points_earned, created_at, tournaments(id, name, tour, category, starts_at)')
     .eq('user_id', profile.id)
-    .eq('is_locked', true)
-    .eq('is_practice', false)
+    .is('challenge_id', null)
+    .gt('points_earned', 0)
     .order('created_at', { ascending: false })
 
   const tournamentsCount = predictions?.length ?? 0

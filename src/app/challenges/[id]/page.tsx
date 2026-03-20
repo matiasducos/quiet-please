@@ -55,26 +55,31 @@ export default async function ChallengeDetailPage({
   const isWinner  = challenge.winner_id === user.id
   const isLoser   = challenge.status === 'completed' && challenge.winner_id !== null && !isWinner
 
-  // Check if picks have been locked (for both players), when challenge is accepted or completed
+  // Check challenge-specific predictions for lock status + pick counts
   let myPicksLocked    = false
   let theirPicksLocked = false
+  let myPickCount      = 0
+  let theirPickCount   = 0
 
   if (['accepted', 'completed'].includes(challenge.status)) {
     const { data: preds } = await admin
       .from('predictions')
-      .select('user_id, is_locked')
-      .in('user_id', [user.id, theirId])
+      .select('user_id, is_fully_locked, picks')
+      .eq('challenge_id', challenge.id)
       .eq('tournament_id', challenge.tournament_id)
-      .eq('is_practice', false)
 
-    myPicksLocked    = (preds ?? []).some(p => p.user_id === user.id && p.is_locked)
-    theirPicksLocked = (preds ?? []).some(p => p.user_id === theirId && p.is_locked)
+    const myPred    = (preds ?? []).find(p => p.user_id === user.id)
+    const theirPred = (preds ?? []).find(p => p.user_id === theirId)
+
+    myPicksLocked    = myPred?.is_fully_locked === true
+    theirPicksLocked = theirPred?.is_fully_locked === true
+    myPickCount      = Object.keys((myPred?.picks as Record<string, string> | null) ?? {}).length
+    theirPickCount   = Object.keys((theirPred?.picks as Record<string, string> | null) ?? {}).length
   }
 
-  // If challenge is pending and tournament has started, show as expired
+  // Pending challenges only auto-expire for completed tournaments (not in_progress)
   const effectiveStatus =
-    challenge.status === 'pending' &&
-    (tournament?.status === 'in_progress' || tournament?.status === 'completed')
+    challenge.status === 'pending' && tournament?.status === 'completed'
       ? 'expired'
       : challenge.status
 
@@ -109,7 +114,7 @@ export default async function ChallengeDetailPage({
               {challengerProfile?.username} is challenging you!
             </p>
             <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem' }}>
-              Accept to predict {tournament?.name} head-to-head. Picks are hidden until both of you lock.
+              Accept to predict {tournament?.name} head-to-head. Picks are revealed as matches are played, or when both of you lock your full bracket.
             </p>
             <div className="flex gap-3">
               <form action={respondToChallenge}>
@@ -161,7 +166,7 @@ export default async function ChallengeDetailPage({
           <div className="bg-white rounded-sm border p-6 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
             <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.25rem' }}>Challenge expired</p>
             <p style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
-              {tournament?.name} has already started. Challenges must be accepted before the tournament begins.
+              {tournament?.name} has completed. Challenges must be accepted before the tournament ends.
             </p>
           </div>
         )}
@@ -197,35 +202,39 @@ export default async function ChallengeDetailPage({
             <div className="flex flex-col gap-2 mb-4">
               <div className="flex items-center justify-between">
                 <span style={{ fontSize: '0.875rem', color: 'var(--ink)' }}>{myUsername} (you)</span>
-                {myPicksLocked
-                  ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', letterSpacing: '0.05em' }}>LOCKED ✓</span>
-                  : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#c17c00' }}>PICKS PENDING</span>}
+                <div className="flex items-center gap-2">
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
+                    {myPickCount} picks
+                  </span>
+                  {myPicksLocked
+                    ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', letterSpacing: '0.05em' }}>LOCKED ✓</span>
+                    : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#c17c00' }}>IN PROGRESS</span>}
+                </div>
               </div>
               <div className="flex items-center justify-between">
                 <span style={{ fontSize: '0.875rem', color: 'var(--ink)' }}>{theirUsername}</span>
-                {theirPicksLocked
-                  ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', letterSpacing: '0.05em' }}>LOCKED ✓</span>
-                  : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>PICKS PENDING</span>}
+                <div className="flex items-center gap-2">
+                  {/* Only show opponent's pick count if both locked (poker rule) */}
+                  {myPicksLocked && theirPicksLocked && (
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
+                      {theirPickCount} picks
+                    </span>
+                  )}
+                  {theirPicksLocked
+                    ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', letterSpacing: '0.05em' }}>LOCKED ✓</span>
+                    : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>IN PROGRESS</span>}
+                </div>
               </div>
             </div>
-            {!myPicksLocked && (
+            <div className="flex gap-3">
               <Link
-                href={`/tournaments/${challenge.tournament_id}/predict`}
+                href={`/tournaments/${challenge.tournament_id}/predict?challenge=${challenge.id}`}
                 className="inline-block px-5 py-2.5 text-sm font-medium text-white rounded-sm hover:opacity-90"
                 style={{ background: 'var(--court)', textDecoration: 'none' }}
               >
-                Make your picks →
+                {myPickCount > 0 ? 'Edit your picks →' : 'Make your picks →'}
               </Link>
-            )}
-            {myPicksLocked && (
-              <Link
-                href={`/tournaments/${challenge.tournament_id}/picks/${myUsername}`}
-                className="inline-block px-4 py-2 text-sm rounded-sm border"
-                style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', textDecoration: 'none' }}
-              >
-                View your picks →
-              </Link>
-            )}
+            </div>
           </div>
         )}
 
@@ -259,21 +268,14 @@ export default async function ChallengeDetailPage({
               )}
             </div>
 
-            {/* View brackets */}
+            {/* View brackets — challenge-specific predict page */}
             <div className="flex gap-3">
               <Link
-                href={`/tournaments/${challenge.tournament_id}/picks/${myUsername}`}
+                href={`/tournaments/${challenge.tournament_id}/predict?challenge=${challenge.id}`}
                 className="flex-1 px-4 py-3 text-sm text-center rounded-sm border"
                 style={{ borderColor: 'var(--chalk-dim)', color: 'var(--ink)', textDecoration: 'none', background: 'white' }}
               >
-                Your picks →
-              </Link>
-              <Link
-                href={`/tournaments/${challenge.tournament_id}/picks/${theirUsername}`}
-                className="flex-1 px-4 py-3 text-sm text-center rounded-sm border"
-                style={{ borderColor: 'var(--chalk-dim)', color: 'var(--ink)', textDecoration: 'none', background: 'white' }}
-              >
-                {theirUsername}'s picks →
+                View challenge picks →
               </Link>
             </div>
           </>

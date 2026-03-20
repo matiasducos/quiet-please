@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getPointsForRound } from '@/lib/tennis'
+import { getPointsForRound, calculateStreakMultiplier, buildFeedMap } from '@/lib/tennis'
+import type { DrawMatch } from '@/lib/tennis'
 import { sendPointsAwardedEmail } from '@/lib/email'
 
 function isAuthorized(request: Request): boolean {
@@ -18,11 +19,11 @@ export async function GET(request: Request) {
   try {
     const supabase = createAdminClient()
 
-    // Get all match results (includes starts_at for expires_at calculation)
+    // ── 1. Get all match results ──────────────────────────────────────────
     // Exclude BYE auto-advances — they don't award points
     const { data: allResults } = await supabase
       .from('match_results')
-      .select('id, tournament_id, round, winner_external_id, tournaments(id, category, starts_at)')
+      .select('id, tournament_id, round, external_match_id, winner_external_id, tournaments(id, category, starts_at)')
       .neq('score', 'BYE')
       .order('played_at', { ascending: true })
 
@@ -30,40 +31,53 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: 'No match results found', awarded: 0 })
     }
 
-    // Get already scored result IDs from point_ledger
+    // ── 2. Get already scored (match_result_id, prediction_id) pairs ──────
+    // We now track per-prediction scoring, so the same match_result can be
+    // scored for multiple predictions (global + challenge predictions).
     const { data: alreadyScored } = await supabase
       .from('point_ledger')
-      .select('match_result_id')
+      .select('match_result_id, prediction_id')
 
-    const scoredIds = new Set((alreadyScored ?? []).map(r => r.match_result_id))
+    const scoredPairs = new Set(
+      (alreadyScored ?? []).map(r => `${r.match_result_id}:${r.prediction_id}`)
+    )
 
-    // Filter to only new unscored results
-    const newResults = (allResults as any[]).filter(r => !scoredIds.has(r.id))
+    // Get tournament IDs that have results
+    const tournamentIds = Array.from(new Set(allResults.map((r: any) => r.tournament_id)))
 
-    if (!newResults.length) {
-      return NextResponse.json({ message: 'No new results to score', awarded: 0 })
-    }
-
-    console.log(`[award-points] ${newResults.length} new results to score`)
-
-    // Get tournament IDs from new results
-    const tournamentIds = [...new Set(newResults.map(r => r.tournament_id))]
-
-    // Get all locked, non-practice predictions for those tournaments
+    // ── 3. Get ALL predictions for those tournaments ──────────────────────
+    // Both global (challenge_id IS NULL) and challenge-specific predictions.
+    // No longer filters by is_locked — we score any prediction that has a
+    // pick for the match, and auto-lock that pick.
     const { data: predictions } = await supabase
       .from('predictions')
-      .select('id, user_id, tournament_id, picks, expires_at')
+      .select('id, user_id, tournament_id, challenge_id, picks, pick_locks, points_earned, expires_at')
       .in('tournament_id', tournamentIds)
-      .eq('is_locked', true)
-      .eq('is_practice', false)
 
     if (!predictions?.length) {
-      return NextResponse.json({ message: 'No locked predictions found', awarded: 0 })
+      return NextResponse.json({ message: 'No predictions found', awarded: 0 })
     }
 
-    console.log(`[award-points] ${predictions.length} locked predictions to check`)
+    console.log(`[award-points] ${predictions.length} predictions to check across ${tournamentIds.length} tournaments`)
 
-    // Fetch tournament names + starts_at for notification messages and expires_at calculation
+    // ── 4. Load bracket data for streak calculation ───────────────────────
+    const { data: draws } = await supabase
+      .from('draws')
+      .select('tournament_id, bracket_data')
+      .in('tournament_id', tournamentIds as string[])
+
+    const bracketByTournament: Record<string, { matches: DrawMatch[]; feedMap: ReturnType<typeof buildFeedMap> }> = {}
+    for (const d of draws ?? []) {
+      const bracket = d.bracket_data as any
+      if (bracket?.matches) {
+        bracketByTournament[d.tournament_id] = {
+          matches: bracket.matches,
+          feedMap: buildFeedMap(bracket.matches),
+        }
+      }
+    }
+
+    // Fetch tournament names + starts_at for notifications and expires_at
     const { data: tournamentData } = await supabase
       .from('tournaments')
       .select('id, name, starts_at')
@@ -75,61 +89,126 @@ export async function GET(request: Request) {
       tournamentStartsAt[t.id] = t.starts_at
     }
 
+    // ── 5. Score predictions ──────────────────────────────────────────────
     const ledgerRows: any[] = []
-    const userPointsDelta: Record<string, number> = {}
+    // Track deltas per global-prediction user (for total_points, leagues, rankings)
+    const globalUserPointsDelta: Record<string, number> = {}
     const predictionPointsDelta: Record<string, number> = {}
-    // Track per-user per-tournament points for notifications
+    // Track per-user per-tournament points for notifications (global only)
     const userTournamentPoints: Record<string, Record<string, number>> = {}
+    // Track auto-locks to apply
+    const autoLocks: Map<string, Record<string, string>> = new Map() // predictionId → { matchId: "auto" }
 
-    for (const result of newResults) {
+    for (const result of allResults as any[]) {
       const tournament = result.tournaments as any
       if (!tournament?.category) continue
 
       const isWinner = result.round === 'F'
-      const points = getPointsForRound(
+      const basePoints = getPointsForRound(
         tournament.category,
         result.round as any,
         isWinner
       )
-      if (points <= 0) continue
+      if (basePoints <= 0) continue
+
+      const bracket = bracketByTournament[result.tournament_id]
 
       for (const prediction of predictions) {
         if (prediction.tournament_id !== result.tournament_id) continue
 
         const picks = prediction.picks as Record<string, string>
-        // Check if any pick value matches the winner
-        const didPickWinner = Object.values(picks).includes(result.winner_external_id)
-        if (!didPickWinner) continue
 
-        console.log(`[award-points] ${prediction.user_id} gets ${points} pts for ${result.round}`)
+        // Auto-lock: if this prediction has a pick for this match, mark it as auto-locked
+        if (picks[result.external_match_id]) {
+          if (!autoLocks.has(prediction.id)) autoLocks.set(prediction.id, {})
+          autoLocks.get(prediction.id)![result.external_match_id] = 'auto'
+        }
+
+        // Skip if this (match_result, prediction) pair is already scored
+        if (scoredPairs.has(`${result.id}:${prediction.id}`)) continue
+
+        // Per-match check: the pick for THIS specific match must match the winner
+        const didPickWinnerForThisMatch = picks[result.external_match_id] === result.winner_external_id
+        if (!didPickWinnerForThisMatch) continue
+
+        // Calculate streak multiplier using bracket data
+        let streakMultiplier = 1
+        if (bracket) {
+          streakMultiplier = calculateStreakMultiplier(
+            result.external_match_id,
+            result.winner_external_id,
+            picks,
+            bracket.feedMap,
+            bracket.matches,
+          )
+        }
+
+        const totalPoints = basePoints * streakMultiplier
+
+        console.log(
+          `[award-points] ${prediction.user_id} pred=${prediction.id} ` +
+          `gets ${basePoints}x${streakMultiplier}=${totalPoints} pts for ${result.round}` +
+          (prediction.challenge_id ? ` (challenge ${prediction.challenge_id})` : ' (global)')
+        )
 
         ledgerRows.push({
-          user_id:         prediction.user_id,
-          tournament_id:   result.tournament_id,
-          match_result_id: result.id,
-          round:           result.round,
-          points,
+          user_id:           prediction.user_id,
+          tournament_id:     result.tournament_id,
+          match_result_id:   result.id,
+          prediction_id:     prediction.id,
+          round:             result.round,
+          points:            totalPoints,
+          streak_multiplier: streakMultiplier,
         })
 
-        userPointsDelta[prediction.user_id] = (userPointsDelta[prediction.user_id] ?? 0) + points
-        predictionPointsDelta[prediction.id] = (predictionPointsDelta[prediction.id] ?? 0) + points
+        predictionPointsDelta[prediction.id] = (predictionPointsDelta[prediction.id] ?? 0) + totalPoints
 
-        if (!userTournamentPoints[prediction.user_id]) userTournamentPoints[prediction.user_id] = {}
-        userTournamentPoints[prediction.user_id][result.tournament_id] =
-          (userTournamentPoints[prediction.user_id][result.tournament_id] ?? 0) + points
+        // Only global predictions affect user total_points / leagues / rankings
+        if (!prediction.challenge_id) {
+          globalUserPointsDelta[prediction.user_id] = (globalUserPointsDelta[prediction.user_id] ?? 0) + totalPoints
+
+          if (!userTournamentPoints[prediction.user_id]) userTournamentPoints[prediction.user_id] = {}
+          userTournamentPoints[prediction.user_id][result.tournament_id] =
+            (userTournamentPoints[prediction.user_id][result.tournament_id] ?? 0) + totalPoints
+        }
       }
     }
 
-    if (ledgerRows.length === 0) {
-      return NextResponse.json({ message: 'No correct predictions found', awarded: 0 })
+    // ── 6. Apply auto-locks to predictions ────────────────────────────────
+    let autoLocksApplied = 0
+    for (const [predId, newLocks] of autoLocks) {
+      const pred = predictions.find(p => p.id === predId)
+      if (!pred) continue
+
+      const existingLocks = (pred.pick_locks as Record<string, string>) ?? {}
+      const merged = { ...existingLocks }
+      let hasNew = false
+      for (const [matchId, lockType] of Object.entries(newLocks)) {
+        if (!merged[matchId]) {
+          merged[matchId] = lockType
+          hasNew = true
+        }
+      }
+      if (hasNew) {
+        await supabase.from('predictions').update({ pick_locks: merged }).eq('id', predId)
+        autoLocksApplied++
+      }
     }
 
-    // Insert point ledger
+    if (autoLocksApplied > 0) {
+      console.log(`[award-points] Auto-locked picks on ${autoLocksApplied} predictions`)
+    }
+
+    if (ledgerRows.length === 0) {
+      return NextResponse.json({ message: 'No correct predictions found', awarded: 0, auto_locks_applied: autoLocksApplied })
+    }
+
+    // ── 7. Insert point ledger ────────────────────────────────────────────
     const { error: ledgerError } = await supabase.from('point_ledger').insert(ledgerRows)
     if (ledgerError) throw ledgerError
 
-    // Update user total_points, propagate to league memberships, recalculate ranking_points
-    for (const [userId, pts] of Object.entries(userPointsDelta)) {
+    // ── 8. Update global user totals + leagues + rankings ─────────────────
+    for (const [userId, pts] of Object.entries(globalUserPointsDelta)) {
       await supabase.rpc('increment_user_points', { user_id: userId, points: pts })
 
       const { data: memberships } = await supabase
@@ -145,17 +224,17 @@ export async function GET(request: Request) {
           .eq('user_id', userId)
       }
 
-      // Recalculate rolling 52-week ranking points for this user
+      // Recalculate rolling 52-week ranking points
       await supabase.rpc('recalculate_ranking_points', { p_user_id: userId })
     }
 
-    // Update prediction points_earned + set expires_at on first award (rolling 52-week window)
+    // ── 9. Update prediction points_earned + expires_at ───────────────────
     for (const [predId, pts] of Object.entries(predictionPointsDelta)) {
       const pred = (predictions ?? []).find((p: any) => p.id === predId)
       const updateRow: Record<string, any> = {
         points_earned: (pred?.points_earned ?? 0) + pts,
       }
-      // Stamp expires_at = tournament.starts_at + 364 days on the first point award
+      // Stamp expires_at = tournament.starts_at + 364 days on first award
       if (!pred?.expires_at && pred?.tournament_id) {
         const startsAt = tournamentStartsAt[pred.tournament_id]
         if (startsAt) {
@@ -166,7 +245,7 @@ export async function GET(request: Request) {
       await supabase.from('predictions').update(updateRow).eq('id', predId)
     }
 
-    // Send points_awarded notifications + emails per user per tournament
+    // ── 10. Notifications + emails (global predictions only) ──────────────
     try {
       for (const [userId, tPoints] of Object.entries(userTournamentPoints)) {
         const { data: { user: authUser } } = await supabase.auth.admin.getUserById(userId)
@@ -184,7 +263,7 @@ export async function GET(request: Request) {
               tournamentName: tName,
               tournamentId:   tId,
               points:         pts,
-              totalPoints:    userPointsDelta[userId],
+              totalPoints:    globalUserPointsDelta[userId],
             })
           }
         }
@@ -193,18 +272,18 @@ export async function GET(request: Request) {
       console.error('[award-points] notification error:', notifyErr)
     }
 
-    // ── Score and finalize completed challenges ────────────────────────────
+    // ── 11. Score and finalize completed challenges ───────────────────────
     let challengesScored = 0
     let challengesExpired = 0
     try {
-      // 1. Expire pending challenges for tournaments that have started
+      // 11a. Expire pending challenges for tournaments that have started
       const { data: pendingChallenges } = await supabase
         .from('challenges')
         .select('id, tournament_id')
         .eq('status', 'pending')
 
       if (pendingChallenges?.length) {
-        const pendingTournamentIds = [...new Set(pendingChallenges.map(c => c.tournament_id))]
+        const pendingTournamentIds = Array.from(new Set(pendingChallenges.map(c => c.tournament_id)))
         const { data: startedTournaments } = await supabase
           .from('tournaments')
           .select('id')
@@ -223,14 +302,15 @@ export async function GET(request: Request) {
         }
       }
 
-      // 2. Score accepted challenges for completed tournaments
+      // 11b. Score accepted challenges for completed tournaments
+      // Now uses challenge-specific predictions (challenge_id = challenge.id)
       const { data: acceptedChallenges } = await supabase
         .from('challenges')
         .select('id, challenger_id, challenged_id, tournament_id')
         .eq('status', 'accepted')
 
       if (acceptedChallenges?.length) {
-        const acceptedTournamentIds = [...new Set(acceptedChallenges.map(c => c.tournament_id))]
+        const acceptedTournamentIds = Array.from(new Set(acceptedChallenges.map(c => c.tournament_id)))
         const { data: completedTournaments } = await supabase
           .from('tournaments')
           .select('id')
@@ -241,13 +321,12 @@ export async function GET(request: Request) {
         const toScore = acceptedChallenges.filter(c => completedIds.has(c.tournament_id))
 
         for (const challenge of toScore) {
+          // Fetch challenge-specific predictions for both players
           const { data: preds } = await supabase
             .from('predictions')
             .select('user_id, points_earned, picks')
-            .in('user_id', [challenge.challenger_id, challenge.challenged_id])
+            .eq('challenge_id', challenge.id)
             .eq('tournament_id', challenge.tournament_id)
-            .eq('is_locked', true)
-            .eq('is_practice', false)
 
           const challengerPred = (preds ?? []).find(p => p.user_id === challenge.challenger_id)
           const challengedPred = (preds ?? []).find(p => p.user_id === challenge.challenged_id)
@@ -286,10 +365,11 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       message: 'Points awarded successfully',
-      new_results_scored: newResults.length,
+      new_results_processed: allResults.length,
       point_entries_created: ledgerRows.length,
-      users_awarded: Object.keys(userPointsDelta).length,
-      points_by_user: userPointsDelta,
+      users_awarded: Object.keys(globalUserPointsDelta).length,
+      auto_locks_applied: autoLocksApplied,
+      points_by_user: globalUserPointsDelta,
       challenges_scored: challengesScored,
       challenges_expired: challengesExpired,
     })

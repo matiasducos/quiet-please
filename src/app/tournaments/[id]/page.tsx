@@ -85,9 +85,10 @@ export default async function TournamentDetailPage({ params }: { params: Promise
     user
       ? supabase
           .from('predictions')
-          .select('id, picks, is_locked, points_earned, is_practice')
+          .select('id, picks, is_fully_locked, points_earned')
           .eq('tournament_id', id)
           .eq('user_id', user.id)
+          .is('challenge_id', null)   // Only fetch the global prediction
           .single()
           .then(r => r.data)
       : Promise.resolve(null),
@@ -109,9 +110,10 @@ export default async function TournamentDetailPage({ params }: { params: Promise
   const surface = SURFACE_COLORS[t.surface ?? 'hard']
   const status  = STATUS_STYLES[t.status ?? 'upcoming']
 
-  const canPredict  = t.status === 'accepting_predictions' && !prediction?.is_locked
-  const canPractice = t.status === 'completed' && !!(draw?.bracket_data) && !prediction
-  const hasDraw     = draw && draw.bracket_data
+  // Allow predictions for accepting_predictions AND in_progress (for unplayed matches)
+  const canPredict = (t.status === 'accepting_predictions' || t.status === 'in_progress') &&
+    !prediction?.is_fully_locked
+  const hasDraw = draw && draw.bracket_data
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
@@ -243,23 +245,10 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                     The official draw is usually released a few days before the tournament starts. Check back soon.
                   </p>
                 </div>
-              ) : user && canPractice ? (
-                <div>
-                  <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem', lineHeight: 1.6 }}>
-                    This tournament is over. Practice your bracket against the actual results to see how many points you would have earned.
-                  </p>
-                  <Link
-                    href={`/tournaments/${t.id}/predict`}
-                    className="inline-block px-6 py-3 text-white text-sm font-medium rounded-sm hover:opacity-90"
-                    style={{ background: '#7c2d7c' }}
-                  >
-                    Practice picks →
-                  </Link>
-                </div>
-              ) : user && prediction?.is_locked ? (
+              ) : user && prediction?.is_fully_locked ? (
                 <div className="py-6 text-center">
                   <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.04em', marginBottom: '1rem' }}>
-                    Your picks are locked.
+                    Your bracket is locked.
                   </p>
                   <div className="flex flex-col items-center gap-3">
                     <Link
@@ -282,14 +271,16 @@ export default async function TournamentDetailPage({ params }: { params: Promise
               ) : user && canPredict ? (
                 <div>
                   <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem' }}>
-                    The draw is published. Make your picks before it closes.
+                    {t.status === 'in_progress'
+                      ? 'The tournament is underway. You can still predict unplayed matches.'
+                      : 'The draw is published. Make your picks before the first match starts.'}
                   </p>
                   <Link
                     href={`/tournaments/${t.id}/predict`}
                     className="inline-block px-6 py-3 text-white text-sm font-medium rounded-sm hover:opacity-90"
                     style={{ background: 'var(--court)' }}
                   >
-                    Make predictions →
+                    {prediction ? 'Edit predictions →' : 'Make predictions →'}
                   </Link>
                 </div>
               ) : (
@@ -301,12 +292,12 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                       ? 'The qualifying draw is live. Sign in — predictions open once the main draw is published.'
                       : t.status === 'completed'
                       ? 'This tournament has ended.'
-                      : t.status === 'in_progress'
-                      ? 'This tournament is in progress. Predictions are closed.'
+                      : t.status === 'in_progress' && !user
+                      ? 'Sign in to predict unplayed matches.'
                       : 'Sign in to be notified when predictions open.'}
                   </p>
                   <div className="flex flex-col items-center gap-3">
-                    {(t.status === 'accepting_predictions' || t.status === 'upcoming') && !user && (
+                    {(t.status === 'accepting_predictions' || t.status === 'in_progress' || t.status === 'upcoming') && !user && (
                       <Link
                         href="/login"
                         className="inline-block px-6 py-2.5 text-sm font-medium rounded-sm hover:opacity-90"
@@ -341,7 +332,7 @@ export default async function TournamentDetailPage({ params }: { params: Promise
               {!user ? (
                 <div>
                   <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
-                    {t.status === 'accepting_predictions'
+                    {t.status === 'accepting_predictions' || t.status === 'in_progress'
                       ? 'The draw is open. Sign in to pick your bracket and earn points.'
                       : t.status === 'draw_published'
                       ? 'The qualifying draw is live. Predictions open when the main draw is published.'
@@ -359,23 +350,14 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                 </div>
               ) : prediction ? (
                 <div>
-                  {prediction.is_practice && (
-                    <div className="mb-3 px-2.5 py-1 rounded-sm inline-flex items-center" style={{ background: '#f3e8ff' }}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.08em', color: '#7c2d7c', fontWeight: 600 }}>
-                        PRACTICE
-                      </span>
-                    </div>
-                  )}
                   <div className="flex items-center justify-between mb-3">
                     <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Status</span>
-                    <span style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)', color: prediction.is_locked ? '#993C1D' : '#1a6b3c' }}>
-                      {prediction.is_locked ? 'Scored' : 'In progress'}
+                    <span style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)', color: prediction.is_fully_locked ? '#993C1D' : '#1a6b3c' }}>
+                      {prediction.is_fully_locked ? 'Locked' : 'In progress'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between mb-4">
-                    <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
-                      {prediction.is_practice ? 'Practice score' : 'Points earned'}
-                    </span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Points earned</span>
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }}>
                       {prediction.points_earned ?? 0} pts
                     </span>
@@ -386,19 +368,12 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                     </Link>
                   )}
                 </div>
-              ) : canPractice ? (
-                <div>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
-                    This tournament is over. Practice your bracket to see how many points you would have earned — no real points awarded.
-                  </p>
-                  <Link href={`/tournaments/${id}/predict`} className="block w-full py-2.5 text-sm font-medium text-white text-center rounded-sm hover:opacity-90" style={{ background: '#7c2d7c' }}>
-                    Practice picks
-                  </Link>
-                </div>
               ) : canPredict ? (
                 <div>
                   <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
-                    The draw is open. Make your bracket predictions before it closes.
+                    {t.status === 'in_progress'
+                      ? 'The tournament is underway. You can still predict unplayed matches.'
+                      : 'The draw is open. Make your bracket predictions before the first match starts.'}
                   </p>
                   <Link href={`/tournaments/${id}/predict`} className="block w-full py-2.5 text-sm font-medium text-white text-center rounded-sm hover:opacity-90" style={{ background: 'var(--court)' }}>
                     Make predictions
@@ -412,8 +387,6 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                     ? 'Predictions will open when the draw is published.'
                     : t.status === 'completed'
                     ? 'This tournament has ended.'
-                    : t.status === 'in_progress'
-                    ? 'This tournament is in progress. Predictions are closed.'
                     : 'Predictions are closed for this tournament.'}
                 </p>
               )}

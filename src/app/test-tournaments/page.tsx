@@ -28,7 +28,7 @@ export default async function TestTournamentsPage() {
   if (tournament) {
     const { data: pred } = await supabase
       .from('predictions')
-      .select('id, picks, is_locked, points_earned')
+      .select('id, picks, is_fully_locked, points_earned')
       .eq('tournament_id', tournament.id)
       .eq('user_id', user.id)
       .single()

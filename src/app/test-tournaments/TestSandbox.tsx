@@ -17,7 +17,7 @@ interface Props {
   prediction: {
     id: string
     picks: unknown
-    is_locked: boolean
+    is_fully_locked: boolean
     points_earned: number
   } | null
   hasResults: boolean
@@ -177,7 +177,7 @@ export default function TestSandbox({ tournament, prediction, hasResults }: Prop
   }
 
   // ── State: prediction locked, waiting to simulate ────────────────────────
-  if (prediction?.is_locked) {
+  if (prediction?.is_fully_locked) {
     return (
       <div>
         <TournamentHeader />

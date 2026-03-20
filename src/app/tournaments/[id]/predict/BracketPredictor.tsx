@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { savePrediction } from './actions'
+import { savePrediction, importGlobalPicks } from './actions'
 
 interface Player {
   externalId: string
@@ -103,11 +103,13 @@ export default function BracketPredictor({
   predictionId,
   username,
   returnUrl,
-  isPractice = false,
   matchResults,
   matchPoints,
   readOnly = false,
   shareUrl,
+  pickLocks = {},
+  isFullyLocked = false,
+  challengeContext,
 }: {
   tournament: any
   draw: Draw
@@ -115,20 +117,27 @@ export default function BracketPredictor({
   predictionId: string | null
   username: string
   returnUrl?: string
-  isPractice?: boolean
-  matchResults?: Record<string, string>  // matchId → winnerExternalId
-  matchPoints?: Record<string, number>   // matchId → points earned
+  matchResults?: Record<string, string>            // matchId → winnerExternalId
+  matchPoints?: Record<string, { points: number; streakMultiplier: number }>
   readOnly?: boolean
   shareUrl?: string
+  pickLocks?: Record<string, string>               // matchId → "auto" | "voluntary" | "auto_lock_all"
+  isFullyLocked?: boolean
+  challengeContext?: { opponentUsername: string; challengeId: string }
 }) {
   const router = useRouter()
   const [, startTransition] = useTransition()
+
+  // ── State ────────────────────────────────────────────────────────────────
   const [picks, setPicks] = useState<Record<string, string>>(existingPicks)
+  const [currentPickLocks, setCurrentPickLocks] = useState<Record<string, string>>(pickLocks)
+  const [fullyLocked, setFullyLocked] = useState(isFullyLocked)
+  const [currentPredictionId, setCurrentPredictionId] = useState<string | null>(predictionId)
   const [copied, setCopied] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [locked, setLocked] = useState(false)
   const [slotError, setSlotError] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
   const [activeRound, setActiveRound] = useState(() => {
     const sorted = draw.rounds.slice().sort((a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b))
     return sorted[0] ?? 'QF'
@@ -139,7 +148,28 @@ export default function BracketPredictor({
   const byeMatchIds = new Set(draw.matches.filter(isByeMatch).map(m => m.matchId))
   const totalMatches = draw.matches.length - byeMatchIds.size
   const pickedCount = Object.keys(picks).filter(id => !byeMatchIds.has(id)).length
+  const challengeId = challengeContext?.challengeId ?? null
 
+  // ── Per-match lock state ─────────────────────────────────────────────────
+  /** Check if a match is locked (any reason: result, voluntary, full lock) */
+  function isMatchLocked(matchId: string): boolean {
+    if (readOnly || fullyLocked) return true
+    if (matchResults?.[matchId]) return true           // Match has been played
+    if (currentPickLocks[matchId]) return true          // Voluntarily locked
+    return false
+  }
+
+  /** Display state for the match header badge */
+  type LockDisplay = 'editable' | 'voluntary_locked' | 'auto_locked' | 'fully_locked' | 'bye'
+  function getMatchLockDisplay(matchId: string): LockDisplay {
+    if (byeMatchIds.has(matchId)) return 'bye'
+    if (readOnly || fullyLocked) return 'fully_locked'
+    if (matchResults?.[matchId]) return 'auto_locked'
+    if (currentPickLocks[matchId]) return 'voluntary_locked'
+    return 'editable'
+  }
+
+  // ── Bracket logic ────────────────────────────────────────────────────────
   function getEffectivePlayer(match: DrawMatch, slot: 'player1' | 'player2'): Player | null {
     const base = match[slot]
     if (base) return base
@@ -171,7 +201,7 @@ export default function BracketPredictor({
   }
 
   const pickWinner = (matchId: string, playerExternalId: string) => {
-    if (readOnly) return
+    if (isMatchLocked(matchId)) return
     if (byeMatchIds.has(matchId)) return  // BYE matches are auto-resolved
     const newPicks = { ...picks, [matchId]: playerExternalId }
 
@@ -180,6 +210,8 @@ export default function BracketPredictor({
       if (!feed) return
       const nextMatch = draw.matches.find(m => m.matchId === feed.nextMatchId)
       if (!nextMatch) return
+      // Don't clear downstream picks that are already locked
+      if (matchResults?.[nextMatch.matchId] || currentPickLocks[nextMatch.matchId]) return
       const nextPick = newPicks[nextMatch.matchId]
       if (nextPick) {
         const p1 = getEffectivePlayer(nextMatch, 'player1')
@@ -198,54 +230,107 @@ export default function BracketPredictor({
     setSlotError(null)
   }
 
+  // ── Handlers ─────────────────────────────────────────────────────────────
+
+  /** Save picks without locking */
   const handleSave = async () => {
-    if (isPractice || readOnly) return
+    if (readOnly || fullyLocked) return
     setSaving(true)
     setSlotError(null)
     try {
-      const result = await savePrediction({ tournamentId: tournament.id, picks, predictionId })
+      const result = await savePrediction({
+        tournamentId: tournament.id,
+        picks,
+        predictionId: currentPredictionId,
+        challengeId,
+      })
       if (result.success) {
         setSaved(true)
+        if (result.predictionId) setCurrentPredictionId(result.predictionId)
       } else if (result.error === 'slot_taken') {
         setSlotError(
           `Your ${tournament.tour} slot this week is already taken by ${result.conflictingTournamentName}. ` +
           `You can only enter one ${tournament.tour} tournament per week.`
         )
       } else {
-        console.error(result.message)
+        console.error(result.error === 'played_matches' ? 'Cannot change played matches' : result.message)
       }
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
   }
 
-  const handleSubmit = async () => {
-    if (readOnly) return
-    const msg = isPractice
-      ? 'Score your picks against the actual results? This will show you how many points you would have earned.'
-      : 'Lock your picks? This cannot be undone.'
-    if (!confirm(msg)) return
+  /** Lock entire bracket (replaces old "Submit & lock") */
+  const handleLockAll = async () => {
+    if (readOnly || fullyLocked) return
+    if (!confirm('Lock all picks? You won\'t be able to change any predictions after locking.')) return
     setSaving(true)
     setSlotError(null)
     try {
-      const result = await savePrediction({ tournamentId: tournament.id, picks, predictionId, lock: true, isPractice })
+      const result = await savePrediction({
+        tournamentId: tournament.id,
+        picks,
+        predictionId: currentPredictionId,
+        challengeId,
+        lockAll: true,
+      })
       if (result.success) {
-        if (isPractice) {
-          startTransition(() => router.push(returnUrl ?? `/tournaments/${tournament.id}`))
-        } else {
-          setLocked(true)
-          setSaving(false)
-        }
+        setFullyLocked(true)
+        if (result.predictionId) setCurrentPredictionId(result.predictionId)
       } else if (result.error === 'slot_taken') {
         setSlotError(
           `Your ${tournament.tour} slot this week is already taken by ${result.conflictingTournamentName}. ` +
           `You can only enter one ${tournament.tour} tournament per week.`
         )
-        setSaving(false)
       } else {
-        console.error(result.message)
-        setSaving(false)
+        console.error(result.error === 'played_matches' ? 'Cannot change played matches' : result.message)
       }
-    } catch (e) { console.error(e); setSaving(false) }
+    } catch (e) { console.error(e) }
+    finally { setSaving(false) }
+  }
+
+  /** Lock a single pick (saves all current picks + locks this match) */
+  const handleLockPick = async (matchId: string) => {
+    if (isMatchLocked(matchId) || !picks[matchId]) return
+    setSaving(true)
+    setSlotError(null)
+    try {
+      const result = await savePrediction({
+        tournamentId: tournament.id,
+        picks,
+        predictionId: currentPredictionId,
+        challengeId,
+        lockMatchIds: [matchId],
+      })
+      if (result.success) {
+        setCurrentPickLocks(prev => ({ ...prev, [matchId]: 'voluntary' }))
+        setSaved(true)
+        if (result.predictionId) setCurrentPredictionId(result.predictionId)
+      } else {
+        console.error('Lock pick failed')
+      }
+    } catch (e) { console.error(e) }
+    finally { setSaving(false) }
+  }
+
+  /** Import global picks into challenge prediction */
+  const handleImportGlobal = async () => {
+    if (!challengeId) return
+    setImporting(true)
+    try {
+      const result = await importGlobalPicks(tournament.id)
+      if ('picks' in result) {
+        // Only import picks for matches that aren't already locked
+        const importedPicks: Record<string, string> = {}
+        for (const [matchId, playerId] of Object.entries(result.picks)) {
+          if (!isMatchLocked(matchId)) {
+            importedPicks[matchId] = playerId
+          }
+        }
+        setPicks(prev => ({ ...prev, ...importedPicks }))
+        setSaved(false)
+      }
+    } catch (e) { console.error(e) }
+    finally { setImporting(false) }
   }
 
   const matchesForRound = (round: string) => draw.matches.filter(m => m.round === round)
@@ -255,23 +340,29 @@ export default function BracketPredictor({
     ? Object.entries(picks).filter(([matchId, playerId]) => matchResults[matchId] === playerId).length
     : null
 
+  // Check if we're in challenge mode with empty picks (for import prompt)
+  const showImportBanner = !!challengeContext && pickedCount === 0 && !fullyLocked && !readOnly
+
+  // ── Determine what the editable state really is ──────────────────────────
+  const isEditing = !readOnly && !fullyLocked
+
   return (
     <div className="min-h-screen" style={{ background: 'var(--chalk)' }}>
 
-      {/* Sticky top block — nav + banner + round tabs */}
+      {/* Sticky top block — nav + banners + round tabs */}
       <div style={{ position: 'sticky', top: 0, zIndex: 10 }}>
 
       {/* Nav */}
       <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="flex items-center justify-between px-4 md:px-6 py-4">
-          {/* Logo — always standalone top-left */}
+          {/* Logo */}
           <Link href="/dashboard" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)', whiteSpace: 'nowrap' }}>
             Quiet Please
           </Link>
 
           <div className="flex items-center gap-2 ml-4">
-            {/* Back link for non-readOnly mode */}
-            {!readOnly && (
+            {/* Back link (when editing) */}
+            {isEditing && (
               <Link
                 href={returnUrl ?? `/tournaments/${tournament.id}`}
                 style={{ fontSize: '0.8rem', color: 'var(--muted)', whiteSpace: 'nowrap', marginRight: '0.25rem' }}
@@ -279,6 +370,8 @@ export default function BracketPredictor({
                 ← Back
               </Link>
             )}
+
+            {/* Pick counter */}
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
               {readOnly
                 ? correctPicks !== null && matchResults && Object.keys(matchResults).length > 0
@@ -286,9 +379,11 @@ export default function BracketPredictor({
                   : `${pickedCount} picks`
                 : `${pickedCount}/${totalMatches} picks`}
             </span>
-            {readOnly || locked ? (
+
+            {/* Buttons: depends on state */}
+            {readOnly || fullyLocked ? (
               <>
-                {locked && (
+                {fullyLocked && !readOnly && (
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.05em', color: 'var(--court)', whiteSpace: 'nowrap' }}>
                     LOCKED ✓
                   </span>
@@ -303,23 +398,21 @@ export default function BracketPredictor({
               </>
             ) : (
               <>
-                {!isPractice && (
-                  <button
-                    onClick={handleSave}
-                    disabled={saving || pickedCount === 0}
-                    className="hidden md:block px-3 py-1.5 text-xs rounded-sm border transition-colors disabled:opacity-40 whitespace-nowrap"
-                    style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
-                  >
-                    {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save draft'}
-                  </button>
-                )}
                 <button
-                  onClick={handleSubmit}
+                  onClick={handleSave}
+                  disabled={saving || pickedCount === 0}
+                  className="hidden md:block px-3 py-1.5 text-xs rounded-sm border transition-colors disabled:opacity-40 whitespace-nowrap"
+                  style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
+                >
+                  {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save draft'}
+                </button>
+                <button
+                  onClick={handleLockAll}
                   disabled={saving || pickedCount === 0}
                   className="px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40 whitespace-nowrap"
-                  style={{ background: isPractice ? '#7c2d7c' : 'var(--court)', color: 'white' }}
+                  style={{ background: 'var(--court)', color: 'white' }}
                 >
-                  {saving ? 'Scoring…' : isPractice ? 'Score my picks' : 'Submit & lock'}
+                  {saving ? 'Saving…' : 'Lock all picks'}
                 </button>
               </>
             )}
@@ -327,24 +420,7 @@ export default function BracketPredictor({
         </div>
       </nav>
 
-      {/* Practice mode banner */}
-      {isPractice && !readOnly && (
-        <div className="px-4 md:px-6 py-2.5" style={{ background: '#f3e8ff', borderBottom: '1px solid #e9d5ff' }}>
-          <div className="flex items-center gap-2">
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: '#7c2d7c', fontWeight: 600, flexShrink: 0 }}>
-              PRACTICE MODE
-            </span>
-            <span className="hidden md:inline" style={{ fontSize: '0.75rem', color: '#6b21a8' }}>
-              This tournament is over. Pick your bracket and see how many points you would have earned — no points are awarded.
-            </span>
-          </div>
-          <p className="md:hidden mt-1" style={{ fontSize: '0.75rem', color: '#6b21a8' }}>
-            This tournament is over. Pick your bracket and see how many points you would have earned — no points are awarded.
-          </p>
-        </div>
-      )}
-
-      {/* Read-only banner */}
+      {/* Read-only banner (viewing someone else's picks) */}
       {readOnly && (
         <div className="px-4 md:px-6 py-2.5" style={{ background: '#f1efe8', borderBottom: '1px solid var(--chalk-dim)' }}>
           {/* First row: badge + (desktop legend) + share button */}
@@ -409,10 +485,20 @@ export default function BracketPredictor({
         <div className="flex items-center gap-2 mb-1" style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
           <Link href={`/tournaments/${tournament.id}`} style={{ color: 'var(--muted)' }}>{tournament.name}</Link>
           <span>/</span>
-          <span>{readOnly ? `${username}'s picks` : isPractice ? 'Practice picks' : 'Your picks'}</span>
+          <span>
+            {readOnly
+              ? `${username}'s picks`
+              : challengeContext
+                ? `Challenge vs ${challengeContext.opponentUsername}`
+                : 'Your picks'}
+          </span>
         </div>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.02em' }}>
-          {readOnly ? `${username}'s picks` : isPractice ? 'Practice your bracket' : 'Make your predictions'}
+          {readOnly
+            ? `${username}'s picks`
+            : challengeContext
+              ? `Challenge vs ${challengeContext.opponentUsername}`
+              : 'Make your predictions'}
         </h1>
         <p style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
           {readOnly
@@ -431,6 +517,27 @@ export default function BracketPredictor({
 
       {/* Matches */}
       <div className="max-w-2xl mx-auto px-4 md:px-6 py-6">
+
+        {/* Import from global banner (challenge mode with empty picks) */}
+        {showImportBanner && (
+          <div className="bg-white rounded-sm border p-5 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', marginBottom: '0.25rem' }}>
+              Start with your global picks?
+            </p>
+            <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '1rem', lineHeight: 1.6 }}>
+              Import your existing predictions as a starting point. You can customize them for this challenge.
+            </p>
+            <button
+              onClick={handleImportGlobal}
+              disabled={importing}
+              className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90 disabled:opacity-40"
+              style={{ background: 'var(--court)' }}
+            >
+              {importing ? 'Importing…' : 'Import global picks'}
+            </button>
+          </div>
+        )}
+
         <div className="flex flex-col gap-6">
           {(() => {
             // Group matches that share the same next-round match (bracket pairs)
@@ -465,11 +572,12 @@ export default function BracketPredictor({
               ) => {
                 const style = PICK_STYLES[state]
                 const isBye = byeMatchIds.has(match.matchId)
-                const isClickable = !readOnly && !locked && !!player && !isBye
+                const matchLocked = isMatchLocked(match.matchId)
+                const isClickable = !matchLocked && !!player && !isBye
                 return (
                   <button
                     onClick={() => player && pickWinner(match.matchId, player.externalId)}
-                    disabled={!player || readOnly || locked || isBye}
+                    disabled={!player || matchLocked || isBye}
                     className={`pick-btn w-full flex items-center justify-between px-4 py-4 text-left${withBorderBottom ? ' border-b' : ''}`}
                     style={{
                       borderColor: 'var(--chalk-dim)',
@@ -517,7 +625,11 @@ export default function BracketPredictor({
                         border: state === 'winner' ? '1px solid #fcd34d' : undefined,
                       }}>
                         {state === 'correct' && matchPoints?.[match.matchId] != null
-                          ? '✓ +' + matchPoints[match.matchId] + ' pts'
+                          ? (() => {
+                              const mp = matchPoints[match.matchId]
+                              const streakLabel = mp.streakMultiplier > 1 ? ` ×${mp.streakMultiplier}` : ''
+                              return `✓ +${mp.points} pts${streakLabel}`
+                            })()
                           : style.label}
                       </span>
                     )}
@@ -536,18 +648,46 @@ export default function BracketPredictor({
                       const p2 = getEffectivePlayer(match, 'player2')
                       const pickedId = picks[match.matchId]
                       const actualWinnerId = matchResults?.[match.matchId]
-                      const isLocked = !p1 && !p2
-                      // BYE matches: non-null player gets 'bye' state (light blue), null side gets 'none'
+                      const noPlayers = !p1 && !p2
+                      const lockDisplay = getMatchLockDisplay(match.matchId)
+
+                      // BYE matches: non-null player gets 'bye' state, null side gets 'none'
                       const s1 = isBye ? (match.player1 ? 'bye' as const : 'none' as const) : getPickState(pickedId, p1?.externalId, actualWinnerId)
                       const s2 = isBye ? (match.player2 ? 'bye' as const : 'none' as const) : getPickState(pickedId, p2?.externalId, actualWinnerId)
 
+                      // Show per-pick lock button? Only if: editable, has a pick, not saving
+                      const showLockBtn = lockDisplay === 'editable' && !!pickedId && !isBye
+
                       return (
                         <div key={match.matchId} className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: isBye ? '#bfdbfe' : 'var(--chalk-dim)' }}>
+                          {/* Match header */}
                           <div className="px-4 py-2 border-b flex items-center justify-between" style={{ borderColor: isBye ? '#bfdbfe' : 'var(--chalk-dim)', background: isBye ? '#eff6ff' : '#fafaf8' }}>
                             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: isBye ? '#1e40af' : 'var(--muted)', letterSpacing: '0.05em' }}>
                               MATCH {i + 1}{isBye ? ' · BYE' : ''}
                             </span>
-                            {isLocked && !readOnly && !isBye && (
+
+                            {/* Lock status / hint */}
+                            {lockDisplay === 'voluntary_locked' && (
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em', color: 'var(--court)' }}>
+                                LOCKED ✓
+                              </span>
+                            )}
+                            {lockDisplay === 'auto_locked' && (
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em', color: 'var(--muted)' }}>
+                                PLAYED
+                              </span>
+                            )}
+                            {showLockBtn && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleLockPick(match.matchId) }}
+                                disabled={saving}
+                                className="px-2 py-0.5 rounded-sm border transition-colors hover:border-gray-400 disabled:opacity-40"
+                                style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.04em', color: 'var(--muted)', borderColor: 'var(--chalk-dim)', background: 'white' }}
+                              >
+                                Lock pick
+                              </button>
+                            )}
+                            {noPlayers && !readOnly && !isBye && lockDisplay === 'editable' && (
                               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
                                 {activeRound === sortedRounds[0] ? 'Players not available yet' : 'Pick earlier rounds first'}
                               </span>
@@ -617,8 +757,8 @@ export default function BracketPredictor({
           </button>
         </div>
 
-        {/* Submit area — hidden in readOnly mode */}
-        {!readOnly && !locked && (
+        {/* Submit area — editing mode only */}
+        {isEditing && (
           <div className="mt-8 pt-6 border-t flex flex-col gap-3" style={{ borderColor: 'var(--chalk-dim)' }}>
             {/* Slot conflict error */}
             {slotError && (
@@ -631,36 +771,32 @@ export default function BracketPredictor({
                 {pickedCount} of {totalMatches} picks made
               </span>
               <div className="flex gap-3">
-                {!isPractice && (
-                  <button
-                    onClick={handleSave}
-                    disabled={saving || pickedCount === 0}
-                    className="px-5 py-2.5 text-sm rounded-sm border transition-colors disabled:opacity-40"
-                    style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
-                  >
-                    {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save draft'}
-                  </button>
-                )}
                 <button
-                  onClick={handleSubmit}
+                  onClick={handleSave}
+                  disabled={saving || pickedCount === 0}
+                  className="px-5 py-2.5 text-sm rounded-sm border transition-colors disabled:opacity-40"
+                  style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
+                >
+                  {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save draft'}
+                </button>
+                <button
+                  onClick={handleLockAll}
                   disabled={saving || pickedCount === 0}
                   className="px-5 py-2.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
-                  style={{ background: isPractice ? '#7c2d7c' : 'var(--court)', color: 'white' }}
+                  style={{ background: 'var(--court)', color: 'white' }}
                 >
-                  {saving ? (isPractice ? 'Scoring…' : 'Submitting…') : isPractice ? 'Score my picks' : 'Submit & lock picks'}
+                  {saving ? 'Locking…' : 'Lock all picks'}
                 </button>
               </div>
             </div>
             <p style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-              {isPractice
-                ? 'Your score is calculated immediately against actual results. No points are awarded.'
-                : 'Once locked, your picks cannot be changed.'}
+              Once locked, your picks cannot be changed. You can also lock individual picks using the &quot;Lock pick&quot; button on each match.
             </p>
           </div>
         )}
 
-        {/* Locked confirmation */}
-        {locked && (
+        {/* Locked confirmation (just locked during this session) */}
+        {fullyLocked && !readOnly && (
           <div className="mt-8 pt-6 border-t text-center flex flex-col items-center gap-3" style={{ borderColor: 'var(--chalk-dim)' }}>
             <div className="flex items-center gap-2">
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', letterSpacing: '0.06em', color: 'var(--court)', fontWeight: 600 }}>
@@ -675,7 +811,7 @@ export default function BracketPredictor({
               className="px-5 py-2.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90"
               style={{ background: 'var(--court)', color: 'white', textDecoration: 'none' }}
             >
-              Back to tournament →
+              {challengeContext ? 'Back to challenge →' : 'Back to tournament →'}
             </Link>
           </div>
         )}

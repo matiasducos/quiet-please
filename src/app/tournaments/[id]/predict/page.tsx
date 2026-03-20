@@ -5,12 +5,19 @@ import BracketPredictor from './BracketPredictor'
 import { TEST_EXTERNAL_ID } from '@/app/test-tournaments/constants'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
 
-export default async function PredictPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PredictPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ challenge?: string }>
+}) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
   const { id } = await params
+  const { challenge: challengeId } = await searchParams
 
   const { data: tournament } = await supabase
     .from('tournaments')
@@ -20,13 +27,13 @@ export default async function PredictPage({ params }: { params: Promise<{ id: st
 
   if (!tournament) notFound()
 
-  const isPractice = tournament.status === 'completed'
   const isTest = tournament.external_id === TEST_EXTERNAL_ID
   const isManual = tournament.is_manual === true
   const returnUrl = isTest ? '/test-tournaments' : `/tournaments/${id}`
 
-  // Only allow predict page for accepting_predictions (real) and completed (practice)
-  if (tournament.status !== 'accepting_predictions' && !isPractice) {
+  // Allow predict page for: accepting_predictions, in_progress (unplayed matches editable)
+  // Completed tournaments no longer allow predictions (practice mode removed)
+  if (tournament.status !== 'accepting_predictions' && tournament.status !== 'in_progress') {
     redirect(returnUrl)
   }
 
@@ -38,12 +45,20 @@ export default async function PredictPage({ params }: { params: Promise<{ id: st
 
   if (!draw?.bracket_data) redirect(`/tournaments/${id}`)
 
-  const { data: prediction } = await supabase
+  // ── Load the right prediction: global or challenge-specific ─────────────
+  let predictionQuery = supabase
     .from('predictions')
-    .select('id, picks, is_locked')
+    .select('id, picks, pick_locks, is_fully_locked, points_earned, challenge_id')
     .eq('tournament_id', id)
     .eq('user_id', user.id)
-    .single()
+
+  if (challengeId) {
+    predictionQuery = predictionQuery.eq('challenge_id', challengeId)
+  } else {
+    predictionQuery = predictionQuery.is('challenge_id', null)
+  }
+
+  const { data: prediction } = await predictionQuery.single()
 
   const { data: profile } = await supabase
     .from('users')
@@ -51,42 +66,39 @@ export default async function PredictPage({ params }: { params: Promise<{ id: st
     .eq('id', user.id)
     .single()
 
-  // Fetch match results for: practice mode, locked picks (readOnly), and in_progress tournaments
-  const needsResults = isPractice || prediction?.is_locked ||
-    tournament.status === 'in_progress' || tournament.status === 'completed'
-
+  // ── Load match results (needed for auto-lock rendering + in_progress) ───
   let matchResults: Record<string, string> = {}
-  let matchPoints: Record<string, number> = {}
-  if (needsResults) {
-    const [resultsRes, pointsRes] = await Promise.all([
-      supabase
-        .from('match_results')
-        .select('external_match_id, winner_external_id')
-        .eq('tournament_id', id),
-      prediction?.is_locked
-        ? supabase
-            .from('point_ledger')
-            .select('points, match_results(external_match_id)')
-            .eq('user_id', user.id)
-            .eq('tournament_id', id)
-        : Promise.resolve({ data: null as any }),
-    ])
-    matchResults = Object.fromEntries(
-      (resultsRes.data ?? []).map((r: any) => [r.external_match_id, r.winner_external_id])
+  let matchPoints: Record<string, { points: number; streakMultiplier: number }> = {}
+
+  const [resultsRes, pointsRes] = await Promise.all([
+    supabase
+      .from('match_results')
+      .select('external_match_id, winner_external_id')
+      .eq('tournament_id', id),
+    prediction
+      ? supabase
+          .from('point_ledger')
+          .select('points, streak_multiplier, match_results(external_match_id)')
+          .eq('prediction_id', prediction.id)
+      : Promise.resolve({ data: null as any }),
+  ])
+
+  matchResults = Object.fromEntries(
+    (resultsRes.data ?? []).map((r: any) => [r.external_match_id, r.winner_external_id])
+  )
+  if (pointsRes.data) {
+    matchPoints = Object.fromEntries(
+      (pointsRes.data ?? [])
+        .filter((r: any) => r.match_results?.external_match_id)
+        .map((r: any) => [
+          r.match_results.external_match_id,
+          { points: r.points, streakMultiplier: r.streak_multiplier ?? 1 },
+        ])
     )
-    if (pointsRes.data) {
-      matchPoints = Object.fromEntries(
-        (pointsRes.data ?? [])
-          .filter((r: any) => r.match_results?.external_match_id)
-          .map((r: any) => [r.match_results.external_match_id, r.points])
-      )
-    }
   }
 
-  // ── Slot pre-check: show a "slot taken" screen rather than the full bracket
-  // when this user already has a slot for the same circuit this week.
-  // Only runs when there is no existing prediction (first visit) and it's not practice mode.
-  if (!prediction && !isPractice && !isTest && !isManual) {
+  // ── Slot pre-check (global predictions only, not for challenges) ────────
+  if (!prediction && !challengeId && !isTest && !isManual) {
     const weeks = getTournamentISOWeeks(tournament.starts_at, tournament.ends_at)
     for (const w of weeks) {
       const { data: conflict } = await supabase
@@ -143,23 +155,33 @@ export default async function PredictPage({ params }: { params: Promise<{ id: st
     }
   }
 
-  // ── Locked picks → show readOnly bracket with results overlay
-  if (prediction?.is_locked) {
-    return (
-      <BracketPredictor
-        tournament={tournament}
-        draw={draw.bracket_data as any}
-        existingPicks={(prediction.picks as Record<string, string>) ?? {}}
-        predictionId={prediction.id}
-        username={profile?.username ?? ''}
-        returnUrl={returnUrl}
-        matchResults={matchResults}
-        matchPoints={matchPoints}
-        readOnly
-        shareUrl={profile?.username ? `/tournaments/${id}/picks/${profile.username}` : undefined}
-      />
-    )
+  // ── Challenge context ──────────────────────────────────────────────────
+  let challengeContext: { opponentUsername: string; challengeId: string } | undefined
+  if (challengeId) {
+    const { data: challenge } = await supabase
+      .from('challenges')
+      .select('challenger_id, challenged_id')
+      .eq('id', challengeId)
+      .single()
+
+    if (challenge) {
+      const opponentId = challenge.challenger_id === user.id
+        ? challenge.challenged_id
+        : challenge.challenger_id
+      const { data: opponentProfile } = await supabase
+        .from('users')
+        .select('username')
+        .eq('id', opponentId)
+        .single()
+      challengeContext = {
+        opponentUsername: opponentProfile?.username ?? 'Opponent',
+        challengeId,
+      }
+    }
   }
+
+  // ── Fully locked → show read-only bracket with results overlay ─────────
+  const isFullyLocked = prediction?.is_fully_locked === true
 
   return (
     <BracketPredictor
@@ -168,9 +190,13 @@ export default async function PredictPage({ params }: { params: Promise<{ id: st
       existingPicks={(prediction?.picks as Record<string, string>) ?? {}}
       predictionId={prediction?.id ?? null}
       username={profile?.username ?? ''}
-      returnUrl={returnUrl}
-      isPractice={isPractice}
+      returnUrl={challengeId ? `/challenges/${challengeId}` : returnUrl}
       matchResults={matchResults}
+      matchPoints={matchPoints}
+      pickLocks={(prediction?.pick_locks as Record<string, string>) ?? {}}
+      isFullyLocked={isFullyLocked}
+      challengeContext={challengeContext}
+      shareUrl={!challengeId && profile?.username ? `/tournaments/${id}/picks/${profile.username}` : undefined}
     />
   )
 }

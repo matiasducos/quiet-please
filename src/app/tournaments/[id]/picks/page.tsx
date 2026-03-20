@@ -32,8 +32,7 @@ export default async function AllPicksPage({
           .from('predictions')
           .select('id, user_id, points_earned, users(username)')
           .eq('tournament_id', id)
-          .eq('is_locked', true)
-          .eq('is_practice', false)
+          .is('challenge_id', null)
           .order('points_earned', { ascending: false })
       : Promise.resolve({ data: [] }),
     user

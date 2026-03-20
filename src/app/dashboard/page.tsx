@@ -29,7 +29,7 @@ export default async function DashboardPage() {
       .from('predictions')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.id)
-      .eq('is_practice', false),
+      .is('challenge_id', null),
     supabase
       .from('users')
       .select('id', { count: 'exact', head: true })

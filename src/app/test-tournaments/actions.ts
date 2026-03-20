@@ -122,7 +122,7 @@ export async function simulateResults(tournamentId: string) {
     .from('predictions')
     .select('id, user_id, picks')
     .eq('tournament_id', tournamentId)
-    .eq('is_locked', true)
+    .is('challenge_id', null)
 
   const ledgerRows: any[] = []
   const predictionPointsDelta: Record<string, number> = {}

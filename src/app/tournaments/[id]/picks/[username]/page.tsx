@@ -21,11 +21,10 @@ export default async function UserPicksPage({
 
   const { data: prediction } = await supabase
     .from('predictions')
-    .select('id, picks, is_locked, is_practice, points_earned')
+    .select('id, picks, is_fully_locked, points_earned')
     .eq('tournament_id', id)
     .eq('user_id', targetUser.id)
-    .eq('is_locked', true)
-    .eq('is_practice', false)
+    .is('challenge_id', null)
     .single()
 
   // Fetch match results for color coding + per-match points
@@ -36,7 +35,7 @@ export default async function UserPicksPage({
       .eq('tournament_id', id),
     supabase
       .from('point_ledger')
-      .select('points, match_results(external_match_id)')
+      .select('points, streak_multiplier, match_results(external_match_id)')
       .eq('user_id', targetUser.id)
       .eq('tournament_id', id),
   ])
@@ -45,10 +44,13 @@ export default async function UserPicksPage({
     (results ?? []).map(r => [r.external_match_id, r.winner_external_id])
   )
 
-  const matchPoints: Record<string, number> = Object.fromEntries(
+  const matchPoints: Record<string, { points: number; streakMultiplier: number }> = Object.fromEntries(
     (pointRows ?? [])
       .filter((r: any) => r.match_results?.external_match_id)
-      .map((r: any) => [r.match_results.external_match_id, r.points])
+      .map((r: any) => [
+        r.match_results.external_match_id,
+        { points: r.points, streakMultiplier: r.streak_multiplier ?? 1 },
+      ])
   )
 
   if (!prediction) {
