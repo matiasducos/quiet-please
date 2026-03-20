@@ -22,6 +22,7 @@ export default async function PredictPage({ params }: { params: Promise<{ id: st
 
   const isPractice = tournament.status === 'completed'
   const isTest = tournament.external_id === TEST_EXTERNAL_ID
+  const isManual = tournament.is_manual === true
   const returnUrl = isTest ? '/test-tournaments' : `/tournaments/${id}`
 
   // Only allow predict page for accepting_predictions (real) and completed (practice)
@@ -85,7 +86,7 @@ export default async function PredictPage({ params }: { params: Promise<{ id: st
   // ── Slot pre-check: show a "slot taken" screen rather than the full bracket
   // when this user already has a slot for the same circuit this week.
   // Only runs when there is no existing prediction (first visit) and it's not practice mode.
-  if (!prediction && !isPractice && !isTest) {
+  if (!prediction && !isPractice && !isTest && !isManual) {
     const weeks = getTournamentISOWeeks(tournament.starts_at, tournament.ends_at)
     for (const w of weeks) {
       const { data: conflict } = await supabase

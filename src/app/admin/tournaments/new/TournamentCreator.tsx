@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createTournament } from '../../actions'
+import CountrySelect from '../../CountrySelect'
 
 function nameToSlug(name: string): string {
   return name
@@ -131,7 +132,7 @@ export default function TournamentCreator() {
             <div className="flex gap-4">
               <div className="flex-1">
                 <label style={labelStyle}>Country</label>
-                <input value={country} onChange={e => setCountry(e.target.value)} placeholder="Spain" style={{ ...inputStyle, width: '100%' }} />
+                <CountrySelect value={country} onChange={setCountry} inputStyle={inputStyle} />
               </div>
               <div className="flex-1">
                 <label style={labelStyle}>City</label>

@@ -72,11 +72,12 @@ export async function savePrediction({
   } else {
     // ── INSERT new prediction ───────────────────────────────────────────────
     // For real (non-practice) tournaments: enforce the one-slot-per-circuit-per-week rule.
+    // Manual tournaments (created via admin for testing) are exempt from slot enforcement.
     if (!isPractice) {
       // Fetch tournament metadata needed for slot calculation
       const { data: tournament, error: tErr } = await supabase
         .from('tournaments')
-        .select('tour, starts_at, ends_at, name')
+        .select('tour, starts_at, ends_at, name, is_manual')
         .eq('id', tournamentId)
         .single()
 
@@ -84,40 +85,43 @@ export async function savePrediction({
         return { success: false, error: 'unknown', message: 'Tournament not found' }
       }
 
-      const circuit = tournament.tour as 'ATP' | 'WTA'
-      const weeks = getTournamentISOWeeks(tournament.starts_at, tournament.ends_at)
+      // Skip slot enforcement for manual (admin-created) tournaments
+      if (!tournament.is_manual) {
+        const circuit = tournament.tour as 'ATP' | 'WTA'
+        const weeks = getTournamentISOWeeks(tournament.starts_at, tournament.ends_at)
 
-      // Check each ISO week: is there already a slot for this user + circuit
-      // pointing to a DIFFERENT tournament?
-      for (const w of weeks) {
-        const { data: existing } = await supabase
-          .from('weekly_slots')
-          .select('tournament_id, tournaments(name)')
-          .eq('user_id', user.id)
-          .eq('circuit', circuit)
-          .eq('iso_year', w.year)
-          .eq('iso_week', w.week)
-          .neq('tournament_id', tournamentId)
-          .maybeSingle()
+        // Check each ISO week: is there already a slot for this user + circuit
+        // pointing to a DIFFERENT tournament?
+        for (const w of weeks) {
+          const { data: existing } = await supabase
+            .from('weekly_slots')
+            .select('tournament_id, tournaments(name)')
+            .eq('user_id', user.id)
+            .eq('circuit', circuit)
+            .eq('iso_year', w.year)
+            .eq('iso_week', w.week)
+            .neq('tournament_id', tournamentId)
+            .maybeSingle()
 
-        if (existing) {
-          const conflictingName = (existing.tournaments as any)?.name ?? 'another tournament'
-          return { success: false, error: 'slot_taken', conflictingTournamentName: conflictingName }
+          if (existing) {
+            const conflictingName = (existing.tournaments as any)?.name ?? 'another tournament'
+            return { success: false, error: 'slot_taken', conflictingTournamentName: conflictingName }
+          }
         }
-      }
 
-      // No conflict — upsert slot rows (idempotent: same tournament re-saves are silently ignored)
-      const slotRows = weeks.map(w => ({
-        user_id:       user.id,
-        circuit,
-        iso_year:      w.year,
-        iso_week:      w.week,
-        tournament_id: tournamentId,
-      }))
-      const { error: slotError } = await supabase
-        .from('weekly_slots')
-        .upsert(slotRows, { onConflict: 'user_id,circuit,iso_year,iso_week', ignoreDuplicates: true })
-      if (slotError) return { success: false, error: 'unknown', message: slotError.message }
+        // No conflict — upsert slot rows (idempotent: same tournament re-saves are silently ignored)
+        const slotRows = weeks.map(w => ({
+          user_id:       user.id,
+          circuit,
+          iso_year:      w.year,
+          iso_week:      w.week,
+          tournament_id: tournamentId,
+        }))
+        const { error: slotError } = await supabase
+          .from('weekly_slots')
+          .upsert(slotRows, { onConflict: 'user_id,circuit,iso_year,iso_week', ignoreDuplicates: true })
+        if (slotError) return { success: false, error: 'unknown', message: slotError.message }
+      }
     }
 
     const { error } = await supabase
