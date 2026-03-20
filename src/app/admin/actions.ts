@@ -856,6 +856,7 @@ export async function createTournament(data: {
       ends_at: endsAt.toISOString(),
       starts_year,
       draw_size: data.drawSize,
+      is_manual: true,
       status: 'upcoming',
     })
     .select('id')
@@ -881,11 +882,12 @@ export async function getManualTournaments(): Promise<{
   await assertAdmin()
   const admin = createAdminClient()
 
-  // Simple query — no joins, no special columns
+  // Only show admin-created tournaments (is_manual = true)
   const { data: tournaments, error } = await admin
     .from('tournaments')
     .select('id, name, tour, category, status, starts_at, surface')
-    .order('starts_at', { ascending: false })
+    .eq('is_manual', true)
+    .order('created_at', { ascending: false })
     .limit(50)
 
   if (error) {

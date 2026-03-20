@@ -103,7 +103,7 @@ export default function AdminPanel({ tournaments }: { tournaments: ManualTournam
         <div className="mb-10">
           <div className="flex items-center justify-between mb-3">
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em' }}>
-              Tournaments
+              Manual Tournaments
             </h2>
             <div className="flex gap-2">
               <Link
@@ -126,7 +126,7 @@ export default function AdminPanel({ tournaments }: { tournaments: ManualTournam
           {tournaments.length === 0 ? (
             <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
               <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>
-                No tournaments found. Create one or run Sync Tournaments below.
+                No manual tournaments yet. Click &quot;+ Create Tournament&quot; to get started.
               </p>
             </div>
           ) : (
