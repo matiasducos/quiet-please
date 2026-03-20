@@ -887,7 +887,7 @@ export async function getManualTournaments(): Promise<{
     .from('tournaments')
     .select('id, name, tour, category, status, starts_at, surface')
     .eq('is_manual', true)
-    .order('created_at', { ascending: false })
+    .order('starts_at', { ascending: false })
     .limit(50)
 
   if (error) {
