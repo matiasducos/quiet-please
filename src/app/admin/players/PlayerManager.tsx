@@ -61,6 +61,17 @@ export default function PlayerManager() {
     try {
       // Call the API route directly — it has maxDuration=120s and parallel fetching
       const res = await fetch('/api/admin/import-players', { method: 'POST' })
+
+      // Guard: Vercel may return an HTML error page on timeout / 500
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        setResetImportStatus({
+          type: 'error',
+          message: `Server error ${res.status}. ${text.length < 200 ? text : 'The function may have timed out — check your Vercel plan limits.'}`,
+        })
+        return
+      }
+
       const data = await res.json()
       if (data.ok) {
         setResetImportStatus({

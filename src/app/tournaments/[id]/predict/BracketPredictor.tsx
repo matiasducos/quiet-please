@@ -38,6 +38,12 @@ const ROUND_PROSE: Record<string, string> = {
 
 const ROUND_ORDER = ['R128', 'R64', 'R32', 'R16', 'QF', 'SF', 'F']
 
+/** A BYE match has exactly one real player and one null slot */
+function isByeMatch(match: DrawMatch): boolean {
+  return (match.player1 !== null && match.player2 === null) ||
+         (match.player1 === null && match.player2 !== null)
+}
+
 function buildFeedMap(matches: DrawMatch[]) {
   const byRound: Record<string, DrawMatch[]> = {}
   for (const m of matches) {
@@ -86,6 +92,7 @@ const PICK_STYLES: Record<string, { bg: string; labelColor: string; labelBg: str
   wrong:   { bg: '#fee2e2', labelColor: '#991b1b', labelBg: '#fee2e2', label: '✗ wrong'   },
   picked:  { bg: '#eaf3de', labelColor: '#27500A', labelBg: '#eaf3de', label: 'picked'     },
   winner:  { bg: '#fffbeb', labelColor: '#92400e', labelBg: '#fffbeb', label: 'winner'     },
+  bye:     { bg: '#dbeafe', labelColor: '#1e40af', labelBg: '#dbeafe', label: 'bye'        },
   none:    { bg: 'white',   labelColor: '',        labelBg: '',        label: ''            },
 }
 
@@ -133,8 +140,9 @@ export default function BracketPredictor({
 
   const sortedRounds = draw.rounds.slice().sort((a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b))
   const feedMap = buildFeedMap(draw.matches)
-  const totalMatches = draw.matches.length
-  const pickedCount = Object.keys(picks).length
+  const byeMatchIds = new Set(draw.matches.filter(isByeMatch).map(m => m.matchId))
+  const totalMatches = draw.matches.length - byeMatchIds.size
+  const pickedCount = Object.keys(picks).filter(id => !byeMatchIds.has(id)).length
 
   function getEffectivePlayer(match: DrawMatch, slot: 'player1' | 'player2'): Player | null {
     const base = match[slot]
@@ -146,6 +154,11 @@ export default function BracketPredictor({
     })
 
     if (!prevMatch) return null
+
+    // BYE auto-advance: the non-null player wins automatically, no pick needed
+    if (isByeMatch(prevMatch)) {
+      return prevMatch.player1 ?? prevMatch.player2
+    }
 
     const pickedId = picks[prevMatch.matchId]
     if (!pickedId) return null
@@ -163,6 +176,7 @@ export default function BracketPredictor({
 
   const pickWinner = (matchId: string, playerExternalId: string) => {
     if (readOnly) return
+    if (byeMatchIds.has(matchId)) return  // BYE matches are auto-resolved
     const newPicks = { ...picks, [matchId]: playerExternalId }
 
     const clearDownstream = (mId: string) => {
@@ -446,15 +460,16 @@ export default function BracketPredictor({
                 match: DrawMatch,
                 player: Player | null,
                 slot: 'player1' | 'player2',
-                state: ReturnType<typeof getPickState>,
+                state: ReturnType<typeof getPickState> | 'bye',
                 withBorderBottom: boolean,
               ) => {
                 const style = PICK_STYLES[state]
-                const isClickable = !readOnly && !!player
+                const isBye = byeMatchIds.has(match.matchId)
+                const isClickable = !readOnly && !!player && !isBye
                 return (
                   <button
                     onClick={() => player && pickWinner(match.matchId, player.externalId)}
-                    disabled={!player || readOnly}
+                    disabled={!player || readOnly || isBye}
                     className={`pick-btn w-full flex items-center justify-between px-4 py-4 text-left${withBorderBottom ? ' border-b' : ''}`}
                     style={{
                       borderColor: 'var(--chalk-dim)',
@@ -483,7 +498,7 @@ export default function BracketPredictor({
                         <span style={{ minWidth: '18px', flexShrink: 0 }} />
                       )}
                       <span className="truncate" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', letterSpacing: '-0.01em', color: player ? 'var(--ink)' : 'var(--muted)' }}>
-                        {player?.name ?? 'TBD'}
+                        {player?.name ?? (isBye ? 'BYE' : 'TBD')}
                       </span>
                       {player?.country && (
                         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', flexShrink: 0, letterSpacing: '0.04em' }}>{player.country}</span>
@@ -516,21 +531,23 @@ export default function BracketPredictor({
                   <div className="flex flex-col gap-3 flex-1">
                     {group.map((match) => {
                       const i = matchIndex++
+                      const isBye = byeMatchIds.has(match.matchId)
                       const p1 = getEffectivePlayer(match, 'player1')
                       const p2 = getEffectivePlayer(match, 'player2')
                       const pickedId = picks[match.matchId]
                       const actualWinnerId = matchResults?.[match.matchId]
                       const isLocked = !p1 && !p2
-                      const s1 = getPickState(pickedId, p1?.externalId, actualWinnerId)
-                      const s2 = getPickState(pickedId, p2?.externalId, actualWinnerId)
+                      // BYE matches: non-null player gets 'bye' state (light blue), null side gets 'none'
+                      const s1 = isBye ? (match.player1 ? 'bye' as const : 'none' as const) : getPickState(pickedId, p1?.externalId, actualWinnerId)
+                      const s2 = isBye ? (match.player2 ? 'bye' as const : 'none' as const) : getPickState(pickedId, p2?.externalId, actualWinnerId)
 
                       return (
-                        <div key={match.matchId} className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
-                          <div className="px-4 py-2 border-b flex items-center justify-between" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>
-                              MATCH {i + 1}
+                        <div key={match.matchId} className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: isBye ? '#bfdbfe' : 'var(--chalk-dim)' }}>
+                          <div className="px-4 py-2 border-b flex items-center justify-between" style={{ borderColor: isBye ? '#bfdbfe' : 'var(--chalk-dim)', background: isBye ? '#eff6ff' : '#fafaf8' }}>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: isBye ? '#1e40af' : 'var(--muted)', letterSpacing: '0.05em' }}>
+                              MATCH {i + 1}{isBye ? ' · BYE' : ''}
                             </span>
-                            {isLocked && !readOnly && (
+                            {isLocked && !readOnly && !isBye && (
                               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
                                 Pick earlier rounds first
                               </span>

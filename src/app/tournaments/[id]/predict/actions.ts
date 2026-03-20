@@ -35,9 +35,11 @@ export async function savePrediction({
   if (lock && isPractice) {
     const [{ data: tournament }, { data: matchResults }] = await Promise.all([
       supabase.from('tournaments').select('category').eq('id', tournamentId).single(),
-      supabase.from('match_results').select('round, winner_external_id').eq('tournament_id', tournamentId),
+      supabase.from('match_results').select('round, winner_external_id, score').eq('tournament_id', tournamentId),
     ])
     for (const result of matchResults ?? []) {
+      // Skip BYE matches — auto-advances don't award points
+      if ((result as any).score === 'BYE') continue
       if (Object.values(picks).includes(result.winner_external_id)) {
         const isWinner = result.round === 'F'
         pointsEarned += getPointsForRound(

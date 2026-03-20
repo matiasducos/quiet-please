@@ -19,9 +19,11 @@ export async function GET(request: Request) {
     const supabase = createAdminClient()
 
     // Get all match results (includes starts_at for expires_at calculation)
+    // Exclude BYE auto-advances — they don't award points
     const { data: allResults } = await supabase
       .from('match_results')
       .select('id, tournament_id, round, winner_external_id, tournaments(id, category, starts_at)')
+      .neq('score', 'BYE')
       .order('played_at', { ascending: true })
 
     if (!allResults?.length) {
