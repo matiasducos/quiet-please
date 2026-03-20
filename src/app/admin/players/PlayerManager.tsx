@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
-import { createPlayer, searchPlayers, seedPlayersFromDraws } from '../actions'
+import { createPlayer, searchPlayers, seedPlayersFromDraws, seedPlayersFromApi } from '../actions'
 
 type Player = { id: string; external_id: string; name: string; country: string; tour: string }
 
@@ -32,6 +32,23 @@ export default function PlayerManager() {
       }
     } catch (err) {
       setSeedStatus({ type: 'error', message: String(err) })
+    }
+  }
+
+  // Seed from API
+  const [apiSeedStatus, setApiSeedStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error'; message?: string }>({ type: 'idle' })
+
+  async function handleApiSeed() {
+    setApiSeedStatus({ type: 'loading' })
+    try {
+      const { ok, imported, tournamentsScanned, error } = await seedPlayersFromApi()
+      if (ok) {
+        setApiSeedStatus({ type: 'success', message: `Imported ${imported} players from ${tournamentsScanned} tournaments` })
+      } else {
+        setApiSeedStatus({ type: 'error', message: error ?? 'Failed' })
+      }
+    } catch (err) {
+      setApiSeedStatus({ type: 'error', message: String(err) })
     }
   }
 
@@ -123,6 +140,34 @@ export default function PlayerManager() {
                 color: seedStatus.type === 'error' ? '#991b1b' : '#166534',
               }}>
                 {seedStatus.type === 'success' ? '✓ ' : '✗ '}{seedStatus.message}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Seed from API */}
+        <div className="bg-white rounded-sm border p-5 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
+          <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)', marginBottom: '4px' }}>
+            Fetch from Tennis API
+          </p>
+          <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '12px' }}>
+            Scan ATP &amp; WTA tournament fixtures to import players. This may take a minute.
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleApiSeed}
+              disabled={apiSeedStatus.type === 'loading'}
+              className="px-4 py-1.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
+              style={{ background: 'var(--court)', color: 'white' }}
+            >
+              {apiSeedStatus.type === 'loading' ? 'Fetching...' : 'Fetch Players'}
+            </button>
+            {apiSeedStatus.type !== 'idle' && apiSeedStatus.type !== 'loading' && (
+              <span style={{
+                fontFamily: 'var(--font-mono)', fontSize: '0.7rem',
+                color: apiSeedStatus.type === 'error' ? '#991b1b' : '#166534',
+              }}>
+                {apiSeedStatus.type === 'success' ? '✓ ' : '✗ '}{apiSeedStatus.message}
               </span>
             )}
           </div>

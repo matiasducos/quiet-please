@@ -687,6 +687,109 @@ export async function seedPlayersFromDraws(): Promise<{ ok: boolean; imported: n
   return { ok: true, imported }
 }
 
+export async function seedPlayersFromApi(): Promise<{ ok: boolean; imported: number; tournamentsScanned: number; error?: string }> {
+  await assertAdmin()
+
+  const apiKey = process.env.TENNIS_API_KEY
+  if (!apiKey) return { ok: false, imported: 0, tournamentsScanned: 0, error: 'TENNIS_API_KEY not configured' }
+
+  const BASE_URL = 'https://api.api-tennis.com/tennis/'
+
+  // Helper to call the API
+  async function fetchApi(params: Record<string, string>) {
+    const url = new URL(BASE_URL)
+    url.searchParams.set('APIkey', apiKey!)
+    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
+    const res = await fetch(url.toString(), { cache: 'no-store', signal: AbortSignal.timeout(15000) })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    if (!json.success) throw new Error(json.error ?? 'API error')
+    return json.result ?? []
+  }
+
+  // 1. Fetch all tournaments
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allTournaments: any[] = await fetchApi({ method: 'get_tournaments' })
+
+  // 2. Filter to ATP/WTA singles only
+  const validTours: Record<string, 'ATP' | 'WTA'> = {}
+  for (const t of allTournaments) {
+    const type = (t.event_type_type ?? '').toLowerCase()
+    if (type.includes('atp') && !type.includes('double') && !type.includes('challenger')) {
+      validTours[String(t.tournament_key)] = 'ATP'
+    } else if (type.includes('wta') && !type.includes('double') && !type.includes('itf')) {
+      validTours[String(t.tournament_key)] = 'WTA'
+    }
+  }
+
+  const tournamentKeys = Object.keys(validTours)
+  const seen = new Map<string, { name: string; country: string; tour: 'ATP' | 'WTA' }>()
+
+  // 3. Fetch fixtures for each tournament (batch in groups of 5 to avoid rate limits)
+  const today = new Date().toISOString().slice(0, 10)
+  const yearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  let scanned = 0
+
+  for (let i = 0; i < tournamentKeys.length; i += 5) {
+    const batch = tournamentKeys.slice(i, i + 5)
+    const results = await Promise.allSettled(
+      batch.map(key =>
+        fetchApi({ method: 'get_fixtures', tournament_key: key, date_start: yearAgo, date_stop: today })
+      )
+    )
+
+    for (let j = 0; j < results.length; j++) {
+      const result = results[j]
+      const tour = validTours[batch[j]]
+      scanned++
+      if (result.status !== 'fulfilled' || !Array.isArray(result.value)) continue
+
+      for (const f of result.value) {
+        if (f.event_home_team && f.event_home_team_key) {
+          const eid = String(f.event_home_team_key)
+          if (!seen.has(eid)) {
+            seen.set(eid, { name: String(f.event_home_team), country: f.event_home_team_country ?? '', tour })
+          }
+        }
+        if (f.event_away_team && f.event_away_team_key) {
+          const eid = String(f.event_away_team_key)
+          if (!seen.has(eid)) {
+            seen.set(eid, { name: String(f.event_away_team), country: f.event_away_team_country ?? '', tour })
+          }
+        }
+      }
+
+      // Stop early if we have enough
+      if (seen.size >= 500) break
+    }
+    if (seen.size >= 500) break
+  }
+
+  if (seen.size === 0) return { ok: true, imported: 0, tournamentsScanned: scanned }
+
+  // 4. Bulk upsert
+  const admin = createAdminClient()
+  const rows = [...seen.entries()].map(([externalId, p]) => ({
+    external_id: externalId,
+    name: p.name,
+    country: p.country,
+    tour: p.tour,
+  }))
+
+  let imported = 0
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500)
+    const { data: upserted, error } = await admin
+      .from('players')
+      .upsert(chunk, { onConflict: 'external_id', ignoreDuplicates: true })
+      .select('id')
+    if (error) return { ok: false, imported, tournamentsScanned: scanned, error: error.message }
+    imported += upserted?.length ?? 0
+  }
+
+  return { ok: true, imported, tournamentsScanned: scanned }
+}
+
 // ── Manual tournament creation ────────────────────────────────────────────────
 
 export async function createTournament(data: {
