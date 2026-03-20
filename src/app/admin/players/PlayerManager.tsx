@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
-import { createPlayer, searchPlayers } from '../actions'
+import { createPlayer, searchPlayers, seedPlayersFromDraws } from '../actions'
 
 type Player = { id: string; external_id: string; name: string; country: string; tour: string }
 
@@ -17,6 +17,23 @@ export default function PlayerManager() {
   const [tour, setTour] = useState<'ATP' | 'WTA'>('ATP')
   const [adding, setAdding] = useState(false)
   const [addStatus, setAddStatus] = useState<{ type: 'idle' | 'success' | 'error'; message?: string }>({ type: 'idle' })
+
+  // Seed from draws
+  const [seedStatus, setSeedStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error'; message?: string }>({ type: 'idle' })
+
+  async function handleSeed() {
+    setSeedStatus({ type: 'loading' })
+    try {
+      const { ok, imported, error } = await seedPlayersFromDraws()
+      if (ok) {
+        setSeedStatus({ type: 'success', message: `Imported ${imported} players from existing draws` })
+      } else {
+        setSeedStatus({ type: 'error', message: error ?? 'Failed' })
+      }
+    } catch (err) {
+      setSeedStatus({ type: 'error', message: String(err) })
+    }
+  }
 
   const doSearch = useCallback(async (q: string) => {
     if (!q.trim()) { setResults([]); return }
@@ -81,6 +98,34 @@ export default function PlayerManager() {
           <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginTop: '0.4rem' }}>
             Add players to the registry for use when building draws.
           </p>
+        </div>
+
+        {/* Seed from draws */}
+        <div className="bg-white rounded-sm border p-5 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
+          <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)', marginBottom: '4px' }}>
+            Import from existing draws
+          </p>
+          <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '12px' }}>
+            Extract all players from synced tournament draws into the player registry.
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSeed}
+              disabled={seedStatus.type === 'loading'}
+              className="px-4 py-1.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
+              style={{ background: 'var(--court)', color: 'white' }}
+            >
+              {seedStatus.type === 'loading' ? 'Importing...' : 'Import Players'}
+            </button>
+            {seedStatus.type !== 'idle' && seedStatus.type !== 'loading' && (
+              <span style={{
+                fontFamily: 'var(--font-mono)', fontSize: '0.7rem',
+                color: seedStatus.type === 'error' ? '#991b1b' : '#166534',
+              }}>
+                {seedStatus.type === 'success' ? '✓ ' : '✗ '}{seedStatus.message}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Add Player */}

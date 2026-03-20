@@ -630,6 +630,63 @@ export async function searchPlayers(
   return { ok: true, players: (data ?? []) as Array<{ id: string; external_id: string; name: string; country: string; tour: string }> }
 }
 
+// ── Bulk-seed players from existing synced draws ──────────────────────────────
+
+export async function seedPlayersFromDraws(): Promise<{ ok: boolean; imported: number; error?: string }> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  // Fetch all draws + tournament tour info
+  const { data: draws, error: drawErr } = await admin
+    .from('draws')
+    .select('bracket_data, tournaments!inner(tour)')
+
+  if (drawErr) return { ok: false, imported: 0, error: drawErr.message }
+  if (!draws?.length) return { ok: true, imported: 0 }
+
+  // Extract unique players from all bracket_data
+  const seen = new Map<string, { name: string; country: string; tour: string }>()
+  for (const draw of draws) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bracket = draw.bracket_data as any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tour = (draw as any).tournaments?.tour ?? 'ATP'
+    const matches = bracket?.matches ?? []
+    for (const m of matches) {
+      if (m.player1?.externalId && m.player1.name) {
+        seen.set(m.player1.externalId, { name: m.player1.name, country: m.player1.country ?? '', tour })
+      }
+      if (m.player2?.externalId && m.player2.name) {
+        seen.set(m.player2.externalId, { name: m.player2.name, country: m.player2.country ?? '', tour })
+      }
+    }
+  }
+
+  if (seen.size === 0) return { ok: true, imported: 0 }
+
+  // Batch upsert — skip conflicts on external_id
+  const rows = [...seen.entries()].map(([externalId, p]) => ({
+    external_id: externalId,
+    name: p.name,
+    country: p.country,
+    tour: p.tour,
+  }))
+
+  // Supabase upsert in chunks of 500
+  let imported = 0
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500)
+    const { data: upserted, error } = await admin
+      .from('players')
+      .upsert(chunk, { onConflict: 'external_id', ignoreDuplicates: true })
+      .select('id')
+    if (error) return { ok: false, imported, error: error.message }
+    imported += upserted?.length ?? 0
+  }
+
+  return { ok: true, imported }
+}
+
 // ── Manual tournament creation ────────────────────────────────────────────────
 
 export async function createTournament(data: {
