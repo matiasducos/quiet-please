@@ -585,3 +585,384 @@ export async function saveManualResults(
 
   return { ok: true, count: rows.length }
 }
+
+// ── Player management ─────────────────────────────────────────────────────────
+
+export async function createPlayer(data: {
+  name: string
+  country: string
+  tour: 'ATP' | 'WTA'
+}): Promise<{ ok: boolean; player?: { id: string; external_id: string; name: string; country: string; tour: string }; error?: string }> {
+  await assertAdmin()
+  const external_id = normalizePlayerId(data.name)
+  if (!external_id) return { ok: false, error: 'Invalid player name' }
+
+  const admin = createAdminClient()
+  const { data: player, error } = await admin
+    .from('players')
+    .upsert(
+      { external_id, name: data.name.trim(), country: data.country.trim(), tour: data.tour },
+      { onConflict: 'external_id' },
+    )
+    .select('id, external_id, name, country, tour')
+    .single()
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true, player: player as { id: string; external_id: string; name: string; country: string; tour: string } }
+}
+
+export async function searchPlayers(
+  query: string,
+  tour?: 'ATP' | 'WTA',
+): Promise<{ ok: boolean; players: Array<{ id: string; external_id: string; name: string; country: string; tour: string }> }> {
+  await assertAdmin()
+  const admin = createAdminClient()
+  let q = admin
+    .from('players')
+    .select('id, external_id, name, country, tour')
+    .ilike('name', `%${query}%`)
+    .order('name')
+    .limit(20)
+
+  if (tour) q = q.eq('tour', tour)
+
+  const { data } = await q
+  return { ok: true, players: (data ?? []) as Array<{ id: string; external_id: string; name: string; country: string; tour: string }> }
+}
+
+// ── Manual tournament creation ────────────────────────────────────────────────
+
+export async function createTournament(data: {
+  name: string
+  tour: 'ATP' | 'WTA'
+  category: 'grand_slam' | 'masters_1000' | '500' | '250'
+  country: string
+  city: string
+  surface: 'hard' | 'clay' | 'grass'
+  startsAt: string
+  drawSize: 32 | 64 | 128
+}): Promise<{ ok: boolean; tournamentId?: string; error?: string }> {
+  await assertAdmin()
+
+  const external_id = normalizePlayerId(data.name)
+  if (!external_id) return { ok: false, error: 'Invalid tournament name' }
+
+  const startsAt = new Date(data.startsAt)
+  const starts_year = startsAt.getUTCFullYear()
+  // Default ends_at to 7 days after start (14 for grand slams)
+  const durationDays = data.category === 'grand_slam' ? 14 : 7
+  const endsAt = new Date(startsAt.getTime() + durationDays * 24 * 60 * 60 * 1000)
+
+  const admin = createAdminClient()
+  const { data: tournament, error } = await admin
+    .from('tournaments')
+    .insert({
+      external_id,
+      name: data.name.trim(),
+      tour: data.tour,
+      category: data.category,
+      surface: data.surface,
+      location: `${data.city.trim()}, ${data.country.trim()}`,
+      starts_at: startsAt.toISOString(),
+      ends_at: endsAt.toISOString(),
+      starts_year,
+      draw_size: data.drawSize,
+      is_manual: true,
+      status: 'upcoming',
+    })
+    .select('id')
+    .single()
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true, tournamentId: tournament.id }
+}
+
+export async function getManualTournaments(): Promise<{
+  ok: boolean
+  tournaments: Array<{
+    id: string; name: string; tour: string; category: string; status: string
+    draw_size: number | null; starts_at: string | null; surface: string | null
+    has_draw: boolean
+  }>
+}> {
+  await assertAdmin()
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('tournaments')
+    .select('id, name, tour, category, status, draw_size, starts_at, surface, draws(id)')
+    .eq('is_manual', true)
+    .order('created_at', { ascending: false })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tournaments = (data ?? []).map((t: any) => ({
+    id: t.id,
+    name: t.name,
+    tour: t.tour,
+    category: t.category,
+    status: t.status,
+    draw_size: t.draw_size,
+    starts_at: t.starts_at,
+    surface: t.surface,
+    has_draw: Array.isArray(t.draws) ? t.draws.length > 0 : !!t.draws,
+  }))
+
+  return { ok: true, tournaments }
+}
+
+export async function getTournamentWithDraw(tournamentId: string): Promise<{
+  ok: boolean
+  tournament?: {
+    id: string; name: string; external_id: string; tour: string; category: string
+    status: string; draw_size: number | null; starts_at: string | null
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  bracketData?: any
+  matchResults?: Array<{ external_match_id: string; round: string; winner_external_id: string; loser_external_id: string; score: string | null }>
+  error?: string
+}> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  const { data: tournament, error: tErr } = await admin
+    .from('tournaments')
+    .select('id, name, external_id, tour, category, status, draw_size, starts_at')
+    .eq('id', tournamentId)
+    .single()
+
+  if (tErr || !tournament) return { ok: false, error: tErr?.message ?? 'Tournament not found' }
+
+  const { data: draw } = await admin
+    .from('draws')
+    .select('bracket_data')
+    .eq('tournament_id', tournamentId)
+    .single()
+
+  const { data: results } = await admin
+    .from('match_results')
+    .select('external_match_id, round, winner_external_id, loser_external_id, score')
+    .eq('tournament_id', tournamentId)
+
+  return {
+    ok: true,
+    tournament: tournament as {
+      id: string; name: string; external_id: string; tour: string; category: string
+      status: string; draw_size: number | null; starts_at: string | null
+    },
+    bracketData: draw?.bracket_data ?? null,
+    matchResults: (results ?? []) as Array<{ external_match_id: string; round: string; winner_external_id: string; loser_external_id: string; score: string | null }>,
+  }
+}
+
+// ── Structured draw builder ──────────────────────────────────────────────────
+// Builds a draw from player external_ids (sourced from the players table).
+// Unlike saveManualDraw (text-based), this uses structured player objects.
+
+export async function buildDraw(
+  tournamentId: string,
+  slots: Array<{ player1ExternalId: string | null; player2ExternalId: string | null }>,
+): Promise<{ ok: boolean; error?: string; matchCount?: number }> {
+  await assertAdmin()
+  if (!slots.length) return { ok: false, error: 'No matches provided' }
+
+  const admin = createAdminClient()
+
+  // Load tournament
+  const { data: tournament, error: tErr } = await admin
+    .from('tournaments')
+    .select('id, external_id, draw_size, tour, name, draw_close_at')
+    .eq('id', tournamentId)
+    .single()
+
+  if (tErr || !tournament) return { ok: false, error: tErr?.message ?? 'Tournament not found' }
+
+  const drawSize = tournament.draw_size as number
+  const expectedMatches = drawSize / 2
+  if (slots.length !== expectedMatches) {
+    return { ok: false, error: `Expected ${expectedMatches} matches for draw size ${drawSize}, got ${slots.length}` }
+  }
+
+  // Collect all player external_ids to load from players table
+  const playerIds = new Set<string>()
+  for (const slot of slots) {
+    if (slot.player1ExternalId) playerIds.add(slot.player1ExternalId)
+    if (slot.player2ExternalId) playerIds.add(slot.player2ExternalId)
+  }
+
+  // Load player records
+  const playerMap = new Map<string, { externalId: string; name: string; country: string }>()
+  if (playerIds.size > 0) {
+    const { data: players } = await admin
+      .from('players')
+      .select('external_id, name, country')
+      .in('external_id', Array.from(playerIds))
+    for (const p of players ?? []) {
+      playerMap.set(p.external_id, { externalId: p.external_id, name: p.name, country: p.country })
+    }
+  }
+
+  // Compute rounds from draw size
+  const drawSizeToFirstRound: Record<number, number> = { 128: 0, 64: 1, 32: 2 }
+  const startIdx = drawSizeToFirstRound[drawSize]
+  if (startIdx === undefined) return { ok: false, error: `Unsupported draw size: ${drawSize}` }
+  const rounds = ROUND_ORDER.slice(startIdx)
+  const firstRound = rounds[0]
+  const externalId = tournament.external_id
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allMatches: any[] = []
+
+  // First round — players from slots
+  slots.forEach((slot, i) => {
+    const idx = String(i + 1).padStart(3, '0')
+    const p1 = slot.player1ExternalId ? playerMap.get(slot.player1ExternalId) ?? null : null
+    const p2 = slot.player2ExternalId ? playerMap.get(slot.player2ExternalId) ?? null : null
+    allMatches.push({
+      matchId: `${externalId}-${firstRound}-${idx}`,
+      round: firstRound,
+      player1: p1,
+      player2: p2,
+    })
+  })
+
+  // Subsequent rounds — TBD (null players)
+  let prevCount = slots.length
+  for (let ri = 1; ri < rounds.length; ri++) {
+    const round = rounds[ri]
+    const count = Math.ceil(prevCount / 2)
+    for (let i = 0; i < count; i++) {
+      allMatches.push({
+        matchId: `${externalId}-${round}-${String(i + 1).padStart(3, '0')}`,
+        round,
+        player1: null,
+        player2: null,
+      })
+    }
+    prevCount = count
+  }
+
+  // Handle BYEs: auto-advance the non-BYE player by creating match_results
+  const byeResults: Array<{
+    tournament_id: string; external_match_id: string; round: string
+    winner_external_id: string; loser_external_id: string; score: string; played_at: string
+  }> = []
+  for (const match of allMatches) {
+    if (match.round !== firstRound) continue
+    const hasP1 = match.player1 !== null
+    const hasP2 = match.player2 !== null
+    if (hasP1 && !hasP2) {
+      byeResults.push({
+        tournament_id: tournamentId,
+        external_match_id: match.matchId,
+        round: firstRound,
+        winner_external_id: match.player1.externalId,
+        loser_external_id: 'bye',
+        score: 'BYE',
+        played_at: new Date().toISOString(),
+      })
+    } else if (!hasP1 && hasP2) {
+      byeResults.push({
+        tournament_id: tournamentId,
+        external_match_id: match.matchId,
+        round: firstRound,
+        winner_external_id: match.player2.externalId,
+        loser_external_id: 'bye',
+        score: 'BYE',
+        played_at: new Date().toISOString(),
+      })
+    }
+  }
+
+  const draw = { tournamentExternalId: externalId, rounds, matches: allMatches }
+
+  const { error: drawError } = await admin
+    .from('draws')
+    .upsert(
+      { tournament_id: tournamentId, bracket_data: draw as unknown, synced_at: new Date().toISOString() },
+      { onConflict: 'tournament_id' },
+    )
+  if (drawError) return { ok: false, error: drawError.message }
+
+  // Insert BYE results so they show as resolved
+  if (byeResults.length > 0) {
+    await admin
+      .from('match_results')
+      .upsert(byeResults, { onConflict: 'tournament_id,external_match_id' })
+  }
+
+  // Open predictions
+  await admin
+    .from('tournaments')
+    .update({ status: 'accepting_predictions' })
+    .eq('id', tournamentId)
+
+  // Notify users
+  try {
+    const { data: { users: allUsers } } = await admin.auth.admin.listUsers({ perPage: 1000 })
+    if (allUsers.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rows = allUsers.map((u: any) => ({
+        user_id: u.id,
+        type: 'draw_open',
+        tournament_id: tournamentId,
+        meta: { tournament_name: tournament.name },
+      }))
+      await (admin as unknown as { from: (t: string) => { insert: (r: unknown) => Promise<unknown> } })
+        .from('notifications').insert(rows)
+    }
+  } catch (e) {
+    console.error('[buildDraw] notification error:', e)
+  }
+
+  revalidateTag('tournament-detail')
+
+  return { ok: true, matchCount: allMatches.length }
+}
+
+// ── Structured result entry ──────────────────────────────────────────────────
+// Enter a single match result by matchId (must match bracket_data matchId).
+
+export async function saveMatchResult(
+  tournamentId: string,
+  matchId: string,
+  winnerExternalId: string,
+  loserExternalId: string,
+  score?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  // Determine round from matchId (format: "ext-id-ROUND-001")
+  const parts = matchId.split('-')
+  // Round is the second-to-last segment
+  const roundSegment = parts[parts.length - 2]
+  const validRounds = ['R128', 'R64', 'R32', 'R16', 'QF', 'SF', 'F']
+  if (!validRounds.includes(roundSegment)) {
+    return { ok: false, error: `Cannot determine round from matchId "${matchId}"` }
+  }
+
+  const { error } = await admin
+    .from('match_results')
+    .upsert({
+      tournament_id: tournamentId,
+      external_match_id: matchId,
+      round: roundSegment,
+      winner_external_id: winnerExternalId,
+      loser_external_id: loserExternalId,
+      score: (score ?? '').trim() || null,
+      played_at: new Date().toISOString(),
+    }, { onConflict: 'tournament_id,external_match_id' })
+
+  if (error) return { ok: false, error: error.message }
+
+  // Transition to in_progress on first real result (non-BYE)
+  if (loserExternalId !== 'bye') {
+    await admin
+      .from('tournaments')
+      .update({ status: 'in_progress' })
+      .eq('id', tournamentId)
+      .eq('status', 'accepting_predictions')
+  }
+
+  revalidateTag('tournament-detail')
+  return { ok: true }
+}

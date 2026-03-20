@@ -31,7 +31,13 @@ type AsyncStatus = { type: 'idle' | 'loading' | 'success' | 'error'; message?: s
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function AdminPanel() {
+interface ManualTournament {
+  id: string; name: string; tour: string; category: string; status: string
+  draw_size: number | null; starts_at: string | null; surface: string | null
+  has_draw: boolean
+}
+
+export default function AdminPanel({ tournaments }: { tournaments: ManualTournament[] }) {
   // ── Cron state ──────────────────────────────────────────────────────────────
   const [cronStatuses, setCronStatuses] = useState<Record<EndpointKey, AsyncStatus>>(
     Object.fromEntries(ENDPOINTS.map(e => [e.key, { type: 'idle' }])) as Record<EndpointKey, AsyncStatus>
@@ -89,10 +95,112 @@ export default function AdminPanel() {
             Admin panel
           </h1>
           <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginTop: '0.4rem' }}>
-            Manually trigger cron jobs and send test notifications.
+            Manual tournaments, cron jobs, and test notifications.
           </p>
         </div>
 
+        {/* ── Manual Tournaments ── */}
+        <div className="mb-10">
+          <div className="flex items-center justify-between mb-3">
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em' }}>
+              Manual Tournaments
+            </h2>
+            <div className="flex gap-2">
+              <Link
+                href="/admin/players"
+                className="px-3 py-1.5 text-sm rounded-sm transition-opacity hover:opacity-90"
+                style={{ border: '1px solid var(--chalk-dim)', color: 'var(--ink)', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}
+              >
+                Manage Players
+              </Link>
+              <Link
+                href="/admin/tournaments/new"
+                className="px-3 py-1.5 text-sm rounded-sm transition-opacity hover:opacity-90"
+                style={{ background: 'var(--court)', color: 'white', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}
+              >
+                + Create Tournament
+              </Link>
+            </div>
+          </div>
+
+          {tournaments.length === 0 ? (
+            <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>
+                No manual tournaments yet. Create one to get started.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {tournaments.map(t => (
+                <div key={t.id} className="bg-white rounded-sm border p-4" style={{ borderColor: 'var(--chalk-dim)' }}>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)', marginBottom: '2px' }}>
+                        {t.name}
+                      </p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'var(--chalk)', padding: '1px 6px', borderRadius: '2px' }}>
+                          {t.tour}
+                        </span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'var(--chalk)', padding: '1px 6px', borderRadius: '2px' }}>
+                          {t.category}
+                        </span>
+                        {t.surface && (
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'var(--chalk)', padding: '1px 6px', borderRadius: '2px' }}>
+                            {t.surface}
+                          </span>
+                        )}
+                        {t.draw_size && (
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
+                            Draw {t.draw_size}
+                          </span>
+                        )}
+                        {t.starts_at && (
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
+                            {new Date(t.starts_at).toLocaleDateString()}
+                          </span>
+                        )}
+                        <span style={{
+                          fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.04em', textTransform: 'uppercase',
+                          color: t.status === 'completed' ? '#166534' : t.status === 'in_progress' ? '#92400e' : 'var(--muted)',
+                          background: t.status === 'completed' ? '#dcfce7' : t.status === 'in_progress' ? '#fef3c7' : 'var(--chalk)',
+                          padding: '1px 6px', borderRadius: '2px',
+                        }}>
+                          {t.status.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0">
+                      {!t.has_draw && (
+                        <Link
+                          href={`/admin/tournaments/${t.id}/draw`}
+                          className="px-3 py-1.5 rounded-sm transition-opacity hover:opacity-90"
+                          style={{ background: 'var(--court)', color: 'white', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
+                        >
+                          Build Draw
+                        </Link>
+                      )}
+                      {t.has_draw && (
+                        <Link
+                          href={`/admin/tournaments/${t.id}/results`}
+                          className="px-3 py-1.5 rounded-sm transition-opacity hover:opacity-90"
+                          style={{ background: '#111', color: 'white', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
+                        >
+                          {t.status === 'completed' ? 'View Results' : 'Enter Results'}
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Cron jobs ── */}
+        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em', marginBottom: '0.75rem' }}>
+          Cron jobs
+        </h2>
         <div className="flex flex-col gap-4">
           {ENDPOINTS.map(endpoint => {
             const status = cronStatuses[endpoint.key]
