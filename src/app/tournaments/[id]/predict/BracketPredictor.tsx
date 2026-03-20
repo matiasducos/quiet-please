@@ -549,7 +549,7 @@ export default function BracketPredictor({
                             </span>
                             {isLocked && !readOnly && !isBye && (
                               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
-                                Pick earlier rounds first
+                                {activeRound === sortedRounds[0] ? 'Players not available yet' : 'Pick earlier rounds first'}
                               </span>
                             )}
                           </div>
