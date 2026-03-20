@@ -880,27 +880,40 @@ export async function getManualTournaments(): Promise<{
 }> {
   await assertAdmin()
   const admin = createAdminClient()
-  const { data, error } = await admin
+
+  // Simple query — no joins, no special columns
+  const { data: tournaments, error } = await admin
     .from('tournaments')
-    .select('id, name, tour, category, status, starts_at, surface, draws(id)')
-    .order('created_at', { ascending: false })
+    .select('id, name, tour, category, status, starts_at, surface')
+    .order('starts_at', { ascending: false })
     .limit(50)
 
-  if (error) console.error('getManualTournaments error:', error.message)
+  if (error) {
+    console.error('getManualTournaments error:', error.message)
+    return { ok: false, tournaments: [] }
+  }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tournaments = (data ?? []).map((t: any) => ({
-    id: t.id,
-    name: t.name,
-    tour: t.tour,
-    category: t.category,
-    status: t.status,
-    starts_at: t.starts_at,
-    surface: t.surface,
-    has_draw: Array.isArray(t.draws) ? t.draws.length > 0 : !!t.draws,
-  }))
+  // Check which tournaments have draws (separate query)
+  const ids = (tournaments ?? []).map(t => t.id)
+  const { data: draws } = ids.length > 0
+    ? await admin.from('draws').select('tournament_id').in('tournament_id', ids)
+    : { data: [] }
+  const drawSet = new Set((draws ?? []).map((d: { tournament_id: string }) => d.tournament_id))
 
-  return { ok: true, tournaments }
+  return {
+    ok: true,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tournaments: (tournaments ?? []).map((t: any) => ({
+      id: t.id,
+      name: t.name,
+      tour: t.tour,
+      category: t.category,
+      status: t.status,
+      starts_at: t.starts_at,
+      surface: t.surface,
+      has_draw: drawSet.has(t.id),
+    })),
+  }
 }
 
 export async function getTournamentWithDraw(tournamentId: string): Promise<{

@@ -99,11 +99,11 @@ export default function AdminPanel({ tournaments }: { tournaments: ManualTournam
           </p>
         </div>
 
-        {/* ── Manual Tournaments ── */}
+        {/* ── Tournaments ── */}
         <div className="mb-10">
           <div className="flex items-center justify-between mb-3">
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em' }}>
-              Manual Tournaments
+              Tournaments
             </h2>
             <div className="flex gap-2">
               <Link
@@ -126,7 +126,7 @@ export default function AdminPanel({ tournaments }: { tournaments: ManualTournam
           {tournaments.length === 0 ? (
             <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
               <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>
-                No manual tournaments yet. Create one to get started.
+                No tournaments found. Create one or run Sync Tournaments below.
               </p>
             </div>
           ) : (
@@ -166,20 +166,18 @@ export default function AdminPanel({ tournaments }: { tournaments: ManualTournam
                       </div>
                     </div>
                     <div className="flex gap-2 flex-shrink-0">
-                      {!t.has_draw && (
-                        <Link
-                          href={`/admin/tournaments/${t.id}/draw`}
-                          className="px-3 py-1.5 rounded-sm transition-opacity hover:opacity-90"
-                          style={{ background: 'var(--court)', color: 'white', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
-                        >
-                          Build Draw
-                        </Link>
-                      )}
+                      <Link
+                        href={`/admin/tournaments/${t.id}/draw`}
+                        className="px-3 py-1.5 rounded-sm transition-opacity hover:opacity-90"
+                        style={{ background: t.has_draw ? '#111' : 'var(--court)', color: 'white', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
+                      >
+                        {t.has_draw ? 'Edit Draw' : 'Build Draw'}
+                      </Link>
                       {t.has_draw && (
                         <Link
                           href={`/admin/tournaments/${t.id}/results`}
                           className="px-3 py-1.5 rounded-sm transition-opacity hover:opacity-90"
-                          style={{ background: '#111', color: 'white', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
+                          style={{ border: '1px solid var(--chalk-dim)', color: 'var(--ink)', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
                         >
                           {t.status === 'completed' ? 'View Results' : 'Enter Results'}
                         </Link>
