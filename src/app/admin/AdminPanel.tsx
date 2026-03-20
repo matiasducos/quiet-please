@@ -33,7 +33,7 @@ type AsyncStatus = { type: 'idle' | 'loading' | 'success' | 'error'; message?: s
 
 interface ManualTournament {
   id: string; name: string; tour: string; category: string; status: string
-  draw_size: number | null; starts_at: string | null; surface: string | null
+  starts_at: string | null; surface: string | null
   has_draw: boolean
 }
 
@@ -148,11 +148,6 @@ export default function AdminPanel({ tournaments }: { tournaments: ManualTournam
                         {t.surface && (
                           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'var(--chalk)', padding: '1px 6px', borderRadius: '2px' }}>
                             {t.surface}
-                          </span>
-                        )}
-                        {t.draw_size && (
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
-                            Draw {t.draw_size}
                           </span>
                         )}
                         {t.starts_at && (

@@ -874,17 +874,19 @@ export async function getManualTournaments(): Promise<{
   ok: boolean
   tournaments: Array<{
     id: string; name: string; tour: string; category: string; status: string
-    draw_size: number | null; starts_at: string | null; surface: string | null
+    starts_at: string | null; surface: string | null
     has_draw: boolean
   }>
 }> {
   await assertAdmin()
   const admin = createAdminClient()
-  const { data } = await admin
+  const { data, error } = await admin
     .from('tournaments')
-    .select('id, name, tour, category, status, draw_size, starts_at, surface, draws(id)')
-    .not('draw_size', 'is', null)
+    .select('id, name, tour, category, status, starts_at, surface, draws(id)')
     .order('created_at', { ascending: false })
+    .limit(50)
+
+  if (error) console.error('getManualTournaments error:', error.message)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tournaments = (data ?? []).map((t: any) => ({
@@ -893,7 +895,6 @@ export async function getManualTournaments(): Promise<{
     tour: t.tour,
     category: t.category,
     status: t.status,
-    draw_size: t.draw_size,
     starts_at: t.starts_at,
     surface: t.surface,
     has_draw: Array.isArray(t.draws) ? t.draws.length > 0 : !!t.draws,
