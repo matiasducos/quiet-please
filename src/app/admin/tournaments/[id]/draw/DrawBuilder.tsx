@@ -143,7 +143,7 @@ function PlayerCombobox({
       <input
         value={query}
         onChange={e => handleInputChange(e.target.value)}
-        onFocus={() => { if (query.trim()) setOpen(true) }}
+        onFocus={() => setOpen(true)}
         placeholder={placeholder}
         style={{
           fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
@@ -275,7 +275,7 @@ function MatchCard({
 
   return (
     <div
-      className="bg-white rounded-sm border overflow-hidden"
+      className="bg-white rounded-sm border"
       style={{
         borderColor: isFilled ? 'var(--court)' : 'var(--chalk-dim)',
         borderLeftWidth: '3px',
@@ -328,7 +328,7 @@ function MatchCard({
 
 function TBDMatchCard({ matchNumber }: { matchNumber: number }) {
   return (
-    <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)', opacity: 0.5 }}>
+    <div className="bg-white rounded-sm border" style={{ borderColor: 'var(--chalk-dim)', opacity: 0.5 }}>
       <div className="px-3 py-1.5 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>
           MATCH {matchNumber}
