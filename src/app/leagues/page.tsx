@@ -33,7 +33,7 @@ export default async function LeaguesPage() {
       <div className="max-w-3xl mx-auto px-8 py-10">
         <div className="mb-8">
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>Leagues</h1>
-          <p style={{ color: 'var(--muted)', fontSize: '0.875rem', lineHeight: 1.65, maxWidth: '520px', marginTop: '0.4rem' }}>Create a private league with friends and track who makes the sharpest calls across the full season. Your picks in any tournament you enter count toward the league standings.</p>
+          <p style={{ color: 'var(--muted)', fontSize: '0.875rem', lineHeight: 1.65, marginTop: '0.4rem' }}>Create a private league with friends and track who makes the sharpest calls across the full season. Your picks in any tournament you enter count toward the league standings.</p>
           <div className="flex gap-3 mt-4">
             <Link
               href="/leagues/join"

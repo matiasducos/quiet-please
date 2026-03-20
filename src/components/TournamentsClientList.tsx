@@ -62,7 +62,7 @@ export default function TournamentsClientList({ tournaments, activeTour, activeS
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
           Tournaments
         </h1>
-        <p style={{ color: 'var(--muted)', fontSize: '0.875rem', lineHeight: 1.65, maxWidth: '520px', marginTop: '0.4rem' }}>
+        <p style={{ color: 'var(--muted)', fontSize: '0.875rem', lineHeight: 1.65, marginTop: '0.4rem' }}>
           Browse every ATP and WTA tournament of the season and submit your bracket before the draw closes. Points you earn count toward the global leaderboard and your season ranking.
         </p>
 
