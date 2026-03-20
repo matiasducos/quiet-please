@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
-import { createPlayer, searchPlayers, seedPlayersFromDraws, seedPlayersFromApi } from '../actions'
+import { createPlayer, searchPlayers, seedPlayersFromDraws, seedPlayersFromApi, resetAndImportPlayers } from '../actions'
 
 type Player = { id: string; external_id: string; name: string; country: string; tour: string }
 
@@ -35,7 +35,7 @@ export default function PlayerManager() {
     }
   }
 
-  // Seed from API
+  // Seed from API (legacy — scans fixtures)
   const [apiSeedStatus, setApiSeedStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error'; message?: string }>({ type: 'idle' })
 
   async function handleApiSeed() {
@@ -49,6 +49,29 @@ export default function PlayerManager() {
       }
     } catch (err) {
       setApiSeedStatus({ type: 'error', message: String(err) })
+    }
+  }
+
+  // Reset & full import from get_players API
+  const [resetImportStatus, setResetImportStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error'; message?: string }>({ type: 'idle' })
+
+  async function handleResetAndImport() {
+    if (!confirm('This will delete ALL existing players and re-import from the Tennis API. Continue?')) return
+    setResetImportStatus({ type: 'loading' })
+    try {
+      const { ok, deleted, imported, tournamentsScanned, error } = await resetAndImportPlayers()
+      if (ok) {
+        setResetImportStatus({
+          type: 'success',
+          message: `Deleted ${deleted}, imported ${imported} players from ${tournamentsScanned} tournaments`,
+        })
+        // Refresh search if there's an active query
+        if (query.trim()) doSearch(query)
+      } else {
+        setResetImportStatus({ type: 'error', message: error ?? 'Failed' })
+      }
+    } catch (err) {
+      setResetImportStatus({ type: 'error', message: String(err) })
     }
   }
 
@@ -117,6 +140,34 @@ export default function PlayerManager() {
           </p>
         </div>
 
+        {/* Reset & Import from API */}
+        <div className="bg-white rounded-sm border p-5 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
+          <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)', marginBottom: '4px' }}>
+            Reset &amp; Import from Tennis API
+          </p>
+          <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '12px' }}>
+            Deletes all existing players, then fetches every ATP &amp; WTA player via <code style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>get_players</code> per tournament. This may take a few minutes.
+          </p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={handleResetAndImport}
+              disabled={resetImportStatus.type === 'loading'}
+              className="px-4 py-1.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
+              style={{ background: '#991b1b', color: 'white' }}
+            >
+              {resetImportStatus.type === 'loading' ? 'Importing… (this takes a while)' : 'Delete All & Re-import'}
+            </button>
+            {resetImportStatus.type !== 'idle' && resetImportStatus.type !== 'loading' && (
+              <span style={{
+                fontFamily: 'var(--font-mono)', fontSize: '0.7rem',
+                color: resetImportStatus.type === 'error' ? '#991b1b' : '#166534',
+              }}>
+                {resetImportStatus.type === 'success' ? '✓ ' : '✗ '}{resetImportStatus.message}
+              </span>
+            )}
+          </div>
+        </div>
+
         {/* Seed from draws */}
         <div className="bg-white rounded-sm border p-5 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
           <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)', marginBottom: '4px' }}>
@@ -145,13 +196,13 @@ export default function PlayerManager() {
           </div>
         </div>
 
-        {/* Seed from API */}
+        {/* Seed from API (legacy — scans fixtures) */}
         <div className="bg-white rounded-sm border p-5 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
           <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)', marginBottom: '4px' }}>
-            Fetch from Tennis API
+            Fetch from Tennis API (fixtures scan)
           </p>
           <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '12px' }}>
-            Scan ATP &amp; WTA tournament fixtures to import players. This may take a minute.
+            Scan ATP &amp; WTA tournament fixtures to import players. Adds without deleting.
           </p>
           <div className="flex items-center gap-3">
             <button

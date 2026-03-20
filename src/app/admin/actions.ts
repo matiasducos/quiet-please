@@ -819,6 +819,124 @@ export async function seedPlayersFromApi(): Promise<{ ok: boolean; imported: num
   return { ok: true, imported, tournamentsScanned: scanned }
 }
 
+/**
+ * Delete all existing players, then fetch every ATP/WTA player from
+ * api-tennis.com using the `get_players` endpoint (per tournament)
+ * and bulk-insert them into the `players` table.
+ */
+export async function resetAndImportPlayers(): Promise<{
+  ok: boolean
+  deleted: number
+  imported: number
+  tournamentsScanned: number
+  error?: string
+}> {
+  await assertAdmin()
+
+  const apiKey = process.env.TENNIS_API_KEY
+  if (!apiKey) return { ok: false, deleted: 0, imported: 0, tournamentsScanned: 0, error: 'TENNIS_API_KEY not configured' }
+
+  const BASE_URL = 'https://api.api-tennis.com/tennis/'
+
+  async function callApi(params: Record<string, string>) {
+    const url = new URL(BASE_URL)
+    url.searchParams.set('APIkey', apiKey!)
+    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
+    const res = await fetch(url.toString(), { cache: 'no-store', signal: AbortSignal.timeout(30_000) })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    if (Number(json.success) !== 1) throw new Error(json.error ?? 'API error')
+    return json.result ?? []
+  }
+
+  const admin = createAdminClient()
+
+  // ── 1. Delete all existing players ──────────────────────────────────────────
+  const { count: deletedCount, error: delError } = await admin
+    .from('players')
+    .delete({ count: 'exact' })
+    .gte('created_at', '1970-01-01')     // need a WHERE clause for Supabase delete
+  if (delError) return { ok: false, deleted: 0, imported: 0, tournamentsScanned: 0, error: `Delete failed: ${delError.message}` }
+
+  // ── 2. Fetch all tournaments and classify ATP / WTA ─────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allTournaments: any[] = await callApi({ method: 'get_tournaments' })
+  const tourMap: Record<string, 'ATP' | 'WTA'> = {}
+  for (const t of allTournaments) {
+    const type = ((t.event_type_type ?? '') as string).toUpperCase()
+    if (type.includes('ATP') && !type.includes('CHALLENGER') && !type.includes('DOUBLES')) {
+      tourMap[String(t.tournament_key)] = 'ATP'
+    } else if (type.includes('WTA') && !type.includes('DOUBLES')) {
+      tourMap[String(t.tournament_key)] = 'WTA'
+    }
+  }
+
+  const tournamentKeys = Object.keys(tourMap)
+  if (tournamentKeys.length === 0) {
+    return { ok: false, deleted: deletedCount ?? 0, imported: 0, tournamentsScanned: 0, error: 'No ATP/WTA tournaments found in API' }
+  }
+
+  // ── 3. For each tournament, call get_players to collect player roster ────────
+  const players = new Map<string, { name: string; country: string; tour: 'ATP' | 'WTA' }>()
+  let scanned = 0
+  let errors = 0
+
+  for (const key of tournamentKeys) {
+    scanned++
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result: any[] = await callApi({ method: 'get_players', tournament_key: key })
+      if (Array.isArray(result)) {
+        const tour = tourMap[key]
+        for (const p of result) {
+          const playerKey = String(p.player_key ?? '').trim()
+          if (!playerKey) continue
+          if (!players.has(playerKey)) {
+            players.set(playerKey, {
+              name: String(p.player_name ?? '').trim(),
+              country: String(p.player_country ?? '').trim(),
+              tour,
+            })
+          }
+        }
+      }
+    } catch (err) {
+      errors++
+      // If too many consecutive errors with zero players, bail
+      if (errors >= 15 && players.size === 0) {
+        return { ok: false, deleted: deletedCount ?? 0, imported: 0, tournamentsScanned: scanned, error: `API failing (${errors} errors): ${String(err)}` }
+      }
+    }
+    // Small delay to respect API rate limits
+    await new Promise(r => setTimeout(r, 150))
+  }
+
+  if (players.size === 0) {
+    return { ok: false, deleted: deletedCount ?? 0, imported: 0, tournamentsScanned: scanned, error: 'No players found from any tournament' }
+  }
+
+  // ── 4. Bulk insert into players table ───────────────────────────────────────
+  const rows = [...players.entries()].map(([externalId, p]) => ({
+    external_id: externalId,
+    name: p.name,
+    country: p.country,
+    tour: p.tour,
+  }))
+
+  let imported = 0
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500)
+    const { data: inserted, error } = await admin
+      .from('players')
+      .insert(chunk)
+      .select('id')
+    if (error) return { ok: false, deleted: deletedCount ?? 0, imported, tournamentsScanned: scanned, error: `Insert batch ${Math.floor(i / 500) + 1} failed: ${error.message}` }
+    imported += inserted?.length ?? 0
+  }
+
+  return { ok: true, deleted: deletedCount ?? 0, imported, tournamentsScanned: scanned }
+}
+
 // ── Manual tournament creation ────────────────────────────────────────────────
 
 export async function createTournament(data: {
