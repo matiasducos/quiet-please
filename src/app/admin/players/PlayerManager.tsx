@@ -52,37 +52,67 @@ export default function PlayerManager() {
     }
   }
 
-  // Reset & full import from get_players API
-  const [resetImportStatus, setResetImportStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error'; message?: string }>({ type: 'idle' })
+  // Reset & full import from get_players API (progressive batches)
+  const [resetImportStatus, setResetImportStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error'; message?: string; progress?: string }>({ type: 'idle' })
+
+  async function callImportApi(body: Record<string, unknown>) {
+    const res = await fetch('/api/admin/import-players', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`Server error ${res.status}. ${text.length < 200 ? text : 'Request failed.'}`)
+    }
+    return res.json()
+  }
 
   async function handleResetAndImport() {
     if (!confirm('This will delete ALL existing players and re-import from the Tennis API. Continue?')) return
-    setResetImportStatus({ type: 'loading' })
+    setResetImportStatus({ type: 'loading', progress: 'Deleting players & fetching tournament list…' })
     try {
-      // Call the API route directly — it has maxDuration=120s and parallel fetching
-      const res = await fetch('/api/admin/import-players', { method: 'POST' })
-
-      // Guard: Vercel may return an HTML error page on timeout / 500
-      if (!res.ok) {
-        const text = await res.text().catch(() => '')
-        setResetImportStatus({
-          type: 'error',
-          message: `Server error ${res.status}. ${text.length < 200 ? text : 'The function may have timed out — check your Vercel plan limits.'}`,
-        })
+      // Phase 1: Delete all players + get tournament list
+      const init = await callImportApi({ action: 'init' })
+      if (!init.ok) {
+        setResetImportStatus({ type: 'error', message: init.error ?? 'Init failed' })
         return
       }
 
-      const data = await res.json()
-      if (data.ok) {
-        setResetImportStatus({
-          type: 'success',
-          message: `Deleted ${data.deleted}, imported ${data.imported} players from ${data.tournamentsScanned} tournaments`,
-        })
-        // Refresh search if there's an active query
-        if (query.trim()) doSearch(query)
-      } else {
-        setResetImportStatus({ type: 'error', message: data.error ?? 'Failed' })
+      const tournaments: { key: string; tour: string }[] = init.tournaments ?? []
+      if (tournaments.length === 0) {
+        setResetImportStatus({ type: 'success', message: `Deleted ${init.deleted ?? 0} players. No tournaments found to import from.` })
+        return
       }
+
+      // Phase 2: Process tournaments in batches of 10
+      const BATCH_SIZE = 10
+      let totalImported = 0
+      let totalErrors = 0
+
+      for (let i = 0; i < tournaments.length; i += BATCH_SIZE) {
+        const batch = tournaments.slice(i, i + BATCH_SIZE)
+        const batchNum = Math.floor(i / BATCH_SIZE) + 1
+        const totalBatches = Math.ceil(tournaments.length / BATCH_SIZE)
+        setResetImportStatus({
+          type: 'loading',
+          progress: `Batch ${batchNum}/${totalBatches} — ${totalImported} players imported so far…`,
+        })
+
+        const result = await callImportApi({ action: 'batch', tournaments: batch })
+        if (!result.ok) {
+          setResetImportStatus({ type: 'error', message: `Batch ${batchNum} failed: ${result.error}. ${totalImported} players imported before failure.` })
+          return
+        }
+        totalImported += result.imported ?? 0
+        totalErrors += result.errors ?? 0
+      }
+
+      setResetImportStatus({
+        type: 'success',
+        message: `Deleted ${init.deleted ?? 0}, imported ${totalImported} players from ${tournaments.length} tournaments${totalErrors ? ` (${totalErrors} API errors)` : ''}`,
+      })
+      if (query.trim()) doSearch(query)
     } catch (err) {
       setResetImportStatus({ type: 'error', message: String(err) })
     }
@@ -161,21 +191,28 @@ export default function PlayerManager() {
           <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '12px' }}>
             Deletes all existing players, then fetches every ATP &amp; WTA player via <code style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>get_players</code> per tournament. This may take a few minutes.
           </p>
-          <div className="flex items-center gap-3 flex-wrap">
-            <button
-              onClick={handleResetAndImport}
-              disabled={resetImportStatus.type === 'loading'}
-              className="px-4 py-1.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
-              style={{ background: '#991b1b', color: 'white' }}
-            >
-              {resetImportStatus.type === 'loading' ? 'Importing… (this takes a while)' : 'Delete All & Re-import'}
-            </button>
-            {resetImportStatus.type !== 'idle' && resetImportStatus.type !== 'loading' && (
-              <span style={{
-                fontFamily: 'var(--font-mono)', fontSize: '0.7rem',
-                color: resetImportStatus.type === 'error' ? '#991b1b' : '#166534',
-              }}>
-                {resetImportStatus.type === 'success' ? '✓ ' : '✗ '}{resetImportStatus.message}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={handleResetAndImport}
+                disabled={resetImportStatus.type === 'loading'}
+                className="px-4 py-1.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
+                style={{ background: '#991b1b', color: 'white' }}
+              >
+                {resetImportStatus.type === 'loading' ? 'Importing…' : 'Delete All & Re-import'}
+              </button>
+              {resetImportStatus.type !== 'idle' && resetImportStatus.type !== 'loading' && (
+                <span style={{
+                  fontFamily: 'var(--font-mono)', fontSize: '0.7rem',
+                  color: resetImportStatus.type === 'error' ? '#991b1b' : '#166534',
+                }}>
+                  {resetImportStatus.type === 'success' ? '✓ ' : '✗ '}{resetImportStatus.message}
+                </span>
+              )}
+            </div>
+            {resetImportStatus.type === 'loading' && resetImportStatus.progress && (
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
+                {resetImportStatus.progress}
               </span>
             )}
           </div>

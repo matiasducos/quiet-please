@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
-// Allow up to 2 minutes — parallel get_players calls across many tournaments
-export const maxDuration = 120
+export const maxDuration = 60
 
 const BASE_URL = 'https://api.api-tennis.com/tennis/'
 
@@ -18,115 +17,130 @@ async function callApi(apiKey: string, params: Record<string, string>, timeoutMs
   return json.result ?? []
 }
 
-export async function POST() {
+async function requireAdmin() {
+  if (process.env.NODE_ENV === 'development') return
   try {
-    // ── Auth guard ──────────────────────────────────────────────────────────
-    if (process.env.NODE_ENV !== 'development') {
-      try {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Unauthorized')
+    const adminIds = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean)
+    if (!adminIds.includes(user.id)) throw new Error('Forbidden')
+  } catch (err) {
+    throw err
+  }
+}
 
-        const adminIds = (process.env.ADMIN_USER_IDS ?? '')
-          .split(',').map(s => s.trim()).filter(Boolean)
-        if (!adminIds.includes(user.id)) {
-          return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
-        }
-      } catch (authErr) {
-        return NextResponse.json({ ok: false, error: `Auth error: ${String(authErr)}` }, { status: 500 })
-      }
-    }
+// ─────────────────────────────────────────────────────────────────────────────
+// Progressive import — split into two actions so each request is fast:
+//
+//   POST { action: "init" }
+//     → Deletes all players, fetches tournament list from Tennis API,
+//       returns { tournaments: [{ key, tour }...] } for the client to chunk.
+//
+//   POST { action: "batch", tournaments: [{ key, tour }...] }
+//     → Fetches get_players for each tournament (max ~10), upserts into DB,
+//       returns { imported: N }.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function POST(request: Request) {
+  try {
+    await requireAdmin()
 
     const apiKey = process.env.TENNIS_API_KEY
     if (!apiKey) return NextResponse.json({ ok: false, error: 'TENNIS_API_KEY not configured' })
 
-    const admin = createAdminClient()
+    const body = await request.json().catch(() => ({}))
+    const action = body.action ?? 'init'
 
-    // ── 1. Delete all existing players ────────────────────────────────────
-    const { count: deleted, error: delError } = await admin
-      .from('players')
-      .delete({ count: 'exact' })
-      .gte('created_at', '1970-01-01')   // Supabase requires a WHERE for deletes
-    if (delError) {
-      return NextResponse.json({ ok: false, error: `Delete failed: ${delError.message}` })
+    if (action === 'init') {
+      return await handleInit(apiKey)
+    } else if (action === 'batch') {
+      return await handleBatch(apiKey, body.tournaments ?? [])
+    } else {
+      return NextResponse.json({ ok: false, error: `Unknown action: ${action}` }, { status: 400 })
     }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg === 'Unauthorized') return NextResponse.json({ ok: false, error: msg }, { status: 401 })
+    if (msg === 'Forbidden') return NextResponse.json({ ok: false, error: msg }, { status: 403 })
+    return NextResponse.json({ ok: false, error: `Unexpected error: ${msg}` }, { status: 500 })
+  }
+}
 
-    // ── 2. Fetch all tournaments and classify ATP / WTA ───────────────────
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let allTournaments: any[]
-    try {
-      allTournaments = await callApi(apiKey, { method: 'get_tournaments' }, 20_000)
-    } catch (err) {
-      return NextResponse.json({ ok: false, deleted, error: `get_tournaments failed: ${String(err)}` })
+// ── Phase 1: Delete players + return tournament list ─────────────────────────
+async function handleInit(apiKey: string) {
+  const admin = createAdminClient()
+
+  // Delete all existing players
+  const { count: deleted, error: delError } = await admin
+    .from('players')
+    .delete({ count: 'exact' })
+    .gte('created_at', '1970-01-01')
+  if (delError) {
+    return NextResponse.json({ ok: false, error: `Delete failed: ${delError.message}` })
+  }
+
+  // Fetch tournament list from Tennis API
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let allTournaments: any[]
+  try {
+    allTournaments = await callApi(apiKey, { method: 'get_tournaments' }, 20_000)
+  } catch (err) {
+    return NextResponse.json({ ok: false, deleted, error: `get_tournaments failed: ${String(err)}` })
+  }
+
+  // Classify ATP / WTA (excluding challengers and doubles)
+  const tournaments: { key: string; tour: 'ATP' | 'WTA' }[] = []
+  for (const t of allTournaments) {
+    const type = ((t.event_type_type ?? '') as string).toUpperCase()
+    if (type.includes('ATP') && !type.includes('CHALLENGER') && !type.includes('DOUBLES')) {
+      tournaments.push({ key: String(t.tournament_key), tour: 'ATP' })
+    } else if (type.includes('WTA') && !type.includes('DOUBLES')) {
+      tournaments.push({ key: String(t.tournament_key), tour: 'WTA' })
     }
+  }
 
-    const tourMap: Record<string, 'ATP' | 'WTA'> = {}
-    for (const t of allTournaments) {
-      const type = ((t.event_type_type ?? '') as string).toUpperCase()
-      if (type.includes('ATP') && !type.includes('CHALLENGER') && !type.includes('DOUBLES')) {
-        tourMap[String(t.tournament_key)] = 'ATP'
-      } else if (type.includes('WTA') && !type.includes('DOUBLES')) {
-        tourMap[String(t.tournament_key)] = 'WTA'
-      }
-    }
+  return NextResponse.json({ ok: true, action: 'init', deleted, tournaments })
+}
 
-    const entries = Object.entries(tourMap)
-    if (entries.length === 0) {
-      return NextResponse.json({ ok: false, deleted, imported: 0, tournamentsScanned: 0, error: 'No ATP/WTA tournaments found' })
-    }
+// ── Phase 2: Fetch + upsert players for a batch of tournaments ───────────────
+async function handleBatch(apiKey: string, tournaments: { key: string; tour: 'ATP' | 'WTA' }[]) {
+  if (!tournaments.length) {
+    return NextResponse.json({ ok: true, action: 'batch', imported: 0, scanned: 0, errors: 0 })
+  }
 
-    // ── 3. Fetch players per tournament in parallel batches ────────────────
-    // Use larger batches to reduce wall-clock time
-    const players = new Map<string, { name: string; country: string; tour: 'ATP' | 'WTA' }>()
-    const BATCH_SIZE = 15
-    let scanned = 0
-    let apiErrors = 0
+  const admin = createAdminClient()
+  const players = new Map<string, { name: string; country: string; tour: 'ATP' | 'WTA' }>()
+  let apiErrors = 0
 
-    for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-      const batch = entries.slice(i, i + BATCH_SIZE)
-      const results = await Promise.allSettled(
-        batch.map(async ([key, tour]) => {
-          const result = await callApi(apiKey, { method: 'get_players', tournament_key: key })
-          return { result, tour }
-        }),
-      )
+  // Fetch all tournaments in this batch in parallel (max ~10 at a time)
+  const results = await Promise.allSettled(
+    tournaments.map(async ({ key, tour }) => {
+      const result = await callApi(apiKey, { method: 'get_players', tournament_key: key })
+      return { result, tour }
+    }),
+  )
 
-      scanned += batch.length
-
-      for (const r of results) {
-        if (r.status === 'fulfilled' && Array.isArray(r.value.result)) {
-          for (const p of r.value.result) {
-            const pk = String(p.player_key ?? '').trim()
-            if (pk && !players.has(pk)) {
-              players.set(pk, {
-                name: String(p.player_name ?? '').trim(),
-                country: String(p.player_country ?? '').trim(),
-                tour: r.value.tour,
-              })
-            }
-          }
-        } else {
-          apiErrors++
+  for (const r of results) {
+    if (r.status === 'fulfilled' && Array.isArray(r.value.result)) {
+      for (const p of r.value.result) {
+        const pk = String(p.player_key ?? '').trim()
+        if (pk && !players.has(pk)) {
+          players.set(pk, {
+            name: String(p.player_name ?? '').trim(),
+            country: String(p.player_country ?? '').trim(),
+            tour: r.value.tour,
+          })
         }
       }
-
-      // If many errors and no players yet, bail early
-      if (apiErrors >= 20 && players.size === 0) {
-        return NextResponse.json({
-          ok: false, deleted, imported: 0, tournamentsScanned: scanned,
-          error: `Too many API errors (${apiErrors}) with zero players found`,
-        })
-      }
+    } else {
+      apiErrors++
     }
+  }
 
-    if (players.size === 0) {
-      return NextResponse.json({
-        ok: false, deleted, imported: 0, tournamentsScanned: scanned,
-        error: 'No players found from any tournament',
-      })
-    }
-
-    // ── 4. Bulk insert into players table ─────────────────────────────────
+  // Upsert — ignore duplicates from other batches
+  let imported = 0
+  if (players.size > 0) {
     const rows = [...players.entries()].map(([externalId, p]) => ({
       external_id: externalId,
       name: p.name,
@@ -134,29 +148,23 @@ export async function POST() {
       tour: p.tour,
     }))
 
-    let imported = 0
     for (let i = 0; i < rows.length; i += 500) {
       const chunk = rows.slice(i, i + 500)
       const { data: inserted, error } = await admin
         .from('players')
-        .insert(chunk)
+        .upsert(chunk, { onConflict: 'external_id', ignoreDuplicates: true })
         .select('id')
       if (error) {
         return NextResponse.json({
-          ok: false, deleted, imported, tournamentsScanned: scanned,
-          error: `Insert batch ${Math.floor(i / 500) + 1} failed: ${error.message}`,
+          ok: false, action: 'batch', imported, scanned: tournaments.length,
+          error: `Insert failed: ${error.message}`,
         })
       }
       imported += inserted?.length ?? 0
     }
-
-    return NextResponse.json({ ok: true, deleted, imported, tournamentsScanned: scanned, apiErrors })
-
-  } catch (err) {
-    // Top-level catch — ensures we always return JSON, never an HTML error page
-    return NextResponse.json(
-      { ok: false, error: `Unexpected error: ${err instanceof Error ? err.message : String(err)}` },
-      { status: 500 },
-    )
   }
+
+  return NextResponse.json({
+    ok: true, action: 'batch', imported, scanned: tournaments.length, errors: apiErrors,
+  })
 }
