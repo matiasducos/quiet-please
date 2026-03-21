@@ -215,19 +215,30 @@ export async function GET(request: Request) {
     const { error: ledgerError } = await supabase.from('point_ledger').insert(ledgerRows)
     if (ledgerError) throw ledgerError
 
-    // ── 8. Update global user totals + leagues + rankings (parallelized) ──
-    const userIds = Object.keys(globalUserPointsDelta)
-
-    // 8a. Increment user points — parallel batches of 50
-    for (let i = 0; i < userIds.length; i += 50) {
-      await Promise.all(
-        userIds.slice(i, i + 50).map(userId =>
-          supabase.rpc('increment_user_points', { user_id: userId, points: globalUserPointsDelta[userId] })
-        )
-      )
+    // ── 8. Update prediction points_earned + expires_at ────────────────────
+    // Must run BEFORE ranking recalculation (which reads predictions.points_earned)
+    const predictionUpdates = Object.entries(predictionPointsDelta).map(([predId, pts]) => {
+      const pred = predMap.get(predId)
+      const updateRow: Record<string, any> = {
+        points_earned: (pred?.points_earned ?? 0) + pts,
+      }
+      if (!pred?.expires_at && pred?.tournament_id) {
+        const startsAt = tournamentStartsAt[pred.tournament_id]
+        if (startsAt) {
+          const expiresAt = new Date(new Date(startsAt).getTime() + 364 * 24 * 60 * 60 * 1000)
+          updateRow.expires_at = expiresAt.toISOString()
+        }
+      }
+      return supabase.from('predictions').update(updateRow).eq('id', predId)
+    })
+    for (let i = 0; i < predictionUpdates.length; i += 50) {
+      await Promise.all(predictionUpdates.slice(i, i + 50))
     }
 
-    // 8b. Update league memberships — batch fetch all, then batch update
+    // ── 9. Update global user totals + leagues + rankings ───────────────
+    const userIds = Object.keys(globalUserPointsDelta)
+
+    // 9a. Update league memberships — batch fetch all, then batch update
     if (userIds.length > 0) {
       const { data: allMemberships } = await supabase
         .from('league_members')
@@ -249,32 +260,13 @@ export async function GET(request: Request) {
       }
     }
 
-    // 8c. Recalculate rankings — parallel batches of 50
+    // 9b. Recalculate rankings (reads predictions.points_earned, updated in step 8)
     for (let i = 0; i < userIds.length; i += 50) {
       await Promise.all(
         userIds.slice(i, i + 50).map(userId =>
           supabase.rpc('recalculate_ranking_points', { p_user_id: userId })
         )
       )
-    }
-
-    // ── 9. Update prediction points_earned + expires_at (parallelized) ────
-    const predictionUpdates = Object.entries(predictionPointsDelta).map(([predId, pts]) => {
-      const pred = predMap.get(predId)
-      const updateRow: Record<string, any> = {
-        points_earned: (pred?.points_earned ?? 0) + pts,
-      }
-      if (!pred?.expires_at && pred?.tournament_id) {
-        const startsAt = tournamentStartsAt[pred.tournament_id]
-        if (startsAt) {
-          const expiresAt = new Date(new Date(startsAt).getTime() + 364 * 24 * 60 * 60 * 1000)
-          updateRow.expires_at = expiresAt.toISOString()
-        }
-      }
-      return supabase.from('predictions').update(updateRow).eq('id', predId)
-    })
-    for (let i = 0; i < predictionUpdates.length; i += 50) {
-      await Promise.all(predictionUpdates.slice(i, i + 50))
     }
 
     // ── 10. Notifications + emails (parallelized, non-blocking) ──────────
