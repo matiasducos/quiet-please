@@ -3,8 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
-import { createChallenge } from './actions'
 import TournamentCard from '@/components/TournamentCard'
+import ChallengeButton from './ChallengeButton'
 
 export default async function NewChallengePage({
   searchParams,
@@ -158,17 +158,9 @@ export default async function NewChallengePage({
             {tournaments.map((t: any) => (
               <div key={t.id} className="relative">
                 <TournamentCard t={t} />
-                <form action={createChallenge} className="absolute bottom-4 right-4">
-                  <input type="hidden" name="friend_id" value={friendId} />
-                  <input type="hidden" name="tournament_id" value={t.id} />
-                  <button
-                    type="submit"
-                    className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90"
-                    style={{ background: 'var(--court)' }}
-                  >
-                    Challenge →
-                  </button>
-                </form>
+                <div className="absolute bottom-4 right-4">
+                  <ChallengeButton friendId={friendId} tournamentId={t.id} />
+                </div>
               </div>
             ))}
           </div>
