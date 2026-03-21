@@ -405,32 +405,37 @@ export default function ResultsEntry({
 
         {/* Mark as completed — with global progress */}
         {tournamentStatus !== 'completed' && (
-          <div className="mt-8 flex items-center gap-4">
-            <button
-              onClick={handleMarkComplete}
-              disabled={completeStatus.type === 'loading'}
-              className="px-6 py-2 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
-              style={{ background: '#111', color: 'white' }}
-            >
-              {completeStatus.type === 'loading' ? 'Completing...' : 'Mark Tournament as Completed'}
-            </button>
-            <span
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '0.75rem',
-                color: totalResultsEntered === totalMatches ? '#166534' : 'var(--muted)',
-                background: totalResultsEntered === totalMatches ? '#dcfce7' : 'var(--chalk)',
-                padding: '4px 10px',
-                borderRadius: '9999px',
-              }}
-            >
-              {totalResultsEntered}/{totalMatches} results
-            </span>
-            {completeStatus.message && (
-              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: completeStatus.type === 'error' ? '#991b1b' : '#166534' }}>
-                {completeStatus.message}
-              </p>
-            )}
+          <div className="mt-8">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={handleMarkComplete}
+                disabled={completeStatus.type === 'loading'}
+                className="px-6 py-2 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
+                style={{ background: '#111', color: 'white' }}
+              >
+                {completeStatus.type === 'loading' ? 'Completing...' : 'Mark Tournament as Completed'}
+              </button>
+              <span
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.75rem',
+                  color: totalResultsEntered === totalMatches ? '#166534' : 'var(--muted)',
+                  background: totalResultsEntered === totalMatches ? '#dcfce7' : 'var(--chalk)',
+                  padding: '4px 10px',
+                  borderRadius: '9999px',
+                }}
+              >
+                {totalResultsEntered}/{totalMatches} results
+              </span>
+              {completeStatus.message && (
+                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: completeStatus.type === 'error' ? '#991b1b' : '#166534' }}>
+                  {completeStatus.message}
+                </p>
+              )}
+            </div>
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', marginTop: '8px' }}>
+              Remember to run Award Points from the admin panel before marking as completed.
+            </p>
           </div>
         )}
       </div>

@@ -100,9 +100,32 @@ export default function AdminPanel({ tournaments, scoringStatus }: { tournaments
         </div>
       </nav>
 
+      {/* ── Unscored results banner ── */}
+      {(() => {
+        const pending = scoringStatus.filter(t => t.pendingResults > 0)
+        if (pending.length === 0) return null
+        const totalPending = pending.reduce((sum, t) => sum + t.pendingResults, 0)
+        return (
+          <div style={{ background: '#fef3c7', borderBottom: '1px solid #fde68a', padding: '12px 24px' }}>
+            <div className="max-w-3xl mx-auto flex items-center justify-between">
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: '#92400e', margin: 0 }}>
+                {totalPending} unscored result{totalPending !== 1 ? 's' : ''} across {pending.map(t => t.name).join(', ')}
+              </p>
+              <button
+                onClick={handleRunAwardPoints}
+                disabled={awardStatus.type === 'loading'}
+                className="px-3 py-1 text-xs font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
+                style={{ background: '#92400e', color: 'white' }}
+              >
+                {awardStatus.type === 'loading' ? 'Running…' : 'Award Points Now'}
+              </button>
+            </div>
+          </div>
+        )
+      })()}
+
       <div className="max-w-3xl mx-auto px-4 md:px-8 py-10">
 
-        {/* ── Cron jobs ── */}
         <div className="mb-8">
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
             Admin panel
