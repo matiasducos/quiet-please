@@ -371,19 +371,18 @@ export default function BracketPredictor({
 
   const matchesForRound = (round: string) => draw.matches.filter(m => m.round === round)
 
-  // Per-round availability: how many matches can still be picked
-  function getRoundStats(round: string): { pickable: number; total: number; picked: number } {
+  // Per-round stats: "done" = picked OR played (no action needed from user)
+  function getRoundStats(round: string): { done: number; total: number } {
     const roundMatches = matchesForRound(round)
     let total = 0
-    let pickable = 0
-    let picked = 0
+    let done = 0
     for (const m of roundMatches) {
       if (byeMatchIds.has(m.matchId)) continue
       total++
-      if (picks[m.matchId]) picked++
-      if (!isMatchLocked(m.matchId)) pickable++
+      // A match is "done" if the user picked it OR it's already played
+      if (picks[m.matchId] || matchResults?.[m.matchId]) done++
     }
-    return { pickable, total, picked }
+    return { done, total }
   }
 
   // Count correctly picked vs total picked (for read-only summary)
@@ -515,8 +514,7 @@ export default function BracketPredictor({
         <div className="max-w-5xl mx-auto flex overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           {sortedRounds.map(round => {
             const stats = getRoundStats(round)
-            const allPlayed = stats.pickable === 0 && stats.total > 0
-            const allPicked = stats.picked === stats.total && stats.total > 0
+            const allDone = stats.done === stats.total && stats.total > 0
             return (
               <button
                 key={round}
@@ -535,10 +533,10 @@ export default function BracketPredictor({
                     fontSize: '0.55rem',
                     padding: '1px 4px',
                     borderRadius: '2px',
-                    background: allPlayed ? '#f3f4f6' : allPicked ? '#dcfce7' : 'var(--chalk)',
-                    color: allPlayed ? '#9ca3af' : allPicked ? '#166534' : 'var(--muted)',
+                    background: allDone ? '#dcfce7' : 'var(--chalk)',
+                    color: allDone ? '#166534' : 'var(--muted)',
                   }}>
-                    {stats.picked}/{stats.total}
+                    {stats.done}/{stats.total}
                   </span>
                 )}
               </button>
