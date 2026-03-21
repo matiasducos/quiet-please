@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
-import { cancelChallenge } from './[id]/actions'
+import CancelButton from './CancelButton'
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -235,16 +235,9 @@ export default async function ChallengesPage() {
                       Awaiting response
                     </span>
                   </Link>
-                  <form action={cancelChallenge} className="flex-shrink-0 pr-4">
-                    <input type="hidden" name="challenge_id" value={c.id} />
-                    <button
-                      type="submit"
-                      className="px-3 py-1.5 text-xs rounded-sm border hover:bg-gray-50 transition-colors"
-                      style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white', whiteSpace: 'nowrap' }}
-                    >
-                      Cancel
-                    </button>
-                  </form>
+                  <div className="flex-shrink-0 pr-4">
+                    <CancelButton challengeId={c.id} />
+                  </div>
                 </div>
               ))}
             </div>

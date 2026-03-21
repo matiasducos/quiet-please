@@ -12,12 +12,12 @@ export async function cancelChallenge(formData: FormData) {
   if (!user) redirect('/login')
 
   const challengeId = formData.get('challenge_id') as string
-  if (!challengeId) return { error: 'Invalid request' }
+  if (!challengeId) throw new Error('Missing challenge_id')
 
   const admin = createAdminClient()
 
   // Verify: this user is the challenger and challenge is still pending
-  const { data: challenge } = await admin
+  const { data: challenge, error: fetchErr } = await admin
     .from('challenges')
     .select('id, challenged_id, tournament_id, status')
     .eq('id', challengeId)
@@ -25,12 +25,20 @@ export async function cancelChallenge(formData: FormData) {
     .eq('status', 'pending')
     .single()
 
-  if (!challenge) return { error: 'Challenge not found or cannot be cancelled' }
+  if (fetchErr || !challenge) {
+    console.error('[cancelChallenge] lookup failed', { challengeId, userId: user.id, fetchErr })
+    throw new Error('Challenge not found or cannot be cancelled')
+  }
 
-  await admin
+  const { error: updateErr } = await admin
     .from('challenges')
     .update({ status: 'cancelled', updated_at: new Date().toISOString() })
     .eq('id', challengeId)
+
+  if (updateErr) {
+    console.error('[cancelChallenge] update failed', updateErr)
+    throw new Error('Failed to cancel challenge')
+  }
 
   // Notify the challenged user
   try {

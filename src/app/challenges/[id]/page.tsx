@@ -3,7 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
-import { respondToChallenge, cancelChallenge } from './actions'
+import { respondToChallenge } from './actions'
+import CancelButton from '../CancelButton'
 
 export default async function ChallengeDetailPage({
   params,
@@ -148,16 +149,7 @@ export default async function ChallengeDetailPage({
             <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1rem' }}>
               Waiting for <strong>{theirUsername}</strong> to accept your challenge.
             </p>
-            <form action={cancelChallenge}>
-              <input type="hidden" name="challenge_id" value={challenge.id} />
-              <button
-                type="submit"
-                className="px-5 py-2 text-sm rounded-sm border hover:bg-gray-50 transition-colors"
-                style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white' }}
-              >
-                Cancel challenge
-              </button>
-            </form>
+            <CancelButton challengeId={challenge.id} />
           </div>
         )}
 
