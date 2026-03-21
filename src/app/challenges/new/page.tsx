@@ -124,11 +124,11 @@ export default async function NewChallengePage({
     .eq('id', friendId)
     .single()
 
-  // Upcoming and accepting_predictions tournaments only
+  // All non-completed tournaments (users can challenge on in_progress too)
   const { data: tournaments } = await admin
     .from('tournaments')
     .select('id, name, tour, category, surface, starts_at, ends_at, status')
-    .in('status', ['upcoming', 'accepting_predictions'])
+    .in('status', ['upcoming', 'accepting_predictions', 'in_progress'])
     .order('starts_at', { ascending: true })
     .limit(60)
 
@@ -177,6 +177,11 @@ export default async function NewChallengePage({
                       {t.status === 'accepting_predictions' && (
                         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--court)', background: '#eaf3de', padding: '1px 5px', borderRadius: '2px', letterSpacing: '0.04em' }}>
                           OPEN
+                        </span>
+                      )}
+                      {t.status === 'in_progress' && (
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: '#92400e', background: '#fef3c7', padding: '1px 5px', borderRadius: '2px', letterSpacing: '0.04em' }}>
+                          LIVE
                         </span>
                       )}
                     </div>
