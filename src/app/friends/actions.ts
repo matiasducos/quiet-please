@@ -145,3 +145,24 @@ export async function declineFriendRequest(formData: FormData) {
   revalidatePath('/friends')
   redirect(`${returnTo}?msg=Request+declined&type=error`)
 }
+
+export async function cancelFriendRequest(formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const friendshipId = formData.get('friendship_id') as string
+  const returnTo = (formData.get('return_to') as string) || '/friends'
+  const admin = createAdminClient()
+
+  // Only the requester can cancel their own pending request
+  await admin
+    .from('friendships')
+    .delete()
+    .eq('id', friendshipId)
+    .eq('requester_id', user.id)
+    .eq('status', 'pending')
+
+  revalidatePath('/friends')
+  redirect(`${returnTo}?msg=Request+cancelled&type=success`)
+}

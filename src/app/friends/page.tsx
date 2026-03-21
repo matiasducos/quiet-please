@@ -4,7 +4,7 @@ import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
-import { sendFriendRequest, acceptFriendRequest, declineFriendRequest } from './actions'
+import { sendFriendRequest, acceptFriendRequest, declineFriendRequest, cancelFriendRequest } from './actions'
 
 export default async function FriendsPage({
   searchParams,
@@ -216,9 +216,17 @@ export default async function FriendsPage({
                   >
                     {req.username}
                   </Link>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
-                    Pending
-                  </span>
+                  <form action={cancelFriendRequest}>
+                    <input type="hidden" name="friendship_id" value={req.id} />
+                    <input type="hidden" name="return_to" value="/friends" />
+                    <button
+                      type="submit"
+                      className="px-3 py-1.5 text-xs rounded-sm border"
+                      style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white' }}
+                    >
+                      Cancel
+                    </button>
+                  </form>
                 </div>
               ))}
             </div>

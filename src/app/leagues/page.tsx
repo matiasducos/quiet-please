@@ -15,9 +15,24 @@ export default async function LeaguesPage() {
     .eq('user_id', user.id)
     .order('joined_at', { ascending: false })
 
+  // Fetch all members to compute rank per league
+  const leagueIds = (memberships ?? []).map(m => m.league_id)
+  const { data: allMembers } = leagueIds.length > 0
+    ? await supabase.from('league_members').select('league_id, user_id, total_points').in('league_id', leagueIds).order('total_points', { ascending: false })
+    : { data: [] as any[] }
+
+  const leagueStats: Record<string, { rank: number; count: number }> = {}
+  for (const lid of leagueIds) {
+    const members = (allMembers ?? []).filter((m: any) => m.league_id === lid)
+    const rank = members.findIndex((m: any) => m.user_id === user.id) + 1
+    leagueStats[lid] = { rank: rank || 1, count: members.length }
+  }
+
   const leagues = (memberships ?? []).map(m => ({
     ...(m.leagues as any),
     my_points: m.total_points,
+    my_rank: leagueStats[m.league_id]?.rank ?? 1,
+    member_count: leagueStats[m.league_id]?.count ?? 1,
   }))
 
   return (
@@ -74,9 +89,13 @@ export default async function LeaguesPage() {
                     <p style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{league.description}</p>
                   )}
                 </div>
-                <div className="text-right">
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: 'var(--ink)' }}>{league.my_points} pts</div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', marginTop: '2px' }}>your score</div>
+                <div className="flex items-center gap-4 flex-shrink-0">
+                  <div className="text-right">
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: 'var(--ink)' }}>{league.my_points} pts</span>
+                  </div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', minWidth: '40px', textAlign: 'right' }}>
+                    #{league.my_rank}<span style={{ fontSize: '0.6rem', marginLeft: '2px' }}>/{league.member_count}</span>
+                  </div>
                 </div>
               </Link>
             ))}
