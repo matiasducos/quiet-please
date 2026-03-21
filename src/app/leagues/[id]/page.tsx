@@ -22,36 +22,16 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
 
   const { id } = await params
 
-  const { data: league } = await supabase
-    .from('leagues')
-    .select('*')
-    .eq('id', id)
-    .single()
+  // ── Parallel fetch: league, membership, members, profile ────────────────
+  const [{ data: league }, { data: myMembership }, { data: members }, { data: profile }] = await Promise.all([
+    supabase.from('leagues').select('*').eq('id', id).single(),
+    supabase.from('league_members').select('total_points').eq('league_id', id).eq('user_id', user.id).single(),
+    supabase.from('league_members').select('user_id, total_points, joined_at, users(username)').eq('league_id', id).order('total_points', { ascending: false }),
+    supabase.from('users').select('username, ranking_points').eq('id', user.id).single(),
+  ])
 
   if (!league) notFound()
-
-  // Check user is a member
-  const { data: myMembership } = await supabase
-    .from('league_members')
-    .select('total_points')
-    .eq('league_id', id)
-    .eq('user_id', user.id)
-    .single()
-
   if (!myMembership) redirect('/leagues')
-
-  // Get all members with their points
-  const { data: members } = await supabase
-    .from('league_members')
-    .select('user_id, total_points, joined_at, users(username)')
-    .eq('league_id', id)
-    .order('total_points', { ascending: false })
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('username, ranking_points')
-    .eq('id', user.id)
-    .single()
 
   const isOwner = league.owner_id === user.id
   const myRank = (members ?? []).findIndex(m => m.user_id === user.id)

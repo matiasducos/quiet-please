@@ -19,33 +19,7 @@ export default async function PredictPage({
   const { id } = await params
   const { challenge: challengeId } = await searchParams
 
-  const { data: tournament } = await supabase
-    .from('tournaments')
-    .select('*')
-    .eq('id', id)
-    .single()
-
-  if (!tournament) notFound()
-
-  const isTest = tournament.external_id === TEST_EXTERNAL_ID
-  const isManual = tournament.is_manual === true
-  const returnUrl = isTest ? '/test-tournaments' : `/tournaments/${id}`
-
-  // Allow predict page for: accepting_predictions, in_progress (unplayed matches editable)
-  // Completed tournaments no longer allow predictions (practice mode removed)
-  if (tournament.status !== 'accepting_predictions' && tournament.status !== 'in_progress') {
-    redirect(returnUrl)
-  }
-
-  const { data: draw } = await supabase
-    .from('draws')
-    .select('bracket_data')
-    .eq('tournament_id', id)
-    .single()
-
-  if (!draw?.bracket_data) redirect(`/tournaments/${id}`)
-
-  // ── Load the right prediction: global or challenge-specific ─────────────
+  // ── Parallel fetch: tournament, draw, prediction, profile, results ─────
   let predictionQuery = supabase
     .from('predictions')
     .select('id, picks, pick_locks, is_fully_locked, points_earned, challenge_id')
@@ -58,37 +32,50 @@ export default async function PredictPage({
     predictionQuery = predictionQuery.is('challenge_id', null)
   }
 
-  const { data: prediction } = await predictionQuery.single()
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('username')
-    .eq('id', user.id)
-    .single()
-
-  // ── Load match results (needed for auto-lock rendering + in_progress) ───
-  let matchResults: Record<string, string> = {}
-  let matchPoints: Record<string, { points: number; streakMultiplier: number }> = {}
-
-  const [resultsRes, pointsRes] = await Promise.all([
-    supabase
-      .from('match_results')
-      .select('external_match_id, winner_external_id')
-      .eq('tournament_id', id),
-    prediction
-      ? supabase
-          .from('point_ledger')
-          .select('points, streak_multiplier, match_results(external_match_id)')
-          .eq('prediction_id', prediction.id)
+  const [
+    { data: tournament },
+    { data: draw },
+    { data: prediction },
+    { data: profile },
+    { data: resultsData },
+    challengeRes,
+  ] = await Promise.all([
+    supabase.from('tournaments').select('*').eq('id', id).single(),
+    supabase.from('draws').select('bracket_data').eq('tournament_id', id).single(),
+    predictionQuery.single(),
+    supabase.from('users').select('username').eq('id', user.id).single(),
+    supabase.from('match_results').select('external_match_id, winner_external_id').eq('tournament_id', id),
+    challengeId
+      ? supabase.from('challenges').select('challenger_id, challenged_id').eq('id', challengeId).single()
       : Promise.resolve({ data: null as any }),
   ])
 
-  matchResults = Object.fromEntries(
-    (resultsRes.data ?? []).map((r: any) => [r.external_match_id, r.winner_external_id])
+  if (!tournament) notFound()
+
+  const isTest = tournament.external_id === TEST_EXTERNAL_ID
+  const isManual = tournament.is_manual === true
+  const returnUrl = isTest ? '/test-tournaments' : `/tournaments/${id}`
+
+  if (tournament.status !== 'accepting_predictions' && tournament.status !== 'in_progress') {
+    redirect(returnUrl)
+  }
+
+  if (!draw?.bracket_data) redirect(`/tournaments/${id}`)
+
+  // ── Match results + points (points need prediction.id) ─────────────────
+  const matchResults: Record<string, string> = Object.fromEntries(
+    (resultsData ?? []).map((r: any) => [r.external_match_id, r.winner_external_id])
   )
-  if (pointsRes.data) {
+  let matchPoints: Record<string, { points: number; streakMultiplier: number }> = {}
+
+  if (prediction) {
+    const { data: pointsData } = await supabase
+      .from('point_ledger')
+      .select('points, streak_multiplier, match_results(external_match_id)')
+      .eq('prediction_id', prediction.id)
+
     matchPoints = Object.fromEntries(
-      (pointsRes.data ?? [])
+      (pointsData ?? [])
         .filter((r: any) => r.match_results?.external_match_id)
         .map((r: any) => [
           r.match_results.external_match_id,
@@ -97,86 +84,81 @@ export default async function PredictPage({
     )
   }
 
-  // ── Slot pre-check (global predictions only, not for challenges) ────────
+  // ── Slot pre-check — single batch query instead of N+1 loop ───────────
   if (!prediction && !challengeId && !isTest && !isManual) {
     const weeks = getTournamentISOWeeks(tournament.starts_at, tournament.ends_at)
-    for (const w of weeks) {
-      const { data: conflict } = await supabase
-        .from('weekly_slots')
-        .select('tournament_id, tournaments(id, name)')
-        .eq('user_id', user.id)
-        .eq('circuit', tournament.tour)
-        .eq('iso_year', w.year)
-        .eq('iso_week', w.week)
-        .neq('tournament_id', id)
-        .maybeSingle()
+    const allWeekNums = weeks.map(w => w.week)
+    const allYears = [...new Set(weeks.map(w => w.year))]
 
-      if (conflict) {
-        const conflictT = conflict.tournaments as any
-        return (
-          <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-            <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
-              <div className="max-w-5xl mx-auto flex items-center px-4 md:px-6 py-4">
-                <Link href="/dashboard" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)' }}>
-                  Quiet Please
-                </Link>
-              </div>
-            </nav>
-            <div className="max-w-lg mx-auto px-6 py-20 text-center">
-              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '1rem' }}>
-                Slot taken
-              </p>
-              <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', letterSpacing: '-0.02em', marginBottom: '1rem' }}>
-                {tournament.tour} slot unavailable
-              </h1>
-              <p style={{ fontSize: '0.9rem', color: 'var(--muted)', lineHeight: 1.7, maxWidth: '380px', margin: '0 auto' }}>
-                Your {tournament.tour} slot this week is already taken by{' '}
-                <strong style={{ color: 'var(--ink)' }}>{conflictT?.name ?? 'another tournament'}</strong>.{' '}
-                You can only enter one {tournament.tour} tournament per ISO week.
-              </p>
-              <div className="flex flex-col items-center gap-3 mt-10">
-                {conflictT?.id && (
-                  <Link
-                    href={`/tournaments/${conflictT.id}/predict`}
-                    className="px-6 py-3 text-sm font-medium text-white rounded-sm"
-                    style={{ background: 'var(--court)' }}
-                  >
-                    View picks for {conflictT.name} →
-                  </Link>
-                )}
-                <Link href={returnUrl} style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
-                  ← Back to tournament
-                </Link>
-              </div>
+    const { data: conflicts } = await supabase
+      .from('weekly_slots')
+      .select('tournament_id, iso_week, tournaments(id, name)')
+      .eq('user_id', user.id)
+      .eq('circuit', tournament.tour)
+      .in('iso_year', allYears)
+      .in('iso_week', allWeekNums)
+      .neq('tournament_id', id)
+      .limit(1)
+
+    const conflict = conflicts?.[0]
+    if (conflict) {
+      const conflictT = conflict.tournaments as any
+      return (
+        <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
+          <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <div className="max-w-5xl mx-auto flex items-center px-4 md:px-6 py-4">
+              <Link href="/dashboard" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)' }}>
+                Quiet Please
+              </Link>
             </div>
-          </main>
-        )
-      }
+          </nav>
+          <div className="max-w-lg mx-auto px-6 py-20 text-center">
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '1rem' }}>
+              Slot taken
+            </p>
+            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', letterSpacing: '-0.02em', marginBottom: '1rem' }}>
+              {tournament.tour} slot unavailable
+            </h1>
+            <p style={{ fontSize: '0.9rem', color: 'var(--muted)', lineHeight: 1.7, maxWidth: '380px', margin: '0 auto' }}>
+              Your {tournament.tour} slot this week is already taken by{' '}
+              <strong style={{ color: 'var(--ink)' }}>{conflictT?.name ?? 'another tournament'}</strong>.{' '}
+              You can only enter one {tournament.tour} tournament per ISO week.
+            </p>
+            <div className="flex flex-col items-center gap-3 mt-10">
+              {conflictT?.id && (
+                <Link
+                  href={`/tournaments/${conflictT.id}/predict`}
+                  className="px-6 py-3 text-sm font-medium text-white rounded-sm"
+                  style={{ background: 'var(--court)' }}
+                >
+                  View picks for {conflictT.name} →
+                </Link>
+              )}
+              <Link href={returnUrl} style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+                ← Back to tournament
+              </Link>
+            </div>
+          </div>
+        </main>
+      )
     }
   }
 
-  // ── Challenge context ──────────────────────────────────────────────────
+  // ── Challenge context (opponent lookup, already fetched challenge above) ─
   let challengeContext: { opponentUsername: string; challengeId: string } | undefined
-  if (challengeId) {
-    const { data: challenge } = await supabase
-      .from('challenges')
-      .select('challenger_id, challenged_id')
-      .eq('id', challengeId)
+  if (challengeId && challengeRes.data) {
+    const challenge = challengeRes.data
+    const opponentId = challenge.challenger_id === user.id
+      ? challenge.challenged_id
+      : challenge.challenger_id
+    const { data: opponentProfile } = await supabase
+      .from('users')
+      .select('username')
+      .eq('id', opponentId)
       .single()
-
-    if (challenge) {
-      const opponentId = challenge.challenger_id === user.id
-        ? challenge.challenged_id
-        : challenge.challenger_id
-      const { data: opponentProfile } = await supabase
-        .from('users')
-        .select('username')
-        .eq('id', opponentId)
-        .single()
-      challengeContext = {
-        opponentUsername: opponentProfile?.username ?? 'Opponent',
-        challengeId,
-      }
+    challengeContext = {
+      opponentUsername: opponentProfile?.username ?? 'Opponent',
+      challengeId,
     }
   }
 

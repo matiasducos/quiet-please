@@ -8,18 +8,14 @@ export default async function LeaguesPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('users')
-    .select('username, ranking_points')
-    .eq('id', user.id)
-    .single()
-
-  // Get leagues the user is a member of
-  const { data: memberships } = await supabase
-    .from('league_members')
-    .select('league_id, total_points, joined_at, leagues(id, name, description, invite_code, owner_id, is_active)')
-    .eq('user_id', user.id)
-    .order('joined_at', { ascending: false })
+  // ── Parallel fetch: profile + memberships ────────────────────────────────
+  const [{ data: profile }, { data: memberships }] = await Promise.all([
+    supabase.from('users').select('username, ranking_points').eq('id', user.id).single(),
+    supabase.from('league_members')
+      .select('league_id, total_points, joined_at, leagues(id, name, description, invite_code, owner_id, is_active)')
+      .eq('user_id', user.id)
+      .order('joined_at', { ascending: false }),
+  ])
 
   const leagues = (memberships ?? []).map(m => ({
     ...(m.leagues as any),

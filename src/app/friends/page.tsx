@@ -14,20 +14,15 @@ export default async function FriendsPage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('users')
-    .select('username, ranking_points')
-    .eq('id', user.id)
-    .single()
-
   const admin = createAdminClient()
 
-  // Fetch all friendships involving this user
-  const { data: friendships } = await admin
-    .from('friendships')
-    .select('id, requester_id, addressee_id, status, created_at')
-    .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
-    .order('created_at', { ascending: false })
+  // ── Parallel fetch: profile + friendships ──────────────────────────────
+  const [{ data: profile }, { data: friendships }] = await Promise.all([
+    supabase.from('users').select('username, ranking_points').eq('id', user.id).single(),
+    admin.from('friendships').select('id, requester_id, addressee_id, status, created_at')
+      .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+      .order('created_at', { ascending: false }),
+  ])
 
   // Fetch usernames for all involved users
   const otherIds = [...new Set(

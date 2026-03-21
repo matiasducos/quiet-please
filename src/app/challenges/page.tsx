@@ -35,20 +35,16 @@ export default async function ChallengesPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('users')
-    .select('username, ranking_points')
-    .eq('id', user.id)
-    .single()
-
   const admin = createAdminClient()
 
-  // Fetch all challenges involving this user
-  const { data: rawChallenges } = await admin
-    .from('challenges')
-    .select('id, challenger_id, challenged_id, tournament_id, status, challenger_points, challenged_points, winner_id, created_at')
-    .or(`challenger_id.eq.${user.id},challenged_id.eq.${user.id}`)
-    .order('created_at', { ascending: false })
+  // ── Parallel fetch: profile + challenges ───────────────────────────────
+  const [{ data: profile }, { data: rawChallenges }] = await Promise.all([
+    supabase.from('users').select('username, ranking_points').eq('id', user.id).single(),
+    admin.from('challenges')
+      .select('id, challenger_id, challenged_id, tournament_id, status, challenger_points, challenged_points, winner_id, created_at')
+      .or(`challenger_id.eq.${user.id},challenged_id.eq.${user.id}`)
+      .order('created_at', { ascending: false }),
+  ])
 
   // Fetch tournament details
   const tournamentIds = [...new Set((rawChallenges ?? []).map(c => c.tournament_id))]

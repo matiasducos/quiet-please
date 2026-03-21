@@ -20,17 +20,10 @@ export default async function ProfilePage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: currentProfile } = await supabase
-    .from('users')
-    .select('username, ranking_points')
-    .eq('id', user.id)
-    .single()
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('id, username, total_points, ranking_points, atp_ranking_points, wta_ranking_points, country, city, created_at')
-    .eq('username', username)
-    .single()
+  const [{ data: currentProfile }, { data: profile }] = await Promise.all([
+    supabase.from('users').select('username, ranking_points').eq('id', user.id).single(),
+    supabase.from('users').select('id, username, total_points, ranking_points, atp_ranking_points, wta_ranking_points, country, city, created_at').eq('username', username).single(),
+  ])
 
   if (!profile) {
     return (
@@ -45,18 +38,10 @@ export default async function ProfilePage({
     )
   }
 
-  // Global rank by ranking_points
-  const { count: usersAhead } = await supabase
-    .from('users')
-    .select('*', { count: 'exact', head: true })
-    .gt('ranking_points', profile.ranking_points ?? 0)
-
-  const globalRank = (usersAhead ?? 0) + 1
-
   const isOwnProfile = user.id === profile.id
+  const admin = createAdminClient()
 
-  // All global predictions with tournament info
-  // When viewing someone else's profile, only show locked predictions
+  // ── Parallel fetch: rank, predictions, friendship, challenges ──────────
   let predQuery = supabase
     .from('predictions')
     .select('id, points_earned, created_at, is_fully_locked, tournaments(id, name, tour, category, starts_at, status)')
@@ -67,7 +52,23 @@ export default async function ProfilePage({
     predQuery = predQuery.eq('is_fully_locked', true)
   }
 
-  const { data: predictions } = await predQuery.order('created_at', { ascending: false })
+  const [{ count: usersAhead }, { data: predictions }, friendshipRes, { data: rawChallenges }] = await Promise.all([
+    supabase.from('users').select('*', { count: 'exact', head: true }).gt('ranking_points', profile.ranking_points ?? 0),
+    predQuery.order('created_at', { ascending: false }),
+    !isOwnProfile
+      ? admin.from('friendships').select('id, status, requester_id')
+          .or(`and(requester_id.eq.${user.id},addressee_id.eq.${profile.id}),and(requester_id.eq.${profile.id},addressee_id.eq.${user.id})`)
+          .maybeSingle()
+      : Promise.resolve({ data: null as any }),
+    admin.from('challenges')
+      .select('id, challenger_id, challenged_id, tournament_id, status, challenger_points, challenged_points, winner_id, created_at')
+      .or(`challenger_id.eq.${profile.id},challenged_id.eq.${profile.id}`)
+      .in('status', ['completed', 'accepted', 'pending'])
+      .order('created_at', { ascending: false })
+      .limit(10),
+  ])
+
+  const globalRank = (usersAhead ?? 0) + 1
 
   const tournamentsCount = predictions?.length ?? 0
   const hitRate = tournamentsCount > 0
@@ -75,43 +76,20 @@ export default async function ProfilePage({
     : 0
   const memberSince  = new Date(profile.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 
-  // Admin detection — only relevant on own profile
   const adminIds = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean)
   const isDev    = process.env.NODE_ENV === 'development'
   const isAdmin  = isOwnProfile && (isDev || adminIds.includes(user.id))
 
-  // Friendship status
   type FriendStatus = 'none' | 'friends' | 'sent' | 'received'
   let friendStatus: FriendStatus = 'none'
   let friendshipId: string | null = null
 
-  if (!isOwnProfile) {
-    const admin2 = createAdminClient()
-    const { data: fs } = await admin2
-      .from('friendships')
-      .select('id, status, requester_id')
-      .or(
-        `and(requester_id.eq.${user.id},addressee_id.eq.${profile.id}),` +
-        `and(requester_id.eq.${profile.id},addressee_id.eq.${user.id})`
-      )
-      .maybeSingle()
-
-    if (fs) {
-      friendshipId = fs.id
-      if (fs.status === 'accepted') friendStatus = 'friends'
-      else if (fs.status === 'pending') friendStatus = fs.requester_id === user.id ? 'sent' : 'received'
-    }
+  const fs = friendshipRes.data
+  if (fs) {
+    friendshipId = fs.id
+    if (fs.status === 'accepted') friendStatus = 'friends'
+    else if (fs.status === 'pending') friendStatus = fs.requester_id === user.id ? 'sent' : 'received'
   }
-
-  // Challenges
-  const admin = createAdminClient()
-  const { data: rawChallenges } = await admin
-    .from('challenges')
-    .select('id, challenger_id, challenged_id, tournament_id, status, challenger_points, challenged_points, winner_id, created_at')
-    .or(`challenger_id.eq.${profile.id},challenged_id.eq.${profile.id}`)
-    .in('status', ['completed', 'accepted', 'pending'])
-    .order('created_at', { ascending: false })
-    .limit(10)
 
   const challengeOpponentIds = [...new Set(
     (rawChallenges ?? []).map(c => c.challenger_id === profile.id ? c.challenged_id : c.challenger_id)
