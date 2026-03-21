@@ -47,7 +47,7 @@
 
 ## Notifications & Security
 
-- [ ] **Friend notification on lock** — Lock all picks on a global prediction. Verify friends receive `friend_picks_locked` notification.
+- [x] **Friend notification on lock** — ✅ Verified in prod. Also added new `challenge_picks_locked` notification for challenge opponent lock events.
 - [ ] **RLS policies** — As a regular user, verify: can read own predictions + opponent's challenge predictions, but NOT other users' global predictions. Can't update a fully locked prediction.
 
 ---
