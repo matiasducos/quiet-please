@@ -7,17 +7,20 @@ import TournamentsClientList from '@/components/TournamentsClientList'
 const VALID_STATUSES = ['upcoming', 'draw_published', 'accepting_predictions', 'in_progress', 'completed'] as const
 
 // Cached — same data for all users, refreshes every hour
-const getTournaments = unstable_cache(
-  async (tour: string, status: string) => {
-    const supabase = createAdminClient()
-    let q = supabase.from('tournaments').select('*').eq('tour', tour).order('starts_at', { ascending: true, nullsFirst: false })
-    if (status !== 'all') q = (q as any).eq('status', status)
-    const { data } = await q
-    return data ?? []
-  },
-  ['tournament-list'],
-  { revalidate: 3600 }
-)
+// keyParts include tour+status so each combination gets its own cache slot
+function getTournaments(tour: string, status: string) {
+  return unstable_cache(
+    async () => {
+      const supabase = createAdminClient()
+      let q = supabase.from('tournaments').select('*').eq('tour', tour).order('starts_at', { ascending: true, nullsFirst: false })
+      if (status !== 'all') q = (q as any).eq('status', status)
+      const { data } = await q
+      return data ?? []
+    },
+    ['tournament-list', tour, status],
+    { revalidate: 3600 }
+  )()
+}
 
 export default async function TournamentsPage({ searchParams }: { searchParams: Promise<{ tour?: string; status?: string }> }) {
   const supabase = await createClient()

@@ -25,7 +25,7 @@ export default function TournamentsClientList({ tournaments, activeTour, activeS
 
   const q = query.trim().toLowerCase()
   const filtered = q
-    ? tournaments.filter(t => t.name.toLowerCase().includes(q))
+    ? tournaments.filter(t => t.name.toLowerCase().includes(q) || t.location?.toLowerCase().includes(q))
     : tournaments
 
   const now = new Date()
