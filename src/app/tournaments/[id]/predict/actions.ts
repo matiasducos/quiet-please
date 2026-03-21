@@ -230,37 +230,63 @@ export async function savePrediction({
   revalidatePath(`/tournaments/${tournamentId}`)
   if (challengeId) revalidatePath('/challenges')
 
-  // ── 6. Notifications: when a global prediction is fully locked ─────────
-  if (lockAll && !challengeId) {
+  // ── 6. Notifications ──────────────────────────────────────────────────────
+  if (lockAll) {
     try {
       const admin = createAdminClient()
-      const [{ data: friendships }, { data: currentUserProfile }, { data: tournamentMeta }] = await Promise.all([
-        admin
-          .from('friendships')
-          .select('requester_id, addressee_id')
-          .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
-          .eq('status', 'accepted'),
-        admin.from('users').select('username').eq('id', user.id).single(),
-        admin.from('tournaments').select('name').eq('id', tournamentId).single(),
-      ])
-      if (friendships && friendships.length > 0 && currentUserProfile && tournamentMeta) {
-        const friendIds = friendships.map(f =>
-          f.requester_id === user.id ? f.addressee_id : f.requester_id
-        )
-        await insertNotifications(
-          friendIds.map(friendId => ({
-            user_id:       friendId,
-            type:          'friend_picks_locked',
+
+      if (challengeId) {
+        // Notify challenge opponent that you locked your picks
+        const [{ data: challenge }, { data: currentUserProfile }, { data: tournamentMeta }] = await Promise.all([
+          admin.from('challenges').select('challenger_id, challenged_id').eq('id', challengeId).single(),
+          admin.from('users').select('username').eq('id', user.id).single(),
+          admin.from('tournaments').select('name').eq('id', tournamentId).single(),
+        ])
+        if (challenge && currentUserProfile && tournamentMeta) {
+          const opponentId = challenge.challenger_id === user.id
+            ? challenge.challenged_id
+            : challenge.challenger_id
+          await insertNotifications([{
+            user_id:       opponentId,
+            type:          'challenge_picks_locked',
             tournament_id: tournamentId,
             meta: {
               username:        currentUserProfile.username,
               tournament_name: tournamentMeta.name,
+              challenge_id:    challengeId,
             },
-          }))
-        )
+          }])
+        }
+      } else {
+        // Notify friends that you locked your global picks
+        const [{ data: friendships }, { data: currentUserProfile }, { data: tournamentMeta }] = await Promise.all([
+          admin
+            .from('friendships')
+            .select('requester_id, addressee_id')
+            .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+            .eq('status', 'accepted'),
+          admin.from('users').select('username').eq('id', user.id).single(),
+          admin.from('tournaments').select('name').eq('id', tournamentId).single(),
+        ])
+        if (friendships && friendships.length > 0 && currentUserProfile && tournamentMeta) {
+          const friendIds = friendships.map(f =>
+            f.requester_id === user.id ? f.addressee_id : f.requester_id
+          )
+          await insertNotifications(
+            friendIds.map(friendId => ({
+              user_id:       friendId,
+              type:          'friend_picks_locked',
+              tournament_id: tournamentId,
+              meta: {
+                username:        currentUserProfile.username,
+                tournament_name: tournamentMeta.name,
+              },
+            }))
+          )
+        }
       }
     } catch (e) {
-      console.error('[savePrediction] friend_picks_locked notification error', e)
+      console.error('[savePrediction] lock notification error', e)
     }
   }
 

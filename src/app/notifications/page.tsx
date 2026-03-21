@@ -21,6 +21,7 @@ const TYPE_META: Record<string, { label: string; color: string }> = {
   points_awarded:        { label: 'Points awarded',     color: '#185FA5' },
   challenge_received:    { label: 'Challenge',           color: '#993C1D' },
   challenge_cancelled:   { label: 'Challenge cancelled', color: '#993C1D' },
+  challenge_picks_locked:{ label: 'Challenge update',    color: '#185FA5' },
   friend_request:        { label: 'Friend request',     color: '#7c2d7c' },
   friend_accepted:       { label: 'New friend',          color: '#27500A' },
   friend_picks_locked:   { label: "Friend's picks",      color: '#185FA5' },
@@ -29,6 +30,7 @@ const TYPE_META: Record<string, { label: string; color: string }> = {
 function getHref(n: { type: string; tournament_id: string | null; meta: Record<string, string | number> }): string {
   if (n.type === 'friend_request' || n.type === 'friend_accepted') return '/friends'
   if (n.type === 'challenge_received' || n.type === 'challenge_cancelled') return '/challenges'
+  if (n.type === 'challenge_picks_locked' && n.meta.challenge_id) return `/challenges/${n.meta.challenge_id}`
   if (n.type === 'friend_picks_locked' && n.tournament_id && n.meta.username) {
     return `/tournaments/${n.tournament_id}/picks/${n.meta.username}`
   }
@@ -135,6 +137,9 @@ export default async function NotificationsPage() {
                         )}
                         {n.type === 'challenge_cancelled' && (
                           <><strong>{meta.challenger_username ?? 'Someone'}</strong> cancelled their challenge for <strong>{meta.tournament_name ?? 'a tournament'}</strong>.</>
+                        )}
+                        {n.type === 'challenge_picks_locked' && (
+                          <><strong>{meta.username ?? 'Your opponent'}</strong> locked their picks for your <strong>{meta.tournament_name ?? 'a tournament'}</strong> challenge. Lock yours to compare!</>
                         )}
                         {n.type === 'friend_request' && (
                           <><strong>{meta.from_username ?? 'Someone'}</strong> sent you a friend request.</>
