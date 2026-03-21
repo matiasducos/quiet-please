@@ -24,7 +24,7 @@ export async function GET(request: Request) {
     const { data: allResults } = await supabase
       .from('match_results')
       .select('id, tournament_id, round, external_match_id, winner_external_id, tournaments(id, category, starts_at)')
-      .neq('score', 'BYE')
+      .or('score.neq.BYE,score.is.null')
       .order('played_at', { ascending: true })
 
     if (!allResults?.length) {
