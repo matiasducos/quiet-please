@@ -3,6 +3,12 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { updateLocation } from '@/app/profile/actions'
+import { COUNTRIES as COUNTRY_LIST, codeToFlag } from '@/app/admin/countries'
+
+// Build a name → flag map for quick lookup
+const FLAG_MAP: Record<string, string> = Object.fromEntries(
+  COUNTRY_LIST.map(c => [c.name, codeToFlag(c.code)])
+)
 
 // ── City lists per country (sorted alphabetically within each country) ─────────
 const CITY_MAP: Record<string, string[]> = {
@@ -108,7 +114,7 @@ export default function LocationEditForm({
           >
             <option value="">— Not set —</option>
             {COUNTRIES.map(c => (
-              <option key={c} value={c}>{c}</option>
+              <option key={c} value={c}>{FLAG_MAP[c] ?? ''} {c}</option>
             ))}
           </select>
         </div>

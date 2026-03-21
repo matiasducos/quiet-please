@@ -55,8 +55,13 @@ export default function ResultsEntry({
 }: ResultsEntryProps) {
   const [results, setResults] = useState<MatchResult[]>(initialResults)
   const [savingMatch, setSavingMatch] = useState<string | null>(null)
-  const [scores, setScores] = useState<Record<string, string>>({})
   const [completeStatus, setCompleteStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error'; message?: string }>({ type: 'idle' })
+
+  // Tracks which rounds are expanded (all collapsed by default)
+  const [expandedRounds, setExpandedRounds] = useState<Set<string>>(new Set())
+
+  // Tracks which matches are in "edit" mode (re-selecting winner)
+  const [editingMatches, setEditingMatches] = useState<Set<string>>(new Set())
 
   // Build a map of matchId → result
   const resultMap = useMemo(() => {
@@ -74,6 +79,34 @@ export default function ResultsEntry({
     }
     return map
   }, [bracketData])
+
+  // Progress counters
+  const totalMatches = bracketData.matches.length
+  const totalResultsEntered = results.length
+
+  function getRoundProgress(round: string): { entered: number; total: number } {
+    const roundMatches = bracketData.matches.filter(m => m.round === round)
+    const entered = roundMatches.filter(m => resultMap.has(m.matchId)).length
+    return { entered, total: roundMatches.length }
+  }
+
+  function toggleRound(round: string) {
+    setExpandedRounds(prev => {
+      const next = new Set(prev)
+      if (next.has(round)) next.delete(round)
+      else next.add(round)
+      return next
+    })
+  }
+
+  function toggleEditMatch(matchId: string) {
+    setEditingMatches(prev => {
+      const next = new Set(prev)
+      if (next.has(matchId)) next.delete(matchId)
+      else next.add(matchId)
+      return next
+    })
+  }
 
   // Resolve who the players are for a given match. For later rounds,
   // players come from the winners of earlier matches (via feed map).
@@ -115,10 +148,8 @@ export default function ResultsEntry({
         match.matchId,
         winnerId,
         loserId,
-        scores[match.matchId] || undefined,
       )
       if (ok) {
-        // Add to local results
         setResults(prev => {
           const filtered = prev.filter(r => r.external_match_id !== match.matchId)
           return [...filtered, {
@@ -126,8 +157,14 @@ export default function ResultsEntry({
             round: match.round,
             winner_external_id: winnerId,
             loser_external_id: loserId,
-            score: scores[match.matchId] || null,
+            score: null,
           }]
+        })
+        // Exit edit mode for this match after saving
+        setEditingMatches(prev => {
+          const next = new Set(prev)
+          next.delete(match.matchId)
+          return next
         })
       } else {
         alert(error ?? 'Failed to save result')
@@ -149,7 +186,8 @@ export default function ResultsEntry({
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
+      {/* Sticky admin nav */}
+      <nav className="border-b bg-white sticky top-0 z-50" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="flex items-center justify-between px-6 py-4">
           <Link href="/admin" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)' }}>
             &larr; Admin
@@ -169,106 +207,173 @@ export default function ResultsEntry({
             Click on a player to select them as the winner.
           </p>
           <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', marginTop: '0.25rem' }}>
-            Status: {tournamentStatus} &middot; {results.length} results entered
+            Status: {tournamentStatus}
           </p>
         </div>
 
         {bracketData.rounds.map(round => {
           const roundMatches = bracketData.matches.filter(m => m.round === round)
+          const { entered, total } = getRoundProgress(round)
+          const isExpanded = expandedRounds.has(round)
+          const isComplete = entered === total
+
           return (
-            <div key={round} className="mb-8">
-              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.5rem', color: 'var(--ink)' }}>
-                {ROUND_LABELS[round] ?? round}
-              </h2>
-              <div className="flex flex-col gap-2">
-                {roundMatches.map(match => {
-                  const result = resultMap.get(match.matchId)
-                  const { player1, player2 } = resolveMatchPlayers(match)
-                  const isBye = result?.loser_external_id === 'bye'
-                  const isSaving = savingMatch === match.matchId
-                  const playable = player1 !== null && player2 !== null && !result
+            <div key={round} className="mb-4">
+              {/* Round header — clickable to expand/collapse */}
+              <button
+                type="button"
+                onClick={() => toggleRound(round)}
+                className="w-full flex items-center justify-between py-2 px-3 rounded-sm transition-colors hover:bg-white"
+                style={{ background: isExpanded ? 'white' : 'transparent' }}
+              >
+                <div className="flex items-center gap-2">
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', width: '1rem', display: 'inline-block' }}>
+                    {isExpanded ? '▾' : '▸'}
+                  </span>
+                  <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)', margin: 0 }}>
+                    {ROUND_LABELS[round] ?? round}
+                  </h2>
+                </div>
+                <span
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '0.7rem',
+                    color: isComplete ? '#166534' : 'var(--muted)',
+                    background: isComplete ? '#dcfce7' : 'var(--chalk)',
+                    padding: '2px 8px',
+                    borderRadius: '9999px',
+                  }}
+                >
+                  {entered}/{total}
+                </span>
+              </button>
 
-                  return (
-                    <div key={match.matchId} className="bg-white rounded-sm border p-3" style={{ borderColor: result ? '#bbf7d0' : 'var(--chalk-dim)', opacity: isBye ? 0.5 : 1 }}>
-                      <div className="flex items-center gap-2">
-                        {/* Player 1 */}
-                        <button
-                          type="button"
-                          disabled={!playable || isSaving}
-                          onClick={() => player1 && player2 && handleSelectWinner(match, player1.externalId, player2.externalId)}
-                          className="flex-1 py-1.5 px-2 rounded-sm text-left transition-colors"
-                          style={{
-                            fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
-                            background: result?.winner_external_id === player1?.externalId ? '#dcfce7' : (playable ? 'var(--chalk)' : 'transparent'),
-                            color: player1 ? 'var(--ink)' : 'var(--muted)',
-                            cursor: playable ? 'pointer' : 'default',
-                            border: result?.winner_external_id === player1?.externalId ? '1px solid #86efac' : '1px solid transparent',
-                          }}
-                        >
-                          {player1 ? `${player1.name}${player1.country ? ` (${player1.country})` : ''}` : 'TBD'}
-                          {result?.winner_external_id === player1?.externalId && ' ✓'}
-                        </button>
+              {/* Match list — only shown when expanded */}
+              {isExpanded && (
+                <div className="flex flex-col gap-2 mt-2 pl-6">
+                  {roundMatches.map(match => {
+                    const result = resultMap.get(match.matchId)
+                    const isEditing = editingMatches.has(match.matchId)
+                    const { player1, player2 } = resolveMatchPlayers(match)
+                    const isBye = result?.loser_external_id === 'bye'
+                    const isSaving = savingMatch === match.matchId
+                    // Playable if both players known and either no result or in edit mode
+                    const playable = player1 !== null && player2 !== null && (!result || isEditing)
 
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)' }}>vs</span>
-
-                        {/* Player 2 */}
-                        <button
-                          type="button"
-                          disabled={!playable || isSaving}
-                          onClick={() => player1 && player2 && handleSelectWinner(match, player2.externalId, player1.externalId)}
-                          className="flex-1 py-1.5 px-2 rounded-sm text-left transition-colors"
-                          style={{
-                            fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
-                            background: result?.winner_external_id === player2?.externalId ? '#dcfce7' : (playable ? 'var(--chalk)' : 'transparent'),
-                            color: player2 ? 'var(--ink)' : 'var(--muted)',
-                            cursor: playable ? 'pointer' : 'default',
-                            border: result?.winner_external_id === player2?.externalId ? '1px solid #86efac' : '1px solid transparent',
-                          }}
-                        >
-                          {player2 ? `${player2.name}${player2.country ? ` (${player2.country})` : ''}` : 'TBD'}
-                          {result?.winner_external_id === player2?.externalId && ' ✓'}
-                        </button>
-
-                        {/* Score input */}
-                        {playable && (
-                          <input
-                            value={scores[match.matchId] ?? ''}
-                            onChange={e => setScores(prev => ({ ...prev, [match.matchId]: e.target.value }))}
-                            placeholder="Score"
+                    return (
+                      <div
+                        key={match.matchId}
+                        className="bg-white rounded-sm border p-3"
+                        style={{
+                          borderColor: result && !isEditing ? '#bbf7d0' : 'var(--chalk-dim)',
+                          opacity: isBye ? 0.5 : 1,
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          {/* Player 1 */}
+                          <button
+                            type="button"
+                            disabled={!playable || isSaving}
+                            onClick={() => player1 && player2 && handleSelectWinner(match, player1.externalId, player2.externalId)}
+                            className="flex-1 py-1.5 px-2 rounded-sm text-left transition-colors"
                             style={{
-                              fontFamily: 'var(--font-mono)', fontSize: '0.65rem',
-                              padding: '4px 6px', border: '1px solid var(--chalk-dim)',
-                              borderRadius: '2px', width: '80px',
+                              fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
+                              background: result?.winner_external_id === player1?.externalId && !isEditing ? '#dcfce7' : (playable ? 'var(--chalk)' : 'transparent'),
+                              color: player1 ? 'var(--ink)' : 'var(--muted)',
+                              cursor: playable ? 'pointer' : 'default',
+                              border: result?.winner_external_id === player1?.externalId && !isEditing ? '1px solid #86efac' : '1px solid transparent',
                             }}
-                          />
-                        )}
-                        {result?.score && result.score !== 'BYE' && (
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
-                            {result.score}
-                          </span>
-                        )}
-                        {isBye && (
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', fontStyle: 'italic' }}>
-                            BYE
-                          </span>
-                        )}
-                        {isSaving && (
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
-                            Saving...
-                          </span>
-                        )}
+                          >
+                            {player1 ? `${player1.name}${player1.country ? ` (${player1.country})` : ''}` : 'TBD'}
+                            {result?.winner_external_id === player1?.externalId && !isEditing && ' ✓'}
+                          </button>
+
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)' }}>vs</span>
+
+                          {/* Player 2 */}
+                          <button
+                            type="button"
+                            disabled={!playable || isSaving}
+                            onClick={() => player1 && player2 && handleSelectWinner(match, player2.externalId, player1.externalId)}
+                            className="flex-1 py-1.5 px-2 rounded-sm text-left transition-colors"
+                            style={{
+                              fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
+                              background: result?.winner_external_id === player2?.externalId && !isEditing ? '#dcfce7' : (playable ? 'var(--chalk)' : 'transparent'),
+                              color: player2 ? 'var(--ink)' : 'var(--muted)',
+                              cursor: playable ? 'pointer' : 'default',
+                              border: result?.winner_external_id === player2?.externalId && !isEditing ? '1px solid #86efac' : '1px solid transparent',
+                            }}
+                          >
+                            {player2 ? `${player2.name}${player2.country ? ` (${player2.country})` : ''}` : 'TBD'}
+                            {result?.winner_external_id === player2?.externalId && !isEditing && ' ✓'}
+                          </button>
+
+                          {/* BYE label */}
+                          {isBye && (
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', fontStyle: 'italic' }}>
+                              BYE
+                            </span>
+                          )}
+
+                          {/* Saving indicator */}
+                          {isSaving && (
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
+                              Saving...
+                            </span>
+                          )}
+
+                          {/* Edit button — shown for matches with results (non-bye) that are not currently being edited */}
+                          {result && !isBye && !isEditing && (
+                            <button
+                              type="button"
+                              onClick={() => toggleEditMatch(match.matchId)}
+                              style={{
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: '0.6rem',
+                                color: 'var(--muted)',
+                                background: 'none',
+                                border: '1px solid var(--chalk-dim)',
+                                borderRadius: '2px',
+                                padding: '2px 6px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Edit
+                            </button>
+                          )}
+
+                          {/* Cancel edit button */}
+                          {isEditing && (
+                            <button
+                              type="button"
+                              onClick={() => toggleEditMatch(match.matchId)}
+                              style={{
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: '0.6rem',
+                                color: '#991b1b',
+                                background: 'none',
+                                border: '1px solid #fecaca',
+                                borderRadius: '2px',
+                                padding: '2px 6px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )
         })}
 
-        {/* Mark as completed */}
+        {/* Mark as completed — with global progress */}
         {tournamentStatus !== 'completed' && (
-          <div className="mt-4">
+          <div className="mt-8 flex items-center gap-4">
             <button
               onClick={handleMarkComplete}
               disabled={completeStatus.type === 'loading'}
@@ -277,8 +382,20 @@ export default function ResultsEntry({
             >
               {completeStatus.type === 'loading' ? 'Completing...' : 'Mark Tournament as Completed'}
             </button>
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.75rem',
+                color: totalResultsEntered === totalMatches ? '#166534' : 'var(--muted)',
+                background: totalResultsEntered === totalMatches ? '#dcfce7' : 'var(--chalk)',
+                padding: '4px 10px',
+                borderRadius: '9999px',
+              }}
+            >
+              {totalResultsEntered}/{totalMatches} results
+            </span>
             {completeStatus.message && (
-              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: completeStatus.type === 'error' ? '#991b1b' : '#166534', marginTop: '8px' }}>
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: completeStatus.type === 'error' ? '#991b1b' : '#166534' }}>
                 {completeStatus.message}
               </p>
             )}

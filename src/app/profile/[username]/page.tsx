@@ -5,6 +5,7 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { sendFriendRequest, acceptFriendRequest, declineFriendRequest } from '@/app/friends/actions'
 import LocationEditForm from '@/app/profile/LocationEditForm'
+import { COUNTRIES, codeToFlag } from '@/app/admin/countries'
 
 export default async function ProfilePage({
   params,
@@ -197,7 +198,10 @@ export default async function ProfilePage({
               {(profile.country || profile.city) ? (
                 <div className="flex items-center gap-2 mt-1.5">
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>
-                    📍 {[profile.city, profile.country].filter(Boolean).join(', ')}
+                    {(() => {
+                      const match = COUNTRIES.find(c => c.name === profile.country)
+                      return match ? codeToFlag(match.code) : '📍'
+                    })()} {[profile.city, profile.country].filter(Boolean).join(', ')}
                   </span>
                   {isOwnProfile && (
                     <Link
