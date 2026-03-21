@@ -403,6 +403,13 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                 { round: 'Semifinal',   pts: t.category === 'grand_slam' ? 720  : t.category === 'masters_1000' ? 360  : t.category === '500' ? 90   : 45  },
                 { round: 'Quarterfinal',pts: t.category === 'grand_slam' ? 360  : t.category === 'masters_1000' ? 180  : t.category === '500' ? 60   : 29  },
                 { round: 'R16',         pts: t.category === 'grand_slam' ? 180  : t.category === 'masters_1000' ? 90   : t.category === '500' ? 30   : 13  },
+                { round: 'R32',         pts: t.category === 'grand_slam' ? 90   : t.category === 'masters_1000' ? 45   : t.category === '500' ? 20   : 6   },
+                ...(['grand_slam', 'masters_1000'].includes(t.category) ? [
+                  { round: 'R64',       pts: t.category === 'grand_slam' ? 45   : 25 },
+                ] : []),
+                ...(['grand_slam', 'masters_1000'].includes(t.category) ? [
+                  { round: 'R128',      pts: t.category === 'grand_slam' ? 10   : 10 },
+                ] : []),
               ].map(({ round, pts }) => (
                 <div key={round} className="flex items-center justify-between py-1.5 border-b last:border-0" style={{ borderColor: 'var(--chalk-dim)' }}>
                   <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{round}</span>
