@@ -207,35 +207,34 @@ export async function GET(request: Request) {
       console.log(`[award-points] Auto-locked picks on ${autoLocksApplied} predictions`)
     }
 
-    if (ledgerRows.length === 0) {
-      return NextResponse.json({ message: 'No correct predictions found', awarded: 0, auto_locks_applied: autoLocksApplied })
-    }
+    // ── 7. Insert point ledger + update predictions ────────────────────────
+    if (ledgerRows.length > 0) {
+      const { error: ledgerError } = await supabase.from('point_ledger').insert(ledgerRows)
+      if (ledgerError) throw ledgerError
 
-    // ── 7. Insert point ledger ────────────────────────────────────────────
-    const { error: ledgerError } = await supabase.from('point_ledger').insert(ledgerRows)
-    if (ledgerError) throw ledgerError
-
-    // ── 8. Update prediction points_earned + expires_at ────────────────────
-    // Must run BEFORE ranking recalculation (which reads predictions.points_earned)
-    const predictionUpdates = Object.entries(predictionPointsDelta).map(([predId, pts]) => {
-      const pred = predMap.get(predId)
-      const updateRow: Record<string, any> = {
-        points_earned: (pred?.points_earned ?? 0) + pts,
-      }
-      if (!pred?.expires_at && pred?.tournament_id) {
-        const startsAt = tournamentStartsAt[pred.tournament_id]
-        if (startsAt) {
-          const expiresAt = new Date(new Date(startsAt).getTime() + 364 * 24 * 60 * 60 * 1000)
-          updateRow.expires_at = expiresAt.toISOString()
+      // ── 8. Update prediction points_earned + expires_at ──────────────────
+      // Must run BEFORE ranking recalculation (which reads predictions.points_earned)
+      const predictionUpdates = Object.entries(predictionPointsDelta).map(([predId, pts]) => {
+        const pred = predMap.get(predId)
+        const updateRow: Record<string, any> = {
+          points_earned: (pred?.points_earned ?? 0) + pts,
         }
+        if (!pred?.expires_at && pred?.tournament_id) {
+          const startsAt = tournamentStartsAt[pred.tournament_id]
+          if (startsAt) {
+            const expiresAt = new Date(new Date(startsAt).getTime() + 364 * 24 * 60 * 60 * 1000)
+            updateRow.expires_at = expiresAt.toISOString()
+          }
+        }
+        return supabase.from('predictions').update(updateRow).eq('id', predId)
+      })
+      for (let i = 0; i < predictionUpdates.length; i += 50) {
+        await Promise.all(predictionUpdates.slice(i, i + 50))
       }
-      return supabase.from('predictions').update(updateRow).eq('id', predId)
-    })
-    for (let i = 0; i < predictionUpdates.length; i += 50) {
-      await Promise.all(predictionUpdates.slice(i, i + 50))
     }
 
     // ── 9. Update global user totals + leagues + rankings ───────────────
+    // Always recalculate rankings (even when no new points) to fix any stale data
     const userIds = Object.keys(globalUserPointsDelta)
 
     // 9a. Update league memberships — batch fetch all, then batch update
@@ -260,10 +259,17 @@ export async function GET(request: Request) {
       }
     }
 
-    // 9b. Recalculate rankings (reads predictions.points_earned, updated in step 8)
-    for (let i = 0; i < userIds.length; i += 50) {
+    // 9b. Recalculate rankings for all users who have scored predictions
+    // (not just users with new points this run — ensures stale rankings are fixed)
+    const { data: usersWithPoints } = await supabase
+      .from('predictions')
+      .select('user_id')
+      .gt('points_earned', 0)
+      .is('challenge_id', null)
+    const rankUserIds = Array.from(new Set((usersWithPoints ?? []).map(p => p.user_id)))
+    for (let i = 0; i < rankUserIds.length; i += 50) {
       await Promise.all(
-        userIds.slice(i, i + 50).map(userId =>
+        rankUserIds.slice(i, i + 50).map(userId =>
           supabase.rpc('recalculate_ranking_points', { p_user_id: userId })
         )
       )
