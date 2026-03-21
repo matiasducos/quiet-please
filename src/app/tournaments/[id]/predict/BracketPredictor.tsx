@@ -495,28 +495,31 @@ export default function BracketPredictor({
       )}
 
       {/* Round tabs */}
-      <div className="flex border-b bg-white overflow-x-auto" style={{ borderColor: 'var(--chalk-dim)', scrollbarWidth: 'none' }}>
-        {sortedRounds.map(round => (
-          <button
-            key={round}
-            onClick={() => setActiveRound(round)}
-            className="px-5 py-3 text-xs whitespace-nowrap border-b-2 transition-colors flex-shrink-0"
-            style={{
-              borderBottomColor: activeRound === round ? 'var(--court)' : 'transparent',
-              color: activeRound === round ? 'var(--court)' : 'var(--muted)',
-              fontFamily: 'var(--font-mono)',
-              letterSpacing: '0.04em',
-            }}
-          >
-            {ROUND_LABELS[round] ?? round}
-          </button>
-        ))}
+      <div className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
+        <div className="max-w-5xl mx-auto flex overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+          {sortedRounds.map(round => (
+            <button
+              key={round}
+              onClick={() => setActiveRound(round)}
+              className="px-5 py-3 text-xs whitespace-nowrap border-b-2 transition-colors flex-shrink-0"
+              style={{
+                borderBottomColor: activeRound === round ? 'var(--court)' : 'transparent',
+                color: activeRound === round ? 'var(--court)' : 'var(--muted)',
+                fontFamily: 'var(--font-mono)',
+                letterSpacing: '0.04em',
+              }}
+            >
+              {ROUND_LABELS[round] ?? round}
+            </button>
+          ))}
+        </div>
       </div>
 
       </div>{/* end sticky top block */}
 
       {/* Header */}
-      <div className="px-4 md:px-6 py-5 border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
+      <div className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
+        <div className="max-w-5xl mx-auto px-4 md:px-6 py-5">
         <div className="flex items-center gap-2 mb-1" style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
           <Link href={`/tournaments/${tournament.id}`} style={{ color: 'var(--muted)' }}>{tournament.name}</Link>
           <span>/</span>
@@ -548,6 +551,7 @@ export default function BracketPredictor({
               })()
           }
         </p>
+        </div>
       </div>
 
       {/* Matches */}
