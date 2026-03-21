@@ -218,39 +218,71 @@ export default function ResultsEntry({
           const isComplete = entered === total
 
           return (
-            <div key={round} className="mb-4">
-              {/* Round header — clickable to expand/collapse */}
+            <div key={round} style={{ marginBottom: '10px' }}>
+              {/* Round header — styled like TournamentMonthGroup */}
               <button
                 type="button"
                 onClick={() => toggleRound(round)}
-                className="w-full flex items-center justify-between py-2 px-3 rounded-sm transition-colors hover:bg-white"
-                style={{ background: isExpanded ? 'white' : 'transparent' }}
+                className="w-full flex items-center justify-between"
+                style={{
+                  background: 'white',
+                  border: '1px solid var(--chalk-dim)',
+                  borderRadius: isExpanded ? '4px 4px 0 0' : '4px',
+                  padding: '14px 18px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.07)',
+                  transition: 'box-shadow 0.15s ease',
+                }}
               >
-                <div className="flex items-center gap-2">
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', width: '1rem', display: 'inline-block' }}>
-                    {isExpanded ? '▾' : '▸'}
-                  </span>
-                  <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)', margin: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+                  <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', letterSpacing: '-0.01em', color: 'var(--ink)', margin: 0, lineHeight: 1 }}>
                     {ROUND_LABELS[round] ?? round}
                   </h2>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.65rem',
+                      color: isComplete ? '#166534' : 'var(--muted)',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    {entered}/{total}
+                  </span>
                 </div>
                 <span
                   style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '0.7rem',
-                    color: isComplete ? '#166534' : 'var(--muted)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '26px',
+                    height: '26px',
+                    borderRadius: '50%',
                     background: isComplete ? '#dcfce7' : 'var(--chalk)',
-                    padding: '2px 8px',
-                    borderRadius: '9999px',
+                    color: isExpanded ? 'var(--court)' : 'var(--ink)',
+                    fontSize: '1rem',
+                    flexShrink: 0,
+                    transition: 'transform 0.2s ease, color 0.15s ease',
+                    transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
                   }}
                 >
-                  {entered}/{total}
+                  ▾
                 </span>
               </button>
 
               {/* Match list — only shown when expanded */}
               {isExpanded && (
-                <div className="flex flex-col gap-2 mt-2 pl-6">
+                <div
+                  className="flex flex-col gap-2"
+                  style={{
+                    border: '1px solid var(--chalk-dim)',
+                    borderTop: 'none',
+                    borderRadius: '0 0 4px 4px',
+                    padding: '14px',
+                    background: 'var(--chalk)',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
+                  }}
+                >
                   {roundMatches.map(match => {
                     const result = resultMap.get(match.matchId)
                     const isEditing = editingMatches.has(match.matchId)
