@@ -28,7 +28,7 @@ const getLeaderboardData = unstable_cache(
     const userIds = (users ?? []).map(u => u.id)
     const { data: userPredictions } = userIds.length > 0
       ? await supabase.from('predictions')
-          .select('user_id, points_earned, tournaments(name, tour)')
+          .select('user_id, points_earned, tournaments(name, tour, location)')
           .in('user_id', userIds).is('challenge_id', null)
           .gt('points_earned', 0).order('points_earned', { ascending: false }).limit(500)
       : { data: [] as any[] }
@@ -38,7 +38,7 @@ const getLeaderboardData = unstable_cache(
       const t = p.tournaments as any
       if (!t?.name) continue
       if (!breakdownByUser[p.user_id]) breakdownByUser[p.user_id] = []
-      breakdownByUser[p.user_id].push({ name: t.name, tour: t.tour ?? '', points: p.points_earned ?? 0 })
+      breakdownByUser[p.user_id].push({ name: t.location ?? t.name, tour: t.tour ?? '', points: p.points_earned ?? 0 })
     }
 
     return { users: users ?? [], breakdownByUser }

@@ -122,41 +122,7 @@ export default function TournamentCard({ t }: { t: TournamentCardData }) {
       {/* ── Card body ──────────────────────────────────────────────── */}
       <div style={{ padding: '14px 16px 14px' }}>
 
-        {/* Flag + location (or fallback city parsed from name) */}
-        {(t.flag_emoji || displayLocation) && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-            {t.flag_emoji && (
-              <span style={{ fontSize: '0.95rem', lineHeight: 1 }}>{t.flag_emoji}</span>
-            )}
-            {displayLocation && (
-              <span
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '0.68rem',
-                  color: 'var(--muted)',
-                  letterSpacing: '0.03em',
-                }}
-              >
-                {displayLocation}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Date range */}
-        <div
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.68rem',
-            color: 'var(--muted)',
-            letterSpacing: '0.03em',
-            marginBottom: '8px',
-          }}
-        >
-          {dateRange}
-        </div>
-
-        {/* Tournament name */}
+        {/* Location (primary heading) */}
         <h2
           style={{
             fontFamily: 'var(--font-display)',
@@ -164,11 +130,25 @@ export default function TournamentCard({ t }: { t: TournamentCardData }) {
             letterSpacing: '-0.01em',
             color: 'var(--ink)',
             lineHeight: 1.2,
+            marginBottom: '2px',
+          }}
+        >
+          {t.flag_emoji && <span style={{ marginRight: '6px' }}>{t.flag_emoji}</span>}
+          {displayLocation ?? t.name}
+        </h2>
+
+        {/* Tournament name (secondary) + date */}
+        <div
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: '0.68rem',
+            color: 'var(--muted)',
+            letterSpacing: '0.03em',
             marginBottom: '12px',
           }}
         >
-          {t.name}
-        </h2>
+          {displayLocation ? <>{t.name} · {dateRange}</> : dateRange}
+        </div>
 
         {/* Surface badge */}
         <span

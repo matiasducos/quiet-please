@@ -12,7 +12,7 @@ export default async function DashboardPage() {
   const [{ data: profile }, { data: upcomingTournaments }, { count: predictionCount }] = await Promise.all([
     supabase.from('users').select('username, ranking_points').eq('id', user.id).single(),
     supabase.from('tournaments')
-      .select('id, name, tour, surface, category, starts_at, status')
+      .select('id, name, tour, surface, category, starts_at, status, location, flag_emoji')
       .in('status', ['accepting_predictions', 'upcoming'])
       .order('starts_at', { ascending: true })
       .limit(3),
@@ -98,7 +98,15 @@ export default async function DashboardPage() {
                     <span className="px-2 py-0.5 text-xs rounded-sm flex-shrink-0" style={{ background: t.tour === 'WTA' ? '#fbeaf0' : '#e6f1fb', color: t.tour === 'WTA' ? '#993556' : '#185FA5', fontFamily: 'var(--font-mono)' }}>
                       {t.tour}
                     </span>
-                    <span className="truncate" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem' }}>{t.name}</span>
+                    <div className="min-w-0">
+                      <span className="truncate block" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem' }}>
+                        {t.flag_emoji && <span style={{ marginRight: '4px' }}>{t.flag_emoji}</span>}
+                        {t.location ?? t.name}
+                      </span>
+                      {t.location && (
+                        <span className="truncate block" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--muted)' }}>{t.name}</span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-4 flex-shrink-0 ml-4">
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>

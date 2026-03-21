@@ -127,19 +127,19 @@ export default async function NotificationsPage() {
                       {/* Message */}
                       <p style={{ fontSize: '0.9rem', color: 'var(--ink)', lineHeight: 1.4 }}>
                         {n.type === 'draw_open' && (
-                          <>Draw is open for <strong>{meta.tournament_name ?? 'a tournament'}</strong>. Make your picks before it closes.</>
+                          <>Draw is open for <strong>{meta.tournament_location ?? meta.tournament_name ?? 'a tournament'}</strong>. Make your picks before it closes.</>
                         )}
                         {n.type === 'points_awarded' && (
-                          <>You earned <strong>{meta.points ?? 0} pts</strong> for {meta.tournament_name ?? 'a tournament'}.</>
+                          <>You earned <strong>{meta.points ?? 0} pts</strong> for {meta.tournament_location ?? meta.tournament_name ?? 'a tournament'}.</>
                         )}
                         {n.type === 'challenge_received' && (
-                          <><strong>{meta.challenger_username ?? 'Someone'}</strong> challenged you for <strong>{meta.tournament_name ?? 'a tournament'}</strong>.</>
+                          <><strong>{meta.challenger_username ?? 'Someone'}</strong> challenged you for <strong>{meta.tournament_location ?? meta.tournament_name ?? 'a tournament'}</strong>.</>
                         )}
                         {n.type === 'challenge_cancelled' && (
-                          <><strong>{meta.challenger_username ?? 'Someone'}</strong> cancelled their challenge for <strong>{meta.tournament_name ?? 'a tournament'}</strong>.</>
+                          <><strong>{meta.challenger_username ?? 'Someone'}</strong> cancelled their challenge for <strong>{meta.tournament_location ?? meta.tournament_name ?? 'a tournament'}</strong>.</>
                         )}
                         {n.type === 'challenge_picks_locked' && (
-                          <><strong>{meta.username ?? 'Your opponent'}</strong> locked their picks for your <strong>{meta.tournament_name ?? 'a tournament'}</strong> challenge. Lock yours to compare!</>
+                          <><strong>{meta.username ?? 'Your opponent'}</strong> locked their picks for your <strong>{meta.tournament_location ?? meta.tournament_name ?? 'a tournament'}</strong> challenge. Lock yours to compare!</>
                         )}
                         {n.type === 'friend_request' && (
                           <><strong>{meta.from_username ?? 'Someone'}</strong> sent you a friend request.</>
@@ -148,7 +148,7 @@ export default async function NotificationsPage() {
                           <><strong>{meta.friend_username ?? 'Someone'}</strong> accepted your friend request. You&apos;re now friends.</>
                         )}
                         {n.type === 'friend_picks_locked' && (
-                          <><strong>{meta.username ?? 'A friend'}</strong> locked in their picks for <strong>{meta.tournament_name ?? 'a tournament'}</strong>.</>
+                          <><strong>{meta.username ?? 'A friend'}</strong> locked in their picks for <strong>{meta.tournament_location ?? meta.tournament_name ?? 'a tournament'}</strong>.</>
                         )}
                       </p>
                     </div>

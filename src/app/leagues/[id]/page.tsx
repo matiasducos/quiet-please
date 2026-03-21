@@ -54,7 +54,7 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
     const [{ data: lockedPicks }, { data: pointsRows }] = await Promise.all([
       admin
         .from('predictions')
-        .select('user_id, tournament_id, submitted_at, users(username), tournaments(name)')
+        .select('user_id, tournament_id, submitted_at, users(username), tournaments(name, location)')
         .in('user_id', memberIds)
         .eq('is_fully_locked', true)
         .is('challenge_id', null)
@@ -62,7 +62,7 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
         .limit(50),
       admin
         .from('point_ledger')
-        .select('user_id, tournament_id, points, awarded_at, users(username), tournaments(name)')
+        .select('user_id, tournament_id, points, awarded_at, users(username), tournaments(name, location)')
         .in('user_id', memberIds)
         .order('awarded_at', { ascending: false })
         .limit(100),
@@ -82,7 +82,7 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
       type: 'picks',
       user_id: p.user_id,
       username: p.users?.username ?? 'Unknown',
-      label: `locked picks for ${p.tournaments?.name ?? 'a tournament'}`,
+      label: `locked picks for ${p.tournaments?.location ?? p.tournaments?.name ?? 'a tournament'}`,
       date: p.submitted_at,
     }))
 
@@ -99,7 +99,7 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
           user_id: row.user_id,
           username: row.users?.username ?? 'Unknown',
           points: row.points,
-          tournament_name: row.tournaments?.name ?? 'a tournament',
+          tournament_name: row.tournaments?.location ?? row.tournaments?.name ?? 'a tournament',
           awarded_at: row.awarded_at,
         })
       }

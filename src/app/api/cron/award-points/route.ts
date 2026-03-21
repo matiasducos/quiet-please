@@ -87,15 +87,17 @@ export async function GET(request: Request) {
       }
     }
 
-    // Fetch tournament names + starts_at for notifications and expires_at
+    // Fetch tournament names + location + starts_at for notifications and expires_at
     const { data: tournamentData } = await supabase
       .from('tournaments')
-      .select('id, name, starts_at')
+      .select('id, name, location, starts_at')
       .in('id', tournamentIds as string[])
     const tournamentNames: Record<string, string> = {}
+    const tournamentLocations: Record<string, string | null> = {}
     const tournamentStartsAt: Record<string, string> = {}
     for (const t of tournamentData ?? []) {
       tournamentNames[t.id] = t.name
+      tournamentLocations[t.id] = t.location
       tournamentStartsAt[t.id] = t.starts_at
     }
 
@@ -304,7 +306,7 @@ export async function GET(request: Request) {
             user_id: userId,
             type: 'points_awarded',
             tournament_id: tId,
-            meta: { points: pts, tournament_name: tName },
+            meta: { points: pts, tournament_name: tName, tournament_location: tournamentLocations[tId] ?? null },
           })
           emailJobs.push({ userId, tId, tName, pts })
         }

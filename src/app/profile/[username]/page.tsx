@@ -44,7 +44,7 @@ export default async function ProfilePage({
   // ── Parallel fetch: rank, predictions, friendship, challenges ──────────
   let predQuery = supabase
     .from('predictions')
-    .select('id, points_earned, created_at, is_fully_locked, tournaments(id, name, tour, category, starts_at, status)')
+    .select('id, points_earned, created_at, is_fully_locked, tournaments(id, name, tour, category, starts_at, status, location)')
     .eq('user_id', profile.id)
     .is('challenge_id', null)
 
@@ -104,11 +104,11 @@ export default async function ProfilePage({
       ? admin.from('users').select('id, username').in('id', challengeOpponentIds)
       : Promise.resolve({ data: [] as any[] }),
     challengeTournamentIds.length > 0
-      ? admin.from('tournaments').select('id, name').in('id', challengeTournamentIds)
+      ? admin.from('tournaments').select('id, name, location').in('id', challengeTournamentIds)
       : Promise.resolve({ data: [] as any[] }),
   ])
   challengeOpponentNames  = Object.fromEntries((oppRes.data ?? []).map((u: any) => [u.id, u.username]))
-  challengeTournamentNames = Object.fromEntries((tRes.data ?? []).map((t: any) => [t.id, t.name]))
+  challengeTournamentNames = Object.fromEntries((tRes.data ?? []).map((t: any) => [t.id, t.location ?? t.name]))
 
   const challenges = (rawChallenges ?? []).map(c => {
     const isProfileChallenger = c.challenger_id === profile.id
@@ -355,7 +355,7 @@ export default async function ProfilePage({
                   >
                     <div className="col-span-5 flex items-center gap-2">
                       <span style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)' }}>
-                        {t?.name ?? '—'}
+                        {t?.location ?? t?.name ?? '—'}
                       </span>
                     </div>
                     <div className="col-span-2 flex items-center justify-center">

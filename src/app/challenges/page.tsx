@@ -50,24 +50,24 @@ export default async function ChallengesPage() {
   const tournamentIds = [...new Set((rawChallenges ?? []).map(c => c.tournament_id))]
   const userIds = [...new Set((rawChallenges ?? []).flatMap(c => [c.challenger_id, c.challenged_id]))]
 
-  let tournamentMap: Record<string, { name: string; status: string }> = {}
+  let tournamentMap: Record<string, { name: string; status: string; location: string | null }> = {}
   let usernameMap: Record<string, string> = {}
 
   const [tournamentsRes, usersRes] = await Promise.all([
     tournamentIds.length > 0
-      ? admin.from('tournaments').select('id, name, status').in('id', tournamentIds)
+      ? admin.from('tournaments').select('id, name, status, location').in('id', tournamentIds)
       : Promise.resolve({ data: [] as any[] }),
     userIds.length > 0
       ? admin.from('users').select('id, username').in('id', userIds)
       : Promise.resolve({ data: [] as any[] }),
   ])
 
-  tournamentMap = Object.fromEntries((tournamentsRes.data ?? []).map((t: any) => [t.id, { name: t.name, status: t.status }]))
+  tournamentMap = Object.fromEntries((tournamentsRes.data ?? []).map((t: any) => [t.id, { name: t.name, status: t.status, location: t.location }]))
   usernameMap = Object.fromEntries((usersRes.data ?? []).map((u: any) => [u.id, u.username]))
 
   const challenges = (rawChallenges ?? []).map(c => ({
     ...c,
-    tournament:     tournamentMap[c.tournament_id] ?? { name: 'Unknown', status: 'unknown' },
+    tournament:     tournamentMap[c.tournament_id] ?? { name: 'Unknown', status: 'unknown', location: null },
     isChallenger:   c.challenger_id === user.id,
     opponentId:     c.challenger_id === user.id ? c.challenged_id : c.challenger_id,
     opponentName:   c.challenger_id === user.id ? usernameMap[c.challenged_id] : usernameMap[c.challenger_id],
@@ -109,7 +109,7 @@ export default async function ChallengesPage() {
             </span>
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
-            {c.tournament.name} · {timeAgo(c.created_at)}
+            {c.tournament.location ?? c.tournament.name} · {timeAgo(c.created_at)}
           </div>
         </div>
         <div className="flex items-center gap-4 ml-4 flex-shrink-0">

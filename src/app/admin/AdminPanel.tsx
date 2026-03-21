@@ -172,9 +172,14 @@ export default function AdminPanel({ tournaments, scoringStatus }: { tournaments
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)', marginBottom: '2px' }}>
-                        {t.name}
+                        {t.location ?? t.name}
                       </p>
                       <div className="flex items-center gap-2 flex-wrap">
+                        {t.location && (
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'var(--chalk)', padding: '1px 6px', borderRadius: '2px' }}>
+                            {t.name}
+                          </span>
+                        )}
                         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'var(--chalk)', padding: '1px 6px', borderRadius: '2px' }}>
                           {t.tour}
                         </span>
@@ -279,7 +284,7 @@ export default function AdminPanel({ tournaments, scoringStatus }: { tournaments
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)', marginBottom: '2px' }}>
-                          {t.name}
+                          {t.location ?? t.name}
                         </p>
                         <div className="flex items-center gap-2 flex-wrap">
                           <span style={{

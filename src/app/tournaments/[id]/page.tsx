@@ -171,29 +171,16 @@ export default async function TournamentDetailPage({ params }: { params: Promise
           {/* Body */}
           <div style={{ padding: '24px 20px 20px' }}>
 
-            {/* Flag + location + date */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px', flexWrap: 'wrap' }}>
-              {(t.flag_emoji || t.location) && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {t.flag_emoji && (
-                    <span style={{ fontSize: '1.1rem', lineHeight: 1 }}>{t.flag_emoji}</span>
-                  )}
-                  {t.location && (
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.03em' }}>
-                      {t.location}
-                    </span>
-                  )}
-                </div>
-              )}
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.03em' }}>
-                {formatDateRange(t.starts_at, t.ends_at)}
-              </span>
-            </div>
-
-            {/* Tournament name */}
-            <h1 className="text-3xl md:text-4xl" style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', lineHeight: 1.1, marginBottom: '16px' }}>
-              {t.name}
+            {/* Location (primary heading) */}
+            <h1 className="text-3xl md:text-4xl" style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', lineHeight: 1.1, marginBottom: '6px' }}>
+              {t.flag_emoji && <span style={{ marginRight: '8px' }}>{t.flag_emoji}</span>}
+              {t.location ?? t.name}
             </h1>
+
+            {/* Tournament name (secondary) + date */}
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--muted)', letterSpacing: '0.03em', marginBottom: '16px' }}>
+              {t.location ? <>{t.name} · {formatDateRange(t.starts_at, t.ends_at)}</> : formatDateRange(t.starts_at, t.ends_at)}
+            </div>
 
             {/* Meta row: surface + picks-close */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>

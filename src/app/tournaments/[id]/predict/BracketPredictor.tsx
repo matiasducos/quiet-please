@@ -552,7 +552,7 @@ export default function BracketPredictor({
       <div className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="max-w-5xl mx-auto px-4 md:px-6 py-5">
         <div className="flex items-center gap-2 mb-1" style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-          <Link href={`/tournaments/${tournament.id}`} style={{ color: 'var(--muted)' }}>{tournament.name}</Link>
+          <Link href={`/tournaments/${tournament.id}`} style={{ color: 'var(--muted)' }}>{tournament.location ? `${tournament.location} · ${tournament.name}` : tournament.name}</Link>
           <span>/</span>
           <span>
             {readOnly

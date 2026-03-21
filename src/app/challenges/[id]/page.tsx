@@ -40,7 +40,7 @@ export default async function ChallengeDetailPage({
   const [{ data: challengerProfile }, { data: challengedProfile }, { data: tournament }] = await Promise.all([
     admin.from('users').select('id, username').eq('id', challenge.challenger_id).single(),
     admin.from('users').select('id, username').eq('id', challenge.challenged_id).single(),
-    admin.from('tournaments').select('id, name, status, starts_at, ends_at, tour, surface').eq('id', challenge.tournament_id).single(),
+    admin.from('tournaments').select('id, name, status, starts_at, ends_at, tour, surface, location, flag_emoji').eq('id', challenge.tournament_id).single(),
   ])
 
   const myUsername   = isChallenger ? challengerProfile?.username : challengedProfile?.username
@@ -104,7 +104,7 @@ export default async function ChallengeDetailPage({
             {myUsername} <span style={{ color: 'var(--muted)' }}>vs</span> {theirUsername}
           </h1>
           <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
-            {tournament?.name} · {tournament?.tour} · {tournament?.starts_at ? formatDate(tournament.starts_at) : ''}
+            {tournament?.location ?? tournament?.name} · {tournament?.tour} · {tournament?.starts_at ? formatDate(tournament.starts_at) : ''}
           </p>
         </div>
 
