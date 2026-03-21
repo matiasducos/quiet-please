@@ -761,7 +761,7 @@ export default function BracketPredictor({
                             )}
 
                             {/* Lock status / hint */}
-                            {!deadPick && lockDisplay === 'voluntary_locked' && (
+                            {!deadPick && (lockDisplay === 'voluntary_locked' || lockDisplay === 'fully_locked') && (
                               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em', color: 'var(--court)' }}>
                                 LOCKED ✓
                               </span>
