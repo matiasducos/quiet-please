@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { saveMatchResult, clearMatchResult, setTournamentStatus } from '../../../actions'
+import { nameToFlag } from '@/app/admin/countries'
 
 interface Player {
   externalId: string
@@ -358,7 +359,7 @@ export default function ResultsEntry({
                               border: result?.winner_external_id === player1?.externalId && !isEditing ? '1px solid #86efac' : '1px solid transparent',
                             }}
                           >
-                            {player1 ? `${player1.name}${player1.country ? ` (${player1.country})` : ''}` : 'TBD'}
+                            {player1 ? <>{player1.name} {nameToFlag(player1.country) ?? ''}</> : 'TBD'}
                             {result?.winner_external_id === player1?.externalId && !isEditing && ' ✓'}
                           </button>
 
@@ -378,7 +379,7 @@ export default function ResultsEntry({
                               border: result?.winner_external_id === player2?.externalId && !isEditing ? '1px solid #86efac' : '1px solid transparent',
                             }}
                           >
-                            {player2 ? `${player2.name}${player2.country ? ` (${player2.country})` : ''}` : 'TBD'}
+                            {player2 ? <>{player2.name} {nameToFlag(player2.country) ?? ''}</> : 'TBD'}
                             {result?.winner_external_id === player2?.externalId && !isEditing && ' ✓'}
                           </button>
 

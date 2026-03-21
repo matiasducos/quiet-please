@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { searchPlayers, createPlayer, buildDraw } from '../../../actions'
+import { nameToFlag } from '@/app/admin/countries'
 
 type PlayerOption = { external_id: string; name: string; country: string }
 
@@ -138,7 +139,7 @@ function PlayerCombobox({
     return (
       <div className="flex items-center gap-2 px-3 py-2.5">
         <span style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', letterSpacing: '-0.01em', color: 'var(--ink)' }}>{value.name}</span>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.04em' }}>{value.country}</span>
+        {value.country && <span style={{ fontSize: '0.8rem' }} title={value.country}>{nameToFlag(value.country) ?? value.country}</span>}
         <button type="button" onClick={clearSelection} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#991b1b', cursor: 'pointer', background: 'none', border: 'none', marginLeft: 'auto' }}>✕</button>
       </div>
     )
@@ -200,7 +201,7 @@ function PlayerCombobox({
                 onMouseOut={e => (e.currentTarget.style.background = 'white')}
               >
                 <span style={{ color: 'var(--ink)' }}>{p.name}</span>
-                <span style={{ fontSize: '0.65rem', color: 'var(--muted)' }}>{p.country}</span>
+                <span style={{ fontSize: '0.8rem' }} title={p.country}>{nameToFlag(p.country) ?? p.country}</span>
               </div>
             )
           })}

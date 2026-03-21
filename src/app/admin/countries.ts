@@ -14,6 +14,22 @@ export function codeToFlag(code: string): string {
   )
 }
 
+/** Lookup map: country name (lowercase) → flag emoji. Built once at import time. */
+const _nameToFlag = new Map<string, string>()
+let _mapBuilt = false
+function ensureMap() {
+  if (_mapBuilt) return
+  for (const c of COUNTRIES) _nameToFlag.set(c.name.toLowerCase(), codeToFlag(c.code))
+  _mapBuilt = true
+}
+
+/** Convert a full country name (e.g. "Spain") to its flag emoji, or null if not found. */
+export function nameToFlag(name: string | null | undefined): string | null {
+  if (!name) return null
+  ensureMap()
+  return _nameToFlag.get(name.toLowerCase()) ?? null
+}
+
 export const COUNTRIES: Country[] = [
   { code: 'AR', name: 'Argentina' },
   { code: 'AU', name: 'Australia' },

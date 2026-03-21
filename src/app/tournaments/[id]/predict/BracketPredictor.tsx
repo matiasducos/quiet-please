@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { savePrediction, importGlobalPicks } from './actions'
+import { nameToFlag } from '@/app/admin/countries'
 
 interface Player {
   externalId: string
@@ -688,7 +689,7 @@ export default function BracketPredictor({
                         {player?.name ?? (isBye ? 'BYE' : 'TBD')}
                       </span>
                       {player?.country && (
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', flexShrink: 0, letterSpacing: '0.04em' }}>{player.country}</span>
+                        <span style={{ fontSize: '0.8rem', flexShrink: 0 }} title={player.country}>{nameToFlag(player.country) ?? player.country}</span>
                       )}
                     </div>
                     {state !== 'none' && (
