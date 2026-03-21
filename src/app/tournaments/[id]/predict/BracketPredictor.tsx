@@ -688,7 +688,7 @@ export default function BracketPredictor({
                       <span className="truncate" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', letterSpacing: '-0.01em', color: player ? 'var(--ink)' : 'var(--muted)' }}>
                         {player?.name ?? (isBye ? 'BYE' : 'TBD')}
                       </span>
-                      {player?.country && (
+                      {player?.country && player.country.toLowerCase() !== 'world' && (
                         <span style={{ fontSize: '0.8rem', flexShrink: 0 }} title={player.country}>{nameToFlag(player.country) ?? player.country}</span>
                       )}
                     </div>
