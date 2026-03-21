@@ -232,7 +232,7 @@ export default async function ChallengeDetailPage({
                 className="inline-block px-5 py-2.5 text-sm font-medium text-white rounded-sm hover:opacity-90"
                 style={{ background: 'var(--court)', textDecoration: 'none' }}
               >
-                {myPickCount > 0 ? 'Edit your picks →' : 'Make your picks →'}
+                {myPicksLocked ? 'Review your picks →' : myPickCount > 0 ? 'Edit your picks →' : 'Make your picks →'}
               </Link>
             </div>
           </div>
