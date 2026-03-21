@@ -1308,23 +1308,76 @@ export async function buildDraw(
 // ── Structured result entry ──────────────────────────────────────────────────
 // Enter a single match result by matchId (must match bracket_data matchId).
 
+/**
+ * Find all downstream match IDs that involve a specific player.
+ * Walks forward through the bracket from the given round to find
+ * matches where the player appears as winner or loser.
+ */
+async function findDownstreamResults(
+  admin: ReturnType<typeof createAdminClient>,
+  tournamentId: string,
+  playerExternalId: string,
+  fromRound: string,
+): Promise<string[]> {
+  const ROUND_ORDER = ['R128', 'R64', 'R32', 'R16', 'QF', 'SF', 'F']
+  const startIdx = ROUND_ORDER.indexOf(fromRound)
+  if (startIdx < 0) return []
+
+  // Get all results for rounds AFTER the given round
+  const laterRounds = ROUND_ORDER.slice(startIdx + 1)
+  if (laterRounds.length === 0) return []
+
+  const { data: results } = await admin
+    .from('match_results')
+    .select('external_match_id, winner_external_id, loser_external_id')
+    .eq('tournament_id', tournamentId)
+    .in('round', laterRounds)
+
+  // Find results where this player appears
+  return (results ?? [])
+    .filter(r => r.winner_external_id === playerExternalId || r.loser_external_id === playerExternalId)
+    .map(r => r.external_match_id)
+}
+
 export async function saveMatchResult(
   tournamentId: string,
   matchId: string,
   winnerExternalId: string,
   loserExternalId: string,
   score?: string,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; cascadeDeleted?: string[] }> {
   await assertAdmin()
   const admin = createAdminClient()
 
   // Determine round from matchId (format: "ext-id-ROUND-001")
   const parts = matchId.split('-')
-  // Round is the second-to-last segment
   const roundSegment = parts[parts.length - 2]
   const validRounds = ['R128', 'R64', 'R32', 'R16', 'QF', 'SF', 'F']
   if (!validRounds.includes(roundSegment)) {
     return { ok: false, error: `Cannot determine round from matchId "${matchId}"` }
+  }
+
+  // Check if we're editing an existing result (winner changed)
+  let cascadeDeleted: string[] = []
+  const { data: existingResult } = await admin
+    .from('match_results')
+    .select('winner_external_id')
+    .eq('tournament_id', tournamentId)
+    .eq('external_match_id', matchId)
+    .maybeSingle()
+
+  if (existingResult && existingResult.winner_external_id !== winnerExternalId) {
+    // Winner changed — cascade delete downstream results involving the OLD winner
+    const oldWinner = existingResult.winner_external_id
+    const downstream = await findDownstreamResults(admin, tournamentId, oldWinner, roundSegment)
+    if (downstream.length > 0) {
+      await admin
+        .from('match_results')
+        .delete()
+        .eq('tournament_id', tournamentId)
+        .in('external_match_id', downstream)
+      cascadeDeleted = downstream
+    }
   }
 
   const { error } = await admin
@@ -1351,5 +1404,48 @@ export async function saveMatchResult(
   }
 
   revalidateTag('tournament-detail')
-  return { ok: true }
+  return { ok: true, cascadeDeleted }
+}
+
+/** Clear a match result and cascade-delete downstream results involving the winner. */
+export async function clearMatchResult(
+  tournamentId: string,
+  matchId: string,
+): Promise<{ ok: boolean; error?: string; cascadeDeleted?: string[] }> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  // Get the existing result to find the winner for cascade
+  const { data: existing } = await admin
+    .from('match_results')
+    .select('winner_external_id, round')
+    .eq('tournament_id', tournamentId)
+    .eq('external_match_id', matchId)
+    .maybeSingle()
+
+  if (!existing) return { ok: false, error: 'No result found for this match' }
+
+  // Cascade delete downstream results involving this winner
+  let cascadeDeleted: string[] = []
+  const downstream = await findDownstreamResults(admin, tournamentId, existing.winner_external_id, existing.round)
+  if (downstream.length > 0) {
+    await admin
+      .from('match_results')
+      .delete()
+      .eq('tournament_id', tournamentId)
+      .in('external_match_id', downstream)
+    cascadeDeleted = downstream
+  }
+
+  // Delete the result itself
+  const { error } = await admin
+    .from('match_results')
+    .delete()
+    .eq('tournament_id', tournamentId)
+    .eq('external_match_id', matchId)
+
+  if (error) return { ok: false, error: error.message }
+
+  revalidateTag('tournament-detail')
+  return { ok: true, cascadeDeleted }
 }

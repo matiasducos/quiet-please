@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
-import { saveMatchResult, setTournamentStatus } from '../../../actions'
+import { saveMatchResult, clearMatchResult, setTournamentStatus } from '../../../actions'
 
 interface Player {
   externalId: string
@@ -143,7 +143,7 @@ export default function ResultsEntry({
   async function handleSelectWinner(match: DrawMatch, winnerId: string, loserId: string) {
     setSavingMatch(match.matchId)
     try {
-      const { ok, error } = await saveMatchResult(
+      const { ok, error, cascadeDeleted } = await saveMatchResult(
         tournamentId,
         match.matchId,
         winnerId,
@@ -151,7 +151,9 @@ export default function ResultsEntry({
       )
       if (ok) {
         setResults(prev => {
-          const filtered = prev.filter(r => r.external_match_id !== match.matchId)
+          // Remove this match + any cascade-deleted downstream matches
+          const removedIds = new Set([match.matchId, ...(cascadeDeleted ?? [])])
+          const filtered = prev.filter(r => !removedIds.has(r.external_match_id))
           return [...filtered, {
             external_match_id: match.matchId,
             round: match.round,
@@ -166,8 +168,40 @@ export default function ResultsEntry({
           next.delete(match.matchId)
           return next
         })
+        if (cascadeDeleted?.length) {
+          alert(`Result saved. ${cascadeDeleted.length} downstream result(s) were removed because the winner changed.`)
+        }
       } else {
         alert(error ?? 'Failed to save result')
+      }
+    } finally {
+      setSavingMatch(null)
+    }
+  }
+
+  async function handleClearResult(match: DrawMatch) {
+    if (!confirm('Clear this result? Downstream results involving the winner will also be removed.')) return
+    setSavingMatch(match.matchId)
+    try {
+      const { ok, error, cascadeDeleted } = await clearMatchResult(
+        tournamentId,
+        match.matchId,
+      )
+      if (ok) {
+        setResults(prev => {
+          const removedIds = new Set([match.matchId, ...(cascadeDeleted ?? [])])
+          return prev.filter(r => !removedIds.has(r.external_match_id))
+        })
+        setEditingMatches(prev => {
+          const next = new Set(prev)
+          next.delete(match.matchId)
+          return next
+        })
+        if (cascadeDeleted?.length) {
+          alert(`Result cleared. ${cascadeDeleted.length} downstream result(s) were also removed.`)
+        }
+      } else {
+        alert(error ?? 'Failed to clear result')
       }
     } finally {
       setSavingMatch(null)
@@ -354,24 +388,43 @@ export default function ResultsEntry({
                             </span>
                           )}
 
-                          {/* Edit button — shown for matches with results (non-bye) that are not currently being edited */}
+                          {/* Edit + Clear buttons — shown for matches with results (non-bye) that are not currently being edited */}
                           {result && !isBye && !isEditing && (
-                            <button
-                              type="button"
-                              onClick={() => toggleEditMatch(match.matchId)}
-                              style={{
-                                fontFamily: 'var(--font-mono)',
-                                fontSize: '0.6rem',
-                                color: 'var(--muted)',
-                                background: 'none',
-                                border: '1px solid var(--chalk-dim)',
-                                borderRadius: '2px',
-                                padding: '2px 6px',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              Edit
-                            </button>
+                            <div className="flex gap-1">
+                              <button
+                                type="button"
+                                onClick={() => toggleEditMatch(match.matchId)}
+                                style={{
+                                  fontFamily: 'var(--font-mono)',
+                                  fontSize: '0.6rem',
+                                  color: 'var(--muted)',
+                                  background: 'none',
+                                  border: '1px solid var(--chalk-dim)',
+                                  borderRadius: '2px',
+                                  padding: '2px 6px',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleClearResult(match)}
+                                disabled={isSaving}
+                                style={{
+                                  fontFamily: 'var(--font-mono)',
+                                  fontSize: '0.6rem',
+                                  color: '#991b1b',
+                                  background: 'none',
+                                  border: '1px solid #fecaca',
+                                  borderRadius: '2px',
+                                  padding: '2px 6px',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Clear
+                              </button>
+                            </div>
                           )}
 
                           {/* Cancel edit button */}
