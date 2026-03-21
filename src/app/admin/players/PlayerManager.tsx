@@ -2,9 +2,62 @@
 
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
-import { createPlayer, searchPlayers, seedPlayersFromDraws, seedPlayersFromApi } from '../actions'
+import { createPlayer, searchPlayers, updatePlayerCountry, seedPlayersFromDraws, seedPlayersFromApi } from '../actions'
+import { nameToFlag } from '@/app/admin/countries'
 
 type Player = { id: string; external_id: string; name: string; country: string; tour: string }
+
+function PlayerRow({ player: p, onUpdate }: { player: { id: string; external_id: string; name: string; country: string; tour: string }; onUpdate: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(p.country)
+  const [saving, setSaving] = useState(false)
+  const flag = nameToFlag(p.country)
+
+  async function save() {
+    if (value.trim() === p.country) { setEditing(false); return }
+    setSaving(true)
+    const { ok } = await updatePlayerCountry(p.id, value.trim())
+    setSaving(false)
+    if (ok) {
+      setEditing(false)
+      onUpdate()
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3 py-2 px-2 rounded-sm" style={{ background: 'var(--chalk)' }}>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--ink)', flex: 1 }}>
+        {p.name}
+      </span>
+      {editing ? (
+        <div className="flex items-center gap-1">
+          <input
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false) }}
+            autoFocus
+            style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', padding: '2px 6px', border: '1px solid var(--court)', borderRadius: '2px', width: '120px' }}
+          />
+          <button onClick={save} disabled={saving} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--court)', background: 'none', border: 'none', cursor: 'pointer' }}>
+            {saving ? '...' : '✓'}
+          </button>
+        </div>
+      ) : (
+        <span
+          onClick={() => setEditing(true)}
+          style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', cursor: 'pointer' }}
+          title="Click to edit country"
+        >
+          {flag && <span style={{ marginRight: '3px' }}>{flag}</span>}
+          {p.country || '—'}
+        </span>
+      )}
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'white', padding: '2px 6px', borderRadius: '2px', border: '1px solid var(--chalk-dim)' }}>
+        {p.tour}
+      </span>
+    </div>
+  )
+}
 
 export default function PlayerManager() {
   const [query, setQuery] = useState('')
@@ -344,20 +397,7 @@ export default function PlayerManager() {
           {results.length > 0 && (
             <div className="flex flex-col gap-1">
               {results.map(p => (
-                <div key={p.id} className="flex items-center gap-3 py-2 px-2 rounded-sm" style={{ background: 'var(--chalk)' }}>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--ink)', flex: 1 }}>
-                    {p.name}
-                  </span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
-                    {p.country}
-                  </span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'white', padding: '2px 6px', borderRadius: '2px', border: '1px solid var(--chalk-dim)' }}>
-                    {p.tour}
-                  </span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
-                    {p.external_id}
-                  </span>
-                </div>
+                <PlayerRow key={p.id} player={p} onUpdate={() => doSearch(query)} />
               ))}
             </div>
           )}

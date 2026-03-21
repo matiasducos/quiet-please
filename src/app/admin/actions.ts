@@ -622,6 +622,20 @@ export async function createPlayer(data: {
   return { ok: true, player: player as { id: string; external_id: string; name: string; country: string; tour: string } }
 }
 
+export async function updatePlayerCountry(
+  playerId: string,
+  country: string,
+): Promise<{ ok: boolean; error?: string }> {
+  await assertAdmin()
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('players')
+    .update({ country: country.trim() })
+    .eq('id', playerId)
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
 export async function searchPlayers(
   query: string,
   tour?: 'ATP' | 'WTA',
@@ -894,6 +908,7 @@ export async function getManualTournaments(): Promise<{
   tournaments: Array<{
     id: string; name: string; tour: string; category: string; status: string
     starts_at: string | null; surface: string | null
+    location: string | null; flag_emoji: string | null
     has_draw: boolean
   }>
 }> {
@@ -903,7 +918,7 @@ export async function getManualTournaments(): Promise<{
   // Only show admin-created tournaments (is_manual = true)
   const { data: tournaments, error } = await admin
     .from('tournaments')
-    .select('id, name, tour, category, status, starts_at, surface')
+    .select('id, name, tour, category, status, starts_at, surface, location, flag_emoji')
     .eq('is_manual', true)
     .order('starts_at', { ascending: false })
     .limit(50)
@@ -931,6 +946,8 @@ export async function getManualTournaments(): Promise<{
       status: t.status,
       starts_at: t.starts_at,
       surface: t.surface,
+      location: t.location ?? null,
+      flag_emoji: t.flag_emoji ?? null,
       has_draw: drawSet.has(t.id),
     })),
   }
@@ -942,6 +959,8 @@ export interface ScoringTournament {
   id: string
   name: string
   status: string
+  location: string | null
+  flag_emoji: string | null
   totalResults: number      // non-BYE match results
   scoredResults: number     // unique match_result_ids in point_ledger
   pendingResults: number    // totalResults - scoredResults
@@ -954,7 +973,7 @@ export async function getScoringStatus(): Promise<ScoringTournament[]> {
   // Get in_progress and completed tournaments
   const { data: tournaments } = await admin
     .from('tournaments')
-    .select('id, name, status')
+    .select('id, name, status, location, flag_emoji')
     .in('status', ['in_progress', 'completed'])
     .order('starts_at', { ascending: false })
 
@@ -1006,6 +1025,8 @@ export async function getScoringStatus(): Promise<ScoringTournament[]> {
       id: t.id,
       name: t.name,
       status: t.status,
+      location: t.location ?? null,
+      flag_emoji: t.flag_emoji ?? null,
       totalResults: total,
       scoredResults: scored,
       pendingResults: total - scored,
