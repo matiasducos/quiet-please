@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getNavProfile } from '@/lib/supabase/profile'
 import { unstable_cache } from 'next/cache'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
@@ -78,29 +79,22 @@ export default async function TournamentDetailPage({ params }: { params: Promise
 
   // Public data (cached) + auth (per-request, no redirect)
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
 
-  const [{ tournament, draw }, prediction, profile] = await Promise.all([
+  const [{ user, profile }, { tournament, draw }] = await Promise.all([
+    getNavProfile(),
     getTournamentDetail(id),
-    user
-      ? supabase
-          .from('predictions')
-          .select('id, picks, is_fully_locked, points_earned')
-          .eq('tournament_id', id)
-          .eq('user_id', user.id)
-          .is('challenge_id', null)   // Only fetch the global prediction
-          .single()
-          .then(r => r.data)
-      : Promise.resolve(null),
-    user
-      ? supabase
-          .from('users')
-          .select('username, ranking_points')
-          .eq('id', user.id)
-          .single()
-          .then(r => r.data)
-      : Promise.resolve(null),
   ])
+
+  const prediction = user
+    ? await supabase
+        .from('predictions')
+        .select('id, picks, is_fully_locked, points_earned')
+        .eq('tournament_id', id)
+        .eq('user_id', user.id)
+        .is('challenge_id', null)
+        .single()
+        .then(r => r.data)
+    : null
 
   if (!tournament) notFound()
   const t = tournament as TournamentRow

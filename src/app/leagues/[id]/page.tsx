@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
@@ -16,18 +17,17 @@ function timeAgo(dateStr: string): string {
 }
 
 export default async function LeagueDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, profile } = await getNavProfile()
   if (!user) redirect('/login')
 
   const { id } = await params
+  const supabase = await createClient()
 
-  // ── Parallel fetch: league, membership, members, profile ────────────────
-  const [{ data: league }, { data: myMembership }, { data: members }, { data: profile }] = await Promise.all([
+  // ── Parallel fetch: league, membership, members ─────────────────────────
+  const [{ data: league }, { data: myMembership }, { data: members }] = await Promise.all([
     supabase.from('leagues').select('*').eq('id', id).single(),
     supabase.from('league_members').select('total_points').eq('league_id', id).eq('user_id', user.id).single(),
     supabase.from('league_members').select('user_id, total_points, joined_at, users(username)').eq('league_id', id).order('total_points', { ascending: false }),
-    supabase.from('users').select('username, ranking_points').eq('id', user.id).single(),
   ])
 
   if (!league) notFound()

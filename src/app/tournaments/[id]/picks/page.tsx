@@ -1,5 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getNavProfile } from '@/lib/supabase/profile'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
@@ -10,8 +10,7 @@ export default async function AllPicksPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, profile } = await getNavProfile()
 
   // Public page — fetch tournament with admin client
   const admin = createAdminClient()
@@ -26,19 +25,14 @@ export default async function AllPicksPage({
   // Picks only visible once tournament is in_progress or completed
   const picksVisible = tournament.status === 'in_progress' || tournament.status === 'completed'
 
-  const [{ data: predictions }, profile] = await Promise.all([
-    picksVisible
-      ? admin
-          .from('predictions')
-          .select('id, user_id, points_earned, users(username)')
-          .eq('tournament_id', id)
-          .is('challenge_id', null)
-          .order('points_earned', { ascending: false })
-      : Promise.resolve({ data: [] }),
-    user
-      ? supabase.from('users').select('username, ranking_points').eq('id', user.id).single().then(r => r.data)
-      : Promise.resolve(null),
-  ])
+  const { data: predictions } = picksVisible
+    ? await admin
+        .from('predictions')
+        .select('id, user_id, points_earned, users(username)')
+        .eq('tournament_id', id)
+        .is('challenge_id', null)
+        .order('points_earned', { ascending: false })
+    : { data: [] }
 
   const items = (predictions ?? []) as any[]
 

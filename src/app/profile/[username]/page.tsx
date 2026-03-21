@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
@@ -16,14 +17,15 @@ export default async function ProfilePage({
 }) {
   const { username } = await params
   const { msg, type, edit } = await searchParams
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, profile: currentProfile } = await getNavProfile()
   if (!user) redirect('/login')
 
-  const [{ data: currentProfile }, { data: profile }] = await Promise.all([
-    supabase.from('users').select('username, ranking_points').eq('id', user.id).single(),
-    supabase.from('users').select('id, username, total_points, ranking_points, atp_ranking_points, wta_ranking_points, country, city, created_at').eq('username', username).single(),
-  ])
+  const supabase = await createClient()
+  const { data: profile } = await supabase
+    .from('users')
+    .select('id, username, total_points, ranking_points, atp_ranking_points, wta_ranking_points, country, city, created_at')
+    .eq('username', username)
+    .single()
 
   if (!profile) {
     return (

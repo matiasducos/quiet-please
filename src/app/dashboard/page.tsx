@@ -1,16 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
+import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 
 export default async function DashboardPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, profile } = await getNavProfile()
   if (!user) redirect('/login')
 
-  // ── Parallel fetch: profile + tournaments + prediction count ────────────
-  const [{ data: profile }, { data: upcomingTournaments }, { count: predictionCount }] = await Promise.all([
-    supabase.from('users').select('username, ranking_points').eq('id', user.id).single(),
+  const supabase = await createClient()
+  const [{ data: upcomingTournaments }, { count: predictionCount }] = await Promise.all([
     supabase.from('tournaments')
       .select('id, name, tour, surface, category, starts_at, status, location, flag_emoji')
       .in('status', ['accepting_predictions', 'upcoming'])

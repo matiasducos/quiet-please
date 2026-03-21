@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
@@ -10,19 +11,15 @@ export default async function FriendsPage({
 }: {
   searchParams: Promise<{ msg?: string; type?: string }>
 }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, profile } = await getNavProfile()
   if (!user) redirect('/login')
 
   const admin = createAdminClient()
 
-  // ── Parallel fetch: profile + friendships ──────────────────────────────
-  const [{ data: profile }, { data: friendships }] = await Promise.all([
-    supabase.from('users').select('username, ranking_points').eq('id', user.id).single(),
-    admin.from('friendships').select('id, requester_id, addressee_id, status, created_at')
-      .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
-      .order('created_at', { ascending: false }),
-  ])
+  const { data: friendships } = await admin
+    .from('friendships').select('id, requester_id, addressee_id, status, created_at')
+    .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+    .order('created_at', { ascending: false })
 
   // Fetch usernames for all involved users
   const otherIds = [...new Set(

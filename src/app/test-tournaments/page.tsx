@@ -1,21 +1,16 @@
 import { createClient } from '@/lib/supabase/server'
+import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
 import Nav from '@/components/Nav'
 import TestSandbox from './TestSandbox'
 import { TEST_EXTERNAL_ID } from './constants'
 
 export default async function TestTournamentsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, profile } = await getNavProfile()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('users')
-    .select('username, ranking_points')
-    .eq('id', user.id)
-    .single()
-
   // Load test tournament state
+  const supabase = await createClient()
   const { data: tournament } = await supabase
     .from('tournaments')
     .select('*')

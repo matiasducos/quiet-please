@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
@@ -48,19 +49,16 @@ function formatRelative(dateStr: string) {
 }
 
 export default async function NotificationsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, profile } = await getNavProfile()
   if (!user) redirect('/login')
 
-  const [{ data: notifications }, { data: profile }] = await Promise.all([
-    (supabase as any)
-      .from('notifications')
-      .select('id, type, meta, read_at, created_at, tournament_id')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(50),
-    supabase.from('users').select('username, ranking_points').eq('id', user.id).single(),
-  ])
+  const supabase = await createClient()
+  const { data: notifications } = await (supabase as any)
+    .from('notifications')
+    .select('id, type, meta, read_at, created_at, tournament_id')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(50)
 
   // Mark as read (fire-and-forget — we don't await so page renders immediately)
   markAllRead(user.id)

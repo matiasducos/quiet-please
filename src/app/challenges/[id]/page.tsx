@@ -1,5 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
@@ -11,8 +11,7 @@ export default async function ChallengeDetailPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, profile } = await getNavProfile()
   if (!user) redirect('/login')
 
   const { id } = await params
@@ -29,12 +28,6 @@ export default async function ChallengeDetailPage({
   const isChallenger = challenge.challenger_id === user.id
   const isChallenged = challenge.challenged_id === user.id
   if (!isChallenger && !isChallenged) redirect('/challenges')
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('username, ranking_points')
-    .eq('id', user.id)
-    .single()
 
   // Fetch both player profiles + tournament
   const [{ data: challengerProfile }, { data: challengedProfile }, { data: tournament }] = await Promise.all([

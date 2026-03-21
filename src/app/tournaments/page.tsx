@@ -1,6 +1,6 @@
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { unstable_cache } from 'next/cache'
+import { getNavProfile } from '@/lib/supabase/profile'
 import Nav from '@/components/Nav'
 import TournamentsClientList from '@/components/TournamentsClientList'
 
@@ -23,18 +23,13 @@ function getTournaments(tour: string, status: string) {
 }
 
 export default async function TournamentsPage({ searchParams }: { searchParams: Promise<{ tour?: string; status?: string }> }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
   const params       = await searchParams
   const activeTour   = params.tour === 'WTA' ? 'WTA' : 'ATP'
   const activeStatus = VALID_STATUSES.includes(params.status as any) ? params.status! : 'all'
 
-  const [tournaments, profile] = await Promise.all([
+  const [{ user, profile }, tournaments] = await Promise.all([
+    getNavProfile(),
     getTournaments(activeTour, activeStatus),
-    user
-      ? supabase.from('users').select('username, ranking_points').eq('id', user.id).single().then(r => r.data)
-      : Promise.resolve(null),
   ])
 
   return (

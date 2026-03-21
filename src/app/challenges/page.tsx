@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
@@ -31,20 +32,16 @@ function statusLabel(status: string, isChallenger: boolean): { text: string; col
 }
 
 export default async function ChallengesPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, profile } = await getNavProfile()
   if (!user) redirect('/login')
 
   const admin = createAdminClient()
 
-  // ── Parallel fetch: profile + challenges ───────────────────────────────
-  const [{ data: profile }, { data: rawChallenges }] = await Promise.all([
-    supabase.from('users').select('username, ranking_points').eq('id', user.id).single(),
-    admin.from('challenges')
-      .select('id, challenger_id, challenged_id, tournament_id, status, challenger_points, challenged_points, winner_id, created_at')
-      .or(`challenger_id.eq.${user.id},challenged_id.eq.${user.id}`)
-      .order('created_at', { ascending: false }),
-  ])
+  const { data: rawChallenges } = await admin
+    .from('challenges')
+    .select('id, challenger_id, challenged_id, tournament_id, status, challenger_points, challenged_points, winner_id, created_at')
+    .or(`challenger_id.eq.${user.id},challenged_id.eq.${user.id}`)
+    .order('created_at', { ascending: false })
 
   // Fetch tournament details
   const tournamentIds = [...new Set((rawChallenges ?? []).map(c => c.tournament_id))]

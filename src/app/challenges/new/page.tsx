@@ -1,5 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
@@ -11,15 +11,8 @@ export default async function NewChallengePage({
 }: {
   searchParams: Promise<{ friend_id?: string }>
 }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, profile } = await getNavProfile()
   if (!user) redirect('/login')
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('username, ranking_points')
-    .eq('id', user.id)
-    .single()
 
   const { friend_id: friendId } = await searchParams
   const admin = createAdminClient()

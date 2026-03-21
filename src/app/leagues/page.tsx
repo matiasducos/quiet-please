@@ -1,21 +1,19 @@
 import { createClient } from '@/lib/supabase/server'
+import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 
 export default async function LeaguesPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, profile } = await getNavProfile()
   if (!user) redirect('/login')
 
-  // ── Parallel fetch: profile + memberships ────────────────────────────────
-  const [{ data: profile }, { data: memberships }] = await Promise.all([
-    supabase.from('users').select('username, ranking_points').eq('id', user.id).single(),
-    supabase.from('league_members')
-      .select('league_id, total_points, joined_at, leagues(id, name, description, invite_code, owner_id, is_active)')
-      .eq('user_id', user.id)
-      .order('joined_at', { ascending: false }),
-  ])
+  const supabase = await createClient()
+  const { data: memberships } = await supabase
+    .from('league_members')
+    .select('league_id, total_points, joined_at, leagues(id, name, description, invite_code, owner_id, is_active)')
+    .eq('user_id', user.id)
+    .order('joined_at', { ascending: false })
 
   const leagues = (memberships ?? []).map(m => ({
     ...(m.leagues as any),
