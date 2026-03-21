@@ -23,6 +23,7 @@ interface TournamentBreakdown {
   name: string
   tour: string
   points: number
+  flag: string | null
 }
 
 const hStyle: React.CSSProperties = {
@@ -146,6 +147,7 @@ export default function LeaderboardTable({
                     <div key={bi} className="flex items-center justify-between py-1.5">
                       <div className="flex items-center gap-2">
                         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--ink)' }}>
+                          {b.flag && <span style={{ marginRight: '4px' }}>{b.flag}</span>}
                           {b.name}
                         </span>
                         <span className="px-1.5 py-0.5 rounded-sm" style={{
