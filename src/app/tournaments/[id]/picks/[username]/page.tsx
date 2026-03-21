@@ -1,3 +1,4 @@
+import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { notFound } from 'next/navigation'
 import BracketPredictor from '../../predict/BracketPredictor'
@@ -11,6 +12,11 @@ export default async function UserPicksPage({
 }) {
   const { id, username } = await params
   const { challenge: challengeId } = await searchParams
+
+  // Get current viewer for access control
+  const userClient = await createClient()
+  const { data: { user: viewer } } = await userClient.auth.getUser()
+
   const supabase = createAdminClient()
 
   const [{ data: tournament }, { data: draw }, { data: targetUser }] = await Promise.all([
@@ -36,6 +42,12 @@ export default async function UserPicksPage({
   }
 
   const { data: prediction } = await predQuery.single()
+
+  // Security: don't expose unlocked picks to other users
+  const isOwnPicks = viewer?.id === targetUser.id
+  if (prediction && !prediction.is_fully_locked && !isOwnPicks) {
+    notFound()
+  }
 
   // Fetch match results for color coding + per-match points
   const [{ data: results }, { data: pointRows }] = await Promise.all([

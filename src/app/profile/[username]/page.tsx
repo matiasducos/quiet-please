@@ -53,20 +53,26 @@ export default async function ProfilePage({
 
   const globalRank = (usersAhead ?? 0) + 1
 
+  const isOwnProfile = user.id === profile.id
+
   // All global predictions with tournament info
-  const { data: predictions } = await supabase
+  // When viewing someone else's profile, only show locked predictions
+  let predQuery = supabase
     .from('predictions')
     .select('id, points_earned, created_at, is_fully_locked, tournaments(id, name, tour, category, starts_at, status)')
     .eq('user_id', profile.id)
     .is('challenge_id', null)
-    .order('created_at', { ascending: false })
+
+  if (!isOwnProfile) {
+    predQuery = predQuery.eq('is_fully_locked', true)
+  }
+
+  const { data: predictions } = await predQuery.order('created_at', { ascending: false })
 
   const tournamentsCount = predictions?.length ?? 0
   const hitRate = tournamentsCount > 0
     ? Math.round(((predictions?.filter(p => (p.points_earned ?? 0) > 0).length ?? 0) / tournamentsCount) * 100)
     : 0
-
-  const isOwnProfile = user.id === profile.id
   const memberSince  = new Date(profile.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 
   // Admin detection — only relevant on own profile
