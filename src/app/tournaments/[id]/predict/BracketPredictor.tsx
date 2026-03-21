@@ -139,6 +139,7 @@ export default function BracketPredictor({
   const [saved, setSaved] = useState(false)
   const [slotError, setSlotError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  const [showImport, setShowImport] = useState(true)
   const [activeRound, setActiveRound] = useState(() => {
     const sorted = draw.rounds.slice().sort((a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b))
     return sorted[0] ?? 'QF'
@@ -376,7 +377,7 @@ export default function BracketPredictor({
     : null
 
   // Check if we're in challenge mode with empty picks (for import prompt)
-  const showImportBanner = !!challengeContext && pickedCount === 0 && !fullyLocked && !readOnly
+  const showImportBanner = !!challengeContext && pickedCount === 0 && !fullyLocked && !readOnly && showImport
 
   // ── Determine what the editable state really is ──────────────────────────
   const isEditing = !readOnly && !fullyLocked
@@ -561,19 +562,28 @@ export default function BracketPredictor({
         {showImportBanner && (
           <div className="bg-white rounded-sm border p-5 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
             <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', marginBottom: '0.25rem' }}>
-              Start with your global picks?
+              How do you want to start?
             </p>
             <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '1rem', lineHeight: 1.6 }}>
-              Import your existing predictions as a starting point. You can customize them for this challenge.
+              Import your existing predictions as a starting point, or start fresh for this challenge.
             </p>
-            <button
-              onClick={handleImportGlobal}
-              disabled={importing}
-              className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90 disabled:opacity-40"
-              style={{ background: 'var(--court)' }}
-            >
-              {importing ? 'Importing…' : 'Import global picks'}
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={handleImportGlobal}
+                disabled={importing}
+                className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90 disabled:opacity-40"
+                style={{ background: 'var(--court)' }}
+              >
+                {importing ? 'Importing…' : 'Import global picks'}
+              </button>
+              <button
+                onClick={() => setShowImport(false)}
+                className="px-4 py-2 text-sm rounded-sm border hover:bg-white transition-colors"
+                style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
+              >
+                Start from scratch
+              </button>
+            </div>
           </div>
         )}
 
