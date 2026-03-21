@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
 import { insertNotifications } from '@/lib/notifications'
+import { rateLimit } from '@/lib/rate-limit'
 
 export type SaveResult =
   | { success: true; predictionId?: string }
@@ -42,6 +43,10 @@ export async function savePrediction({
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: 'unknown', message: 'Not authenticated' }
+
+  // Rate limit: 20 saves per minute per user
+  const rl = rateLimit(`save:${user.id}`, { maxRequests: 20, windowMs: 60_000 })
+  if (rl.limited) return { success: false, error: 'unknown', message: `Too many requests. Try again in ${rl.retryAfter}s.` }
 
   // ── 1. Guard against changing picks for played matches ─────────────────
   // Fetch match results for this tournament to determine which picks are frozen
@@ -180,19 +185,22 @@ export async function savePrediction({
         const circuit = tournament.tour as 'ATP' | 'WTA'
         const weeks = getTournamentISOWeeks(tournament.starts_at, tournament.ends_at)
 
-        for (const w of weeks) {
-          const { data: existing } = await supabase
+        // Batch check: single query for all weeks instead of N separate queries
+        if (weeks.length > 0) {
+          const weekFilters = weeks.map(w =>
+            `and(iso_year.eq.${w.year},iso_week.eq.${w.week})`
+          ).join(',')
+          const { data: conflicts } = await supabase
             .from('weekly_slots')
             .select('tournament_id, tournaments(name)')
             .eq('user_id', user.id)
             .eq('circuit', circuit)
-            .eq('iso_year', w.year)
-            .eq('iso_week', w.week)
             .neq('tournament_id', tournamentId)
-            .maybeSingle()
+            .or(weekFilters)
+            .limit(1)
 
-          if (existing) {
-            const conflictingName = (existing.tournaments as any)?.name ?? 'another tournament'
+          if (conflicts && conflicts.length > 0) {
+            const conflictingName = (conflicts[0].tournaments as any)?.name ?? 'another tournament'
             return { success: false, error: 'slot_taken', conflictingTournamentName: conflictingName }
           }
         }

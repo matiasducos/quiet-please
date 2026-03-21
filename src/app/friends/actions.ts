@@ -5,11 +5,16 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { insertNotifications } from '@/lib/notifications'
+import { rateLimit } from '@/lib/rate-limit'
 
 export async function sendFriendRequest(formData: FormData) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+
+  // Rate limit: 10 friend requests per minute per user
+  const rl = rateLimit(`friend:${user.id}`, { maxRequests: 10, windowMs: 60_000 })
+  if (rl.limited) redirect('/friends?msg=Too+many+requests.+Try+again+shortly.&type=error')
 
   const username = (formData.get('username') as string)?.trim()
   const returnTo = (formData.get('return_to') as string) || '/friends'

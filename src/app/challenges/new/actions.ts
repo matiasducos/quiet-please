@@ -4,11 +4,16 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { insertNotifications } from '@/lib/notifications'
+import { rateLimit } from '@/lib/rate-limit'
 
 export async function createChallenge(formData: FormData) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+
+  // Rate limit: 5 challenge creations per minute per user
+  const rl = rateLimit(`challenge:${user.id}`, { maxRequests: 5, windowMs: 60_000 })
+  if (rl.limited) return { error: `Too many requests. Try again in ${rl.retryAfter}s.` }
 
   const friendId     = formData.get('friend_id') as string
   const tournamentId = formData.get('tournament_id') as string
@@ -16,45 +21,25 @@ export async function createChallenge(formData: FormData) {
 
   const admin = createAdminClient()
 
-  // Verify an accepted friendship exists in either direction
-  const { data: friendship } = await admin
-    .from('friendships')
-    .select('id')
-    .or(
-      `and(requester_id.eq.${user.id},addressee_id.eq.${friendId}),` +
-      `and(requester_id.eq.${friendId},addressee_id.eq.${user.id})`
-    )
-    .eq('status', 'accepted')
-    .maybeSingle()
+  // ── Parallel fetch: friendship + tournament + existing challenge ────────
+  const [{ data: friendship }, { data: tournament }, { data: existing }] = await Promise.all([
+    admin.from('friendships').select('id')
+      .or(`and(requester_id.eq.${user.id},addressee_id.eq.${friendId}),and(requester_id.eq.${friendId},addressee_id.eq.${user.id})`)
+      .eq('status', 'accepted')
+      .maybeSingle(),
+    admin.from('tournaments').select('id, status').eq('id', tournamentId).single(),
+    admin.from('challenges').select('id')
+      .eq('tournament_id', tournamentId)
+      .in('status', ['pending', 'accepted'])
+      .or(`and(challenger_id.eq.${user.id},challenged_id.eq.${friendId}),and(challenger_id.eq.${friendId},challenged_id.eq.${user.id})`)
+      .maybeSingle(),
+  ])
 
   if (!friendship) return { error: 'No accepted friendship with this user' }
-
-  // Allow challenges for upcoming, accepting_predictions, AND in_progress tournaments
-  // (users can still predict unplayed matches during in_progress)
-  const { data: tournament } = await admin
-    .from('tournaments')
-    .select('id, status')
-    .eq('id', tournamentId)
-    .single()
-
   if (!tournament) return { error: 'Tournament not found' }
   if (tournament.status === 'completed') {
     return { error: 'Cannot create challenges for completed tournaments' }
   }
-
-  // Prevent duplicate challenges: check if an active challenge already exists
-  // between these two users (in either direction) for this tournament
-  const { data: existing } = await admin
-    .from('challenges')
-    .select('id')
-    .eq('tournament_id', tournamentId)
-    .in('status', ['pending', 'accepted'])
-    .or(
-      `and(challenger_id.eq.${user.id},challenged_id.eq.${friendId}),` +
-      `and(challenger_id.eq.${friendId},challenged_id.eq.${user.id})`
-    )
-    .maybeSingle()
-
   if (existing) {
     return { error: 'An active challenge already exists with this friend for this tournament' }
   }

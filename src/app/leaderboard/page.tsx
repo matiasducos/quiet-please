@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { unstable_cache } from 'next/cache'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
@@ -6,6 +8,44 @@ import LeaderboardTable from './LeaderboardTable'
 
 type Scope   = 'worldwide' | 'country' | 'city'
 type Circuit = 'both' | 'atp' | 'wta'
+
+// Cache leaderboard data (same for all users in the same scope/circuit) — 5 min TTL
+const getLeaderboardData = unstable_cache(
+  async (pointsField: string, scope: Scope, scopeCountry: string | null, scopeCity: string | null) => {
+    const supabase = createAdminClient()
+    let query = supabase
+      .from('users')
+      .select('id, username, ranking_points, atp_ranking_points, wta_ranking_points, country, city')
+      .gt(pointsField, 0)
+      .order(pointsField, { ascending: false })
+      .limit(50)
+    if (scope === 'country' && scopeCountry) query = query.eq('country', scopeCountry)
+    if (scope === 'city' && scopeCountry && scopeCity)
+      query = query.eq('country', scopeCountry).eq('city', scopeCity)
+
+    const { data: users } = await query
+
+    const userIds = (users ?? []).map(u => u.id)
+    const { data: userPredictions } = userIds.length > 0
+      ? await supabase.from('predictions')
+          .select('user_id, points_earned, tournaments(name, tour)')
+          .in('user_id', userIds).is('challenge_id', null)
+          .gt('points_earned', 0).order('points_earned', { ascending: false }).limit(500)
+      : { data: [] as any[] }
+
+    const breakdownByUser: Record<string, Array<{ name: string; tour: string; points: number }>> = {}
+    for (const p of userPredictions ?? []) {
+      const t = p.tournaments as any
+      if (!t?.name) continue
+      if (!breakdownByUser[p.user_id]) breakdownByUser[p.user_id] = []
+      breakdownByUser[p.user_id].push({ name: t.name, tour: t.tour ?? '', points: p.points_earned ?? 0 })
+    }
+
+    return { users: users ?? [], breakdownByUser }
+  },
+  ['leaderboard'],
+  { revalidate: 300 }  // 5 minutes
+)
 
 export default async function LeaderboardPage({
   searchParams,
@@ -20,7 +60,13 @@ export default async function LeaderboardPage({
   const scope:   Scope   = (sp.scope   as Scope   | undefined) ?? 'worldwide'
   const circuit: Circuit = (sp.circuit as Circuit | undefined) ?? 'both'
 
-  // ── Current user's profile ──────────────────────────────────────────────
+  // ── Points field based on circuit ───────────────────────────────────────
+  const pointsField =
+    circuit === 'atp' ? 'atp_ranking_points' :
+    circuit === 'wta' ? 'wta_ranking_points' :
+    'ranking_points'
+
+  // ── Parallel fetch: profile + leaderboard ──────────────────────────────
   const { data: profile } = await supabase
     .from('users')
     .select('username, ranking_points, atp_ranking_points, wta_ranking_points, country, city')
@@ -31,50 +77,8 @@ export default async function LeaderboardPage({
   const scopeCountry = sp.country ?? (scope !== 'worldwide' ? profile?.country ?? null : null)
   const scopeCity    = sp.city    ?? (scope === 'city'      ? profile?.city    ?? null : null)
 
-  // ── Points field based on circuit ───────────────────────────────────────
-  const pointsField =
-    circuit === 'atp' ? 'atp_ranking_points' :
-    circuit === 'wta' ? 'wta_ranking_points' :
-    'ranking_points'
-
-  // ── Build leaderboard query ──────────────────────────────────────────────
-  let query = supabase
-    .from('users')
-    .select('id, username, ranking_points, atp_ranking_points, wta_ranking_points, country, city')
-    .gt(pointsField, 0)
-    .order(pointsField, { ascending: false })
-    .limit(50)
-
-  if (scope === 'country' && scopeCountry) {
-    query = query.eq('country', scopeCountry)
-  }
-  if (scope === 'city' && scopeCountry && scopeCity) {
-    query = query.eq('country', scopeCountry).eq('city', scopeCity)
-  }
-
-  const { data: users } = await query
-
-  // ── Per-tournament breakdown for displayed users ──────────────────────
-  const userIds = (users ?? []).map(u => u.id)
-  const { data: userPredictions } = userIds.length > 0
-    ? await supabase
-        .from('predictions')
-        .select('user_id, points_earned, tournaments(name, tour)')
-        .in('user_id', userIds)
-        .is('challenge_id', null)
-        .gt('points_earned', 0)
-        .order('points_earned', { ascending: false })
-        .limit(500)
-    : { data: [] as any[] }
-
-  // Group by user_id
-  const breakdownByUser: Record<string, Array<{ name: string; tour: string; points: number }>> = {}
-  for (const p of userPredictions ?? []) {
-    const t = p.tournaments as any
-    if (!t?.name) continue
-    if (!breakdownByUser[p.user_id]) breakdownByUser[p.user_id] = []
-    breakdownByUser[p.user_id].push({ name: t.name, tour: t.tour ?? '', points: p.points_earned ?? 0 })
-  }
+  // ── Cached leaderboard data (shared across all users in same view) ─────
+  const { users, breakdownByUser } = await getLeaderboardData(pointsField, scope, scopeCountry, scopeCity)
 
   // ── My rank: position in the current scope/circuit view ─────────────────
   const myRankInList = users?.findIndex(u => u.id === user.id) ?? -1
@@ -85,7 +89,7 @@ export default async function LeaderboardPage({
   if (myRankInList < 0 && myPoints > 0) {
     let countQuery = supabase
       .from('users')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .gt(pointsField, myPoints)
     if (scope === 'country' && scopeCountry)
       countQuery = countQuery.eq('country', scopeCountry)

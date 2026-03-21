@@ -8,40 +8,32 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('users')
-    .select('username, ranking_points')
-    .eq('id', user.id)
-    .single()
-
-  const [
-    { data: upcomingTournaments },
-    { count: predictionCount },
-    { count: higherCount },
-  ] = await Promise.all([
-    supabase
-      .from('tournaments')
+  // ── Parallel fetch: profile + tournaments + prediction count ────────────
+  const [{ data: profile }, { data: upcomingTournaments }, { count: predictionCount }] = await Promise.all([
+    supabase.from('users').select('username, ranking_points').eq('id', user.id).single(),
+    supabase.from('tournaments')
       .select('id, name, tour, surface, category, starts_at, status')
       .in('status', ['accepting_predictions', 'upcoming'])
       .order('starts_at', { ascending: true })
       .limit(3),
-    supabase
-      .from('predictions')
+    supabase.from('predictions')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.id)
       .is('challenge_id', null),
-    supabase
-      .from('users')
-      .select('id', { count: 'exact', head: true })
-      .gt('total_points', profile?.total_points ?? 0),
   ])
+
+  // Rank query depends on profile being loaded (needs ranking_points value)
+  const { count: higherCount } = await supabase
+    .from('users')
+    .select('id', { count: 'exact', head: true })
+    .gt('ranking_points', profile?.ranking_points ?? 0)
 
   const globalRank = (higherCount ?? 0) + 1
 
   const stats = [
-    { label: 'Total points', value: profile?.total_points ?? 0 },
-    { label: 'Predictions',  value: predictionCount ?? 0 },
-    { label: 'Global rank',  value: `#${globalRank}` },
+    { label: 'Ranking points', value: profile?.ranking_points ?? 0 },
+    { label: 'Predictions',    value: predictionCount ?? 0 },
+    { label: 'Global rank',    value: `#${globalRank}` },
   ]
 
   return (

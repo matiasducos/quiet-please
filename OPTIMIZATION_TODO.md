@@ -18,35 +18,24 @@ that need fixing as the user base grows.
 
 ## 🟡 High — Fix before 500+ users
 
-- [ ] **Add rate limiting to server actions** — No rate limiting on `savePrediction`, `createChallenge`, `sendFriendRequest`. A bot could spam thousands of requests.
-  - Solution: Upstash Redis rate limiter or simple in-memory token bucket
-  - Files: `predict/actions.ts`, `challenges/new/actions.ts`, `friends/actions.ts`
+- [x] **Add rate limiting to server actions** — ✅ In-memory sliding-window rate limiter (`src/lib/rate-limit.ts`). Applied to `savePrediction` (20/min), `createChallenge` (5/min), `sendFriendRequest` (10/min).
 
 - [x] **Paginate leaderboard predictions query** — ✅ Added `.limit(500)` to leaderboard predictions query.
 
-- [ ] **Cron loads all predictions into memory** — For active tournaments, all predictions are fetched at once. With 10K users, that's 50MB+ in memory.
-  - File: `src/app/api/cron/award-points/route.ts` (lines 52-59)
-  - Fix: Process tournaments one at a time, paginate predictions
+- [x] **Cron loads all predictions into memory** — ✅ Paginated per-tournament (1000/page). Indexed predictions by tournament_id for O(1) lookup. Batch challenge expiration into single UPDATE.
 
-- [ ] **Race condition on challenge creation** — Check-then-insert pattern allows duplicates under concurrent requests. Add database unique constraint.
-  ```sql
-  CREATE UNIQUE INDEX idx_challenges_active_pair ON challenges
-    (LEAST(challenger_id, challenged_id), GREATEST(challenger_id, challenged_id), tournament_id)
-    WHERE status IN ('pending', 'accepted');
-  ```
+- [x] **Race condition on challenge creation** — ✅ Added unique partial index in migration 019 (`idx_challenges_active_pair`). Uses `LEAST/GREATEST` for direction-agnostic constraint.
 
 ## 🟢 Medium — Fix before 2,000+ users
 
 - [x] **Cache admin ID list** — ✅ Cached as module-level `Set` in `src/app/admin/actions.ts`.
 
-- [ ] **Leaderboard rank COUNT query** — When user isn't in top 50, a COUNT query scans all users with more points. Consider approximate ranking or caching.
-  - File: `src/app/leaderboard/page.tsx` (lines 84-94)
+- [x] **Leaderboard rank COUNT query** — ✅ Changed `select('*')` to `select('id')` for lighter COUNT. Cached leaderboard data with `unstable_cache` (5 min TTL).
 
 - [ ] **Multiple getUser() calls per request** — Almost every page calls `supabase.auth.getUser()` then queries the user profile. Could be cached in middleware.
   - Impact: ~2 DB roundtrips saved per page load
 
-- [ ] **Email notifications sent synchronously in cron** — Award-points sends emails inline. Move to async queue.
-  - File: `src/app/api/cron/award-points/route.ts`
+- [x] **Email notifications sent synchronously in cron** — ✅ Emails now fire-and-forget (not awaited before cron response).
 
 ## 🔵 Low — Fix before 10,000+ users
 
@@ -58,7 +47,17 @@ that need fixing as the user base grows.
 
 - [ ] **Move ranking recalculation to DB trigger** — Currently runs as an RPC call per user. A Postgres trigger on `point_ledger` INSERT could auto-recalculate.
 
-- [ ] **Implement ISR/SSG for public pages** — Tournament list, leaderboard could be statically generated with revalidation instead of server-rendered on every request.
+- [ ] **Implement ISR/SSG for public pages** — Tournament list already cached (1h). Leaderboard now cached (5min).
+
+---
+
+## Additional Optimizations Done
+
+- [x] **Parallelize page queries** — ✅ All 7 main pages use `Promise.all` for concurrent DB fetches.
+- [x] **Batch weekly slot checks** — ✅ `savePrediction` now checks all ISO weeks in a single `.or()` query instead of N separate queries.
+- [x] **Parallelize challenge creation** — ✅ Friendship, tournament, and existing challenge checks run concurrently.
+- [x] **Deferred font loading** — ✅ Display/mono fonts load without blocking paint.
+- [x] **Dashboard consistency** — ✅ Fixed `total_points` → `ranking_points` inconsistency.
 
 ---
 
@@ -71,16 +70,3 @@ that need fixing as the user base grows.
 | Auth users | Unlimited | Unlimited | No issue |
 | Edge functions | 500K/mo | 2M/mo | Fine |
 | Realtime connections | 200 | 500 | Not currently used |
-
----
-
-## Quick Reference: Files Most Affected
-
-| File | Issues | Priority |
-|------|--------|----------|
-| `src/app/api/cron/award-points/route.ts` | N+1 loops, memory, sequential processing | 🔴 Critical |
-| `src/app/leaderboard/page.tsx` | Unbounded query, count query | 🟡 High |
-| `src/app/tournaments/[id]/predict/actions.ts` | No rate limiting | 🟡 High |
-| `src/app/challenges/new/actions.ts` | Race condition, no rate limiting | 🟡 High |
-| `src/app/admin/actions.ts` | Admin cache, assertAdmin overhead | 🟢 Medium |
-| `src/app/profile/[username]/page.tsx` | Multiple auth calls | 🟢 Medium |

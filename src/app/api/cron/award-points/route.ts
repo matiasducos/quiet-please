@@ -45,16 +45,26 @@ export async function GET(request: Request) {
     // Get tournament IDs that have results
     const tournamentIds = Array.from(new Set(allResults.map((r: any) => r.tournament_id)))
 
-    // ── 3. Get ALL predictions for those tournaments ──────────────────────
-    // Both global (challenge_id IS NULL) and challenge-specific predictions.
-    // No longer filters by is_locked — we score any prediction that has a
-    // pick for the match, and auto-lock that pick.
-    const { data: predictions } = await supabase
-      .from('predictions')
-      .select('id, user_id, tournament_id, challenge_id, picks, pick_locks, points_earned, expires_at')
-      .in('tournament_id', tournamentIds)
+    // ── 3. Get predictions for those tournaments (paginated) ──────────────
+    // Fetch in pages of 1000 to avoid loading everything into memory at once.
+    const PAGE_SIZE = 1000
+    const predictions: any[] = []
+    for (const tId of tournamentIds) {
+      let from = 0
+      while (true) {
+        const { data: page } = await supabase
+          .from('predictions')
+          .select('id, user_id, tournament_id, challenge_id, picks, pick_locks, points_earned, expires_at')
+          .eq('tournament_id', tId)
+          .range(from, from + PAGE_SIZE - 1)
+        if (!page?.length) break
+        predictions.push(...page)
+        if (page.length < PAGE_SIZE) break
+        from += PAGE_SIZE
+      }
+    }
 
-    if (!predictions?.length) {
+    if (!predictions.length) {
       return NextResponse.json({ message: 'No predictions found', awarded: 0 })
     }
 
@@ -99,6 +109,13 @@ export async function GET(request: Request) {
     // Track auto-locks to apply
     const autoLocks: Map<string, Record<string, string>> = new Map() // predictionId → { matchId: "auto" }
 
+    // Index predictions by tournament_id for O(1) lookup instead of O(n) scan
+    const predsByTournament: Record<string, typeof predictions> = {}
+    for (const p of predictions) {
+      if (!predsByTournament[p.tournament_id]) predsByTournament[p.tournament_id] = []
+      predsByTournament[p.tournament_id].push(p)
+    }
+
     for (const result of allResults as any[]) {
       const tournament = result.tournaments as any
       if (!tournament?.category) continue
@@ -112,9 +129,9 @@ export async function GET(request: Request) {
       if (basePoints <= 0) continue
 
       const bracket = bracketByTournament[result.tournament_id]
+      const tournamentPredictions = predsByTournament[result.tournament_id] ?? []
 
-      for (const prediction of predictions) {
-        if (prediction.tournament_id !== result.tournament_id) continue
+      for (const prediction of tournamentPredictions) {
 
         const picks = prediction.picks as Record<string, string>
 
@@ -275,7 +292,7 @@ export async function GET(request: Request) {
       )
     }
 
-    // ── 10. Notifications + emails (parallelized, non-blocking) ──────────
+    // ── 10. Notifications (blocking) + emails (fire-and-forget) ──────────
     try {
       const notifRows: Array<{ user_id: string; type: string; tournament_id: string; meta: any }> = []
       const emailJobs: Array<{ userId: string; tId: string; tName: string; pts: number }> = []
@@ -293,31 +310,38 @@ export async function GET(request: Request) {
         }
       }
 
-      // Batch insert all notifications at once
+      // Batch insert all notifications at once (await — these are fast DB inserts)
       if (notifRows.length > 0) {
         await (supabase as any).from('notifications').insert(notifRows)
       }
 
-      // Send emails in parallel batches of 10 (to avoid rate limits)
-      for (let i = 0; i < emailJobs.length; i += 10) {
-        await Promise.all(
-          emailJobs.slice(i, i + 10).map(async (job) => {
-            try {
-              const { data: { user: authUser } } = await supabase.auth.admin.getUserById(job.userId)
-              if (authUser?.email) {
-                await sendPointsAwardedEmail({
-                  to: authUser.email,
-                  tournamentName: job.tName,
-                  tournamentId: job.tId,
-                  points: job.pts,
-                  totalPoints: globalUserPointsDelta[job.userId],
-                })
-              }
-            } catch (emailErr) {
-              console.error(`[award-points] email error for ${job.userId}:`, emailErr)
-            }
-          })
-        )
+      // Fire-and-forget emails — don't block the cron response on slow SMTP calls.
+      // Errors are logged but won't fail the cron run.
+      if (emailJobs.length > 0) {
+        const sendEmails = async () => {
+          for (let i = 0; i < emailJobs.length; i += 10) {
+            await Promise.all(
+              emailJobs.slice(i, i + 10).map(async (job) => {
+                try {
+                  const { data: { user: authUser } } = await supabase.auth.admin.getUserById(job.userId)
+                  if (authUser?.email) {
+                    await sendPointsAwardedEmail({
+                      to: authUser.email,
+                      tournamentName: job.tName,
+                      tournamentId: job.tId,
+                      points: job.pts,
+                      totalPoints: globalUserPointsDelta[job.userId],
+                    })
+                  }
+                } catch (emailErr) {
+                  console.error(`[award-points] email error for ${job.userId}:`, emailErr)
+                }
+              })
+            )
+          }
+        }
+        // Don't await — let emails send in background
+        sendEmails().catch(e => console.error('[award-points] email batch error:', e))
       }
     } catch (notifyErr) {
       console.error('[award-points] notification error:', notifyErr)
@@ -344,12 +368,13 @@ export async function GET(request: Request) {
         const startedIds = new Set((startedTournaments ?? []).map(t => t.id))
         const toExpire = pendingChallenges.filter(c => startedIds.has(c.tournament_id))
 
-        for (const c of toExpire) {
+        if (toExpire.length > 0) {
+          const expireIds = toExpire.map(c => c.id)
           await supabase
             .from('challenges')
             .update({ status: 'expired', updated_at: new Date().toISOString() })
-            .eq('id', c.id)
-          challengesExpired++
+            .in('id', expireIds)
+          challengesExpired = toExpire.length
         }
       }
 
