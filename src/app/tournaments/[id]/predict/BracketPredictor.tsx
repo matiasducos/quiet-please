@@ -371,6 +371,21 @@ export default function BracketPredictor({
 
   const matchesForRound = (round: string) => draw.matches.filter(m => m.round === round)
 
+  // Per-round availability: how many matches can still be picked
+  function getRoundStats(round: string): { pickable: number; total: number; picked: number } {
+    const roundMatches = matchesForRound(round)
+    let total = 0
+    let pickable = 0
+    let picked = 0
+    for (const m of roundMatches) {
+      if (byeMatchIds.has(m.matchId)) continue
+      total++
+      if (picks[m.matchId]) picked++
+      if (!isMatchLocked(m.matchId)) pickable++
+    }
+    return { pickable, total, picked }
+  }
+
   // Count correctly picked vs total picked (for read-only summary)
   const correctPicks = readOnly && matchResults
     ? Object.entries(picks).filter(([matchId, playerId]) => matchResults[matchId] === playerId).length
@@ -498,21 +513,37 @@ export default function BracketPredictor({
       {/* Round tabs */}
       <div className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="max-w-5xl mx-auto flex overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-          {sortedRounds.map(round => (
-            <button
-              key={round}
-              onClick={() => setActiveRound(round)}
-              className="px-5 py-3 text-xs whitespace-nowrap border-b-2 transition-colors flex-shrink-0"
-              style={{
-                borderBottomColor: activeRound === round ? 'var(--court)' : 'transparent',
-                color: activeRound === round ? 'var(--court)' : 'var(--muted)',
-                fontFamily: 'var(--font-mono)',
-                letterSpacing: '0.04em',
-              }}
-            >
-              {ROUND_LABELS[round] ?? round}
-            </button>
-          ))}
+          {sortedRounds.map(round => {
+            const stats = getRoundStats(round)
+            const allPlayed = stats.pickable === 0 && stats.total > 0
+            const allPicked = stats.picked === stats.total && stats.total > 0
+            return (
+              <button
+                key={round}
+                onClick={() => setActiveRound(round)}
+                className="px-5 py-3 text-xs whitespace-nowrap border-b-2 transition-colors flex-shrink-0 flex items-center gap-1.5"
+                style={{
+                  borderBottomColor: activeRound === round ? 'var(--court)' : 'transparent',
+                  color: activeRound === round ? 'var(--court)' : 'var(--muted)',
+                  fontFamily: 'var(--font-mono)',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                {ROUND_LABELS[round] ?? round}
+                {!readOnly && stats.total > 0 && (
+                  <span style={{
+                    fontSize: '0.55rem',
+                    padding: '1px 4px',
+                    borderRadius: '2px',
+                    background: allPlayed ? '#f3f4f6' : allPicked ? '#dcfce7' : 'var(--chalk)',
+                    color: allPlayed ? '#9ca3af' : allPicked ? '#166534' : 'var(--muted)',
+                  }}>
+                    {stats.picked}/{stats.total}
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </div>
       </div>
 
