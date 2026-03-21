@@ -490,41 +490,45 @@ export default function DrawBuilder({ tournamentId, tournamentName, drawSize, to
         </nav>
 
         {/* Round tabs */}
-        <div className="flex border-b bg-white overflow-x-auto" style={{ borderColor: 'var(--chalk-dim)', scrollbarWidth: 'none' }}>
-          {rounds.map(round => (
-            <button
-              key={round}
-              onClick={() => setActiveRound(round)}
-              className="px-5 py-3 text-xs whitespace-nowrap border-b-2 transition-colors flex-shrink-0"
-              style={{
-                borderBottomColor: activeRound === round ? 'var(--court)' : 'transparent',
-                color: activeRound === round ? 'var(--court)' : 'var(--muted)',
-                fontFamily: 'var(--font-mono)',
-                letterSpacing: '0.04em',
-              }}
-            >
-              {ROUND_LABELS[round] ?? round}
-              {round === firstRound && (
-                <span style={{ marginLeft: '4px', fontSize: '0.6rem', opacity: 0.6 }}>
-                  ({matchesByRound[round]})
-                </span>
-              )}
-            </button>
-          ))}
+        <div className="border-b bg-white overflow-x-auto" style={{ borderColor: 'var(--chalk-dim)', scrollbarWidth: 'none' }}>
+          <div className="max-w-5xl mx-auto flex px-4 md:px-6">
+            {rounds.map(round => (
+              <button
+                key={round}
+                onClick={() => setActiveRound(round)}
+                className="px-5 py-3 text-xs whitespace-nowrap border-b-2 transition-colors flex-shrink-0"
+                style={{
+                  borderBottomColor: activeRound === round ? 'var(--court)' : 'transparent',
+                  color: activeRound === round ? 'var(--court)' : 'var(--muted)',
+                  fontFamily: 'var(--font-mono)',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                {ROUND_LABELS[round] ?? round}
+                {round === firstRound && (
+                  <span style={{ marginLeft: '4px', fontSize: '0.6rem', opacity: 0.6 }}>
+                    ({matchesByRound[round]})
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Header */}
-      <div className="px-4 md:px-6 py-5 border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.02em' }}>
-          {tournamentName}
-        </h1>
-        <p style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
-          {isFirstRound
-            ? `Build the first-round draw (${matchCount} matches, ${drawSize}-player bracket). Select players or mark as BYE.`
-            : `${ROUND_LABELS[activeRound] ?? activeRound} — ${matchesByRound[activeRound]} matches. These are filled automatically when results are entered.`
-          }
-        </p>
+      <div className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
+        <div className="max-w-5xl mx-auto px-4 md:px-6 py-5">
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.02em' }}>
+            {tournamentName}
+          </h1>
+          <p style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+            {isFirstRound
+              ? `Build the first-round draw (${matchCount} matches, ${drawSize}-player bracket). Select players or mark as BYE.`
+              : `${ROUND_LABELS[activeRound] ?? activeRound} — ${matchesByRound[activeRound]} matches. These are filled automatically when results are entered.`
+            }
+          </p>
+        </div>
       </div>
 
       {/* Match cards */}
