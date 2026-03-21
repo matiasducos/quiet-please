@@ -107,7 +107,7 @@ export default function AdminPanel({ tournaments, scoringStatus }: { tournaments
         const totalPending = pending.reduce((sum, t) => sum + t.pendingResults, 0)
         return (
           <div style={{ background: '#fef3c7', borderBottom: '1px solid #fde68a', padding: '12px 24px' }}>
-            <div className="max-w-3xl mx-auto flex items-center justify-between">
+            <div className="max-w-5xl mx-auto flex items-center justify-between">
               <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: '#92400e', margin: 0 }}>
                 {totalPending} unscored result{totalPending !== 1 ? 's' : ''} across {pending.map(t => t.name).join(', ')}
               </p>
@@ -124,7 +124,7 @@ export default function AdminPanel({ tournaments, scoringStatus }: { tournaments
         )
       })()}
 
-      <div className="max-w-3xl mx-auto px-4 md:px-8 py-10">
+      <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
 
         <div className="mb-8">
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>

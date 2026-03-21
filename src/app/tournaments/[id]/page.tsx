@@ -119,7 +119,7 @@ export default async function TournamentDetailPage({ params }: { params: Promise
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="tournaments" userId={user?.id} />
 
-      <div className="max-w-4xl mx-auto px-4 md:px-8 py-10">
+      <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
 
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 mb-8" style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>

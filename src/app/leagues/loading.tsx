@@ -24,7 +24,7 @@ export default function LeaguesLoading() {
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       <NavSkeleton />
-      <div className="max-w-3xl mx-auto px-8 py-10">
+      <div className="max-w-5xl mx-auto px-8 py-10">
 
         {/* Header row */}
         <div className="flex items-end justify-between mb-8">

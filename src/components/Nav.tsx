@@ -43,7 +43,7 @@ export default function Nav({ username, points = 0, activePage, userId }: NavPro
       `}</style>
 
       {/* Main row: logo + (desktop links) + user area */}
-      <div className="flex items-center justify-between px-4 md:px-8 py-3 md:py-5">
+      <div className="max-w-5xl mx-auto flex items-center justify-between px-4 md:px-8 py-3 md:py-5">
 
         {/* Left: logo + desktop links */}
         <div className="flex items-center gap-6 md:gap-8 min-w-0">
@@ -122,7 +122,7 @@ export default function Nav({ username, points = 0, activePage, userId }: NavPro
 
       {/* Mobile nav links — scrollable row, hidden on md+ */}
       <div
-        className="md:hidden flex border-t overflow-x-auto"
+        className="md:hidden flex border-t overflow-x-auto max-w-5xl mx-auto"
         style={{ borderColor: 'var(--chalk-dim)', scrollbarWidth: 'none' }}
       >
         {NAV_LINKS.map(link => (

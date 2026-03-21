@@ -36,7 +36,7 @@ export default async function ProfilePage({
     return (
       <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
         <Nav username={currentProfile?.username} points={currentProfile?.ranking_points ?? 0} />
-        <div className="max-w-3xl mx-auto px-8 py-20 text-center">
+        <div className="max-w-5xl mx-auto px-8 py-20 text-center">
           <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '1rem' }}>404</p>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', letterSpacing: '-0.02em', marginBottom: '1.5rem' }}>Player not found</h1>
           <Link href="/leaderboard" style={{ color: 'var(--court)', fontSize: '0.9rem' }}>← Back to leaderboard</Link>
@@ -149,7 +149,7 @@ export default async function ProfilePage({
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       <Nav username={currentProfile?.username} points={currentProfile?.ranking_points ?? 0} userId={user.id} />
 
-      <div className="max-w-3xl mx-auto px-8 py-10">
+      <div className="max-w-5xl mx-auto px-8 py-10">
 
         {/* Message banner */}
         {msg && (
