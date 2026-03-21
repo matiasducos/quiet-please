@@ -469,7 +469,7 @@ export default function DrawBuilder({ tournamentId, tournamentName, drawSize, to
       {/* Sticky top: nav + round tabs */}
       <div style={{ position: 'sticky', top: 0, zIndex: 10 }}>
         <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
-          <div className="flex items-center justify-between px-4 md:px-6 py-4">
+          <div className="max-w-5xl mx-auto flex items-center justify-between px-4 md:px-6 py-4">
             <Link href="/admin" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)' }}>
               &larr; Admin
             </Link>

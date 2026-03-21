@@ -389,7 +389,7 @@ export default function BracketPredictor({
 
       {/* Nav */}
       <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
-        <div className="flex items-center justify-between px-4 md:px-6 py-4">
+        <div className="max-w-5xl mx-auto flex items-center justify-between px-4 md:px-6 py-4">
           {/* Logo */}
           <Link href="/dashboard" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)', whiteSpace: 'nowrap' }}>
             Quiet Please

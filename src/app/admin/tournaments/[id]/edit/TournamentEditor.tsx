@@ -88,7 +88,7 @@ export default function TournamentEditor({ tournament }: { tournament: Tournamen
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
-        <div className="flex items-center justify-between px-6 py-4">
+        <div className="max-w-5xl mx-auto flex items-center justify-between px-6 py-4">
           <Link href="/admin" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)' }}>
             &larr; Admin
           </Link>

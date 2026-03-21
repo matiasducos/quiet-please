@@ -188,7 +188,7 @@ export default function ResultsEntry({
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       {/* Sticky admin nav */}
       <nav className="border-b bg-white sticky top-0 z-50" style={{ borderColor: 'var(--chalk-dim)' }}>
-        <div className="flex items-center justify-between px-6 py-4">
+        <div className="max-w-5xl mx-auto flex items-center justify-between px-6 py-4">
           <Link href="/admin" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)' }}>
             &larr; Admin
           </Link>
