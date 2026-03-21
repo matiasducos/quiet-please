@@ -88,12 +88,13 @@ function getPickState(
 }
 
 const PICK_STYLES: Record<string, { bg: string; labelColor: string; labelBg: string; label: string }> = {
-  correct: { bg: '#dcfce7', labelColor: '#166534', labelBg: '#dcfce7', label: '✓ correct' },
-  wrong:   { bg: '#fee2e2', labelColor: '#991b1b', labelBg: '#fee2e2', label: '✗ wrong'   },
-  picked:  { bg: '#eaf3de', labelColor: '#27500A', labelBg: '#eaf3de', label: 'picked'     },
-  winner:  { bg: '#fffbeb', labelColor: '#92400e', labelBg: '#fffbeb', label: 'winner'     },
-  bye:     { bg: '#dbeafe', labelColor: '#1e40af', labelBg: '#dbeafe', label: 'bye'        },
-  none:    { bg: 'white',   labelColor: '',        labelBg: '',        label: ''            },
+  correct:    { bg: '#dcfce7', labelColor: '#166534', labelBg: '#dcfce7', label: '✓ correct'    },
+  wrong:      { bg: '#fee2e2', labelColor: '#991b1b', labelBg: '#fee2e2', label: '✗ wrong'      },
+  picked:     { bg: '#eaf3de', labelColor: '#27500A', labelBg: '#eaf3de', label: 'picked'        },
+  winner:     { bg: '#fffbeb', labelColor: '#92400e', labelBg: '#fffbeb', label: 'winner'        },
+  bye:        { bg: '#dbeafe', labelColor: '#1e40af', labelBg: '#dbeafe', label: 'bye'           },
+  eliminated: { bg: '#fef2f2', labelColor: '#991b1b', labelBg: '#fee2e2', label: 'eliminated'    },
+  none:       { bg: 'white',   labelColor: '',        labelBg: '',        label: ''               },
 }
 
 export default function BracketPredictor({
@@ -170,30 +171,63 @@ export default function BracketPredictor({
   }
 
   // ── Bracket logic ────────────────────────────────────────────────────────
+
+  // Build a reverse feed map: matchId → its feeder matches
+  const reverseFeedMap: Record<string, { player1Feeder?: string; player2Feeder?: string }> = {}
+  for (const m of draw.matches) {
+    const feed = feedMap[m.matchId]
+    if (!feed) continue
+    if (!reverseFeedMap[feed.nextMatchId]) reverseFeedMap[feed.nextMatchId] = {}
+    if (feed.slot === 'player1') reverseFeedMap[feed.nextMatchId].player1Feeder = m.matchId
+    if (feed.slot === 'player2') reverseFeedMap[feed.nextMatchId].player2Feeder = m.matchId
+  }
+
+  // Build a player lookup from all draw matches
+  const allPlayers = new Map<string, Player>()
+  for (const m of draw.matches) {
+    if (m.player1) allPlayers.set(m.player1.externalId, m.player1)
+    if (m.player2) allPlayers.set(m.player2.externalId, m.player2)
+  }
+
+  /**
+   * Resolve who is in a match slot.
+   * Priority: 1) draw data  2) actual result from feeder  3) user pick from feeder  4) null (TBD)
+   */
   function getEffectivePlayer(match: DrawMatch, slot: 'player1' | 'player2'): Player | null {
+    // 1. Draw data has the player directly (first round, or seeded bye)
     const base = match[slot]
     if (base) return base
 
-    const prevMatch = draw.matches.find(m => {
-      const feed = feedMap[m.matchId]
-      return feed?.nextMatchId === match.matchId && feed?.slot === slot
-    })
+    // Find the feeder match for this slot
+    const feederMatchId = slot === 'player1'
+      ? reverseFeedMap[match.matchId]?.player1Feeder
+      : reverseFeedMap[match.matchId]?.player2Feeder
 
-    if (!prevMatch) return null
+    if (!feederMatchId) return null
+    const feederMatch = draw.matches.find(m => m.matchId === feederMatchId)
+    if (!feederMatch) return null
 
-    // BYE auto-advance: the non-null player wins automatically, no pick needed
-    if (isByeMatch(prevMatch)) {
-      return prevMatch.player1 ?? prevMatch.player2
+    // BYE auto-advance: the non-null player wins automatically
+    if (isByeMatch(feederMatch)) {
+      return feederMatch.player1 ?? feederMatch.player2
     }
 
-    const pickedId = picks[prevMatch.matchId]
+    // 2. Actual result from feeder match → real winner advances
+    const feederWinnerId = matchResults?.[feederMatchId]
+    if (feederWinnerId) {
+      return allPlayers.get(feederWinnerId) ?? { externalId: feederWinnerId, name: feederWinnerId, country: '' }
+    }
+
+    // 3. User's pick from feeder match
+    const pickedId = picks[feederMatchId]
     if (!pickedId) return null
 
-    if (prevMatch.player1?.externalId === pickedId) return prevMatch.player1
-    if (prevMatch.player2?.externalId === pickedId) return prevMatch.player2
+    // Resolve the picked player — might be directly on the feeder or recursively resolved
+    if (feederMatch.player1?.externalId === pickedId) return feederMatch.player1
+    if (feederMatch.player2?.externalId === pickedId) return feederMatch.player2
 
-    const p1 = getEffectivePlayer(prevMatch, 'player1')
-    const p2 = getEffectivePlayer(prevMatch, 'player2')
+    const p1 = getEffectivePlayer(feederMatch, 'player1')
+    const p2 = getEffectivePlayer(feederMatch, 'player2')
     if (p1?.externalId === pickedId) return p1
     if (p2?.externalId === pickedId) return p2
 
@@ -652,12 +686,17 @@ export default function BracketPredictor({
                       const noPlayers = !p1 && !p2
                       const lockDisplay = getMatchLockDisplay(match.matchId)
 
-                      // BYE matches: non-null player gets 'bye' state, null side gets 'none'
-                      const s1 = isBye ? (match.player1 ? 'bye' as const : 'none' as const) : getPickState(pickedId, p1?.externalId, actualWinnerId)
-                      const s2 = isBye ? (match.player2 ? 'bye' as const : 'none' as const) : getPickState(pickedId, p2?.externalId, actualWinnerId)
+                      // Dead pick: user picked someone who's been eliminated (not in this match anymore)
+                      const deadPick = !isBye && pickedId && p1 && p2
+                        && pickedId !== p1.externalId && pickedId !== p2.externalId
+                      const deadPickPlayer = deadPick ? allPlayers.get(pickedId) : null
 
-                      // Show per-pick lock button? Only if: editable, has a pick, not saving
-                      const showLockBtn = lockDisplay === 'editable' && !!pickedId && !isBye
+                      // BYE matches: non-null player gets 'bye' state, null side gets 'none'
+                      const s1 = isBye ? (match.player1 ? 'bye' as const : 'none' as const) : getPickState(deadPick ? undefined : pickedId, p1?.externalId, actualWinnerId)
+                      const s2 = isBye ? (match.player2 ? 'bye' as const : 'none' as const) : getPickState(deadPick ? undefined : pickedId, p2?.externalId, actualWinnerId)
+
+                      // Show per-pick lock button? Only if: editable, has a valid (non-dead) pick, not saving
+                      const showLockBtn = lockDisplay === 'editable' && !!pickedId && !isBye && !deadPick
 
                       return (
                         <div key={match.matchId} className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: isBye ? '#bfdbfe' : 'var(--chalk-dim)' }}>
@@ -667,18 +706,28 @@ export default function BracketPredictor({
                               MATCH {i + 1}{isBye ? ' · BYE' : ''}
                             </span>
 
+                            {/* Dead pick indicator */}
+                            {deadPick && (
+                              <span style={{
+                                fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.04em',
+                                color: '#991b1b', background: '#fee2e2', padding: '1px 6px', borderRadius: '2px',
+                              }}>
+                                {deadPickPlayer?.name ?? 'Your pick'} eliminated
+                              </span>
+                            )}
+
                             {/* Lock status / hint */}
-                            {lockDisplay === 'voluntary_locked' && (
+                            {!deadPick && lockDisplay === 'voluntary_locked' && (
                               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em', color: 'var(--court)' }}>
                                 LOCKED ✓
                               </span>
                             )}
-                            {lockDisplay === 'auto_locked' && (
+                            {!deadPick && lockDisplay === 'auto_locked' && (
                               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em', color: 'var(--muted)' }}>
                                 PLAYED
                               </span>
                             )}
-                            {showLockBtn && (
+                            {!deadPick && showLockBtn && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleLockPick(match.matchId) }}
                                 disabled={saving}
@@ -688,7 +737,7 @@ export default function BracketPredictor({
                                 Lock pick
                               </button>
                             )}
-                            {noPlayers && !readOnly && !isBye && lockDisplay === 'editable' && (
+                            {!deadPick && noPlayers && !readOnly && !isBye && lockDisplay === 'editable' && (
                               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
                                 {activeRound === sortedRounds[0] ? 'Players not available yet' : 'Pick earlier rounds first'}
                               </span>
