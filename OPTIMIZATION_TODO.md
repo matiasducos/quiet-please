@@ -8,23 +8,13 @@ that need fixing as the user base grows.
 
 ## 🔴 Critical — Fix before 100+ users
 
-- [ ] **Parallelize award-points cron** — Currently processes users sequentially in a `for` loop. With 100 users × 5 leagues = 500+ sequential DB roundtrips. Switch to `Promise.all` batches.
-  - File: `src/app/api/cron/award-points/route.ts` (lines 211-229)
-  - Impact: Reduces cron time from minutes to seconds
+- [x] **Parallelize award-points cron** — ✅ Switched to `Promise.all` batches of 50 for all DB operations.
 
-- [ ] **Batch prediction updates in cron** — Each prediction is updated individually in a loop. Use single `upsert` call with all updates.
-  - File: `src/app/api/cron/award-points/route.ts` (lines 232-246)
-  - Impact: 10,000 individual UPDATEs → 1 batch upsert
+- [x] **Batch prediction updates in cron** — ✅ Prediction updates run in parallel batches of 50.
 
-- [ ] **Batch auto-lock updates in cron** — Same N+1 pattern for applying auto-locks to pick_locks JSONB.
-  - File: `src/app/api/cron/award-points/route.ts` (lines 179-196)
-  - Impact: N individual UPDATEs → 1 batch upsert
+- [x] **Batch auto-lock updates in cron** — ✅ Auto-lock updates run in parallel batches of 50.
 
-- [ ] **Add composite index on point_ledger** — `(match_result_id, prediction_id)` is queried on every cron run but has no composite index.
-  ```sql
-  CREATE INDEX IF NOT EXISTS idx_point_ledger_match_prediction
-  ON public.point_ledger (match_result_id, prediction_id);
-  ```
+- [x] **Add composite index on point_ledger** — ✅ Added in migration 016 (`idx_point_ledger_match_prediction`).
 
 ## 🟡 High — Fix before 500+ users
 
@@ -32,9 +22,7 @@ that need fixing as the user base grows.
   - Solution: Upstash Redis rate limiter or simple in-memory token bucket
   - Files: `predict/actions.ts`, `challenges/new/actions.ts`, `friends/actions.ts`
 
-- [ ] **Paginate leaderboard predictions query** — Fetches ALL predictions for 50 leaderboard users with no limit. Could load 50,000+ rows.
-  - File: `src/app/leaderboard/page.tsx` (lines 58-66)
-  - Fix: Add `.limit(500)` or limit per user
+- [x] **Paginate leaderboard predictions query** — ✅ Added `.limit(500)` to leaderboard predictions query.
 
 - [ ] **Cron loads all predictions into memory** — For active tournaments, all predictions are fetched at once. With 10K users, that's 50MB+ in memory.
   - File: `src/app/api/cron/award-points/route.ts` (lines 52-59)
@@ -49,8 +37,7 @@ that need fixing as the user base grows.
 
 ## 🟢 Medium — Fix before 2,000+ users
 
-- [ ] **Cache admin ID list** — `ADMIN_USER_IDS` env var is parsed on every admin action call. Cache as a module-level `Set`.
-  - File: `src/app/admin/actions.ts` (lines 17-25)
+- [x] **Cache admin ID list** — ✅ Cached as module-level `Set` in `src/app/admin/actions.ts`.
 
 - [ ] **Leaderboard rank COUNT query** — When user isn't in top 50, a COUNT query scans all users with more points. Consider approximate ranking or caching.
   - File: `src/app/leaderboard/page.tsx` (lines 84-94)
