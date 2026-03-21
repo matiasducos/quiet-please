@@ -89,7 +89,7 @@ export default function AdminPanel({ tournaments, scoringStatus }: { tournaments
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
+      <nav className="border-b bg-white sticky top-0 z-50" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="max-w-5xl mx-auto flex items-center justify-between px-6 py-4">
           <Link href="/dashboard" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)' }}>
             Quiet Please
