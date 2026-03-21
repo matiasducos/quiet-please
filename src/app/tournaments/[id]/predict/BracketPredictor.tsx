@@ -473,9 +473,9 @@ export default function BracketPredictor({
 
       {/* Read-only banner (viewing someone else's picks) */}
       {readOnly && (
-        <div className="px-4 md:px-6 py-2.5" style={{ background: '#f1efe8', borderBottom: '1px solid var(--chalk-dim)' }}>
+        <div style={{ background: '#f1efe8', borderBottom: '1px solid var(--chalk-dim)' }}>
           {/* First row: badge + (desktop legend) + share button */}
-          <div className="flex items-center gap-3">
+          <div className="max-w-5xl mx-auto flex items-center gap-3 px-4 md:px-6 py-2.5">
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: 'var(--muted)', fontWeight: 600, flexShrink: 0 }}>
               LOCKED PICKS
             </span>
@@ -502,7 +502,7 @@ export default function BracketPredictor({
             )}
           </div>
           {/* Legend below — mobile only */}
-          <p className="md:hidden mt-1" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+          <p className="max-w-5xl mx-auto md:hidden mt-1 px-4 md:px-6 pb-1" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
             {matchResults && Object.keys(matchResults).length > 0
               ? 'Green = correct · Red = wrong · Gold = actual winner you missed'
               : 'Results not yet available — check back after matches are played.'}
