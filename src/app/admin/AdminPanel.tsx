@@ -109,7 +109,7 @@ export default function AdminPanel({ tournaments, scoringStatus }: { tournaments
           <div style={{ background: '#fef3c7', borderBottom: '1px solid #fde68a', padding: '12px 24px' }}>
             <div className="max-w-5xl mx-auto flex items-center justify-between">
               <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: '#92400e', margin: 0 }}>
-                {totalPending} unscored result{totalPending !== 1 ? 's' : ''} across {pending.map(t => t.name).join(', ')}
+                {totalPending} unscored result{totalPending !== 1 ? 's' : ''} across {pending.map(t => t.location ?? t.name).join(', ')}
               </p>
               <button
                 onClick={handleRunAwardPoints}
@@ -172,6 +172,7 @@ export default function AdminPanel({ tournaments, scoringStatus }: { tournaments
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)', marginBottom: '2px' }}>
+                        {t.flag_emoji && <span style={{ marginRight: '5px' }}>{t.flag_emoji}</span>}
                         {t.location ?? t.name}
                       </p>
                       <div className="flex items-center gap-2 flex-wrap">
@@ -284,6 +285,7 @@ export default function AdminPanel({ tournaments, scoringStatus }: { tournaments
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)', marginBottom: '2px' }}>
+                          {t.flag_emoji && <span style={{ marginRight: '5px' }}>{t.flag_emoji}</span>}
                           {t.location ?? t.name}
                         </p>
                         <div className="flex items-center gap-2 flex-wrap">

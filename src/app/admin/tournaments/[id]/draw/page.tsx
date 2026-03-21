@@ -58,6 +58,8 @@ export default async function DrawPage({ params }: { params: Promise<{ id: strin
     <DrawBuilder
       tournamentId={tournament.id}
       tournamentName={tournament.name}
+      tournamentLocation={tournament.location ?? null}
+      flagEmoji={tournament.flag_emoji ?? null}
       drawSize={tournament.draw_size ?? 32}
       tour={tournament.tour as 'ATP' | 'WTA'}
       existingSlots={existingSlots}

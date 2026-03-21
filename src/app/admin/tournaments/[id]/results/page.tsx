@@ -14,6 +14,8 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
     <ResultsEntry
       tournamentId={tournament.id}
       tournamentName={tournament.name}
+      tournamentLocation={tournament.location ?? null}
+      flagEmoji={tournament.flag_emoji ?? null}
       tournamentStatus={tournament.status}
       bracketData={bracketData as { rounds: string[]; matches: Array<{ matchId: string; round: string; player1: { externalId: string; name: string; country: string } | null; player2: { externalId: string; name: string; country: string } | null }> }}
       matchResults={matchResults ?? []}

@@ -28,6 +28,8 @@ interface MatchResult {
 interface ResultsEntryProps {
   tournamentId: string
   tournamentName: string
+  tournamentLocation?: string | null
+  flagEmoji?: string | null
   tournamentStatus: string
   bracketData: {
     rounds: string[]
@@ -49,6 +51,8 @@ const ROUND_LABELS: Record<string, string> = {
 export default function ResultsEntry({
   tournamentId,
   tournamentName,
+  tournamentLocation,
+  flagEmoji,
   tournamentStatus,
   bracketData,
   matchResults: initialResults,
@@ -235,8 +239,12 @@ export default function ResultsEntry({
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
         <div className="mb-8">
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-            {tournamentName}
+            {flagEmoji && <span style={{ marginRight: '6px' }}>{flagEmoji}</span>}
+            {tournamentLocation ?? tournamentName}
           </h1>
+          {tournamentLocation && (
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', marginTop: '2px' }}>{tournamentName}</p>
+          )}
           <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginTop: '0.4rem' }}>
             Click on a player to select them as the winner.
           </p>

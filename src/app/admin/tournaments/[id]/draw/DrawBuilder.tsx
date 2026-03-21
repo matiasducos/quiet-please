@@ -9,6 +9,8 @@ type PlayerOption = { external_id: string; name: string; country: string }
 interface DrawBuilderProps {
   tournamentId: string
   tournamentName: string
+  tournamentLocation?: string | null
+  flagEmoji?: string | null
   drawSize: number
   tour: 'ATP' | 'WTA'
   existingSlots?: Array<{
@@ -373,7 +375,7 @@ function BracketConnector() {
 
 // ── Main DrawBuilder ──────────────────────────────────────────────────────────
 
-export default function DrawBuilder({ tournamentId, tournamentName, drawSize, tour, existingSlots }: DrawBuilderProps) {
+export default function DrawBuilder({ tournamentId, tournamentName, tournamentLocation, flagEmoji, drawSize, tour, existingSlots }: DrawBuilderProps) {
   const matchCount = drawSize / 2
   type Slot = PlayerOption | 'BYE' | null
 
@@ -520,8 +522,12 @@ export default function DrawBuilder({ tournamentId, tournamentName, drawSize, to
       <div className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="max-w-5xl mx-auto px-4 md:px-6 py-5">
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.02em' }}>
-            {tournamentName}
+            {flagEmoji && <span style={{ marginRight: '6px' }}>{flagEmoji}</span>}
+            {tournamentLocation ?? tournamentName}
           </h1>
+          {tournamentLocation && (
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', marginTop: '2px' }}>{tournamentName}</p>
+          )}
           <p style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
             {isFirstRound
               ? `Build the first-round draw (${matchCount} matches, ${drawSize}-player bracket). Select players or mark as BYE.`
