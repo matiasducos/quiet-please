@@ -7,6 +7,7 @@ import Nav from '@/components/Nav'
 import { sendFriendRequest, acceptFriendRequest, declineFriendRequest } from '@/app/friends/actions'
 import LocationEditForm from '@/app/profile/LocationEditForm'
 import { COUNTRIES, codeToFlag } from '@/app/admin/countries'
+import TournamentCard from '@/components/TournamentCard'
 
 export default async function ProfilePage({
   params,
@@ -46,7 +47,7 @@ export default async function ProfilePage({
   // ── Parallel fetch: rank, predictions (global + all for stats), friendship, challenges
   let predQuery = supabase
     .from('predictions')
-    .select('id, points_earned, created_at, is_fully_locked, tournaments(id, name, tour, category, starts_at, status, location)')
+    .select('id, points_earned, created_at, is_fully_locked, tournaments(id, name, tour, category, surface, starts_at, ends_at, status, location, flag_emoji)')
     .eq('user_id', profile.id)
     .is('challenge_id', null)
 
@@ -54,11 +55,9 @@ export default async function ProfilePage({
     predQuery = predQuery.eq('is_fully_locked', true)
   }
 
-  const [{ count: usersAhead }, { data: predictions }, { count: allPredictionsCount }, friendshipRes, { data: rawChallenges }] = await Promise.all([
+  const [{ count: usersAhead }, { data: predictions }, friendshipRes, { data: rawChallenges }] = await Promise.all([
     supabase.from('users').select('id', { count: 'exact', head: true }).gt('ranking_points', profile.ranking_points ?? 0),
     predQuery.order('created_at', { ascending: false }),
-    // Count ALL predictions (global + challenge) for the stats card
-    supabase.from('predictions').select('id', { count: 'exact', head: true }).eq('user_id', profile.id),
     !isOwnProfile
       ? admin.from('friendships').select('id, status, requester_id')
           .or(`and(requester_id.eq.${user.id},addressee_id.eq.${profile.id}),and(requester_id.eq.${profile.id},addressee_id.eq.${user.id})`)
@@ -75,7 +74,6 @@ export default async function ProfilePage({
   const globalRank = (usersAhead ?? 0) + 1
 
   const globalPredCount = predictions?.length ?? 0
-  const totalPredCount = allPredictionsCount ?? 0
   const scoredCount = predictions?.filter(p => (p.points_earned ?? 0) > 0).length ?? 0
   const memberSince  = new Date(profile.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 
@@ -100,18 +98,20 @@ export default async function ProfilePage({
   const challengeTournamentIds = [...new Set((rawChallenges ?? []).map(c => c.tournament_id))]
 
   let challengeOpponentNames: Record<string, string> = {}
-  let challengeTournamentNames: Record<string, string> = {}
 
   const [oppRes, tRes] = await Promise.all([
     challengeOpponentIds.length > 0
       ? admin.from('users').select('id, username').in('id', challengeOpponentIds)
       : Promise.resolve({ data: [] as any[] }),
     challengeTournamentIds.length > 0
-      ? admin.from('tournaments').select('id, name, location').in('id', challengeTournamentIds)
+      ? admin.from('tournaments').select('id, name, location, flag_emoji').in('id', challengeTournamentIds)
       : Promise.resolve({ data: [] as any[] }),
   ])
   challengeOpponentNames  = Object.fromEntries((oppRes.data ?? []).map((u: any) => [u.id, u.username]))
-  challengeTournamentNames = Object.fromEntries((tRes.data ?? []).map((t: any) => [t.id, t.location ?? t.name]))
+  const challengeTournamentData: Record<string, { name: string; flag: string | null }> = {}
+  for (const t of (tRes.data ?? []) as any[]) {
+    challengeTournamentData[t.id] = { name: t.location ?? t.name, flag: t.flag_emoji ?? null }
+  }
 
   const challenges = (rawChallenges ?? []).map(c => {
     const isProfileChallenger = c.challenger_id === profile.id
@@ -121,10 +121,12 @@ export default async function ProfilePage({
     const won  = c.winner_id === profile.id
     const lost = c.status === 'completed' && c.winner_id !== null && !won
     const draw = c.status === 'completed' && c.winner_id === null
+    const td = challengeTournamentData[c.tournament_id]
     return {
       id: c.id,
       opponentName: challengeOpponentNames[opponentId] ?? 'Unknown',
-      tournamentName: challengeTournamentNames[c.tournament_id] ?? 'Unknown',
+      tournamentName: td?.name ?? 'Unknown',
+      tournamentFlag: td?.flag ?? null,
       status: c.status,
       myPts, theirPts, won, lost, draw,
     }
@@ -277,7 +279,7 @@ export default async function ProfilePage({
           {[
             { label: 'Ranking pts',  value: profile.ranking_points ?? 0,                         sub: '52-week rolling' },
             { label: 'Rank',         value: `#${globalRank}`,                                     sub: null },
-            { label: 'Brackets',     value: totalPredCount,                                       sub: null },
+            { label: 'Tournaments',  value: globalPredCount,                                      sub: null },
             { label: 'Scored',       value: scoredCount > 0 ? scoredCount : '—',                 sub: scoredCount > 0 ? 'earned points' : null },
           ].map((stat, i) => (
             <div key={i} className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
@@ -321,143 +323,143 @@ export default async function ProfilePage({
           </div>
         )}
 
-        {/* ── Predictions list ──────────────────────────────────────────────── */}
-        <div>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.01em', marginBottom: '1rem' }}>
-            Predictions
-          </h2>
+        {/* ── Active predictions (in-progress tournaments) ────────────────── */}
+        {(() => {
+          const activePreds = (predictions ?? []).filter(p => {
+            const t = p.tournaments as any
+            return t?.status === 'in_progress' || t?.status === 'accepting_predictions'
+          })
+          const pastPreds = (predictions ?? []).filter(p => {
+            const t = p.tournaments as any
+            return t?.status === 'completed'
+          })
 
-          {!predictions || predictions.length === 0 ? (
-            <div className="bg-white rounded-sm border px-6 py-12 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
-              <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--muted)' }}>No predictions yet</p>
-              {isOwnProfile && (
-                <Link href="/tournaments" style={{ fontSize: '0.85rem', color: 'var(--court)', marginTop: '0.5rem', display: 'inline-block' }}>
-                  Browse tournaments →
-                </Link>
+          return (
+            <>
+              {activePreds.length > 0 && (
+                <div>
+                  <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.01em', marginBottom: '1rem' }}>
+                    Active predictions
+                  </h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {activePreds.map(p => {
+                      const t = p.tournaments as any
+                      return (
+                        <TournamentCard key={p.id} t={{
+                          id: t.id, name: t.name, tour: t.tour, category: t.category,
+                          surface: t.surface, starts_at: t.starts_at, ends_at: t.ends_at,
+                          status: t.status, location: t.location, flag_emoji: t.flag_emoji,
+                        }} />
+                      )
+                    })}
+                  </div>
+                </div>
               )}
-            </div>
-          ) : (
-            <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
-              <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
-                <div className="col-span-5"  style={hStyle}>TOURNAMENT</div>
-                <div className="col-span-2 text-center" style={hStyle}>TOUR</div>
-                <div className="col-span-2 text-center" style={hStyle}>STATUS</div>
-                <div className="col-span-3 text-right"  style={hStyle}>POINTS</div>
-              </div>
-              {predictions.map(p => {
-                const t   = p.tournaments as any
-                const pts = p.points_earned ?? 0
-                const tStatus = t?.status as string | undefined
-                const isInProgress = tStatus === 'in_progress'
-                return (
+
+              {/* Past predictions (completed tournaments) */}
+              {pastPreds.length > 0 && (
+                <div className={activePreds.length > 0 ? 'mt-10' : ''}>
+                  <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.01em', marginBottom: '1rem' }}>
+                    Past predictions
+                  </h2>
+                  <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+                    <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
+                      <div className="col-span-7"  style={hStyle}>TOURNAMENT</div>
+                      <div className="col-span-5 text-right"  style={hStyle}>POINTS</div>
+                    </div>
+                    {pastPreds.map(p => {
+                      const t = p.tournaments as any
+                      const pts = p.points_earned ?? 0
+                      return (
+                        <Link
+                          key={p.id}
+                          href={`/tournaments/${t?.id}`}
+                          className="grid grid-cols-12 px-5 py-4 border-b last:border-0 tournament-card"
+                          style={{ borderColor: 'var(--chalk-dim)', textDecoration: 'none' }}
+                        >
+                          <div className="col-span-7 flex items-center gap-2">
+                            {t?.flag_emoji && <span>{t.flag_emoji}</span>}
+                            <span style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)' }}>
+                              {t?.location ?? t?.name ?? '—'}
+                            </span>
+                          </div>
+                          <div className="col-span-5 flex items-center justify-end">
+                            <span style={{
+                              fontFamily: 'var(--font-mono)', fontSize: '0.9rem',
+                              color: pts > 0 ? 'var(--court)' : 'var(--muted)',
+                              fontWeight: pts > 0 ? 500 : 400,
+                            }}>
+                              {pts > 0 ? `+${pts}` : '0'}
+                            </span>
+                          </div>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {activePreds.length === 0 && pastPreds.length === 0 && (
+                <div>
+                  <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.01em', marginBottom: '1rem' }}>
+                    Predictions
+                  </h2>
+                  <div className="bg-white rounded-sm border px-6 py-12 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
+                    <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--muted)' }}>No predictions yet</p>
+                    {isOwnProfile && (
+                      <Link href="/tournaments" style={{ fontSize: '0.85rem', color: 'var(--court)', marginTop: '0.5rem', display: 'inline-block' }}>
+                        Browse tournaments →
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )
+        })()}
+
+        {/* ── Ongoing Challenges ────────────────────────────────────────────── */}
+        {(() => {
+          const ongoingChallenges = challenges.filter(c => c.status === 'accepted' || c.status === 'pending')
+          if (ongoingChallenges.length === 0) return null
+          return (
+            <div className="mt-10">
+              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.01em', marginBottom: '1rem' }}>
+                Challenges
+              </h2>
+              <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+                <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
+                  <div className="col-span-5" style={hStyle}>TOURNAMENT</div>
+                  <div className="col-span-4" style={hStyle}>OPPONENT</div>
+                  <div className="col-span-3 text-right" style={hStyle}>STATUS</div>
+                </div>
+                {ongoingChallenges.map(c => (
                   <Link
-                    key={p.id}
-                    href={`/tournaments/${t?.id}`}
+                    key={c.id}
+                    href={`/challenges/${c.id}`}
                     className="grid grid-cols-12 px-5 py-4 border-b last:border-0 tournament-card"
                     style={{ borderColor: 'var(--chalk-dim)', textDecoration: 'none' }}
                   >
                     <div className="col-span-5 flex items-center gap-2">
-                      <span style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)' }}>
-                        {t?.location ?? t?.name ?? '—'}
+                      {c.tournamentFlag && <span>{c.tournamentFlag}</span>}
+                      <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.9rem', color: 'var(--ink)' }}>
+                        {c.tournamentName}
                       </span>
                     </div>
-                    <div className="col-span-2 flex items-center justify-center">
-                      <span className="px-2 py-0.5 text-xs rounded-sm" style={{
-                        background: t?.tour === 'WTA' ? '#fbeaf0' : '#e6f1fb',
-                        color:      t?.tour === 'WTA' ? '#993556' : '#185FA5',
-                        fontFamily: 'var(--font-mono)',
-                      }}>
-                        {t?.tour ?? '—'}
-                      </span>
-                    </div>
-                    <div className="col-span-2 flex items-center justify-center">
-                      {isInProgress ? (
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: '#92400e', background: '#fef3c7', padding: '1px 6px', borderRadius: '2px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                          Live
-                        </span>
-                      ) : tStatus === 'completed' ? (
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: '#166534', background: '#dcfce7', padding: '1px 6px', borderRadius: '2px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                          Done
-                        </span>
-                      ) : (
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', background: 'var(--chalk)', padding: '1px 6px', borderRadius: '2px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                          Pending
-                        </span>
-                      )}
+                    <div className="col-span-4 flex items-center">
+                      <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>{c.opponentName}</span>
                     </div>
                     <div className="col-span-3 flex items-center justify-end">
-                      <span style={{
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '0.9rem',
-                        color: pts > 0 ? 'var(--court)' : 'var(--muted)',
-                        fontWeight: pts > 0 ? 500 : 400,
-                      }}>
-                        {pts > 0 ? `+${pts}` : '0'}
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: c.status === 'accepted' ? 'var(--court)' : 'var(--muted)', letterSpacing: '0.04em' }}>
+                        {c.status === 'accepted' ? 'ACTIVE' : 'PENDING'}
                       </span>
                     </div>
                   </Link>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* ── Challenges ────────────────────────────────────────────────────── */}
-        {challenges.length > 0 && (
-          <div className="mt-10">
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.01em', marginBottom: '1rem' }}>
-              Challenges
-            </h2>
-            <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
-              <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
-                <div className="col-span-4" style={hStyle}>TOURNAMENT</div>
-                <div className="col-span-3" style={hStyle}>OPPONENT</div>
-                <div className="col-span-2 text-center" style={hStyle}>RESULT</div>
-                <div className="col-span-3 text-right" style={hStyle}>SCORE</div>
+                ))}
               </div>
-              {challenges.map(c => (
-                <Link
-                  key={c.id}
-                  href={`/challenges/${c.id}`}
-                  className="grid grid-cols-12 px-5 py-4 border-b last:border-0 tournament-card"
-                  style={{ borderColor: 'var(--chalk-dim)', textDecoration: 'none' }}
-                >
-                  <div className="col-span-4 flex items-center">
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.9rem', color: 'var(--ink)' }}>
-                      {c.tournamentName}
-                    </span>
-                  </div>
-                  <div className="col-span-3 flex items-center">
-                    <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>{c.opponentName}</span>
-                  </div>
-                  <div className="col-span-2 flex items-center justify-center">
-                    {c.status === 'completed' ? (
-                      <span style={{
-                        fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.06em',
-                        color: c.draw ? 'var(--muted)' : c.won ? 'var(--court)' : '#c84b31',
-                      }}>
-                        {c.draw ? 'DRAW' : c.won ? 'WIN' : 'LOSS'}
-                      </span>
-                    ) : (
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', letterSpacing: '0.04em' }}>
-                        {c.status === 'accepted' ? 'ACTIVE' : 'PENDING'}
-                      </span>
-                    )}
-                  </div>
-                  <div className="col-span-3 flex items-center justify-end">
-                    {c.status === 'completed' ? (
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--ink)' }}>
-                        {c.myPts ?? 0} <span style={{ color: 'var(--muted)' }}>vs</span> {c.theirPts ?? 0}
-                      </span>
-                    ) : (
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>—</span>
-                    )}
-                  </div>
-                </Link>
-              ))}
             </div>
-          </div>
-        )}
+          )
+        })()}
       </div>
     </main>
   )
