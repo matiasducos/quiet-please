@@ -43,7 +43,7 @@ export default async function ProfilePage({
   const isOwnProfile = user.id === profile.id
   const admin = createAdminClient()
 
-  // ── Parallel fetch: rank, predictions, friendship, challenges ──────────
+  // ── Parallel fetch: rank, predictions (global + all for stats), friendship, challenges
   let predQuery = supabase
     .from('predictions')
     .select('id, points_earned, created_at, is_fully_locked, tournaments(id, name, tour, category, starts_at, status, location)')
@@ -54,9 +54,11 @@ export default async function ProfilePage({
     predQuery = predQuery.eq('is_fully_locked', true)
   }
 
-  const [{ count: usersAhead }, { data: predictions }, friendshipRes, { data: rawChallenges }] = await Promise.all([
-    supabase.from('users').select('*', { count: 'exact', head: true }).gt('ranking_points', profile.ranking_points ?? 0),
+  const [{ count: usersAhead }, { data: predictions }, { count: allPredictionsCount }, friendshipRes, { data: rawChallenges }] = await Promise.all([
+    supabase.from('users').select('id', { count: 'exact', head: true }).gt('ranking_points', profile.ranking_points ?? 0),
     predQuery.order('created_at', { ascending: false }),
+    // Count ALL predictions (global + challenge) for the stats card
+    supabase.from('predictions').select('id', { count: 'exact', head: true }).eq('user_id', profile.id),
     !isOwnProfile
       ? admin.from('friendships').select('id, status, requester_id')
           .or(`and(requester_id.eq.${user.id},addressee_id.eq.${profile.id}),and(requester_id.eq.${profile.id},addressee_id.eq.${user.id})`)
@@ -72,10 +74,9 @@ export default async function ProfilePage({
 
   const globalRank = (usersAhead ?? 0) + 1
 
-  const tournamentsCount = predictions?.length ?? 0
-  const hitRate = tournamentsCount > 0
-    ? Math.round(((predictions?.filter(p => (p.points_earned ?? 0) > 0).length ?? 0) / tournamentsCount) * 100)
-    : 0
+  const globalPredCount = predictions?.length ?? 0
+  const totalPredCount = allPredictionsCount ?? 0
+  const scoredCount = predictions?.filter(p => (p.points_earned ?? 0) > 0).length ?? 0
   const memberSince  = new Date(profile.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 
   const adminIds = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean)
@@ -276,8 +277,8 @@ export default async function ProfilePage({
           {[
             { label: 'Ranking pts',  value: profile.ranking_points ?? 0,                         sub: '52-week rolling' },
             { label: 'Rank',         value: `#${globalRank}`,                                     sub: null },
-            { label: 'Tournaments',  value: tournamentsCount,                                      sub: null },
-            { label: 'Hit rate',     value: tournamentsCount > 0 ? `${hitRate}%` : '—',           sub: null },
+            { label: 'Brackets',     value: totalPredCount,                                       sub: null },
+            { label: 'Scored',       value: scoredCount > 0 ? scoredCount : '—',                 sub: scoredCount > 0 ? 'earned points' : null },
           ].map((stat, i) => (
             <div key={i} className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>
