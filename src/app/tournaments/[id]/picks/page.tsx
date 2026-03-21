@@ -94,7 +94,7 @@ export default async function AllPicksPage({
                 <div
                   key={p.id}
                   className="grid grid-cols-12 px-5 py-4 border-b last:border-0 items-center"
-                  style={{ borderColor: 'var(--chalk-dim)', background: isMe ? '#f5faf0' : 'white' }}
+                  style={{ borderColor: 'var(--chalk-dim)', background: isMe ? '#edf4fc' : 'white' }}
                 >
                   <div className="col-span-1 flex items-center">
                     {medal
@@ -103,11 +103,11 @@ export default async function AllPicksPage({
                     }
                   </div>
                   <div className="col-span-7 flex items-center gap-2 min-w-0">
-                    <Link href={`/profile/${username}`} style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: isMe ? 'var(--court)' : 'var(--ink)', textDecoration: 'none' }}>
+                    <Link href={`/profile/${username}`} style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: isMe ? '#1e4e8c' : 'var(--ink)', textDecoration: 'none' }}>
                       {username}
                     </Link>
                     {isMe && (
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--court)', background: '#eaf3de', padding: '1px 6px', borderRadius: '2px', flexShrink: 0 }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#1e4e8c', background: '#dbeafe', padding: '1px 6px', borderRadius: '2px', flexShrink: 0 }}>
                         you
                       </span>
                     )}

@@ -45,7 +45,7 @@ export default function LeagueDetailLoading() {
         </div>
 
         {/* My rank highlight card */}
-        <div className="mb-6 px-5 py-4 rounded-sm border" style={{ background: '#eaf3de', borderColor: '#97C459' }}>
+        <div className="mb-6 px-5 py-4 rounded-sm border" style={{ background: '#edf4fc', borderColor: '#b8d4f0' }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="skeleton h-5 w-8" style={{ background: '#c8e6a0' }} />

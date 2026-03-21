@@ -68,7 +68,7 @@ export default function LeaderboardTable({
                 className="grid grid-cols-12 px-5 py-4 border-b last:border-0"
                 style={{
                   borderColor: 'var(--chalk-dim)',
-                  background: isMe ? '#f5faf0' : 'white',
+                  background: isMe ? '#edf4fc' : 'white',
                   cursor: breakdown.length > 0 ? 'pointer' : 'default',
                 }}
                 onClick={() => {
@@ -93,7 +93,7 @@ export default function LeaderboardTable({
                     style={{
                       fontFamily: 'var(--font-display)',
                       fontSize: '1rem',
-                      color: isMe ? 'var(--court)' : 'var(--ink)',
+                      color: isMe ? '#1e4e8c' : 'var(--ink)',
                       fontWeight: isMe ? 500 : 400,
                       textDecoration: 'none',
                       overflow: 'hidden',
@@ -104,7 +104,7 @@ export default function LeaderboardTable({
                     {u.username}
                   </Link>
                   {isMe && (
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--court)', background: '#eaf3de', padding: '1px 6px', borderRadius: '2px', flexShrink: 0 }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#1e4e8c', background: '#dbeafe', padding: '1px 6px', borderRadius: '2px', flexShrink: 0 }}>
                       you
                     </span>
                   )}

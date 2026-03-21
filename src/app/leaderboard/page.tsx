@@ -186,22 +186,22 @@ export default async function LeaderboardPage({
 
         {/* ── My rank highlight ──────────────────────────────────────────────── */}
         {myRank !== null && myPoints > 0 && (
-          <div className="mb-6 px-5 py-4 rounded-sm border" style={{ background: '#eaf3de', borderColor: '#97C459' }}>
+          <div className="mb-6 px-5 py-4 rounded-sm border" style={{ background: '#edf4fc', borderColor: '#b8d4f0' }}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: '#27500A', minWidth: '32px' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: '#1e4e8c', minWidth: '32px' }}>
                   #{myRank}
                 </span>
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: '#27500A' }}>
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: '#1e4e8c' }}>
                   {profile?.username} (you)
                 </span>
               </div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: '#27500A', fontWeight: 500 }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: '#1e4e8c', fontWeight: 500 }}>
                 {myPoints} pts
               </span>
             </div>
             {myRankInList < 0 && (
-              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#5a8a2a', marginTop: '0.3rem' }}>
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#4a7ab5', marginTop: '0.3rem' }}>
                 Not shown in top 50
               </p>
             )}

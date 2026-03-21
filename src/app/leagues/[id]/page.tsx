@@ -146,13 +146,13 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
 
         {/* My rank highlight */}
         {myRank >= 0 && (
-          <div className="mb-6 px-5 py-4 rounded-sm border" style={{ background: '#eaf3de', borderColor: '#97C459' }}>
+          <div className="mb-6 px-5 py-4 rounded-sm border" style={{ background: '#edf4fc', borderColor: '#b8d4f0' }}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: '#27500A', minWidth: '32px' }}>#{myRank + 1}</span>
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: '#27500A' }}>{profile?.username} (you)</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: '#1e4e8c', minWidth: '32px' }}>#{myRank + 1}</span>
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: '#1e4e8c' }}>{profile?.username} (you)</span>
               </div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: '#27500A' }}>{myMembership.total_points} pts</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: '#1e4e8c' }}>{myMembership.total_points} pts</span>
             </div>
           </div>
         )}
@@ -171,14 +171,14 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
             const username = (m.users as any)?.username ?? 'Unknown'
             return (
               <div key={m.user_id} className="grid grid-cols-12 px-5 py-4 border-b last:border-0"
-                style={{ borderColor: 'var(--chalk-dim)', background: isMe ? '#f5faf0' : 'white' }}>
+                style={{ borderColor: 'var(--chalk-dim)', background: isMe ? '#edf4fc' : 'white' }}>
                 <div className="col-span-1 flex items-center">
                   {medal ? <span style={{ fontSize: '1rem' }}>{medal}</span>
                     : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{i + 1}</span>}
                 </div>
                 <div className="col-span-8 flex items-center gap-2">
-                  <Link href={`/profile/${username}`} style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: isMe ? 'var(--court)' : 'var(--ink)', textDecoration: 'none' }}>{username}</Link>
-                  {isMe && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--court)', background: '#eaf3de', padding: '1px 6px', borderRadius: '2px' }}>you</span>}
+                  <Link href={`/profile/${username}`} style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: isMe ? '#1e4e8c' : 'var(--ink)', textDecoration: 'none' }}>{username}</Link>
+                  {isMe && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#1e4e8c', background: '#dbeafe', padding: '1px 6px', borderRadius: '2px' }}>you</span>}
                   {m.user_id === league.owner_id && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'var(--chalk-dim)', padding: '1px 6px', borderRadius: '2px' }}>owner</span>}
                 </div>
                 <div className="col-span-3 flex items-center justify-end">
