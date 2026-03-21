@@ -4,10 +4,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { createChallenge } from './actions'
-
-const SURFACE_LABELS: Record<string, string> = {
-  hard: 'Hard', clay: 'Clay', grass: 'Grass', carpet: 'Carpet',
-}
+import TournamentCard from '@/components/TournamentCard'
 
 export default async function NewChallengePage({
   searchParams,
@@ -127,12 +124,10 @@ export default async function NewChallengePage({
   // All non-completed tournaments (users can challenge on in_progress too)
   const { data: tournaments } = await admin
     .from('tournaments')
-    .select('id, name, tour, category, surface, starts_at, ends_at, status')
+    .select('id, name, tour, category, surface, starts_at, ends_at, status, location, flag_emoji')
     .in('status', ['upcoming', 'accepting_predictions', 'in_progress'])
     .order('starts_at', { ascending: true })
     .limit(60)
-
-  const formatDate = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
@@ -156,44 +151,25 @@ export default async function NewChallengePage({
 
         {!tournaments || tournaments.length === 0 ? (
           <div className="bg-white rounded-sm border py-12 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
-            <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>No upcoming tournaments available right now.</p>
+            <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>No tournaments available right now.</p>
           </div>
         ) : (
-          <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {tournaments.map((t: any) => (
-              <form key={t.id} action={createChallenge}>
-                <input type="hidden" name="friend_id" value={friendId} />
-                <input type="hidden" name="tournament_id" value={t.id} />
-                <button
-                  type="submit"
-                  className="w-full flex items-center justify-between px-5 py-4 border-b last:border-0 tournament-card text-left"
-                  style={{ borderColor: 'var(--chalk-dim)', background: 'transparent', cursor: 'pointer' }}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)' }}>
-                        {t.name}
-                      </span>
-                      {t.status === 'accepting_predictions' && (
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--court)', background: '#eaf3de', padding: '1px 5px', borderRadius: '2px', letterSpacing: '0.04em' }}>
-                          OPEN
-                        </span>
-                      )}
-                      {t.status === 'in_progress' && (
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: '#92400e', background: '#fef3c7', padding: '1px 5px', borderRadius: '2px', letterSpacing: '0.04em' }}>
-                          LIVE
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-                      {t.tour} · {SURFACE_LABELS[t.surface] ?? t.surface} · {formatDate(t.starts_at)}–{formatDate(t.ends_at)}
-                    </div>
-                  </div>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--court)', flexShrink: 0, marginLeft: '1rem' }}>
+              <div key={t.id} className="relative">
+                <TournamentCard t={t} />
+                <form action={createChallenge} className="absolute bottom-4 right-4">
+                  <input type="hidden" name="friend_id" value={friendId} />
+                  <input type="hidden" name="tournament_id" value={t.id} />
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90"
+                    style={{ background: 'var(--court)' }}
+                  >
                     Challenge →
-                  </span>
-                </button>
-              </form>
+                  </button>
+                </form>
+              </div>
             ))}
           </div>
         )}
