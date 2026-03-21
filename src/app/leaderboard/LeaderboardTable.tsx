@@ -2,6 +2,15 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { COUNTRIES, codeToFlag } from '@/app/admin/countries'
+
+const countryFlagMap = new Map(
+  COUNTRIES.map(c => [c.name.toLowerCase(), codeToFlag(c.code)])
+)
+function flagFor(country: string | null): string | null {
+  if (!country) return null
+  return countryFlagMap.get(country.toLowerCase()) ?? null
+}
 
 interface UserRow {
   id: string
@@ -108,6 +117,7 @@ export default function LeaderboardTable({
                   )}
                   {scope === 'worldwide' && u.country && (
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', flexShrink: 0 }}>
+                      {flagFor(u.country) && <span style={{ marginRight: '3px' }}>{flagFor(u.country)}</span>}
                       {u.country}
                     </span>
                   )}
