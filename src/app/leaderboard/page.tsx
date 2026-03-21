@@ -64,6 +64,7 @@ export default async function LeaderboardPage({
         .is('challenge_id', null)
         .gt('points_earned', 0)
         .order('points_earned', { ascending: false })
+        .limit(500)
     : { data: [] as any[] }
 
   // Group by user_id

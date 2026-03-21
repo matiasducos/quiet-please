@@ -14,14 +14,17 @@ function flagForCountry(countryName: string): string | null {
 
 // ── Auth guard ────────────────────────────────────────────────────────────────
 
+// Cache admin IDs at module level — parsed once per cold start, not per request
+const ADMIN_IDS = new Set(
+  (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean)
+)
+
 async function assertAdmin() {
   if (process.env.NODE_ENV === 'development') return
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Unauthorized')
-  const adminIds = (process.env.ADMIN_USER_IDS ?? '')
-    .split(',').map(s => s.trim()).filter(Boolean)
-  if (!adminIds.includes(user.id)) throw new Error('Forbidden')
+  if (!ADMIN_IDS.has(user.id)) throw new Error('Forbidden')
 }
 
 function getBaseUrl(): string {

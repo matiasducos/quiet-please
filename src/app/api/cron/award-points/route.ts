@@ -174,10 +174,12 @@ export async function GET(request: Request) {
       }
     }
 
-    // ── 6. Apply auto-locks to predictions ────────────────────────────────
+    // ── 6. Apply auto-locks to predictions (batched) ──────────────────────
     let autoLocksApplied = 0
+    const predMap = new Map((predictions ?? []).map(p => [p.id, p]))
+    const autoLockUpdates: Array<PromiseLike<any>> = []
     for (const [predId, newLocks] of autoLocks) {
-      const pred = predictions.find(p => p.id === predId)
+      const pred = predMap.get(predId)
       if (!pred) continue
 
       const existingLocks = (pred.pick_locks as Record<string, string>) ?? {}
@@ -190,9 +192,15 @@ export async function GET(request: Request) {
         }
       }
       if (hasNew) {
-        await supabase.from('predictions').update({ pick_locks: merged }).eq('id', predId)
+        autoLockUpdates.push(
+          supabase.from('predictions').update({ pick_locks: merged }).eq('id', predId)
+        )
         autoLocksApplied++
       }
+    }
+    // Run auto-lock updates in parallel batches of 50
+    for (let i = 0; i < autoLockUpdates.length; i += 50) {
+      await Promise.all(autoLockUpdates.slice(i, i + 50))
     }
 
     if (autoLocksApplied > 0) {
@@ -207,34 +215,55 @@ export async function GET(request: Request) {
     const { error: ledgerError } = await supabase.from('point_ledger').insert(ledgerRows)
     if (ledgerError) throw ledgerError
 
-    // ── 8. Update global user totals + leagues + rankings ─────────────────
-    for (const [userId, pts] of Object.entries(globalUserPointsDelta)) {
-      await supabase.rpc('increment_user_points', { user_id: userId, points: pts })
+    // ── 8. Update global user totals + leagues + rankings (parallelized) ──
+    const userIds = Object.keys(globalUserPointsDelta)
 
-      const { data: memberships } = await supabase
-        .from('league_members')
-        .select('league_id, total_points')
-        .eq('user_id', userId)
-
-      for (const m of memberships ?? []) {
-        await supabase
-          .from('league_members')
-          .update({ total_points: m.total_points + pts })
-          .eq('league_id', m.league_id)
-          .eq('user_id', userId)
-      }
-
-      // Recalculate rolling 52-week ranking points
-      await supabase.rpc('recalculate_ranking_points', { p_user_id: userId })
+    // 8a. Increment user points — parallel batches of 50
+    for (let i = 0; i < userIds.length; i += 50) {
+      await Promise.all(
+        userIds.slice(i, i + 50).map(userId =>
+          supabase.rpc('increment_user_points', { user_id: userId, points: globalUserPointsDelta[userId] })
+        )
+      )
     }
 
-    // ── 9. Update prediction points_earned + expires_at ───────────────────
-    for (const [predId, pts] of Object.entries(predictionPointsDelta)) {
-      const pred = (predictions ?? []).find((p: any) => p.id === predId)
+    // 8b. Update league memberships — batch fetch all, then batch update
+    if (userIds.length > 0) {
+      const { data: allMemberships } = await supabase
+        .from('league_members')
+        .select('league_id, user_id, total_points')
+        .in('user_id', userIds)
+
+      const leagueUpdates = (allMemberships ?? [])
+        .filter(m => globalUserPointsDelta[m.user_id])
+        .map(m =>
+          supabase
+            .from('league_members')
+            .update({ total_points: m.total_points + globalUserPointsDelta[m.user_id] })
+            .eq('league_id', m.league_id)
+            .eq('user_id', m.user_id)
+        )
+
+      for (let i = 0; i < leagueUpdates.length; i += 50) {
+        await Promise.all(leagueUpdates.slice(i, i + 50))
+      }
+    }
+
+    // 8c. Recalculate rankings — parallel batches of 50
+    for (let i = 0; i < userIds.length; i += 50) {
+      await Promise.all(
+        userIds.slice(i, i + 50).map(userId =>
+          supabase.rpc('recalculate_ranking_points', { p_user_id: userId })
+        )
+      )
+    }
+
+    // ── 9. Update prediction points_earned + expires_at (parallelized) ────
+    const predictionUpdates = Object.entries(predictionPointsDelta).map(([predId, pts]) => {
+      const pred = predMap.get(predId)
       const updateRow: Record<string, any> = {
         points_earned: (pred?.points_earned ?? 0) + pts,
       }
-      // Stamp expires_at = tournament.starts_at + 364 days on first award
       if (!pred?.expires_at && pred?.tournament_id) {
         const startsAt = tournamentStartsAt[pred.tournament_id]
         if (startsAt) {
@@ -242,31 +271,55 @@ export async function GET(request: Request) {
           updateRow.expires_at = expiresAt.toISOString()
         }
       }
-      await supabase.from('predictions').update(updateRow).eq('id', predId)
+      return supabase.from('predictions').update(updateRow).eq('id', predId)
+    })
+    for (let i = 0; i < predictionUpdates.length; i += 50) {
+      await Promise.all(predictionUpdates.slice(i, i + 50))
     }
 
-    // ── 10. Notifications + emails (global predictions only) ──────────────
+    // ── 10. Notifications + emails (parallelized, non-blocking) ──────────
     try {
+      const notifRows: Array<{ user_id: string; type: string; tournament_id: string; meta: any }> = []
+      const emailJobs: Array<{ userId: string; tId: string; tName: string; pts: number }> = []
+
       for (const [userId, tPoints] of Object.entries(userTournamentPoints)) {
-        const { data: { user: authUser } } = await supabase.auth.admin.getUserById(userId)
         for (const [tId, pts] of Object.entries(tPoints)) {
           const tName = tournamentNames[tId] ?? 'a tournament'
-          await (supabase as any).from('notifications').insert({
-            user_id:       userId,
-            type:          'points_awarded',
+          notifRows.push({
+            user_id: userId,
+            type: 'points_awarded',
             tournament_id: tId,
-            meta:          { points: pts, tournament_name: tName },
+            meta: { points: pts, tournament_name: tName },
           })
-          if (authUser?.email) {
-            await sendPointsAwardedEmail({
-              to:             authUser.email,
-              tournamentName: tName,
-              tournamentId:   tId,
-              points:         pts,
-              totalPoints:    globalUserPointsDelta[userId],
-            })
-          }
+          emailJobs.push({ userId, tId, tName, pts })
         }
+      }
+
+      // Batch insert all notifications at once
+      if (notifRows.length > 0) {
+        await (supabase as any).from('notifications').insert(notifRows)
+      }
+
+      // Send emails in parallel batches of 10 (to avoid rate limits)
+      for (let i = 0; i < emailJobs.length; i += 10) {
+        await Promise.all(
+          emailJobs.slice(i, i + 10).map(async (job) => {
+            try {
+              const { data: { user: authUser } } = await supabase.auth.admin.getUserById(job.userId)
+              if (authUser?.email) {
+                await sendPointsAwardedEmail({
+                  to: authUser.email,
+                  tournamentName: job.tName,
+                  tournamentId: job.tId,
+                  points: job.pts,
+                  totalPoints: globalUserPointsDelta[job.userId],
+                })
+              }
+            } catch (emailErr) {
+              console.error(`[award-points] email error for ${job.userId}:`, emailErr)
+            }
+          })
+        )
       }
     } catch (notifyErr) {
       console.error('[award-points] notification error:', notifyErr)
