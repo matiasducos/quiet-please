@@ -53,13 +53,12 @@ export default async function ProfilePage({
 
   const globalRank = (usersAhead ?? 0) + 1
 
-  // Locked predictions with tournament info
+  // All global predictions with tournament info
   const { data: predictions } = await supabase
     .from('predictions')
-    .select('id, points_earned, created_at, tournaments(id, name, tour, category, starts_at)')
+    .select('id, points_earned, created_at, is_fully_locked, tournaments(id, name, tour, category, starts_at, status)')
     .eq('user_id', profile.id)
     .is('challenge_id', null)
-    .gt('points_earned', 0)
     .order('created_at', { ascending: false })
 
   const tournamentsCount = predictions?.length ?? 0
@@ -353,13 +352,16 @@ export default async function ProfilePage({
           ) : (
             <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
               <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
-                <div className="col-span-7"  style={hStyle}>TOURNAMENT</div>
+                <div className="col-span-5"  style={hStyle}>TOURNAMENT</div>
                 <div className="col-span-2 text-center" style={hStyle}>TOUR</div>
+                <div className="col-span-2 text-center" style={hStyle}>STATUS</div>
                 <div className="col-span-3 text-right"  style={hStyle}>POINTS</div>
               </div>
               {predictions.map(p => {
                 const t   = p.tournaments as any
                 const pts = p.points_earned ?? 0
+                const tStatus = t?.status as string | undefined
+                const isInProgress = tStatus === 'in_progress'
                 return (
                   <Link
                     key={p.id}
@@ -367,7 +369,7 @@ export default async function ProfilePage({
                     className="grid grid-cols-12 px-5 py-4 border-b last:border-0 tournament-card"
                     style={{ borderColor: 'var(--chalk-dim)', textDecoration: 'none' }}
                   >
-                    <div className="col-span-7 flex items-center">
+                    <div className="col-span-5 flex items-center gap-2">
                       <span style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)' }}>
                         {t?.name ?? '—'}
                       </span>
@@ -380,6 +382,21 @@ export default async function ProfilePage({
                       }}>
                         {t?.tour ?? '—'}
                       </span>
+                    </div>
+                    <div className="col-span-2 flex items-center justify-center">
+                      {isInProgress ? (
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: '#92400e', background: '#fef3c7', padding: '1px 6px', borderRadius: '2px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                          Live
+                        </span>
+                      ) : tStatus === 'completed' ? (
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: '#166534', background: '#dcfce7', padding: '1px 6px', borderRadius: '2px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                          Done
+                        </span>
+                      ) : (
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', background: 'var(--chalk)', padding: '1px 6px', borderRadius: '2px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                          Pending
+                        </span>
+                      )}
                     </div>
                     <div className="col-span-3 flex items-center justify-end">
                       <span style={{
