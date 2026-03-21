@@ -933,6 +933,83 @@ export async function getManualTournaments(): Promise<{
   }
 }
 
+// ── Scoring status (for Award Points section in admin panel) ─────────────────
+
+export interface ScoringTournament {
+  id: string
+  name: string
+  status: string
+  totalResults: number      // non-BYE match results
+  scoredResults: number     // unique match_result_ids in point_ledger
+  pendingResults: number    // totalResults - scoredResults
+}
+
+export async function getScoringStatus(): Promise<ScoringTournament[]> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  // Get in_progress and completed tournaments
+  const { data: tournaments } = await admin
+    .from('tournaments')
+    .select('id, name, status')
+    .in('status', ['in_progress', 'completed'])
+    .order('starts_at', { ascending: false })
+
+  if (!tournaments?.length) return []
+
+  const ids = tournaments.map(t => t.id)
+
+  // Count non-BYE match results per tournament
+  const { data: results } = await admin
+    .from('match_results')
+    .select('id, tournament_id')
+    .in('tournament_id', ids)
+    .neq('score', 'BYE')
+
+  const resultCountByTournament: Record<string, number> = {}
+  const resultIdsByTournament: Record<string, Set<string>> = {}
+  for (const r of results ?? []) {
+    resultCountByTournament[r.tournament_id] = (resultCountByTournament[r.tournament_id] ?? 0) + 1
+    if (!resultIdsByTournament[r.tournament_id]) resultIdsByTournament[r.tournament_id] = new Set()
+    resultIdsByTournament[r.tournament_id].add(r.id)
+  }
+
+  // Get scored match_result_ids from point_ledger
+  const allResultIds = (results ?? []).map(r => r.id)
+  const { data: scored } = allResultIds.length > 0
+    ? await admin
+        .from('point_ledger')
+        .select('match_result_id')
+        .in('match_result_id', allResultIds)
+    : { data: [] }
+
+  // Unique scored result IDs per tournament
+  const scoredByTournament: Record<string, Set<string>> = {}
+  for (const s of scored ?? []) {
+    // Find which tournament this result belongs to
+    for (const [tid, rids] of Object.entries(resultIdsByTournament)) {
+      if (rids.has(s.match_result_id)) {
+        if (!scoredByTournament[tid]) scoredByTournament[tid] = new Set()
+        scoredByTournament[tid].add(s.match_result_id)
+        break
+      }
+    }
+  }
+
+  return tournaments.map((t: any) => {
+    const total = resultCountByTournament[t.id] ?? 0
+    const scored = scoredByTournament[t.id]?.size ?? 0
+    return {
+      id: t.id,
+      name: t.name,
+      status: t.status,
+      totalResults: total,
+      scoredResults: scored,
+      pendingResults: total - scored,
+    }
+  })
+}
+
 export async function getTournament(tournamentId: string): Promise<{
   ok: boolean
   tournament?: {

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { triggerCron, sendTestNotification } from './actions'
+import type { ScoringTournament } from './actions'
 import { NOTIFICATION_TYPES } from './constants'
 import type { NotificationType } from './constants'
 
@@ -37,7 +38,7 @@ interface ManualTournament {
   has_draw: boolean
 }
 
-export default function AdminPanel({ tournaments }: { tournaments: ManualTournament[] }) {
+export default function AdminPanel({ tournaments, scoringStatus }: { tournaments: ManualTournament[]; scoringStatus: ScoringTournament[] }) {
   // ── Cron state ──────────────────────────────────────────────────────────────
   const [cronStatuses, setCronStatuses] = useState<Record<EndpointKey, AsyncStatus>>(
     Object.fromEntries(ENDPOINTS.map(e => [e.key, { type: 'idle' }])) as Record<EndpointKey, AsyncStatus>
@@ -193,6 +194,102 @@ export default function AdminPanel({ tournaments }: { tournaments: ManualTournam
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Award Points ── */}
+        <div className="mb-10">
+          <div className="flex items-center justify-between mb-3">
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em' }}>
+              Award Points
+            </h2>
+            <button
+              onClick={() => handleTriggerCron('award-points')}
+              disabled={cronStatuses['award-points'].type === 'loading'}
+              className="px-4 py-1.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
+              style={{ background: 'var(--court)', color: 'white' }}
+            >
+              {cronStatuses['award-points'].type === 'loading' ? 'Running…' : 'Run Award Points'}
+            </button>
+          </div>
+
+          {cronStatuses['award-points'].message && (
+            <div
+              className="mb-3 p-3 rounded-sm overflow-x-auto"
+              style={{
+                background: cronStatuses['award-points'].type === 'error' ? '#fee2e2' : '#f0fdf4',
+                borderLeft: `3px solid ${cronStatuses['award-points'].type === 'error' ? '#ef4444' : '#22c55e'}`,
+              }}
+            >
+              <pre style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: cronStatuses['award-points'].type === 'error' ? '#991b1b' : '#166534', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {cronStatuses['award-points'].message}
+              </pre>
+            </div>
+          )}
+
+          {scoringStatus.length === 0 ? (
+            <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>
+                No active tournaments with results to score.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {scoringStatus.map(t => {
+                const allScored = t.pendingResults === 0 && t.totalResults > 0
+                const hasPending = t.pendingResults > 0
+                return (
+                  <div key={t.id} className="bg-white rounded-sm border p-4" style={{ borderColor: hasPending ? '#fde68a' : 'var(--chalk-dim)' }}>
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)', marginBottom: '2px' }}>
+                          {t.name}
+                        </p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span style={{
+                            fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.04em', textTransform: 'uppercase',
+                            color: t.status === 'completed' ? '#166534' : '#92400e',
+                            background: t.status === 'completed' ? '#dcfce7' : '#fef3c7',
+                            padding: '1px 6px', borderRadius: '2px',
+                          }}>
+                            {t.status.replace(/_/g, ' ')}
+                          </span>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
+                            {t.totalResults} results
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        {allScored ? (
+                          <span style={{
+                            fontFamily: 'var(--font-mono)', fontSize: '0.7rem',
+                            color: '#166534', background: '#dcfce7',
+                            padding: '4px 10px', borderRadius: '9999px',
+                          }}>
+                            All scored
+                          </span>
+                        ) : hasPending ? (
+                          <span style={{
+                            fontFamily: 'var(--font-mono)', fontSize: '0.7rem',
+                            color: '#92400e', background: '#fef3c7',
+                            padding: '4px 10px', borderRadius: '9999px',
+                          }}>
+                            {t.pendingResults} unscored
+                          </span>
+                        ) : (
+                          <span style={{
+                            fontFamily: 'var(--font-mono)', fontSize: '0.7rem',
+                            color: 'var(--muted)',
+                          }}>
+                            No results yet
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
