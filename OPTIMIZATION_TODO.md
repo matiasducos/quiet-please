@@ -56,8 +56,22 @@ that need fixing as the user base grows.
 - [x] **Parallelize page queries** — ✅ All 7 main pages use `Promise.all` for concurrent DB fetches.
 - [x] **Batch weekly slot checks** — ✅ `savePrediction` now checks all ISO weeks in a single `.or()` query instead of N separate queries.
 - [x] **Parallelize challenge creation** — ✅ Friendship, tournament, and existing challenge checks run concurrently.
-- [x] **Deferred font loading** — ✅ Display/mono fonts load without blocking paint.
+- [x] **Font loading fix** — ✅ Fixed React `onLoad` string handler error. Single font request with `display=swap`.
 - [x] **Dashboard consistency** — ✅ Fixed `total_points` → `ranking_points` inconsistency.
+- [x] **Fix `unstable_cache` keys** — ✅ Tournament list and leaderboard caches now include filter params in key arrays (was returning stale data for different filters).
+- [x] **Search by location** — ✅ Tournament search now matches by location as well as name.
+- [x] **Challenges loading skeleton** — ✅ Added `loading.tsx` for challenges page.
+- [x] **Country flags on leaderboard** — ✅ User rows show flag emoji, tournament breakdown shows tournament flag.
+
+## UI: Location Prominence Swap
+
+Swapped city/country to primary heading, tournament name to secondary across the entire app:
+- [x] Tournament cards, tournament detail, dashboard
+- [x] Bracket predictor (both side-by-side)
+- [x] Challenges pages, profile page
+- [x] Notifications, leagues activity, leaderboard breakdown
+- [x] Admin panel (tournament lists, draw builder, results entry)
+- [x] Notification meta now stores `tournament_location` for future notifications
 
 ---
 
