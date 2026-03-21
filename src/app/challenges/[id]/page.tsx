@@ -234,6 +234,15 @@ export default async function ChallengeDetailPage({
               >
                 {myPicksLocked ? 'Review your picks →' : myPickCount > 0 ? 'Edit your picks →' : 'Make your picks →'}
               </Link>
+              {myPicksLocked && theirPicksLocked && (
+                <Link
+                  href={`/tournaments/${challenge.tournament_id}/picks/${theirUsername}?challenge=${challenge.id}`}
+                  className="inline-block px-5 py-2.5 text-sm rounded-sm border hover:bg-white transition-colors"
+                  style={{ borderColor: 'var(--chalk-dim)', color: 'var(--ink)', textDecoration: 'none' }}
+                >
+                  View {theirUsername}&apos;s picks →
+                </Link>
+              )}
             </div>
           </div>
         )}

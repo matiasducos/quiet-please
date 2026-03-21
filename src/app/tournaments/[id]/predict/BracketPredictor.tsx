@@ -391,7 +391,8 @@ export default function BracketPredictor({
     : null
 
   // Check if we're in challenge mode with empty picks (for import prompt)
-  const showImportBanner = !!challengeContext && pickedCount === 0 && !fullyLocked && !readOnly && showImport
+  // Only show import banner on first visit (no prediction saved yet) with no picks
+  const showImportBanner = !!challengeContext && pickedCount === 0 && !fullyLocked && !readOnly && showImport && !currentPredictionId
 
   // ── Determine what the editable state really is ──────────────────────────
   const isEditing = !readOnly && !fullyLocked

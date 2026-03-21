@@ -4,10 +4,13 @@ import BracketPredictor from '../../predict/BracketPredictor'
 
 export default async function UserPicksPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string; username: string }>
+  searchParams: Promise<{ challenge?: string }>
 }) {
   const { id, username } = await params
+  const { challenge: challengeId } = await searchParams
   const supabase = createAdminClient()
 
   const [{ data: tournament }, { data: draw }, { data: targetUser }] = await Promise.all([
@@ -19,13 +22,20 @@ export default async function UserPicksPage({
   if (!tournament || !draw?.bracket_data) notFound()
   if (!targetUser) notFound()
 
-  const { data: prediction } = await supabase
+  // Load challenge-specific or global prediction
+  let predQuery = supabase
     .from('predictions')
     .select('id, picks, is_fully_locked, points_earned')
     .eq('tournament_id', id)
     .eq('user_id', targetUser.id)
-    .is('challenge_id', null)
-    .single()
+
+  if (challengeId) {
+    predQuery = predQuery.eq('challenge_id', challengeId)
+  } else {
+    predQuery = predQuery.is('challenge_id', null)
+  }
+
+  const { data: prediction } = await predQuery.single()
 
   // Fetch match results for color coding + per-match points
   const [{ data: results }, { data: pointRows }] = await Promise.all([
@@ -61,7 +71,7 @@ export default async function UserPicksPage({
             No picks found
           </p>
           <p style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
-            {username} hasn&apos;t submitted predictions for this tournament.
+            {username} hasn&apos;t submitted predictions for this {challengeId ? 'challenge' : 'tournament'}.
           </p>
         </div>
       </main>
@@ -75,7 +85,7 @@ export default async function UserPicksPage({
       existingPicks={(prediction.picks as Record<string, string>) ?? {}}
       predictionId={prediction.id}
       username={username}
-      returnUrl={`/tournaments/${id}`}
+      returnUrl={challengeId ? `/challenges/${challengeId}` : `/tournaments/${id}`}
       matchResults={matchResults}
       matchPoints={matchPoints}
       readOnly
