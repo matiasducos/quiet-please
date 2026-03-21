@@ -10,11 +10,10 @@ import type { NotificationType } from './constants'
 // ── Cron jobs ─────────────────────────────────────────────────────────────────
 
 const ENDPOINTS = [
-  { key: 'sync-tournaments', label: 'Sync Tournaments', description: 'Fetch ATP/WTA calendar and upsert tournaments',      scheduleUtcHour: 6  },
-  { key: 'sync-draws',       label: 'Sync Draws',       description: 'Fetch draws for upcoming tournaments, open predictions', scheduleUtcHour: 9  },
-  { key: 'sync-results',     label: 'Sync Results',     description: 'Fetch match results for in-progress tournaments',    scheduleUtcHour: 12 },
-  { key: 'award-points',     label: 'Award Points',     description: 'Score correct predictions and update leaderboards',  scheduleUtcHour: 18 },
-  { key: 'sync-backfill',    label: 'Sync Backfill',    description: 'Process past tournaments (on-demand)',               scheduleUtcHour: null },
+  { key: 'sync-tournaments', label: 'Sync Tournaments', description: 'Fetch ATP/WTA calendar and upsert tournaments',      scheduleUtcHour: 6,    disabled: true  },
+  { key: 'sync-draws',       label: 'Sync Draws',       description: 'Fetch draws for upcoming tournaments, open predictions', scheduleUtcHour: 9,  disabled: true  },
+  { key: 'sync-results',     label: 'Sync Results',     description: 'Fetch match results for in-progress tournaments',    scheduleUtcHour: 12,   disabled: true  },
+  { key: 'sync-backfill',    label: 'Sync Backfill',    description: 'Process past tournaments (on-demand)',               scheduleUtcHour: null, disabled: true  },
 ] as const
 
 // Format a UTC hour as a local CET/CEST time string — auto-handles summer time.
@@ -44,6 +43,9 @@ export default function AdminPanel({ tournaments, scoringStatus }: { tournaments
     Object.fromEntries(ENDPOINTS.map(e => [e.key, { type: 'idle' }])) as Record<EndpointKey, AsyncStatus>
   )
 
+  // Separate state for award-points (not in ENDPOINTS anymore)
+  const [awardStatus, setAwardStatus] = useState<AsyncStatus>({ type: 'idle' })
+
   async function handleTriggerCron(key: EndpointKey) {
     setCronStatuses(s => ({ ...s, [key]: { type: 'loading' } }))
     try {
@@ -54,6 +56,16 @@ export default function AdminPanel({ tournaments, scoringStatus }: { tournaments
       }))
     } catch (err) {
       setCronStatuses(s => ({ ...s, [key]: { type: 'error', message: String(err) } }))
+    }
+  }
+
+  async function handleRunAwardPoints() {
+    setAwardStatus({ type: 'loading' })
+    try {
+      const { ok, data } = await triggerCron('award-points')
+      setAwardStatus({ type: ok ? 'success' : 'error', message: JSON.stringify(data, null, 2) })
+    } catch (err) {
+      setAwardStatus({ type: 'error', message: String(err) })
     }
   }
 
@@ -205,25 +217,25 @@ export default function AdminPanel({ tournaments, scoringStatus }: { tournaments
               Award Points
             </h2>
             <button
-              onClick={() => handleTriggerCron('award-points')}
-              disabled={cronStatuses['award-points'].type === 'loading'}
+              onClick={handleRunAwardPoints}
+              disabled={awardStatus.type === 'loading'}
               className="px-4 py-1.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
               style={{ background: 'var(--court)', color: 'white' }}
             >
-              {cronStatuses['award-points'].type === 'loading' ? 'Running…' : 'Run Award Points'}
+              {awardStatus.type === 'loading' ? 'Running…' : 'Run Award Points'}
             </button>
           </div>
 
-          {cronStatuses['award-points'].message && (
+          {awardStatus.message && (
             <div
               className="mb-3 p-3 rounded-sm overflow-x-auto"
               style={{
-                background: cronStatuses['award-points'].type === 'error' ? '#fee2e2' : '#f0fdf4',
-                borderLeft: `3px solid ${cronStatuses['award-points'].type === 'error' ? '#ef4444' : '#22c55e'}`,
+                background: awardStatus.type === 'error' ? '#fee2e2' : '#f0fdf4',
+                borderLeft: `3px solid ${awardStatus.type === 'error' ? '#ef4444' : '#22c55e'}`,
               }}
             >
-              <pre style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: cronStatuses['award-points'].type === 'error' ? '#991b1b' : '#166534', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                {cronStatuses['award-points'].message}
+              <pre style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: awardStatus.type === 'error' ? '#991b1b' : '#166534', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {awardStatus.message}
               </pre>
             </div>
           )}
@@ -317,11 +329,11 @@ export default function AdminPanel({ tournaments, scoringStatus }: { tournaments
                   </div>
                   <button
                     onClick={() => handleTriggerCron(endpoint.key)}
-                    disabled={status.type === 'loading'}
+                    disabled={status.type === 'loading' || endpoint.disabled}
                     className="px-4 py-2 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40 flex-shrink-0"
                     style={{ background: 'var(--court)', color: 'white' }}
                   >
-                    {status.type === 'loading' ? 'Running…' : 'Run'}
+                    {status.type === 'loading' ? 'Running…' : endpoint.disabled ? 'Disabled' : 'Run'}
                   </button>
                 </div>
 
