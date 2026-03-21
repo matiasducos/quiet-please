@@ -113,6 +113,10 @@ export async function savePrediction({
     row.is_fully_locked = true
     row.fully_locked_at = fullyLockedAt
   }
+  // For INSERT path: set pick_locks directly on the row
+  if (pickLocksUpdate) {
+    row.pick_locks = pickLocksUpdate
+  }
 
   // ── 4. UPDATE or INSERT ──────────────────────────────────────────────
   let insertedPredictionId: string | undefined

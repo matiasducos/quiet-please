@@ -275,6 +275,7 @@ export default function BracketPredictor({
       })
       if (result.success) {
         setFullyLocked(true)
+        setSaved(true)
         if (result.predictionId) setCurrentPredictionId(result.predictionId)
       } else if (result.error === 'slot_taken') {
         setSlotError(
