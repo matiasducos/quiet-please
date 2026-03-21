@@ -116,10 +116,9 @@ export default function LeaderboardTable({
                       you
                     </span>
                   )}
-                  {scope === 'worldwide' && u.country && (
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', flexShrink: 0 }}>
-                      {flagFor(u.country) && <span style={{ marginRight: '3px' }}>{flagFor(u.country)}</span>}
-                      {u.country}
+                  {scope === 'worldwide' && u.country && flagFor(u.country) && (
+                    <span style={{ fontSize: '0.85rem', flexShrink: 0 }} title={u.country}>
+                      {flagFor(u.country)}
                     </span>
                   )}
                   {breakdown.length > 0 && (
