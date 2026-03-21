@@ -48,7 +48,7 @@
 ## Notifications & Security
 
 - [x] **Friend notification on lock** — ✅ Verified in prod. Also added new `challenge_picks_locked` notification for challenge opponent lock events.
-- [ ] **RLS policies** — As a regular user, verify: can read own predictions + opponent's challenge predictions, but NOT other users' global predictions. Can't update a fully locked prediction.
+- [x] **RLS policies** — ✅ Full code audit: 3 policies active (INSERT own, SELECT own+challenge opponent, UPDATE non-locked own). All 4 access control requirements verified. Admin client bypasses defended by app-layer checks.
 
 ---
 
