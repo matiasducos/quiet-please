@@ -32,18 +32,18 @@
 ## Challenges ⏳
 
 - [x] **Create challenge prediction** — ✅ Verified: separate prediction row with `challenge_id` set in DB.
-- [ ] **Import global picks into challenge** — Start a NEW challenge prediction. Click "Import from global picks". Verify global picks populate the bracket.
+- [x] **Import global picks into challenge** — ✅ Code audit: banner shows for new challenge predictions, imports correctly, merges into state.
 - [x] **Challenge pick visibility (poker rule)** — ✅ Both locked → can see opponent's picks. Works from both sides.
 
 ## Slot Enforcement & Cleanup
 
-- [ ] **Weekly slot enforcement** — Try entering two ATP tournaments in the same ISO week. Verify "Slot taken" error. Confirm challenges are exempt.
+- [x] **Weekly slot enforcement** — ✅ Code audit: INSERT-only check, challenges/manual exempt, ISO week correct, UI shows error with tournament name.
 - [x] **Practice mode fully removed** — ✅
 
 ## Pages & Filters
 
-- [ ] **View other user's picks** — Go to `/tournaments/{id}/picks/{username}`. Verify read-only bracket with correct/wrong styling and streak multiplier badges.
-- [ ] **Leaderboard/profile/league filters** — Check leaderboard, profile, and league pages. Verify they filter on `is_fully_locked` / `challenge_id IS NULL` correctly.
+- [x] **View other user's picks** — ✅ Code audit + fix: readOnly bracket with results/streaks works. **Bug found & fixed**: page exposed unlocked picks to other users (admin client bypassed RLS). Added `is_fully_locked` check.
+- [x] **Leaderboard/profile/league filters** — ✅ Code audit + fix: leaderboard/league correct. **Bug found & fixed**: profile page showed unlocked predictions to other users. Added `is_fully_locked` filter for non-own profiles.
 
 ## Notifications & Security
 
@@ -61,3 +61,7 @@
 5. **Import banner persisting** — Showed on every visit, not just first. Fixed with `!currentPredictionId` guard.
 6. **Challenge visibility** — No "View opponent's picks" link. Added with poker rule (both must be locked).
 7. **Cascade delete on result edit** — Editing a match result didn't clean up downstream results. Added cascade.
+8. **Cancel challenge button silent fail** — Plain `<form action>` swallowed server action errors. Replaced with client CancelButton component using `useTransition`.
+9. **Lock all picks RLS policy** — UPDATE policy lacked `WITH CHECK`, defaulting to `USING (is_fully_locked = false)`, which rejected the row after flipping to `true`. Added explicit `WITH CHECK (auth.uid() = user_id)`.
+10. **Unlocked picks exposed** — `/picks/[username]` used admin client and didn't check `is_fully_locked`, leaking in-progress brackets. Added access control.
+11. **Profile showed unlocked predictions** — Other users could see in-progress tournament entries. Added `is_fully_locked` filter for non-own profiles.
