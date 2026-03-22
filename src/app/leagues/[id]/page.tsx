@@ -4,9 +4,7 @@ import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
-import KickButton from './KickButton'
-import TournamentSettings from './TournamentSettings'
-import { LeaveButton, DeleteLeagueButton } from './LeagueActions'
+import { LeaveButton } from './LeagueActions'
 import InviteCodeCard from './InviteCodeCard'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -87,7 +85,6 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
         .limit(100),
     ])
 
-    // Join events from league_members (already fetched)
     const joinEvents: ActivityItem[] = (members ?? []).map(m => ({
       type: 'join',
       user_id: m.user_id,
@@ -96,7 +93,6 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
       date: m.joined_at,
     }))
 
-    // Locked picks events
     const picksEvents: ActivityItem[] = (lockedPicks ?? []).map((p: any) => ({
       type: 'picks',
       user_id: p.user_id,
@@ -105,7 +101,6 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
       date: p.submitted_at,
     }))
 
-    // Points events — aggregate by user+tournament to avoid one row per match
     const pointsMap = new Map<string, { user_id: string; username: string; points: number; tournament_name: string; awarded_at: string }>()
     for (const row of (pointsRows ?? []) as any[]) {
       const key = `${row.user_id}:${row.tournament_id}`
@@ -154,6 +149,15 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: league.is_public ? '#1e4e8c' : 'var(--muted)', background: league.is_public ? '#edf4fc' : 'var(--chalk-dim)', padding: '2px 8px', borderRadius: '2px', marginTop: '6px' }}>
                 {league.is_public ? '🌐 Public' : '🔒 Private'}
               </span>
+              {isOwner && (
+                <Link
+                  href={`/leagues/${id}/settings`}
+                  className="transition-opacity hover:opacity-70"
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', textDecoration: 'none', marginTop: '6px' }}
+                >
+                  Edit settings
+                </Link>
+              )}
             </div>
             {league.description && <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>{league.description}</p>}
             {league.allowed_tournament_types && (
@@ -206,21 +210,13 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
                   {isMe && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#1e4e8c', background: '#dbeafe', padding: '1px 6px', borderRadius: '2px' }}>you</span>}
                   {m.user_id === league.owner_id && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'var(--chalk-dim)', padding: '1px 6px', borderRadius: '2px' }}>owner</span>}
                 </div>
-                <div className="col-span-3 flex items-center justify-end gap-2">
+                <div className="col-span-3 flex items-center justify-end">
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: m.total_points > 0 ? 'var(--ink)' : 'var(--muted)' }}>{m.total_points}</span>
-                  {isOwner && !isMe && m.user_id !== league.owner_id && (
-                    <KickButton leagueId={id} userId={m.user_id} username={username} />
-                  )}
                 </div>
               </div>
             )
           })}
         </div>
-
-        {/* Owner settings */}
-        {isOwner && (
-          <TournamentSettings leagueId={id} current={league.allowed_tournament_types as string[] | null} />
-        )}
 
         {/* Activity feed */}
         <div className="mt-10">
@@ -260,12 +256,9 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
           )}
         </div>
 
-        {/* Leave / Delete */}
-        <div className="mt-10 pt-6 flex items-center justify-between" style={{ borderTop: '1px solid var(--chalk-dim)' }}>
+        {/* Leave league */}
+        <div className="mt-10 pt-6" style={{ borderTop: '1px solid var(--chalk-dim)' }}>
           <LeaveButton leagueId={id} isOwner={isOwner} memberCount={(members ?? []).length} />
-          {isOwner && (
-            <DeleteLeagueButton leagueId={id} memberCount={(members ?? []).length} />
-          )}
         </div>
       </div>
     </main>

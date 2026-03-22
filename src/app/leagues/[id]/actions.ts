@@ -194,7 +194,13 @@ export async function updateLeagueSettings(leagueId: string, formData: FormData)
     return { error: 'Only the league owner can change settings' }
   }
 
+  const name = formData.get('name') as string
+  const description = formData.get('description') as string
+  const isPublic = formData.get('is_public') === 'true'
   const typesRaw = formData.get('tournament_types') as string | null
+
+  if (!name?.trim()) return { error: 'League name is required' }
+
   let allowedTypes: string[] | null = null
   if (typesRaw) {
     const parsed = typesRaw.split(',').filter(t => VALID_TYPES.includes(t as any))
@@ -205,11 +211,19 @@ export async function updateLeagueSettings(leagueId: string, formData: FormData)
 
   const { error } = await admin
     .from('leagues')
-    .update({ allowed_tournament_types: allowedTypes })
+    .update({
+      name: name.trim(),
+      description: description?.trim() || null,
+      is_public: isPublic,
+      allowed_tournament_types: allowedTypes,
+    })
     .eq('id', leagueId)
 
   if (error) return { error: error.message }
 
   revalidatePath(`/leagues/${leagueId}`)
-  return { success: true }
+  revalidatePath(`/leagues/${leagueId}/settings`)
+  revalidatePath('/leagues')
+  revalidatePath('/leagues/browse')
+  redirect(`/leagues/${leagueId}`)
 }
