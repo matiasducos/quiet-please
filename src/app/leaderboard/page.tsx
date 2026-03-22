@@ -29,17 +29,17 @@ function getLeaderboardData(pointsField: string, scope: Scope, scopeCountry: str
       const userIds = (users ?? []).map(u => u.id)
       const { data: userPredictions } = userIds.length > 0
         ? await supabase.from('predictions')
-            .select('user_id, points_earned, tournaments(name, tour, location, flag_emoji)')
+            .select('user_id, tournament_id, points_earned, tournaments(name, tour, location, flag_emoji)')
             .in('user_id', userIds).is('challenge_id', null)
             .gt('points_earned', 0).order('points_earned', { ascending: false }).limit(500)
         : { data: [] as any[] }
 
-      const breakdownByUser: Record<string, Array<{ name: string; tour: string; points: number; flag: string | null }>> = {}
+      const breakdownByUser: Record<string, Array<{ tournament_id: string; name: string; tour: string; points: number; flag: string | null }>> = {}
       for (const p of userPredictions ?? []) {
         const t = p.tournaments as any
         if (!t?.name) continue
         if (!breakdownByUser[p.user_id]) breakdownByUser[p.user_id] = []
-        breakdownByUser[p.user_id].push({ name: t.location ?? t.name, tour: t.tour ?? '', points: p.points_earned ?? 0, flag: t.flag_emoji ?? null })
+        breakdownByUser[p.user_id].push({ tournament_id: p.tournament_id, name: t.location ?? t.name, tour: t.tour ?? '', points: p.points_earned ?? 0, flag: t.flag_emoji ?? null })
       }
 
       return { users: users ?? [], breakdownByUser }

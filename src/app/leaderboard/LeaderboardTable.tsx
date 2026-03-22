@@ -12,6 +12,7 @@ interface UserRow {
 }
 
 interface TournamentBreakdown {
+  tournament_id: string
   name: string
   tour: string
   points: number
@@ -137,10 +138,15 @@ export default function LeaderboardTable({
                   {breakdown.map((b, bi) => (
                     <div key={bi} className="flex items-center justify-between py-1.5">
                       <div className="flex items-center gap-2">
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--ink)' }}>
+                        <Link
+                          href={`/leaderboard/tournaments/${b.tournament_id}`}
+                          onClick={e => e.stopPropagation()}
+                          style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--ink)', textDecoration: 'none' }}
+                          className="hover:underline"
+                        >
                           {b.flag && <span style={{ marginRight: '4px' }}>{b.flag}</span>}
                           {b.name}
-                        </span>
+                        </Link>
                         <span className="px-1.5 py-0.5 rounded-sm" style={{
                           fontFamily: 'var(--font-mono)', fontSize: '0.55rem',
                           background: b.tour === 'WTA' ? '#fbeaf0' : '#e6f1fb',

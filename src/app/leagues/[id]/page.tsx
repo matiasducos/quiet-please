@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import InviteCodeCard from './InviteCodeCard'
 import LeagueLeaderboard from './LeagueLeaderboard'
+import TournamentCard from '@/components/TournamentCard'
 
 const TYPE_LABELS: Record<string, string> = {
   grand_slam: 'Grand Slams',
@@ -60,11 +61,11 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
   const admin = createAdminClient()
 
   // ── Fetch points breakdown per member (for expandable rows) ─────────────
-  let breakdownByUser: Record<string, Array<{ name: string; tour: string; points: number; flag: string | null }>> = {}
+  let breakdownByUser: Record<string, Array<{ tournament_id: string; name: string; tour: string; points: number; flag: string | null }>> = {}
   if (memberIds.length > 0) {
     const { data: userPredictions } = await admin
       .from('predictions')
-      .select('user_id, points_earned, tournaments(name, tour, location, flag_emoji)')
+      .select('user_id, tournament_id, points_earned, tournaments(name, tour, location, flag_emoji)')
       .in('user_id', memberIds)
       .is('challenge_id', null)
       .gt('points_earned', 0)
@@ -76,11 +77,46 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
       if (!t?.name) continue
       if (!breakdownByUser[p.user_id]) breakdownByUser[p.user_id] = []
       breakdownByUser[p.user_id].push({
+        tournament_id: p.tournament_id,
         name: t.location ?? t.name,
         tour: t.tour ?? '',
         points: p.points_earned ?? 0,
         flag: t.flag_emoji ?? null,
       })
+    }
+  }
+
+  // ── Fetch tournaments where members participated (for Tournaments section) ──
+  let leagueTournaments: Array<{ id: string; name: string; tour: string; category: string; surface: string | null; location: string | null; flag_emoji: string | null; starts_at: string | null; ends_at: string | null; status: string }> = []
+  if (memberIds.length > 0) {
+    // Get tournament IDs from all member predictions
+    const { data: memberPreds } = await admin
+      .from('predictions')
+      .select('tournament_id')
+      .in('user_id', memberIds)
+      .is('challenge_id', null)
+
+    const tournamentIds = Array.from(new Set((memberPreds ?? []).map(p => p.tournament_id)))
+    if (tournamentIds.length > 0) {
+      const { data: tournaments } = await admin
+        .from('tournaments')
+        .select('id, name, tour, category, surface, location, flag_emoji, starts_at, ends_at, status')
+        .in('id', tournamentIds)
+        .order('starts_at', { ascending: false })
+
+      leagueTournaments = (tournaments ?? []).filter(t => {
+        // Filter to "this season" — tournaments that started within the last 52 weeks
+        if (!t.starts_at) return false
+        const weekAgo52 = new Date()
+        weekAgo52.setDate(weekAgo52.getDate() - 364)
+        return new Date(t.starts_at) >= weekAgo52
+      })
+
+      // Respect league tournament type filter
+      const allowedTypes = league.allowed_tournament_types as string[] | null
+      if (allowedTypes) {
+        leagueTournaments = leagueTournaments.filter(t => allowedTypes.includes(t.category))
+      }
     }
   }
 
@@ -224,7 +260,30 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
         )}
 
         {/* Members leaderboard (expandable) */}
-        <LeagueLeaderboard members={leaderboardMembers} />
+        <LeagueLeaderboard members={leaderboardMembers} leagueId={id} />
+
+        {/* Tournaments */}
+        {leagueTournaments.length > 0 && (
+          <div className="mt-10">
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em', marginBottom: '1rem' }}>
+              Tournaments
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {leagueTournaments.map(t => (
+                <div key={t.id} className="relative">
+                  <TournamentCard t={t} />
+                  <Link
+                    href={`/leagues/${id}/tournaments/${t.id}`}
+                    className="absolute bottom-3 right-4 px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
+                    style={{ background: 'var(--court)', color: 'white', textDecoration: 'none', zIndex: 1 }}
+                  >
+                    See results
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Activity feed */}
         <div className="mt-10">

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 
-type BreakdownItem = { name: string; tour: string; points: number; flag: string | null }
+type BreakdownItem = { tournament_id: string; name: string; tour: string; points: number; flag: string | null }
 
 type Member = {
   user_id: string
@@ -14,7 +14,7 @@ type Member = {
   breakdown: BreakdownItem[]
 }
 
-export default function LeagueLeaderboard({ members }: { members: Member[] }) {
+export default function LeagueLeaderboard({ members, leagueId }: { members: Member[]; leagueId: string }) {
   const [expandedUser, setExpandedUser] = useState<string | null>(null)
 
   return (
@@ -59,10 +59,15 @@ export default function LeagueLeaderboard({ members }: { members: Member[] }) {
                 {m.breakdown.map((b, bi) => (
                   <div key={bi} className="flex items-center justify-between py-1.5" style={{ fontSize: '0.8rem' }}>
                     <div className="flex items-center gap-2">
-                      <span style={{ color: 'var(--ink)' }}>
+                      <Link
+                        href={`/leagues/${leagueId}/tournaments/${b.tournament_id}`}
+                        onClick={e => e.stopPropagation()}
+                        style={{ color: 'var(--ink)', textDecoration: 'none' }}
+                        className="hover:underline"
+                      >
                         {b.flag && <span style={{ marginRight: '4px' }}>{b.flag}</span>}
                         {b.name}
-                      </span>
+                      </Link>
                       <span
                         className="px-1.5 py-0.5 rounded-sm"
                         style={{
