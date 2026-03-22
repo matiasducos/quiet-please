@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { LeaveButton } from './LeagueActions'
 import InviteCodeCard from './InviteCodeCard'
+import LeagueLeaderboard from './LeagueLeaderboard'
 
 const TYPE_LABELS: Record<string, string> = {
   grand_slam: 'Grand Slams',
@@ -13,6 +14,8 @@ const TYPE_LABELS: Record<string, string> = {
   '500': '500s',
   '250': '250s',
 }
+
+const ACTIVITY_PREVIEW_LIMIT = 15
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -56,6 +59,41 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
   // Activity feed — needs admin client to bypass RLS on other users' rows
   const memberIds = (members ?? []).map(m => m.user_id)
   const admin = createAdminClient()
+
+  // ── Fetch points breakdown per member (for expandable rows) ─────────────
+  let breakdownByUser: Record<string, Array<{ name: string; tour: string; points: number; flag: string | null }>> = {}
+  if (memberIds.length > 0) {
+    const { data: userPredictions } = await admin
+      .from('predictions')
+      .select('user_id, points_earned, tournaments(name, tour, location, flag_emoji)')
+      .in('user_id', memberIds)
+      .is('challenge_id', null)
+      .gt('points_earned', 0)
+      .order('points_earned', { ascending: false })
+      .limit(500)
+
+    for (const p of userPredictions ?? []) {
+      const t = p.tournaments as any
+      if (!t?.name) continue
+      if (!breakdownByUser[p.user_id]) breakdownByUser[p.user_id] = []
+      breakdownByUser[p.user_id].push({
+        name: t.location ?? t.name,
+        tour: t.tour ?? '',
+        points: p.points_earned ?? 0,
+        flag: t.flag_emoji ?? null,
+      })
+    }
+  }
+
+  // Prepare leaderboard data for client component
+  const leaderboardMembers = (members ?? []).map(m => ({
+    user_id: m.user_id,
+    username: (m.users as any)?.username ?? 'Unknown',
+    total_points: m.total_points,
+    isMe: m.user_id === user.id,
+    isLeagueOwner: m.user_id === league.owner_id,
+    breakdown: breakdownByUser[m.user_id] ?? [],
+  }))
 
   type ActivityItem = {
     type: 'join' | 'picks' | 'points'
@@ -128,8 +166,10 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
 
     activityItems = [...joinEvents, ...picksEvents, ...pointsEvents]
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 20)
   }
+
+  const hasMoreActivity = activityItems.length > ACTIVITY_PREVIEW_LIMIT
+  const displayedActivity = activityItems.slice(0, ACTIVITY_PREVIEW_LIMIT)
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
@@ -186,51 +226,33 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
           </div>
         )}
 
-        {/* Members leaderboard */}
-        <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
-          <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
-            <div className="col-span-1" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>RANK</div>
-            <div className="col-span-8" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>PLAYER</div>
-            <div className="col-span-3 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>POINTS</div>
-          </div>
-
-          {(members ?? []).map((m, i) => {
-            const isMe = m.user_id === user.id
-            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null
-            const username = (m.users as any)?.username ?? 'Unknown'
-            return (
-              <div key={m.user_id} className="grid grid-cols-12 px-5 py-4 border-b last:border-0"
-                style={{ borderColor: 'var(--chalk-dim)', background: isMe ? '#edf4fc' : 'white' }}>
-                <div className="col-span-1 flex items-center">
-                  {medal ? <span style={{ fontSize: '1rem' }}>{medal}</span>
-                    : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{i + 1}</span>}
-                </div>
-                <div className="col-span-8 flex items-center gap-2">
-                  <Link href={`/profile/${username}`} style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: isMe ? '#1e4e8c' : 'var(--ink)', textDecoration: 'none' }}>{username}</Link>
-                  {isMe && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#1e4e8c', background: '#dbeafe', padding: '1px 6px', borderRadius: '2px' }}>you</span>}
-                  {m.user_id === league.owner_id && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'var(--chalk-dim)', padding: '1px 6px', borderRadius: '2px' }}>owner</span>}
-                </div>
-                <div className="col-span-3 flex items-center justify-end">
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: m.total_points > 0 ? 'var(--ink)' : 'var(--muted)' }}>{m.total_points}</span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        {/* Members leaderboard (expandable) */}
+        <LeagueLeaderboard members={leaderboardMembers} />
 
         {/* Activity feed */}
         <div className="mt-10">
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em', marginBottom: '1rem' }}>
-            Recent activity
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em' }}>
+              Recent activity
+            </h2>
+            {hasMoreActivity && (
+              <Link
+                href={`/leagues/${id}/activity`}
+                style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--court)', textDecoration: 'none' }}
+                className="transition-opacity hover:opacity-70"
+              >
+                See all
+              </Link>
+            )}
+          </div>
 
-          {activityItems.length === 0 ? (
+          {displayedActivity.length === 0 ? (
             <div className="bg-white rounded-sm border py-10 px-6 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
               <p style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>No activity yet. Invite friends and start predicting!</p>
             </div>
           ) : (
             <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
-              {activityItems.map((item, i) => {
+              {displayedActivity.map((item, i) => {
                 const isMe = item.user_id === user.id
                 const icon = item.type === 'join' ? '👋' : item.type === 'picks' ? '🔒' : '⭐'
                 return (
