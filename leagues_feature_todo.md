@@ -41,9 +41,33 @@
 
 ---
 
+## 5. Leave League ✅
+- [x] DELETE policy on `league_members` for `auth.uid() = user_id` — migration `022`
+- [x] Owner leaving: transfers ownership to longest-standing member
+- [x] Last member leaving: auto-deletes the league
+- [x] `LeaveButton` with contextual confirmation message
+
+## 6. Delete League ✅
+- [x] DELETE policy on `leagues` for `owner_id = auth.uid()` — migration `022`
+- [x] `DeleteLeagueButton` with member count in confirmation
+- [x] FK cascade handles league_members cleanup
+
+## 7. Search & Filter on Browse Page ✅
+- [x] `BrowseFilters` client component with instant client-side filtering
+- [x] Text search by league name and description
+- [x] Tournament type filter chips (Grand Slams, Masters 1000, 500s, 250s)
+
+## 8. League Invite Link ✅
+- [x] Join page reads `?code=` query param and pre-fills the input
+- [x] `InviteCodeCard` client component with "Copy invite link" button
+- [x] Shown to all members on private leagues (replaces old plain-text display)
+
+## 9. Join Notifications ✅
+- [x] `league_member_joined` notification type — migration `022`
+- [x] Fired on both code-join and public-join flows
+- [x] Notifies league owner with joiner's username and league name
+
+---
+
 ## Next steps / future ideas
-- [ ] Leave league — allow members to remove themselves (needs DELETE policy for `auth.uid() = user_id`)
-- [ ] League search/filter on browse page (search by name, filter by tournament type)
-- [ ] League invite link (shareable URL that auto-fills the code)
-- [ ] Notification when someone joins your league
 - [ ] Season reset — option to reset league standings at the start of a new season

@@ -1,9 +1,12 @@
 'use client'
 import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { joinLeague } from './actions'
 
 export default function JoinLeaguePage() {
+  const searchParams = useSearchParams()
+  const prefillCode = searchParams.get('code')?.toUpperCase().trim() ?? ''
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -37,6 +40,7 @@ export default function JoinLeaguePage() {
               type="text"
               required
               maxLength={8}
+              defaultValue={prefillCode}
               placeholder="e.g. A3F8B2C1"
               className="w-full px-4 py-3 rounded-sm text-sm outline-none"
               style={{ background: 'white', border: '1.5px solid var(--chalk-dim)', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', fontSize: '1.1rem' }}

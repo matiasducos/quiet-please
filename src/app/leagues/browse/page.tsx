@@ -4,14 +4,7 @@ import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
-import JoinPublicButton from './JoinPublicButton'
-
-const TYPE_LABELS: Record<string, string> = {
-  grand_slam: 'Grand Slams',
-  masters_1000: 'Masters 1000',
-  '500': '500s',
-  '250': '250s',
-}
+import BrowseFilters from './BrowseFilters'
 
 export default async function BrowseLeaguesPage() {
   const { user, profile } = await getNavProfile()
@@ -50,6 +43,17 @@ export default async function BrowseLeaguesPage() {
 
   const myLeagueIds = new Set((myMemberships ?? []).map(m => m.league_id))
 
+  // Prepare data for the client filter component
+  const leagues = (publicLeagues ?? []).map((l: any) => ({
+    id: l.id,
+    name: l.name,
+    description: l.description,
+    ownerName: l.users?.username ?? 'Unknown',
+    memberCount: memberCounts[l.id] ?? 0,
+    isMember: myLeagueIds.has(l.id),
+    tournamentTypes: l.allowed_tournament_types as string[] | null,
+  }))
+
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="leagues" />
@@ -68,7 +72,7 @@ export default async function BrowseLeaguesPage() {
           </p>
         </div>
 
-        {(publicLeagues ?? []).length === 0 ? (
+        {leagues.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-sm border" style={{ borderColor: 'var(--chalk-dim)' }}>
             <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '0.5rem' }}>No public leagues yet</p>
             <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem' }}>Be the first to create one!</p>
@@ -77,56 +81,7 @@ export default async function BrowseLeaguesPage() {
             </Link>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            {(publicLeagues ?? []).map((league: any) => {
-              const isMember = myLeagueIds.has(league.id)
-              const count = memberCounts[league.id] ?? 0
-              const ownerName = league.users?.username ?? 'Unknown'
-              const types = league.allowed_tournament_types as string[] | null
-              return (
-                <div
-                  key={league.id}
-                  className="flex items-center justify-between bg-white rounded-sm border px-6 py-5"
-                  style={{ borderColor: 'var(--chalk-dim)' }}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)' }}>{league.name}</span>
-                    </div>
-                    {league.description && (
-                      <p style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{league.description}</p>
-                    )}
-                    <div className="flex items-center gap-3 mt-1.5">
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
-                        by {ownerName}
-                      </span>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
-                        {count} member{count !== 1 ? 's' : ''}
-                      </span>
-                      {types && (
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#1e4e8c', background: '#edf4fc', padding: '1px 6px', borderRadius: '2px' }}>
-                          {types.map(t => TYPE_LABELS[t] ?? t).join(', ')}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0 ml-4">
-                    {isMember ? (
-                      <Link
-                        href={`/leagues/${league.id}`}
-                        className="px-4 py-2 text-sm rounded-sm border"
-                        style={{ borderColor: 'var(--chalk-dim)', color: 'var(--ink)', textDecoration: 'none' }}
-                      >
-                        View
-                      </Link>
-                    ) : (
-                      <JoinPublicButton leagueId={league.id} />
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+          <BrowseFilters leagues={leagues} />
         )}
       </div>
     </main>

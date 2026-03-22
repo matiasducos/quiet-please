@@ -6,6 +6,8 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import KickButton from './KickButton'
 import TournamentSettings from './TournamentSettings'
+import { LeaveButton, DeleteLeagueButton } from './LeagueActions'
+import InviteCodeCard from './InviteCodeCard'
 
 const TYPE_LABELS: Record<string, string> = {
   grand_slam: 'Grand Slams',
@@ -160,13 +162,9 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
               </p>
             )}
           </div>
-          {isOwner && (
+          {!league.is_public && (
             <div className="flex flex-col items-end gap-2">
-              <div className="px-4 py-3 bg-white rounded-sm border text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', letterSpacing: '0.08em', marginBottom: '4px' }}>INVITE CODE</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.25rem', color: 'var(--court)', letterSpacing: '0.1em' }}>{league.invite_code}</div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginTop: '4px' }}>Share with friends</div>
-              </div>
+              <InviteCodeCard code={league.invite_code} />
             </div>
           )}
         </div>
@@ -219,11 +217,9 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
           })}
         </div>
 
-        {!isOwner && (
+        {!isOwner && !league.is_public && (
           <div className="mt-4 text-center">
-            <p style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-              Invite code: <span style={{ color: 'var(--court)' }}>{league.invite_code}</span>
-            </p>
+            <InviteCodeCard code={league.invite_code} />
           </div>
         )}
 
@@ -267,6 +263,14 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
                 )
               })}
             </div>
+          )}
+        </div>
+
+        {/* Leave / Delete */}
+        <div className="mt-10 pt-6 flex items-center justify-between" style={{ borderTop: '1px solid var(--chalk-dim)' }}>
+          <LeaveButton leagueId={id} isOwner={isOwner} memberCount={(members ?? []).length} />
+          {isOwner && (
+            <DeleteLeagueButton leagueId={id} memberCount={(members ?? []).length} />
           )}
         </div>
       </div>
