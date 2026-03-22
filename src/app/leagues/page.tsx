@@ -82,30 +82,28 @@ export default async function LeaguesPage() {
               <Link
                 key={league.id}
                 href={`/leagues/${league.id}`}
-                className="flex items-center justify-between bg-white rounded-sm border px-6 py-5 tournament-card"
-                style={{ borderColor: 'var(--chalk-dim)', textDecoration: 'none' }}
+                className="bg-white rounded-sm border px-4 py-4 md:px-6 md:py-5 tournament-card"
+                style={{ borderColor: 'var(--chalk-dim)', textDecoration: 'none', display: 'block' }}
               >
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span style={{ fontSize: '0.85rem' }}>{league.is_public ? '🌐' : '🔒'}</span>
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)' }}>{league.name}</span>
-                    {league.owner_id === user.id && (
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--court)', background: '#eaf3de', padding: '1px 6px', borderRadius: '2px' }}>owner</span>
-                    )}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span style={{ fontSize: '0.85rem' }}>{league.is_public ? '🌐' : '🔒'}</span>
+                      <span className="truncate" style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)' }}>{league.name}</span>
+                      {league.owner_id === user.id && (
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--court)', background: '#eaf3de', padding: '1px 6px', borderRadius: '2px', flexShrink: 0 }}>owner</span>
+                      )}
+                    </div>
+                    <p className="hidden md:block" style={{ fontSize: '0.8rem', color: 'var(--muted)', marginTop: '2px' }}>{league.description}</p>
                   </div>
-                  {league.description && (
-                    <p style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{league.description}</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-4 flex-shrink-0">
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>
-                    {league.member_count} member{league.member_count !== 1 ? 's' : ''}
-                  </span>
-                  <div className="text-right">
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: 'var(--ink)' }}>{league.my_points} pts</span>
-                  </div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', minWidth: '40px', textAlign: 'right' }}>
-                    #{league.my_rank}
+                  <div className="flex items-center gap-3 md:gap-4 flex-shrink-0">
+                    <span className="hidden md:inline" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>
+                      {league.member_count} member{league.member_count !== 1 ? 's' : ''}
+                    </span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: 'var(--ink)' }}>{league.my_points} pts</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>
+                      #{league.my_rank}
+                    </span>
                   </div>
                 </div>
               </Link>
