@@ -29,6 +29,7 @@ const TYPE_META: Record<string, { label: string; color: string }> = {
   league_member_joined:  { label: 'League',              color: '#27500A' },
   league_member_left:    { label: 'League',              color: '#993C1D' },
   league_deleted:        { label: 'League deleted',      color: '#993C1D' },
+  league_ownership_transferred: { label: 'League owner', color: '#185FA5' },
 }
 
 function getHref(n: { type: string; tournament_id: string | null; meta: Record<string, string | number> }): string {
@@ -41,6 +42,7 @@ function getHref(n: { type: string; tournament_id: string | null; meta: Record<s
   if (n.type === 'league_member_joined' && n.meta.league_id) return `/leagues/${n.meta.league_id}`
   if (n.type === 'league_member_left' && n.meta.league_id) return `/leagues/${n.meta.league_id}`
   if (n.type === 'league_deleted') return '/leagues'
+  if (n.type === 'league_ownership_transferred' && n.meta.league_id) return `/leagues/${n.meta.league_id}`
   if (n.tournament_id) return `/tournaments/${n.tournament_id}`
   return '/tournaments'
 }
@@ -162,6 +164,9 @@ export default async function NotificationsPage() {
                         )}
                         {n.type === 'league_deleted' && (
                           <>The league <strong>{meta.league_name ?? 'a league'}</strong> was deleted by its owner.</>
+                        )}
+                        {n.type === 'league_ownership_transferred' && (
+                          <>You are now the owner of <strong>{meta.league_name ?? 'a league'}</strong>.</>
                         )}
                       </p>
                     </div>

@@ -33,10 +33,10 @@
 - [x] Points are correct after recalculation (migration 023 fixed drift)
 
 ## Leave League (migration 022)
-- [ ] As regular member: "Leave league" → removed, redirected to `/leagues`
-- [ ] As owner with other members: "Leave league" → ownership transfers to longest member
-- [ ] As sole member: "Leave league" → league auto-deleted
-- [ ] Confirmation dialog shows correct context (owner transfer / league deletion)
+- [x] As regular member: "Leave league" → removed, redirected to `/leagues`
+- [x] As owner with other members: "Leave league" → ownership transfers to longest member
+- [x] As sole member: "Leave league" → league auto-deleted
+- [x] Confirmation dialog shows correct context (owner transfer / league deletion)
 
 ## Browse Page Filters
 - [ ] Search by league name → instant filter

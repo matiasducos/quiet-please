@@ -126,6 +126,13 @@ export async function leaveLeague(leagueId: string) {
         .from('leagues')
         .update({ owner_id: nextOwner.user_id })
         .eq('id', leagueId)
+
+      // Notify new owner
+      await admin.from('notifications').insert({
+        user_id: nextOwner.user_id,
+        type: 'league_ownership_transferred' as const,
+        meta: { league_id: leagueId, league_name: league.name },
+      })
     } else {
       // No other members — delete the league entirely
       await admin.from('leagues').delete().eq('id', leagueId)
