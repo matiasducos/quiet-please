@@ -39,6 +39,9 @@ export async function joinLeague(formData: FormData) {
 
   if (joinError) return { error: joinError.message }
 
+  // Recalculate this member's points for this league
+  await admin.rpc('recalculate_member_points', { p_league_id: league.id, p_user_id: user.id })
+
   // Notify league owner
   const { data: joinerProfile } = await admin.from('users').select('username').eq('id', user.id).single()
   await admin.from('notifications').insert({

@@ -1,7 +1,22 @@
 'use client'
 import { useState } from 'react'
+import { useFormStatus } from 'react-dom'
 import Link from 'next/link'
 import { createLeague } from './actions'
+
+function SubmitButton() {
+  const { pending } = useFormStatus()
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="w-full py-3 text-sm font-medium text-white rounded-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed mt-1"
+      style={{ background: 'var(--court)' }}
+    >
+      {pending ? 'Creating…' : 'Create league'}
+    </button>
+  )
+}
 
 const TOURNAMENT_TYPES = [
   { value: 'grand_slam', label: 'Grand Slams' },
@@ -12,7 +27,6 @@ const TOURNAMENT_TYPES = [
 
 export default function NewLeaguePage() {
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
   const [isPublic, setIsPublic] = useState(false)
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
 
@@ -21,14 +35,12 @@ export default function NewLeaguePage() {
   }
 
   async function handleSubmit(formData: FormData) {
-    setLoading(true)
     setError(null)
     formData.set('is_public', isPublic ? 'true' : 'false')
     formData.set('tournament_types', selectedTypes.join(','))
     const result = await createLeague(formData)
     if (result?.error) {
       setError(result.error)
-      setLoading(false)
     }
   }
 
@@ -146,14 +158,7 @@ export default function NewLeaguePage() {
             <p className="text-sm px-3 py-2 rounded-sm" style={{ background: '#fef2f2', color: '#b91c1c' }}>{error}</p>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 text-sm font-medium text-white rounded-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed mt-1"
-            style={{ background: 'var(--court)' }}
-          >
-            {loading ? 'Creating…' : 'Create league'}
-          </button>
+          <SubmitButton />
         </form>
       </div>
     </main>

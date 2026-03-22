@@ -48,6 +48,9 @@ export async function createLeague(formData: FormData) {
     .from('league_members')
     .insert({ league_id: league.id, user_id: user.id })
 
+  // Recalculate this member's points for this league
+  await admin.rpc('recalculate_member_points', { p_league_id: league.id, p_user_id: user.id })
+
   revalidatePath('/leagues')
   redirect(`/leagues/${league.id}`)
 }
