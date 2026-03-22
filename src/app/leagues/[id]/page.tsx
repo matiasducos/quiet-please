@@ -4,6 +4,15 @@ import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
+import KickButton from './KickButton'
+import TournamentSettings from './TournamentSettings'
+
+const TYPE_LABELS: Record<string, string> = {
+  grand_slam: 'Grand Slams',
+  masters_1000: 'Masters 1000',
+  '500': '500s',
+  '250': '250s',
+}
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -24,11 +33,19 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
   const supabase = await createClient()
 
   // ── Parallel fetch: league, membership, members ─────────────────────────
-  const [{ data: league }, { data: myMembership }, { data: members }] = await Promise.all([
+  const [leagueRes, membershipRes, membersRes] = await Promise.all([
     supabase.from('leagues').select('*').eq('id', id).single(),
     supabase.from('league_members').select('total_points').eq('league_id', id).eq('user_id', user.id).single(),
     supabase.from('league_members').select('user_id, total_points, joined_at, users(username)').eq('league_id', id).order('total_points', { ascending: false }),
   ])
+
+  if (leagueRes.error) console.error('[league] fetch error:', leagueRes.error)
+  if (membershipRes.error) console.error('[league] membership error:', membershipRes.error)
+  if (membersRes.error) console.error('[league] members error:', membersRes.error)
+
+  const league = leagueRes.data
+  const myMembership = membershipRes.data
+  const members = membersRes.data
 
   if (!league) notFound()
   if (!myMembership) redirect('/leagues')
@@ -130,8 +147,18 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
 
         <div className="flex items-start justify-between mb-8">
           <div>
-            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>{league.name}</h1>
+            <div className="flex items-center gap-2">
+              <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>{league.name}</h1>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: league.is_public ? '#1e4e8c' : 'var(--muted)', background: league.is_public ? '#edf4fc' : 'var(--chalk-dim)', padding: '2px 8px', borderRadius: '2px', marginTop: '6px' }}>
+                {league.is_public ? '🌐 Public' : '🔒 Private'}
+              </span>
+            </div>
             {league.description && <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>{league.description}</p>}
+            {league.allowed_tournament_types && (
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#1e4e8c', marginTop: '0.4rem' }}>
+                Counting: {(league.allowed_tournament_types as string[]).map(t => TYPE_LABELS[t] ?? t).join(', ')}
+              </p>
+            )}
           </div>
           {isOwner && (
             <div className="flex flex-col items-end gap-2">
@@ -181,8 +208,11 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
                   {isMe && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#1e4e8c', background: '#dbeafe', padding: '1px 6px', borderRadius: '2px' }}>you</span>}
                   {m.user_id === league.owner_id && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'var(--chalk-dim)', padding: '1px 6px', borderRadius: '2px' }}>owner</span>}
                 </div>
-                <div className="col-span-3 flex items-center justify-end">
+                <div className="col-span-3 flex items-center justify-end gap-2">
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: m.total_points > 0 ? 'var(--ink)' : 'var(--muted)' }}>{m.total_points}</span>
+                  {isOwner && !isMe && m.user_id !== league.owner_id && (
+                    <KickButton leagueId={id} userId={m.user_id} username={username} />
+                  )}
                 </div>
               </div>
             )
@@ -195,6 +225,11 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
               Invite code: <span style={{ color: 'var(--court)' }}>{league.invite_code}</span>
             </p>
           </div>
+        )}
+
+        {/* Owner settings */}
+        {isOwner && (
+          <TournamentSettings leagueId={id} current={league.allowed_tournament_types as string[] | null} />
         )}
 
         {/* Activity feed */}

@@ -87,18 +87,20 @@ export async function GET(request: Request) {
       }
     }
 
-    // Fetch tournament names + location + starts_at for notifications and expires_at
+    // Fetch tournament names + location + starts_at + category for notifications, expires_at, and league filtering
     const { data: tournamentData } = await supabase
       .from('tournaments')
-      .select('id, name, location, starts_at')
+      .select('id, name, location, starts_at, category')
       .in('id', tournamentIds as string[])
     const tournamentNames: Record<string, string> = {}
     const tournamentLocations: Record<string, string | null> = {}
     const tournamentStartsAt: Record<string, string> = {}
+    const tournamentCategories: Record<string, string> = {}
     for (const t of tournamentData ?? []) {
       tournamentNames[t.id] = t.name
       tournamentLocations[t.id] = t.location
       tournamentStartsAt[t.id] = t.starts_at
+      tournamentCategories[t.id] = t.category
     }
 
     // ── 5. Score predictions ──────────────────────────────────────────────
@@ -256,22 +258,38 @@ export async function GET(request: Request) {
     // Always recalculate rankings (even when no new points) to fix any stale data
     const userIds = Object.keys(globalUserPointsDelta)
 
-    // 9a. Update league memberships — batch fetch all, then batch update
+    // 9a. Update league memberships — respects per-league tournament type filtering
     if (userIds.length > 0) {
       const { data: allMemberships } = await supabase
         .from('league_members')
-        .select('league_id, user_id, total_points')
+        .select('league_id, user_id, total_points, leagues(allowed_tournament_types)')
         .in('user_id', userIds)
 
-      const leagueUpdates = (allMemberships ?? [])
-        .filter(m => globalUserPointsDelta[m.user_id])
-        .map(m =>
-          supabase
-            .from('league_members')
-            .update({ total_points: m.total_points + globalUserPointsDelta[m.user_id] })
-            .eq('league_id', m.league_id)
-            .eq('user_id', m.user_id)
-        )
+      const leagueUpdates: Array<PromiseLike<any>> = []
+      for (const m of allMemberships ?? []) {
+        const tPoints = userTournamentPoints[m.user_id]
+        if (!tPoints) continue
+
+        const allowedTypes = (m.leagues as any)?.allowed_tournament_types as string[] | null
+
+        // Sum points only from tournaments whose category is allowed by this league
+        let delta = 0
+        for (const [tId, pts] of Object.entries(tPoints)) {
+          if (!allowedTypes || allowedTypes.includes(tournamentCategories[tId])) {
+            delta += pts
+          }
+        }
+
+        if (delta > 0) {
+          leagueUpdates.push(
+            supabase
+              .from('league_members')
+              .update({ total_points: m.total_points + delta })
+              .eq('league_id', m.league_id)
+              .eq('user_id', m.user_id)
+          )
+        }
+      }
 
       for (let i = 0; i < leagueUpdates.length; i += 50) {
         await Promise.all(leagueUpdates.slice(i, i + 50))

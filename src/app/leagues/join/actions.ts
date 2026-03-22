@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
+import { revalidatePath } from 'next/cache'
 
 export async function joinLeague(formData: FormData) {
   const supabase = await createClient()
@@ -38,5 +39,7 @@ export async function joinLeague(formData: FormData) {
 
   if (joinError) return { error: joinError.message }
 
+  revalidatePath(`/leagues/${league.id}`)
+  revalidatePath('/leagues')
   redirect(`/leagues/${league.id}`)
 }

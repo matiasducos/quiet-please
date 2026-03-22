@@ -45,6 +45,13 @@ export default async function LeaguesPage() {
           <p style={{ color: 'var(--muted)', fontSize: '0.875rem', lineHeight: 1.65, marginTop: '0.4rem' }}>Create a private league with friends and track who makes the sharpest calls across the full season. Your picks in any tournament you enter count toward the league standings.</p>
           <div className="flex gap-3 mt-4">
             <Link
+              href="/leagues/browse"
+              className="px-4 py-2 text-sm rounded-sm border transition-colors whitespace-nowrap"
+              style={{ background: 'white', borderColor: 'var(--chalk-dim)', color: 'var(--ink)', textDecoration: 'none' }}
+            >
+              Browse public
+            </Link>
+            <Link
               href="/leagues/join"
               className="px-4 py-2 text-sm rounded-sm border transition-colors whitespace-nowrap"
               style={{ background: 'white', borderColor: 'var(--chalk-dim)', color: 'var(--ink)', textDecoration: 'none' }}
@@ -90,11 +97,14 @@ export default async function LeaguesPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-4 flex-shrink-0">
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>
+                    {league.member_count} member{league.member_count !== 1 ? 's' : ''}
+                  </span>
                   <div className="text-right">
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: 'var(--ink)' }}>{league.my_points} pts</span>
                   </div>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', minWidth: '40px', textAlign: 'right' }}>
-                    #{league.my_rank}<span style={{ fontSize: '0.6rem', marginLeft: '2px' }}>/{league.member_count}</span>
+                    #{league.my_rank}
                   </div>
                 </div>
               </Link>
