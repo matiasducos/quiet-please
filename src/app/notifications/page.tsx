@@ -26,6 +26,7 @@ const TYPE_META: Record<string, { label: string; color: string }> = {
   friend_request:        { label: 'Friend request',     color: '#7c2d7c' },
   friend_accepted:       { label: 'New friend',          color: '#27500A' },
   friend_picks_locked:   { label: "Friend's picks",      color: '#185FA5' },
+  league_member_joined:  { label: 'League',              color: '#27500A' },
 }
 
 function getHref(n: { type: string; tournament_id: string | null; meta: Record<string, string | number> }): string {
@@ -35,6 +36,7 @@ function getHref(n: { type: string; tournament_id: string | null; meta: Record<s
   if (n.type === 'friend_picks_locked' && n.tournament_id && n.meta.username) {
     return `/tournaments/${n.tournament_id}/picks/${n.meta.username}`
   }
+  if (n.type === 'league_member_joined' && n.meta.league_id) return `/leagues/${n.meta.league_id}`
   if (n.tournament_id) return `/tournaments/${n.tournament_id}`
   return '/tournaments'
 }
@@ -147,6 +149,9 @@ export default async function NotificationsPage() {
                         )}
                         {n.type === 'friend_picks_locked' && (
                           <><strong>{meta.username ?? 'A friend'}</strong> locked in their picks for <strong>{meta.tournament_location ?? meta.tournament_name ?? 'a tournament'}</strong>.</>
+                        )}
+                        {n.type === 'league_member_joined' && (
+                          <><strong>{meta.joiner_username ?? 'Someone'}</strong> joined your league <strong>{meta.league_name ?? 'a league'}</strong>.</>
                         )}
                       </p>
                     </div>
