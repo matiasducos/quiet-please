@@ -149,7 +149,7 @@ export default function NewLeaguePage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 text-sm font-medium text-white rounded-sm hover:opacity-90 disabled:opacity-50 mt-1"
+            className="w-full py-3 text-sm font-medium text-white rounded-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed mt-1"
             style={{ background: 'var(--court)' }}
           >
             {loading ? 'Creating…' : 'Create league'}

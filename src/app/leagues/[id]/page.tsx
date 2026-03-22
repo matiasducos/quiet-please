@@ -144,7 +144,7 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
     const [{ data: lockedPicks }, { data: pointsRows }] = await Promise.all([
       admin
         .from('predictions')
-        .select('user_id, tournament_id, submitted_at, users(username), tournaments(name, location)')
+        .select('user_id, tournament_id, submitted_at, users(username), tournaments(name, location, flag_emoji, category)')
         .in('user_id', memberIds)
         .eq('is_fully_locked', true)
         .is('challenge_id', null)
@@ -152,11 +152,15 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
         .limit(50),
       admin
         .from('point_ledger')
-        .select('user_id, tournament_id, points, awarded_at, users(username), tournaments(name, location)')
+        .select('user_id, tournament_id, points, awarded_at, users(username), tournaments(name, location, flag_emoji, category)')
         .in('user_id', memberIds)
         .order('awarded_at', { ascending: false })
         .limit(100),
     ])
+
+    // Respect league tournament type filter for activity items
+    const allowedTypes = league.allowed_tournament_types as string[] | null
+    const typeFilter = (t: any) => !allowedTypes || allowedTypes.includes(t?.tournaments?.category)
 
     const joinEvents: ActivityItem[] = (members ?? []).map(m => ({
       type: 'join',
@@ -166,18 +170,22 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
       date: m.joined_at,
     }))
 
-    const picksEvents: ActivityItem[] = (lockedPicks ?? []).map((p: any) => ({
-      type: 'picks',
-      user_id: p.user_id,
-      username: p.users?.username ?? 'Unknown',
-      label: `locked picks for ${p.tournaments?.location ?? p.tournaments?.name ?? 'a tournament'}`,
-      date: p.submitted_at,
-    }))
+    const picksEvents: ActivityItem[] = (lockedPicks ?? []).filter(typeFilter).map((p: any) => {
+      const flag = p.tournaments?.flag_emoji ? `${p.tournaments.flag_emoji} ` : ''
+      return {
+        type: 'picks',
+        user_id: p.user_id,
+        username: p.users?.username ?? 'Unknown',
+        label: `locked picks for ${flag}${p.tournaments?.location ?? p.tournaments?.name ?? 'a tournament'}`,
+        date: p.submitted_at,
+      }
+    })
 
     const pointsMap = new Map<string, { user_id: string; username: string; points: number; tournament_name: string; awarded_at: string }>()
-    for (const row of (pointsRows ?? []) as any[]) {
+    for (const row of (pointsRows ?? []).filter(typeFilter) as any[]) {
       const key = `${row.user_id}:${row.tournament_id}`
       const existing = pointsMap.get(key)
+      const flag = row.tournaments?.flag_emoji ? `${row.tournaments.flag_emoji} ` : ''
       if (existing) {
         existing.points += row.points
         if (row.awarded_at > existing.awarded_at) existing.awarded_at = row.awarded_at
@@ -186,7 +194,7 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
           user_id: row.user_id,
           username: row.users?.username ?? 'Unknown',
           points: row.points,
-          tournament_name: row.tournaments?.location ?? row.tournaments?.name ?? 'a tournament',
+          tournament_name: `${flag}${row.tournaments?.location ?? row.tournaments?.name ?? 'a tournament'}`,
           awarded_at: row.awarded_at,
         })
       }

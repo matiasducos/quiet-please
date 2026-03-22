@@ -25,7 +25,7 @@ export default async function LeagueActivityPage({ params }: { params: Promise<{
   const admin = createAdminClient()
 
   const [{ data: league }, { data: myMembership }, { data: members }] = await Promise.all([
-    supabase.from('leagues').select('id, name').eq('id', id).single(),
+    supabase.from('leagues').select('id, name, allowed_tournament_types').eq('id', id).single(),
     supabase.from('league_members').select('league_id').eq('league_id', id).eq('user_id', user.id).single(),
     supabase.from('league_members').select('user_id, joined_at, users(username)').eq('league_id', id),
   ])
@@ -41,29 +41,36 @@ export default async function LeagueActivityPage({ params }: { params: Promise<{
   if (memberIds.length > 0) {
     const [{ data: lockedPicks }, { data: pointsRows }] = await Promise.all([
       admin.from('predictions')
-        .select('user_id, tournament_id, submitted_at, users(username), tournaments(name, location)')
+        .select('user_id, tournament_id, submitted_at, users(username), tournaments(name, location, flag_emoji, category)')
         .in('user_id', memberIds).eq('is_fully_locked', true).is('challenge_id', null)
         .order('submitted_at', { ascending: false }).limit(200),
       admin.from('point_ledger')
-        .select('user_id, tournament_id, points, awarded_at, users(username), tournaments(name, location)')
+        .select('user_id, tournament_id, points, awarded_at, users(username), tournaments(name, location, flag_emoji, category)')
         .in('user_id', memberIds).order('awarded_at', { ascending: false }).limit(500),
     ])
+
+    const allowedTypes = league.allowed_tournament_types as string[] | null
+    const typeFilter = (t: any) => !allowedTypes || allowedTypes.includes(t?.tournaments?.category)
 
     const joinEvents: ActivityItem[] = (members ?? []).map(m => ({
       type: 'join', user_id: m.user_id, username: (m.users as any)?.username ?? 'Unknown', label: 'joined the league', date: m.joined_at,
     }))
 
-    const picksEvents: ActivityItem[] = (lockedPicks ?? []).map((p: any) => ({
-      type: 'picks', user_id: p.user_id, username: p.users?.username ?? 'Unknown',
-      label: `locked picks for ${p.tournaments?.location ?? p.tournaments?.name ?? 'a tournament'}`, date: p.submitted_at,
-    }))
+    const picksEvents: ActivityItem[] = (lockedPicks ?? []).filter(typeFilter).map((p: any) => {
+      const flag = p.tournaments?.flag_emoji ? `${p.tournaments.flag_emoji} ` : ''
+      return {
+        type: 'picks', user_id: p.user_id, username: p.users?.username ?? 'Unknown',
+        label: `locked picks for ${flag}${p.tournaments?.location ?? p.tournaments?.name ?? 'a tournament'}`, date: p.submitted_at,
+      }
+    })
 
     const pointsMap = new Map<string, { user_id: string; username: string; points: number; tournament_name: string; awarded_at: string }>()
-    for (const row of (pointsRows ?? []) as any[]) {
+    for (const row of (pointsRows ?? []).filter(typeFilter) as any[]) {
       const key = `${row.user_id}:${row.tournament_id}`
       const existing = pointsMap.get(key)
+      const flag = row.tournaments?.flag_emoji ? `${row.tournaments.flag_emoji} ` : ''
       if (existing) { existing.points += row.points; if (row.awarded_at > existing.awarded_at) existing.awarded_at = row.awarded_at }
-      else { pointsMap.set(key, { user_id: row.user_id, username: row.users?.username ?? 'Unknown', points: row.points, tournament_name: row.tournaments?.location ?? row.tournaments?.name ?? 'a tournament', awarded_at: row.awarded_at }) }
+      else { pointsMap.set(key, { user_id: row.user_id, username: row.users?.username ?? 'Unknown', points: row.points, tournament_name: `${flag}${row.tournaments?.location ?? row.tournaments?.name ?? 'a tournament'}`, awarded_at: row.awarded_at }) }
     }
     const pointsEvents: ActivityItem[] = Array.from(pointsMap.values()).map(p => ({
       type: 'points', user_id: p.user_id, username: p.username, label: `earned ${p.points} pts at ${p.tournament_name}`, date: p.awarded_at,
