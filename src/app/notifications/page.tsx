@@ -27,6 +27,8 @@ const TYPE_META: Record<string, { label: string; color: string }> = {
   friend_accepted:       { label: 'New friend',          color: '#27500A' },
   friend_picks_locked:   { label: "Friend's picks",      color: '#185FA5' },
   league_member_joined:  { label: 'League',              color: '#27500A' },
+  league_member_left:    { label: 'League',              color: '#993C1D' },
+  league_deleted:        { label: 'League deleted',      color: '#993C1D' },
 }
 
 function getHref(n: { type: string; tournament_id: string | null; meta: Record<string, string | number> }): string {
@@ -37,6 +39,8 @@ function getHref(n: { type: string; tournament_id: string | null; meta: Record<s
     return `/tournaments/${n.tournament_id}/picks/${n.meta.username}`
   }
   if (n.type === 'league_member_joined' && n.meta.league_id) return `/leagues/${n.meta.league_id}`
+  if (n.type === 'league_member_left' && n.meta.league_id) return `/leagues/${n.meta.league_id}`
+  if (n.type === 'league_deleted') return '/leagues'
   if (n.tournament_id) return `/tournaments/${n.tournament_id}`
   return '/tournaments'
 }
@@ -152,6 +156,12 @@ export default async function NotificationsPage() {
                         )}
                         {n.type === 'league_member_joined' && (
                           <><strong>{meta.joiner_username ?? 'Someone'}</strong> joined your league <strong>{meta.league_name ?? 'a league'}</strong>.</>
+                        )}
+                        {n.type === 'league_member_left' && (
+                          <><strong>{meta.leaver_username ?? 'Someone'}</strong> left your league <strong>{meta.league_name ?? 'a league'}</strong>.</>
+                        )}
+                        {n.type === 'league_deleted' && (
+                          <>The league <strong>{meta.league_name ?? 'a league'}</strong> was deleted by its owner.</>
                         )}
                       </p>
                     </div>

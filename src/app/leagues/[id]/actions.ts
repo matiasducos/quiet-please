@@ -100,7 +100,7 @@ export async function leaveLeague(leagueId: string) {
   // Fetch league to check ownership
   const { data: league } = await admin
     .from('leagues')
-    .select('owner_id')
+    .select('owner_id, name')
     .eq('id', leagueId)
     .single()
 
@@ -140,6 +140,23 @@ export async function leaveLeague(leagueId: string) {
 
   if (error) return { error: error.message }
 
+  // Notify remaining members
+  const { data: leaverProfile } = await admin.from('users').select('username').eq('id', user.id).single()
+  const { data: remaining } = await admin
+    .from('league_members')
+    .select('user_id')
+    .eq('league_id', leagueId)
+
+  if (remaining?.length) {
+    await admin.from('notifications').insert(
+      remaining.map((m: { user_id: string }) => ({
+        user_id: m.user_id,
+        type: 'league_member_left' as const,
+        meta: { league_id: leagueId, league_name: league.name, leaver_username: leaverProfile?.username ?? 'Someone' },
+      })),
+    )
+  }
+
   revalidatePath(`/leagues/${leagueId}`)
   revalidatePath('/leagues')
   redirect('/leagues')
@@ -155,12 +172,29 @@ export async function deleteLeague(leagueId: string) {
   // Verify caller is the league owner
   const { data: league } = await admin
     .from('leagues')
-    .select('owner_id')
+    .select('owner_id, name')
     .eq('id', leagueId)
     .single()
 
   if (!league || league.owner_id !== user.id) {
     return { error: 'Only the league owner can delete the league' }
+  }
+
+  // Notify all members (except owner) before cascade-delete removes league_members
+  const { data: members } = await admin
+    .from('league_members')
+    .select('user_id')
+    .eq('league_id', leagueId)
+    .neq('user_id', user.id)
+
+  if (members?.length) {
+    await admin.from('notifications').insert(
+      members.map((m: { user_id: string }) => ({
+        user_id: m.user_id,
+        type: 'league_deleted' as const,
+        meta: { league_name: league.name },
+      })),
+    )
   }
 
   // Delete league — league_members cascade-deleted via FK
