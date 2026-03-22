@@ -217,12 +217,6 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
           })}
         </div>
 
-        {!isOwner && !league.is_public && (
-          <div className="mt-4 text-center">
-            <InviteCodeCard code={league.invite_code} />
-          </div>
-        )}
-
         {/* Owner settings */}
         {isOwner && (
           <TournamentSettings leagueId={id} current={league.allowed_tournament_types as string[] | null} />
