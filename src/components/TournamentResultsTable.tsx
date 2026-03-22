@@ -102,6 +102,8 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
 
       {/* Results table */}
       <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+        <div className="overflow-x-auto">
+        <div className="min-w-[600px]">
         <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
           <div className="col-span-1" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>RANK</div>
           <div className="col-span-5" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>PLAYER</div>
@@ -146,6 +148,8 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
             )
           })
         )}
+      </div>
+      </div>
       </div>
     </div>
   )

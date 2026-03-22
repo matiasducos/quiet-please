@@ -41,6 +41,8 @@ export default function LeaderboardTable({
 
   return (
     <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+      <div className="overflow-x-auto">
+      <div className="min-w-[500px]">
       <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
         <div className="col-span-1"  style={hStyle}>RANK</div>
         <div className="col-span-8"  style={hStyle}>PLAYER</div>
@@ -166,6 +168,8 @@ export default function LeaderboardTable({
           )
         })
       )}
+    </div>
+    </div>
     </div>
   )
 }

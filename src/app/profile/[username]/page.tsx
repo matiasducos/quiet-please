@@ -32,7 +32,7 @@ export default async function ProfilePage({
     return (
       <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
         <Nav username={currentProfile?.username} points={currentProfile?.ranking_points ?? 0} />
-        <div className="max-w-5xl mx-auto px-8 py-20 text-center">
+        <div className="max-w-5xl mx-auto px-4 md:px-8 py-20 text-center">
           <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '1rem' }}>404</p>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', letterSpacing: '-0.02em', marginBottom: '1.5rem' }}>Player not found</h1>
           <Link href="/leaderboard" style={{ color: 'var(--court)', fontSize: '0.9rem' }}>← Back to leaderboard</Link>
@@ -138,7 +138,7 @@ export default async function ProfilePage({
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       <Nav username={currentProfile?.username} points={currentProfile?.ranking_points ?? 0} userId={user.id} />
 
-      <div className="max-w-5xl mx-auto px-8 py-10">
+      <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
 
         {/* Message banner */}
         {msg && (
@@ -363,6 +363,8 @@ export default async function ProfilePage({
                     Past predictions
                   </h2>
                   <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+                    <div className="overflow-x-auto">
+                    <div className="min-w-[400px]">
                     <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
                       <div className="col-span-7"  style={hStyle}>TOURNAMENT</div>
                       <div className="col-span-5 text-right"  style={hStyle}>POINTS</div>
@@ -396,6 +398,8 @@ export default async function ProfilePage({
                       )
                     })}
                   </div>
+                  </div>
+                  </div>
                 </div>
               )}
 
@@ -428,6 +432,8 @@ export default async function ProfilePage({
                 Challenges
               </h2>
               <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+                <div className="overflow-x-auto">
+                <div className="min-w-[500px]">
                 <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
                   <div className="col-span-5" style={hStyle}>TOURNAMENT</div>
                   <div className="col-span-4" style={hStyle}>OPPONENT</div>
@@ -456,6 +462,8 @@ export default async function ProfilePage({
                     </div>
                   </Link>
                 ))}
+              </div>
+              </div>
               </div>
             </div>
           )

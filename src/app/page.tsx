@@ -3,7 +3,7 @@ import Link from 'next/link'
 export default function HomePage() {
   return (
     <main className="min-h-screen flex flex-col" style={{ background: 'var(--chalk)' }}>
-      <nav className="flex items-center justify-between px-8 py-6">
+      <nav className="flex items-center justify-between px-4 md:px-8 py-6">
         <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', color: 'var(--ink)' }}>
           Quiet Please
         </span>
@@ -14,7 +14,7 @@ export default function HomePage() {
           </Link>
         </div>
       </nav>
-      <section className="flex-1 flex flex-col items-center justify-center px-8 text-center py-24">
+      <section className="flex-1 flex flex-col items-center justify-center px-4 md:px-8 text-center py-16 md:py-24">
         <div className="inline-flex items-center gap-2 px-3 py-1 mb-8 rounded-sm text-xs tracking-widest uppercase"
           style={{ background: 'var(--court-dark)', color: 'rgba(255,255,255,0.7)', fontFamily: 'var(--font-mono)' }}>
           <span style={{ color: 'var(--clay-light)' }}>●</span>
@@ -41,7 +41,7 @@ export default function HomePage() {
           { label: 'Full calendar', desc: 'Every ATP and WTA tournament, automatically synced from the official draws.' },
           { label: 'Private leagues', desc: 'Create a group, share the invite link, and track standings across the season.' },
         ].map((f, i) => (
-          <div key={i} className="px-10 py-10 border-b md:border-b-0 md:border-r last:border-r-0" style={{ borderColor: 'var(--chalk-dim)' }}>
+          <div key={i} className="px-6 py-8 md:px-10 md:py-10 border-b md:border-b-0 md:border-r last:border-r-0" style={{ borderColor: 'var(--chalk-dim)' }}>
             <div className="text-xs tracking-widest uppercase mb-3" style={{ color: 'var(--court)', fontFamily: 'var(--font-mono)' }}>
               {String(i + 1).padStart(2, '0')}
             </div>

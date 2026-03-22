@@ -39,7 +39,7 @@ export default async function LeaguesPage() {
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="leagues" userId={user.id} />
 
-      <div className="max-w-5xl mx-auto px-8 py-10">
+      <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
         <div className="mb-8">
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>Leagues</h1>
           <p style={{ color: 'var(--muted)', fontSize: '0.875rem', lineHeight: 1.65, marginTop: '0.4rem' }}>Create a private league with friends and track who makes the sharpest calls across the full season. Your picks in any tournament you enter count toward the league standings.</p>

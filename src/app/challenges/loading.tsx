@@ -24,7 +24,7 @@ export default function ChallengesLoading() {
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       <NavSkeleton />
-      <div className="max-w-5xl mx-auto px-8 py-10">
+      <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
 
         {/* Heading */}
         <div className="mb-8">

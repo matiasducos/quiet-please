@@ -45,7 +45,7 @@ export default function NewLeaguePage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-8" style={{ background: 'var(--chalk)' }}>
+    <main className="min-h-screen flex flex-col items-center justify-center px-4 md:px-8" style={{ background: 'var(--chalk)' }}>
       <div className="w-full max-w-md">
         <Link href="/leagues" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>← Back to leagues</Link>
 

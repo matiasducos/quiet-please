@@ -25,7 +25,7 @@ export default function LeagueDetailLoading() {
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       <NavSkeleton />
 
-      <div className="max-w-5xl mx-auto px-8 py-10">
+      <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
 
         {/* Breadcrumb */}
         <div className="skeleton h-3 w-36 mb-6" />

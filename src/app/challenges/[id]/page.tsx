@@ -83,7 +83,7 @@ export default async function ChallengeDetailPage({
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="challenges" userId={user.id} />
 
-      <div className="max-w-2xl mx-auto px-8 py-10">
+      <div className="max-w-2xl mx-auto px-4 md:px-8 py-10">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 mb-6" style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
           <Link href="/challenges" style={{ color: 'var(--muted)' }}>Challenges</Link>
