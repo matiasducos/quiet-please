@@ -104,9 +104,10 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
       <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
           <div className="col-span-1" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>RANK</div>
-          <div className="col-span-6" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>PLAYER</div>
+          <div className="col-span-5" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>PLAYER</div>
           <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>ACCURACY</div>
-          <div className="col-span-3 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>POINTS</div>
+          <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>RATE</div>
+          <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>POINTS</div>
         </div>
 
         {players.length === 0 ? (
@@ -118,6 +119,7 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
           players.map((p, i) => {
             const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null
             const accuracy = p.total_picks > 0 ? `${p.correct_picks}/${p.total_picks}` : '—'
+            const rate = p.total_picks > 0 ? `${Math.round((p.correct_picks / p.total_picks) * 100)}%` : '—'
             return (
               <div key={p.user_id} className="grid grid-cols-12 px-5 py-4 border-b last:border-0"
                 style={{ borderColor: 'var(--chalk-dim)', background: p.isMe ? '#edf4fc' : 'white' }}>
@@ -125,14 +127,17 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
                   {medal ? <span style={{ fontSize: '1rem' }}>{medal}</span>
                     : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{i + 1}</span>}
                 </div>
-                <div className="col-span-6 flex items-center gap-2">
+                <div className="col-span-5 flex items-center gap-2">
                   <Link href={`/profile/${p.username}`} style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: p.isMe ? '#1e4e8c' : 'var(--ink)', textDecoration: 'none' }}>{p.username}</Link>
                   {p.isMe && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#1e4e8c', background: '#dbeafe', padding: '1px 6px', borderRadius: '2px' }}>you</span>}
                 </div>
                 <div className="col-span-2 flex items-center justify-end">
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{accuracy}</span>
                 </div>
-                <div className="col-span-3 flex items-center justify-end">
+                <div className="col-span-2 flex items-center justify-end">
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--ink)' }}>{rate}</span>
+                </div>
+                <div className="col-span-2 flex items-center justify-end">
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: p.points > 0 ? 'var(--court)' : 'var(--muted)', fontWeight: 500 }}>
                     {p.points > 0 ? `+${p.points}` : '0'}
                   </span>

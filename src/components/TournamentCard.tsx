@@ -62,7 +62,7 @@ export interface TournamentCardData {
   flag_emoji?: string | null
 }
 
-export default function TournamentCard({ t }: { t: TournamentCardData }) {
+export default function TournamentCard({ t, disableLink }: { t: TournamentCardData; disableLink?: boolean }) {
   const tierKey = `${t.tour}|${t.category}`
   const tier    = TIER[tierKey] ?? { label: t.tour, bg: '#4a5568', text: '#fff' }
   const surface = SURFACE_COLORS[(t.surface as keyof typeof SURFACE_COLORS) ?? 'hard']
@@ -76,12 +76,13 @@ export default function TournamentCard({ t }: { t: TournamentCardData }) {
     : null
   const displayLocation = t.location ?? fallbackLocation
 
+  const Wrapper = disableLink ? 'div' : Link
+  const wrapperProps = disableLink
+    ? { className: 'block rounded-sm border bg-white overflow-hidden', style: { borderColor: 'var(--chalk-dim)' } }
+    : { href: `/tournaments/${t.id}`, className: 'tournament-card block rounded-sm border bg-white overflow-hidden', style: { borderColor: 'var(--chalk-dim)', textDecoration: 'none' } }
+
   return (
-    <Link
-      href={`/tournaments/${t.id}`}
-      className="tournament-card block rounded-sm border bg-white overflow-hidden"
-      style={{ borderColor: 'var(--chalk-dim)', textDecoration: 'none' }}
-    >
+    <Wrapper {...wrapperProps as any}>
       {/* ── Tier stripe ────────────────────────────────────────────── */}
       <div
         style={{
@@ -182,6 +183,6 @@ export default function TournamentCard({ t }: { t: TournamentCardData }) {
           </div>
         )}
       </div>
-    </Link>
+    </Wrapper>
   )
 }

@@ -271,7 +271,7 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {leagueTournaments.map(t => (
                 <div key={t.id} className="relative">
-                  <TournamentCard t={t} />
+                  <TournamentCard t={t} disableLink />
                   <Link
                     href={`/leagues/${id}/tournaments/${t.id}`}
                     className="absolute bottom-3 right-4 px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
