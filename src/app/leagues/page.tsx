@@ -11,7 +11,7 @@ export default async function LeaguesPage() {
   const supabase = await createClient()
   const { data: memberships } = await supabase
     .from('league_members')
-    .select('league_id, total_points, joined_at, leagues(id, name, description, invite_code, owner_id, is_active)')
+    .select('league_id, total_points, joined_at, leagues(id, name, description, invite_code, owner_id, is_active, is_public)')
     .eq('user_id', user.id)
     .order('joined_at', { ascending: false })
 
@@ -87,6 +87,7 @@ export default async function LeaguesPage() {
               >
                 <div>
                   <div className="flex items-center gap-2 mb-1">
+                    <span style={{ fontSize: '0.85rem' }}>{league.is_public ? '🌐' : '🔒'}</span>
                     <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)' }}>{league.name}</span>
                     {league.owner_id === user.id && (
                       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--court)', background: '#eaf3de', padding: '1px 6px', borderRadius: '2px' }}>owner</span>
