@@ -46,10 +46,10 @@
 - [x] "View" button on leagues you're already in, "Join" button on others
 
 ## Invite Link
-- [ ] Private league: "Copy invite link" button visible to all members (single location, top-right)
-- [ ] Click "Copy invite link" → clipboard has `/leagues/join?code=XXXXXXXX`
-- [ ] Open that URL → join page has code pre-filled
-- [ ] Public leagues: no invite code card shown
+- [x] Private league: "Copy invite link" button visible to all members (single location, top-right)
+- [x] Click "Copy invite link" → clipboard has `/leagues/join?code=XXXXXXXX`
+- [x] Open that URL → join page has code pre-filled
+- [x] Public leagues: no invite code card shown
 
 ## Join Notifications (migration 022)
 - [x] Someone joins your league via code → you get a notification
@@ -57,36 +57,36 @@
 - [x] Notification includes joiner's username and league name
 
 ## Expandable Leaderboard Breakdown
-- [ ] Click a member with points → expands per-tournament breakdown
-- [ ] Breakdown shows flag + tournament name + ATP/WTA badge + points
-- [ ] Click a tournament name in breakdown → goes to league tournament results page
-- [ ] Works on global leaderboard too → links to `/leaderboard/tournaments/[id]`
+- [x] Click a member with points → expands per-tournament breakdown
+- [x] Breakdown shows flag + tournament name + ATP/WTA badge + points
+- [x] Click a tournament name in breakdown → goes to league tournament results page
+- [x] Works on global leaderboard too → links to `/leaderboard/tournaments/[id]`
 
 ## Tournament Results Pages
-- [ ] `/leagues/[id]/tournaments/[tid]` — shows tournament header + ranked league members
-- [ ] `/leaderboard/tournaments/[tid]` — shows tournament header + ranked global players (top 50)
-- [ ] ACCURACY column shows correct/total picks
-- [ ] RATE column shows percentage
-- [ ] POINTS column shows +points in green
-- [ ] LIVE badge shows for in-progress tournaments
-- [ ] "See results" button on tournament detail page (in-progress + completed only)
+- [x] `/leagues/[id]/tournaments/[tid]` — shows tournament header + ranked league members
+- [x] `/leaderboard/tournaments/[tid]` — shows tournament header + ranked global players (top 50)
+- [x] ACCURACY column shows correct/total picks
+- [x] RATE column shows percentage
+- [x] POINTS column shows +points in green
+- [x] LIVE badge shows for in-progress tournaments
+- [x] "See results" button on tournament detail page (in-progress + completed only)
 
 ## Tournaments Section on League Page
-- [ ] Tournament cards appear below leaderboard (only tournaments where members participated)
-- [ ] Cards are NOT clickable (no hover effect) — only "See results" button navigates
-- [ ] Respects league tournament type filter
-- [ ] Only shows this season (52-week window)
-- [ ] In-progress tournaments show "In progress" status badge
+- [x] Tournament cards appear below leaderboard (only tournaments where members participated)
+- [x] Cards are NOT clickable (no hover effect) — only "See results" button navigates
+- [x] Respects league tournament type filter
+- [x] Only shows this season (52-week window)
+- [x] In-progress tournaments show "In progress" status badge
 
 ## League Points Accuracy (migration 023)
-- [ ] All leagues show correct points matching global leaderboard
-- [ ] Points recalculate correctly after cron run
-- [ ] Leagues with tournament type filters show filtered points only
+- [x] All leagues show correct points matching global leaderboard
+- [x] Points recalculate correctly after cron run
+- [x] Leagues with tournament type filters show filtered points only
 
 ## Activity Feed
-- [ ] Shows max 15 items on league detail page
-- [ ] "See all" link appears when more than 15 items exist
-- [ ] `/leagues/[id]/activity` shows full history
+- [x] Shows max 15 items on league detail page
+- [x] "See all" link appears when more than 15 items exist
+- [x] `/leagues/[id]/activity` shows full history
 
 ## Bugs Fixed During QA
 - [x] `league_member_joined` notification rendering (was showing raw type string)
