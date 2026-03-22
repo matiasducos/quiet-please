@@ -27,7 +27,7 @@ export function LeaveButton({ leagueId, isOwner, memberCount }: { leagueId: stri
       onClick={handleLeave}
       disabled={loading}
       className="px-4 py-2 text-sm rounded-sm border transition-colors hover:opacity-80 disabled:opacity-40"
-      style={{ color: 'var(--muted)', borderColor: 'var(--chalk-dim)', background: 'white' }}
+      style={{ color: '#b91c1c', borderColor: '#fecaca', background: '#fef2f2' }}
     >
       {loading ? 'Leaving…' : 'Leave league'}
     </button>
