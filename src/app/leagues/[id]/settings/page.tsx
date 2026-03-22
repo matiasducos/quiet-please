@@ -21,7 +21,18 @@ export default async function LeagueSettingsPage({ params }: { params: Promise<{
     .single()
 
   if (!league) notFound()
-  if (league.owner_id !== user.id) redirect(`/leagues/${id}`)
+
+  // Verify user is a member (non-members can't view settings)
+  const { data: myMembership } = await supabase
+    .from('league_members')
+    .select('league_id')
+    .eq('league_id', id)
+    .eq('user_id', user.id)
+    .single()
+
+  if (!myMembership) redirect('/leagues')
+
+  const isOwner = league.owner_id === user.id
 
   // Fetch members for the member management section
   const { data: members } = await admin
@@ -34,7 +45,7 @@ export default async function LeagueSettingsPage({ params }: { params: Promise<{
     user_id: m.user_id,
     username: (m.users as any)?.username ?? 'Unknown',
     total_points: m.total_points,
-    isOwner: m.user_id === user.id,
+    isOwner: m.user_id === league.owner_id,
   }))
 
   return (
@@ -51,7 +62,7 @@ export default async function LeagueSettingsPage({ params }: { params: Promise<{
         </div>
 
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', letterSpacing: '-0.02em', marginBottom: '2rem' }}>
-          Edit league
+          {isOwner ? 'Edit league' : 'League settings'}
         </h1>
 
         <SettingsForm
@@ -61,6 +72,7 @@ export default async function LeagueSettingsPage({ params }: { params: Promise<{
           initialIsPublic={league.is_public}
           initialTournamentTypes={league.allowed_tournament_types as string[] | null}
           members={memberList}
+          isOwner={isOwner}
         />
       </div>
     </main>

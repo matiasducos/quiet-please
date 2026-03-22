@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { updateLeagueSettings, kickMember, deleteLeague } from '../actions'
+import { updateLeagueSettings, kickMember, deleteLeague, leaveLeague } from '../actions'
 
 const TOURNAMENT_TYPES = [
   { value: 'grand_slam', label: 'Grand Slams' },
@@ -24,6 +24,7 @@ export default function SettingsForm({
   initialIsPublic,
   initialTournamentTypes,
   members: initialMembers,
+  isOwner,
 }: {
   leagueId: string
   initialName: string
@@ -31,6 +32,7 @@ export default function SettingsForm({
   initialIsPublic: boolean
   initialTournamentTypes: string[] | null
   members: Member[]
+  isOwner: boolean
 }) {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -39,12 +41,15 @@ export default function SettingsForm({
   const [members, setMembers] = useState(initialMembers)
   const [kickingId, setKickingId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [leaving, setLeaving] = useState(false)
 
   function toggleType(val: string) {
+    if (!isOwner) return
     setSelectedTypes(prev => prev.includes(val) ? prev.filter(t => t !== val) : [...prev, val])
   }
 
   async function handleSave(formData: FormData) {
+    if (!isOwner) return
     setSaving(true)
     setError(null)
     formData.set('is_public', isPublic ? 'true' : 'false')
@@ -68,6 +73,21 @@ export default function SettingsForm({
     setKickingId(null)
   }
 
+  async function handleLeave() {
+    const ownerMsg = isOwner && members.length > 1
+      ? ' You are the owner. Ownership will transfer to the longest-standing member.'
+      : isOwner
+        ? ' You are the only member. The league will be deleted.'
+        : ''
+    if (!confirm(`Leave this league?${ownerMsg}`)) return
+    setLeaving(true)
+    const result = await leaveLeague(leagueId)
+    if (result?.error) {
+      alert(result.error)
+      setLeaving(false)
+    }
+  }
+
   async function handleDelete() {
     const msg = members.length > 1
       ? `This will permanently delete the league and remove all ${members.length} members. This cannot be undone.`
@@ -84,7 +104,7 @@ export default function SettingsForm({
   return (
     <div className="flex flex-col gap-8">
       {/* League settings form */}
-      <form action={handleSave} className="flex flex-col gap-4">
+      <form action={isOwner ? handleSave : undefined} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <label style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.05em' }}>LEAGUE NAME</label>
           <input
@@ -93,10 +113,11 @@ export default function SettingsForm({
             required
             maxLength={50}
             defaultValue={initialName}
+            readOnly={!isOwner}
             className="w-full px-4 py-3 rounded-sm text-sm outline-none"
-            style={{ background: 'white', border: '1.5px solid var(--chalk-dim)' }}
-            onFocus={e => e.target.style.borderColor = 'var(--court)'}
-            onBlur={e => e.target.style.borderColor = 'var(--chalk-dim)'}
+            style={{ background: isOwner ? 'white' : '#fafaf8', border: '1.5px solid var(--chalk-dim)', color: isOwner ? 'var(--ink)' : 'var(--muted)' }}
+            onFocus={e => isOwner && (e.target.style.borderColor = 'var(--court)')}
+            onBlur={e => (e.target.style.borderColor = 'var(--chalk-dim)')}
           />
         </div>
 
@@ -109,11 +130,12 @@ export default function SettingsForm({
             type="text"
             maxLength={120}
             defaultValue={initialDescription}
+            readOnly={!isOwner}
             placeholder="What's this league about?"
             className="w-full px-4 py-3 rounded-sm text-sm outline-none"
-            style={{ background: 'white', border: '1.5px solid var(--chalk-dim)' }}
-            onFocus={e => e.target.style.borderColor = 'var(--court)'}
-            onBlur={e => e.target.style.borderColor = 'var(--chalk-dim)'}
+            style={{ background: isOwner ? 'white' : '#fafaf8', border: '1.5px solid var(--chalk-dim)', color: isOwner ? 'var(--ink)' : 'var(--muted)' }}
+            onFocus={e => isOwner && (e.target.style.borderColor = 'var(--court)')}
+            onBlur={e => (e.target.style.borderColor = 'var(--chalk-dim)')}
           />
         </div>
 
@@ -123,24 +145,26 @@ export default function SettingsForm({
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setIsPublic(false)}
+              onClick={() => isOwner && setIsPublic(false)}
               className="flex-1 px-4 py-2.5 rounded-sm text-sm transition-colors"
               style={{
-                background: !isPublic ? 'var(--court)' : 'white',
+                background: !isPublic ? 'var(--court)' : isOwner ? 'white' : '#fafaf8',
                 color: !isPublic ? 'white' : 'var(--ink)',
                 border: `1.5px solid ${!isPublic ? 'var(--court)' : 'var(--chalk-dim)'}`,
+                cursor: isOwner ? 'pointer' : 'default',
               }}
             >
               🔒 Private
             </button>
             <button
               type="button"
-              onClick={() => setIsPublic(true)}
+              onClick={() => isOwner && setIsPublic(true)}
               className="flex-1 px-4 py-2.5 rounded-sm text-sm transition-colors"
               style={{
-                background: isPublic ? 'var(--court)' : 'white',
+                background: isPublic ? 'var(--court)' : isOwner ? 'white' : '#fafaf8',
                 color: isPublic ? 'white' : 'var(--ink)',
                 border: `1.5px solid ${isPublic ? 'var(--court)' : 'var(--chalk-dim)'}`,
+                cursor: isOwner ? 'pointer' : 'default',
               }}
             >
               🌐 Public
@@ -166,9 +190,10 @@ export default function SettingsForm({
                   onClick={() => toggleType(t.value)}
                   className="px-3 py-1.5 rounded-sm text-sm transition-colors"
                   style={{
-                    background: active ? '#1e4e8c' : 'white',
+                    background: active ? '#1e4e8c' : isOwner ? 'white' : '#fafaf8',
                     color: active ? 'white' : 'var(--ink)',
                     border: `1.5px solid ${active ? '#1e4e8c' : 'var(--chalk-dim)'}`,
+                    cursor: isOwner ? 'pointer' : 'default',
                   }}
                 >
                   {t.label}
@@ -179,7 +204,7 @@ export default function SettingsForm({
           <p style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '2px' }}>
             {selectedTypes.length === 0
               ? 'All tournament types count toward standings.'
-              : `Only ${selectedTypes.length} selected type${selectedTypes.length > 1 ? 's' : ''} will count. Changes apply going forward.`}
+              : `Only ${selectedTypes.length} selected type${selectedTypes.length > 1 ? 's' : ''} will count.${isOwner ? ' Changes apply going forward.' : ''}`}
           </p>
         </div>
 
@@ -187,17 +212,19 @@ export default function SettingsForm({
           <p className="text-sm px-3 py-2 rounded-sm" style={{ background: '#fef2f2', color: '#b91c1c' }}>{error}</p>
         )}
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="w-full py-3 text-sm font-medium text-white rounded-sm hover:opacity-90 disabled:opacity-50 mt-1"
-          style={{ background: 'var(--court)' }}
-        >
-          {saving ? 'Saving…' : 'Save changes'}
-        </button>
+        {isOwner && (
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full py-3 text-sm font-medium text-white rounded-sm hover:opacity-90 disabled:opacity-50 mt-1"
+            style={{ background: 'var(--court)' }}
+          >
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        )}
       </form>
 
-      {/* Members management */}
+      {/* Members */}
       <div>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', marginBottom: '0.75rem' }}>Members</h2>
         <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
@@ -210,12 +237,12 @@ export default function SettingsForm({
               <div className="flex items-center gap-2">
                 <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem' }}>{m.username}</span>
                 {m.isOwner && (
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', background: 'var(--chalk-dim)', padding: '1px 6px', borderRadius: '2px' }}>you</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', background: 'var(--chalk-dim)', padding: '1px 6px', borderRadius: '2px' }}>owner</span>
                 )}
               </div>
               <div className="flex items-center gap-3">
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{m.total_points} pts</span>
-                {!m.isOwner && (
+                {isOwner && !m.isOwner && (
                   <button
                     onClick={() => handleKick(m.user_id, m.username)}
                     disabled={kickingId === m.user_id}
@@ -231,21 +258,35 @@ export default function SettingsForm({
         </div>
       </div>
 
-      {/* Danger zone */}
+      {/* Leave league */}
       <div className="pt-6" style={{ borderTop: '1px solid var(--chalk-dim)' }}>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', color: '#b91c1c', marginBottom: '0.5rem' }}>Danger zone</h2>
-        <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '1rem' }}>
-          Deleting a league removes all members and cannot be undone.
-        </p>
         <button
-          onClick={handleDelete}
-          disabled={deleting}
+          onClick={handleLeave}
+          disabled={leaving}
           className="px-4 py-2 text-sm rounded-sm border transition-colors hover:opacity-80 disabled:opacity-40"
           style={{ color: '#b91c1c', borderColor: '#fecaca', background: '#fef2f2' }}
         >
-          {deleting ? 'Deleting…' : 'Delete league'}
+          {leaving ? 'Leaving…' : 'Leave league'}
         </button>
       </div>
+
+      {/* Danger zone — owner only */}
+      {isOwner && (
+        <div className="pt-6" style={{ borderTop: '1px solid var(--chalk-dim)' }}>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', color: '#b91c1c', marginBottom: '0.5rem' }}>Danger zone</h2>
+          <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '1rem' }}>
+            Deleting a league removes all members and cannot be undone.
+          </p>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="px-4 py-2 text-sm rounded-sm border transition-colors hover:opacity-80 disabled:opacity-40"
+            style={{ color: '#b91c1c', borderColor: '#fecaca', background: '#fef2f2' }}
+          >
+            {deleting ? 'Deleting…' : 'Delete league'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

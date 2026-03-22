@@ -4,7 +4,6 @@ import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
-import { LeaveButton } from './LeagueActions'
 import InviteCodeCard from './InviteCodeCard'
 import LeagueLeaderboard from './LeagueLeaderboard'
 
@@ -189,15 +188,13 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: league.is_public ? '#1e4e8c' : 'var(--muted)', background: league.is_public ? '#edf4fc' : 'var(--chalk-dim)', padding: '2px 8px', borderRadius: '2px', marginTop: '6px' }}>
                 {league.is_public ? '🌐 Public' : '🔒 Private'}
               </span>
-              {isOwner && (
-                <Link
-                  href={`/leagues/${id}/settings`}
-                  className="transition-opacity hover:opacity-70"
-                  style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', textDecoration: 'none', marginTop: '6px' }}
-                >
-                  Edit settings
-                </Link>
-              )}
+              <Link
+                href={`/leagues/${id}/settings`}
+                className="transition-opacity hover:opacity-70"
+                style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', textDecoration: 'none', marginTop: '6px' }}
+              >
+                {isOwner ? 'Edit settings' : 'Settings'}
+              </Link>
             </div>
             {league.description && <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>{league.description}</p>}
             {league.allowed_tournament_types && (
@@ -278,10 +275,6 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
           )}
         </div>
 
-        {/* Leave league */}
-        <div className="mt-10 pt-6" style={{ borderTop: '1px solid var(--chalk-dim)' }}>
-          <LeaveButton leagueId={id} isOwner={isOwner} memberCount={(members ?? []).length} />
-        </div>
       </div>
     </main>
   )
