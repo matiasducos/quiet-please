@@ -258,43 +258,9 @@ export async function GET(request: Request) {
     // Always recalculate rankings (even when no new points) to fix any stale data
     const userIds = Object.keys(globalUserPointsDelta)
 
-    // 9a. Update league memberships — respects per-league tournament type filtering
-    if (userIds.length > 0) {
-      const { data: allMemberships } = await supabase
-        .from('league_members')
-        .select('league_id, user_id, total_points, leagues(allowed_tournament_types)')
-        .in('user_id', userIds)
-
-      const leagueUpdates: Array<PromiseLike<any>> = []
-      for (const m of allMemberships ?? []) {
-        const tPoints = userTournamentPoints[m.user_id]
-        if (!tPoints) continue
-
-        const allowedTypes = (m.leagues as any)?.allowed_tournament_types as string[] | null
-
-        // Sum points only from tournaments whose category is allowed by this league
-        let delta = 0
-        for (const [tId, pts] of Object.entries(tPoints)) {
-          if (!allowedTypes || allowedTypes.includes(tournamentCategories[tId])) {
-            delta += pts
-          }
-        }
-
-        if (delta > 0) {
-          leagueUpdates.push(
-            supabase
-              .from('league_members')
-              .update({ total_points: m.total_points + delta })
-              .eq('league_id', m.league_id)
-              .eq('user_id', m.user_id)
-          )
-        }
-      }
-
-      for (let i = 0; i < leagueUpdates.length; i += 50) {
-        await Promise.all(leagueUpdates.slice(i, i + 50))
-      }
-    }
+    // 9a. Recalculate all league member points from scratch (idempotent)
+    // Uses a DB function that sums actual prediction data per league's allowed types
+    await supabase.rpc('recalculate_league_points')
 
     // 9b. Recalculate rankings for all users who have scored predictions
     // (not just users with new points this run — ensures stale rankings are fixed)
