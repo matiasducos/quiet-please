@@ -193,6 +193,16 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                 {surface.label}
               </span>
 
+              {(t.status === 'in_progress' || t.status === 'completed') && (
+                <Link
+                  href={`/leaderboard/tournaments/${t.id}`}
+                  className="px-3 py-1 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
+                  style={{ background: 'var(--court)', color: 'white', textDecoration: 'none' }}
+                >
+                  See results
+                </Link>
+              )}
+
               {t.draw_close_at && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
