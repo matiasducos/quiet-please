@@ -39,11 +39,11 @@
 - [x] Confirmation dialog shows correct context (owner transfer / league deletion)
 
 ## Browse Page Filters
-- [ ] Search by league name → instant filter
-- [ ] Search by description text → matches
-- [ ] Click tournament type chip → filters to matching leagues
-- [ ] Clear search/filter → all leagues show again
-- [ ] "View" button on leagues you're already in, "Join" button on others
+- [x] Search by league name → instant filter
+- [x] Search by description text → matches
+- [x] Click tournament type chip → filters to matching leagues
+- [x] Clear search/filter → all leagues show again
+- [x] "View" button on leagues you're already in, "Join" button on others
 
 ## Invite Link
 - [ ] Private league: "Copy invite link" button visible to all members (single location, top-right)
