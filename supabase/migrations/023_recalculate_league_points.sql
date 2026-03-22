@@ -15,20 +15,13 @@ begin
     select sum(p.points_earned)
     from public.predictions p
     join public.tournaments t on t.id = p.tournament_id
+    join public.leagues l on l.id = lm.league_id
     where p.user_id = lm.user_id
       and p.challenge_id is null
       and p.points_earned > 0
       and (
-        -- If league has no filter, count all types
-        not exists (
-          select 1 from public.leagues l
-          where l.id = lm.league_id and l.allowed_tournament_types is not null
-        )
-        or
-        -- Otherwise only count allowed types
-        t.category = any(
-          (select l.allowed_tournament_types from public.leagues l where l.id = lm.league_id)
-        )
+        l.allowed_tournament_types is null
+        or t.category = any(l.allowed_tournament_types)
       )
   ), 0);
 end;
