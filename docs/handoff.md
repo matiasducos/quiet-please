@@ -1,58 +1,46 @@
 # Developer Handoff — Quiet Please
 
-## Current status (as of March 18, 2026 — Session 17)
+## Current status (as of March 23, 2026)
 
-The app is live in production. All Phase 4–7 features are complete. All pending DB migrations (003, 004, 007) are now applied to production. Phase 5 UX polish (skeletons, empty states, admin enhancements, analytics) is done.
+The app is live in production. Phases 4–8 are complete. Latest migration: `027_anonymous_challenges.sql`.
 
 ### What is working right now
-- ✅ Landing page with full design system (chalk bg, court green, DM Serif Display)
-- ✅ Auth — signup, login, logout, route protection
-- ✅ Email confirmation — signup redirects to /check-email, user clicks link to activate
-- ✅ Google OAuth — login/signup with Google, new OAuth users redirected to /setup-username
-- ✅ Username setup — /setup-username page for OAuth users who need to pick a username
-- ✅ Dashboard — username, points, upcoming tournaments
+- ✅ Landing page — hero, live tournaments section, bracket preview, leaderboard teaser, features grid, final CTA. Full design system (chalk bg, court green, DM Serif Display).
+- ✅ Auth — signup, login, logout, route protection, Google OAuth, email confirmation, username setup for OAuth users
+- ✅ Onboarding flow (`/welcome`) — post-signup redirect with video placeholder and next-steps
+- ✅ Dashboard — stats (ranking pts, predictions, global rank), friend activity feed, upcoming tournaments
 - ✅ Tournament list (`/tournaments`) — ATP/WTA tabs, surface filters, real data; accessible without login
 - ✅ Tournament detail (`/tournaments/[id]`) — public (ISR cached), draw status, points breakdown, predict/practice buttons; "See all picks →" link when in_progress/completed
 - ✅ Bracket predictor (`/tournaments/[id]/predict`) — pick winners per round, save draft, submit & lock; sticky header (nav + banner + round tabs)
-- ✅ Locked picks view — `predict/page.tsx` shows readOnly bracket with color-coded results + per-match points (`✓ +N pts`) instead of redirecting
-- ✅ Practice mode — completed tournaments show "Practice picks" button, picks scored immediately, no real points awarded
-- ✅ Public picks page (`/tournaments/[id]/picks/[username]`) — view any user's locked bracket, no auth required; color-coded with results + points
-- ✅ All picks listing (`/tournaments/[id]/picks`) — leaderboard of all locked predictions, sorted by points_earned; "View →" links to individual bracket
-- ✅ Share picks — "Share picks" button in locked bracket banner copies public link to clipboard
-- ✅ Leaderboard (`/leaderboard`) — worldwide / country / city scopes; ATP / WTA / both circuit filter; rolling 52-week ranking_points; "my rank" highlight; medal emojis
-- ✅ Leagues (`/leagues`) — create, join with invite code, per-league leaderboard + activity feed (join / locked picks / points events)
-- ✅ Friends system (`/friends`) — search by username, send/accept/decline requests, challenge button; feedback messages via URL params (green/red banners); accessible from own profile page
-- ✅ Challenges (`/challenges`) — hub showing pending/active/past challenges, grouped by state
-- ✅ New challenge flow (`/challenges/new`) — 2-step: pick friend → pick tournament
+- ✅ Locked picks view — readOnly bracket with color-coded results + per-match points (`✓ +N pts`)
+- ✅ Practice mode — completed tournaments, picks scored immediately, no real points awarded
+- ✅ Public picks page (`/tournaments/[id]/picks/[username]`) — color-coded bracket, no auth required
+- ✅ All picks listing (`/tournaments/[id]/picks`) — sorted by points_earned
+- ✅ Leaderboard (`/leaderboard`) — worldwide / country / city scopes; ATP / WTA / both circuit filter; rolling 52-week ranking_points; blurred preview for anonymous users
+- ✅ Leagues (`/leagues`) — create, join with invite code, per-league leaderboard + activity feed; public/private; auth gate for anonymous users
+- ✅ Friends system (`/friends`) — send/accept/decline requests; activity feed (last 30 days, limit 15, sorted newest first); feed also shown on dashboard (last 5) and own profile (last 5)
+- ✅ Head-to-head rivalry stats — shown on profile page between two users who have completed challenges
+- ✅ Challenges (`/challenges`) — hub showing pending/active/past challenges; auth gate for anonymous users
+- ✅ Anonymous challenges (`/c/[code]`) — shareable bracket challenge links, no account needed; creator and opponent both pick; cron scores as tournament progresses; picks stored as JSONB on `challenges` table
 - ✅ Challenge detail (`/challenges/[id]`) — accept/decline, live lock status, completed result banner (win/loss/draw)
-- ✅ User profile page (`/profile/[username]`) — ranking_points + ATP/WTA circuit breakdown; country/city display + inline edit form (`?edit=location`); rank, hit rate, predictions history, challenges section; "Friends →" link on own profile; contextual friend button on other profiles (Add / Request sent / Accept+Decline / Friends ✓)
-- ✅ ATP-style ranking system — rolling 52-week window; weekly slot enforcement (one ATP + one WTA slot per ISO week per user); `ranking_points` / `atp_ranking_points` / `wta_ranking_points` columns on users; Grand Slams consume both ISO weeks they span; slot conflict shown server-side before bracket loads
-- ✅ Notifications (`/notifications`) — in-app notification dot in Nav, notifications page
-- ✅ Email notifications — draw opens + points awarded emails
-- ✅ Open Graph images — `/tournaments/[id]/opengraph-image.tsx`, tier/surface badges, tournament name, date range
-- ✅ Admin panel (`/admin`) — trigger sync-tournaments, sync-draws, sync-results, award-points, sync-backfill; tournament status override (force in_progress/completed without waiting for sync); protected by ADMIN_USER_IDS env var; "Admin" link shown in Nav for admin users
-- ⚠️ 2026 ATP/WTA calendar incomplete — current free-tier API (api-tennis.com via RapidAPI) only returns a subset of events; 250-level events are missing because they're not included in the free plan. **Upgrade path**: api-tennis.com direct subscription (Starter $40/mo, 14-day free trial). Before paying, email contact@api-tennis.com to confirm ATP/WTA 250 coverage. The adapter layer is already built — only `TENNIS_API_KEY` env var + base URL need changing. No code changes required.
-- ✅ Cron: sync-tournaments, sync-draws, sync-results, award-points, sync-backfill — all working; award-points also scores + expires challenges
-- ✅ Points engine tested — awards correct per-round points, showing in nav and leaderboard
-- ✅ League points synced — award-points cron propagates to league_members.total_points
-- ✅ Mobile responsive layouts — Nav (admin/sign-out on mobile tab row), BracketPredictor banners, tournament detail h1
-- ✅ ATP Tour-style tournament cards — tier badges, country flags, date ranges
-- ✅ Tournament list grouped by month — collapsed by default, chevron expand/collapse, shadow on header to signal clickability
-- ✅ City dropdown on profile location form — populated based on selected country (47 countries × 5-15 cities each), client component with key-reset trick
-- ✅ Points removed from Nav — already visible on leaderboard and profile
-- ✅ Deployed to production at https://quiet-please.vercel.app
-- ✅ Vercel cron jobs configured (daily schedules — Hobby plan limit)
-- ✅ Supabase Auth redirect URLs updated for production
-- ✅ Vercel Analytics — page view tracking via `@vercel/analytics`; `<Analytics />` in root layout
+- ✅ User profile page (`/profile/[username]`) — ranking_points, ATP/WTA breakdown, country/city edit, rank, hit rate, predictions history, challenges section, H2H stats, friend activity feed (own profile only)
+- ✅ ATP-style ranking system — rolling 52-week window, weekly slot enforcement, circuit breakdown
+- ✅ Notifications (`/notifications`) — in-app dot in Nav, notifications page
+- ✅ Email notifications — draw opens + points awarded
+- ✅ Open Graph images — tournaments + challenge share pages
+- ✅ Admin panel (`/admin`) — 5 cron triggers, tournament status override, protected by env var
+- ⚠️ 2026 ATP/WTA calendar incomplete — free-tier API missing 250-level events. Upgrade path: api-tennis.com direct subscription ($40/mo). Adapter layer already built — only `TENNIS_API_KEY` + base URL need changing.
+- ✅ Cron: all jobs working; award-points also scores/expires anonymous + authenticated challenges
+- ✅ Mobile responsive layouts throughout
+- ✅ Deployed to https://quiet-please.vercel.app with Vercel Analytics
 
 ### Known bugs / tech debt
-- TypeScript build errors suppressed via `ignoreBuildErrors: true` — fix properly by running `supabase gen types typescript` to regenerate DB types after applying migrations
-- Cron schedules are daily-only (Vercel Hobby plan limit) — upgrade to Vercel Pro ($20/mo) for sub-hourly syncs (sync-results every 30 min, award-points every 35 min). **Only matters when going fully public with live tournament data.**
+- TypeScript build errors suppressed via `ignoreBuildErrors: true` — fix by running `supabase gen types typescript` after applying migrations
+- Cron schedules are daily-only (Vercel Hobby plan limit) — upgrade to Vercel Pro ($20/mo) for sub-hourly syncs. Only matters for live tournament coverage.
 
-### Pending manual steps (must do before public launch)
-1. ✅ **Apply migrations** — `003_username_setup.sql`, `004_practice_predictions.sql`, `007_ranking_system.sql` all run on prod (Session 17)
-2. ✅ **Re-enable email confirmation** — done (Session 17)
-3. **Run sync-backfill** to process past 2026 tournaments: `GET /api/cron/sync-backfill` with `Authorization: Bearer <CRON_SECRET>` (one-time, run whenever new past tournaments are seeded)
+### Pending manual steps
+1. ✅ All migrations through `027_anonymous_challenges.sql` applied to prod
+2. **Run sync-backfill** to process past 2026 tournaments: `GET /api/cron/sync-backfill` with `Authorization: Bearer <CRON_SECRET>` (run after seeding new tournaments)
 
 ---
 
