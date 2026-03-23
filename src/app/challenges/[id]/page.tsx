@@ -49,16 +49,18 @@ export default async function ChallengeDetailPage({
   const isWinner  = challenge.winner_id === user.id
   const isLoser   = challenge.status === 'completed' && challenge.winner_id !== null && !isWinner
 
-  // Check challenge-specific predictions for lock status + pick counts
+  // Check challenge-specific predictions for lock status, pick counts, and live points
   let myPicksLocked    = false
   let theirPicksLocked = false
   let myPickCount      = 0
   let theirPickCount   = 0
+  let myLivePoints     = 0
+  let theirLivePoints  = 0
 
   if (['accepted', 'completed'].includes(challenge.status)) {
     const { data: preds } = await admin
       .from('predictions')
-      .select('user_id, is_fully_locked, picks')
+      .select('user_id, is_fully_locked, picks, points_earned')
       .eq('challenge_id', challenge.id)
       .eq('tournament_id', challenge.tournament_id)
 
@@ -69,6 +71,8 @@ export default async function ChallengeDetailPage({
     theirPicksLocked = theirPred?.is_fully_locked === true
     myPickCount      = Object.keys((myPred?.picks as Record<string, string> | null) ?? {}).length
     theirPickCount   = Object.keys((theirPred?.picks as Record<string, string> | null) ?? {}).length
+    myLivePoints     = myPred?.points_earned ?? 0
+    theirLivePoints  = theirPred?.points_earned ?? 0
   }
 
   // Pending challenges only auto-expire for completed tournaments (not in_progress)
@@ -97,6 +101,7 @@ export default async function ChallengeDetailPage({
             {myUsername} <span style={{ color: 'var(--muted)' }}>vs</span> {theirUsername}
           </h1>
           <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
+            {tournament?.flag_emoji && <span style={{ marginRight: '3px' }}>{tournament.flag_emoji}</span>}
             {tournament?.location ?? tournament?.name} · {tournament?.tour} · {tournament?.starts_at ? formatDate(tournament.starts_at) : ''}
           </p>
         </div>
@@ -211,6 +216,29 @@ export default async function ChallengeDetailPage({
                 </div>
               </div>
             </div>
+            {/* Live score — only show when tournament has started awarding points */}
+            {(myLivePoints > 0 || (myPicksLocked && theirPicksLocked && theirLivePoints > 0)) && (
+              <div className="border-t pt-3 mb-4" style={{ borderColor: 'var(--chalk-dim)' }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>
+                  Live score
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.1rem' }}>
+                  <span style={{ color: 'var(--ink)' }}>{myLivePoints}</span>
+                  <span style={{ color: 'var(--muted)' }}> pts </span>
+                  {myPicksLocked && theirPicksLocked ? (
+                    <>
+                      <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>vs </span>
+                      <span style={{ color: 'var(--ink)' }}>{theirLivePoints}</span>
+                      <span style={{ color: 'var(--muted)' }}> pts</span>
+                    </>
+                  ) : (
+                    <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>
+                      · opponent score hidden until both locked
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="flex gap-3">
               <Link
                 href={`/tournaments/${challenge.tournament_id}/predict?challenge=${challenge.id}`}
