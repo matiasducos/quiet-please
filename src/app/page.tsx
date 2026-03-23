@@ -16,7 +16,7 @@ export default function HomePage() {
           </div>
         </div>
       </nav>
-      <section className="flex-1 flex flex-col items-center justify-center px-4 md:px-8 text-center py-16 md:py-24">
+      <section className="flex flex-col items-center px-4 md:px-8 text-center pt-12 pb-16 md:pt-20 md:pb-24">
         <div className="inline-flex items-center gap-2 px-3 py-1 mb-8 rounded-sm text-xs tracking-widest uppercase"
           style={{ background: 'var(--court-dark)', color: 'rgba(255,255,255,0.7)', fontFamily: 'var(--font-mono)' }}>
           <span style={{ color: 'var(--clay-light)' }}>●</span>
