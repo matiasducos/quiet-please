@@ -34,6 +34,13 @@ export default function HomePage() {
             Sign in
           </Link>
         </div>
+        <Link
+          href="/challenges/create"
+          className="mt-5 transition-opacity hover:opacity-70"
+          style={{ fontSize: '0.85rem', color: 'var(--court)', fontFamily: 'var(--font-mono)' }}
+        >
+          or challenge a friend for free →
+        </Link>
       </section>
       <section className="grid grid-cols-1 md:grid-cols-3 border-t" style={{ borderColor: 'var(--chalk-dim)' }}>
         {[
