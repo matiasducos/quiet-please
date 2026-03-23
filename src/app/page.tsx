@@ -3,15 +3,17 @@ import Link from 'next/link'
 export default function HomePage() {
   return (
     <main className="min-h-screen flex flex-col" style={{ background: 'var(--chalk)' }}>
-      <nav className="flex items-center justify-between px-4 md:px-8 py-6">
-        <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', color: 'var(--ink)' }}>
-          Quiet Please
-        </span>
-        <div className="flex items-center gap-4">
-          <Link href="/login" style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>Sign in</Link>
-          <Link href="/signup" className="px-4 py-2 text-sm text-white rounded-sm" style={{ background: 'var(--court)' }}>
-            Get started
-          </Link>
+      <nav className="border-b" style={{ borderColor: 'var(--chalk-dim)' }}>
+        <div className="max-w-5xl mx-auto flex items-center justify-between px-4 md:px-8 py-3 md:py-5">
+          <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', color: 'var(--ink)' }}>
+            Quiet Please
+          </span>
+          <div className="flex items-center gap-4">
+            <Link href="/login" style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>Sign in</Link>
+            <Link href="/signup" className="px-4 py-2 text-sm text-white rounded-sm hover:opacity-90" style={{ background: 'var(--court)' }}>
+              Get started
+            </Link>
+          </div>
         </div>
       </nav>
       <section className="flex-1 flex flex-col items-center justify-center px-4 md:px-8 text-center py-16 md:py-24">
@@ -26,21 +28,14 @@ export default function HomePage() {
         <p className="mt-8" style={{ fontSize: '1.125rem', color: 'var(--muted)', maxWidth: '42ch', lineHeight: '1.6', fontWeight: 300 }}>
           Fill out the bracket before the draw closes. Earn real ATP & WTA points for every correct pick. Challenge your friends across the full season.
         </p>
-        <div className="flex items-center gap-4 mt-10">
-          <Link href="/signup" className="px-8 py-3.5 text-white text-sm font-medium rounded-sm hover:opacity-90" style={{ background: 'var(--court)' }}>
-            Start predicting — it's free
+        <div className="flex items-center gap-3 mt-10">
+          <Link href="/signup" className="px-6 py-3.5 md:px-8 text-white text-sm font-medium rounded-sm hover:opacity-90" style={{ background: 'var(--court)' }}>
+            Start predicting — it&apos;s free
           </Link>
-          <Link href="/login" className="px-8 py-3.5 text-sm font-medium rounded-sm border" style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}>
-            Sign in
+          <Link href="/challenges/create" className="px-6 py-3.5 md:px-8 text-sm font-medium rounded-sm border hover:bg-white transition-colors" style={{ borderColor: 'var(--chalk-dim)', color: 'var(--ink)' }}>
+            Challenge a friend
           </Link>
         </div>
-        <Link
-          href="/challenges/create"
-          className="mt-5 transition-opacity hover:opacity-70"
-          style={{ fontSize: '0.85rem', color: 'var(--court)', fontFamily: 'var(--font-mono)' }}
-        >
-          or challenge a friend for free →
-        </Link>
       </section>
       <section className="grid grid-cols-1 md:grid-cols-3 border-t" style={{ borderColor: 'var(--chalk-dim)' }}>
         {[
