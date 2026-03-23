@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import BracketPredictor from '@/app/tournaments/[id]/predict/BracketPredictor'
 import { submitOpponentPicks } from '../actions'
@@ -36,6 +36,7 @@ export default function ChallengeView({
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [bracketTab, setBracketTab] = useState<'creator' | 'opponent'>('creator')
 
   // Check localStorage for tokens on mount
   useEffect(() => {
@@ -339,6 +340,54 @@ export default function ChallengeView({
           )}
         </div>
 
+        {/* Bracket tabs */}
+        {draw?.matches && (
+          <div className="mb-6">
+            <div className="flex gap-0 mb-4 border-b" style={{ borderColor: 'var(--chalk-dim)' }}>
+              {(['creator', 'opponent'] as const).map((tab) => {
+                const isActive = bracketTab === tab
+                const label = tab === 'creator'
+                  ? `${challenge.creator_name ?? 'Player 1'}'s picks`
+                  : `${challenge.opponent_name ?? (opponentName || 'Player 2')}'s picks`
+                return (
+                  <button
+                    key={tab}
+                    onClick={() => setBracketTab(tab)}
+                    className="px-4 py-2.5 text-sm transition-colors"
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.75rem',
+                      letterSpacing: '0.03em',
+                      color: isActive ? 'var(--court)' : 'var(--muted)',
+                      borderBottom: isActive ? '2px solid var(--court)' : '2px solid transparent',
+                      marginBottom: '-1px',
+                      background: 'transparent',
+                    }}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+
+            <BracketPredictor
+              key={bracketTab}
+              tournament={tournament}
+              draw={draw}
+              existingPicks={bracketTab === 'creator'
+                ? (challenge.creator_picks ?? {})
+                : (challenge.opponent_picks ?? opponentPicks)}
+              predictionId={null}
+              username={bracketTab === 'creator'
+                ? (challenge.creator_name ?? 'Player 1')
+                : (challenge.opponent_name ?? (opponentName || 'Player 2'))}
+              matchResults={matchResults}
+              readOnly={true}
+              hideSaveButtons={true}
+            />
+          </div>
+        )}
+
         {/* CTA for non-logged-in users */}
         <div className="bg-white rounded-sm border p-5 mb-6 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
           <p style={{ fontSize: '0.85rem', color: 'var(--muted)', marginBottom: '0.75rem' }}>
@@ -352,8 +401,6 @@ export default function ChallengeView({
             Create a free account →
           </a>
         </div>
-
-        {/* TODO: Side-by-side bracket comparison could go here in a future iteration */}
       </div>
     )
   }
