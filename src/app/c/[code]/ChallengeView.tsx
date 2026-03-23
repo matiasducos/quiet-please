@@ -180,6 +180,7 @@ export default function ChallengeView({
           matchResults={matchResults}
           readOnly={true}
           hideSaveButtons={true}
+          hideBackLink={true}
         />
       </div>
     )

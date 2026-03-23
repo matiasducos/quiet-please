@@ -114,6 +114,7 @@ export default function BracketPredictor({
   challengeContext,
   onPicksChange,
   hideSaveButtons = false,
+  hideBackLink = false,
 }: {
   tournament: any
   draw: Draw
@@ -132,6 +133,8 @@ export default function BracketPredictor({
   onPicksChange?: (picks: Record<string, string>) => void
   /** Hides built-in save/lock buttons — anonymous wrapper provides its own submit */
   hideSaveButtons?: boolean
+  /** Hides all back/navigation links — used when embedded in anonymous challenge views */
+  hideBackLink?: boolean
 }) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -421,7 +424,7 @@ export default function BracketPredictor({
 
           <div className="flex items-center gap-2 ml-4">
             {/* Back link (when editing) */}
-            {isEditing && (
+            {isEditing && !hideBackLink && (
               <Link
                 href={returnUrl ?? `/tournaments/${tournament.id}`}
                 style={{ fontSize: '0.8rem', color: 'var(--muted)', whiteSpace: 'nowrap', marginRight: '0.25rem' }}
@@ -447,13 +450,15 @@ export default function BracketPredictor({
                     LOCKED ✓
                   </span>
                 )}
-                <Link
-                  href={returnUrl ?? `/tournaments/${tournament.id}`}
-                  className="px-3 py-1.5 text-xs rounded-sm border whitespace-nowrap"
-                  style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
-                >
-                  ← Back
-                </Link>
+                {!hideBackLink && (
+                  <Link
+                    href={returnUrl ?? `/tournaments/${tournament.id}`}
+                    className="px-3 py-1.5 text-xs rounded-sm border whitespace-nowrap"
+                    style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
+                  >
+                    ← Back
+                  </Link>
+                )}
               </>
             ) : hideSaveButtons ? null : (
               <>
@@ -919,7 +924,7 @@ export default function BracketPredictor({
         )}
 
         {/* Read-only back link */}
-        {readOnly && (
+        {readOnly && !hideBackLink && (
           <div className="mt-8 pt-6 border-t text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
             <Link
               href={returnUrl ?? `/tournaments/${tournament.id}`}

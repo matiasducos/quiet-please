@@ -151,6 +151,7 @@ export default function AnonymousCreateFlow({
           matchResults={matchResults}
           readOnly={false}
           hideSaveButtons={true}
+          hideBackLink={true}
           onPicksChange={handlePicksChange}
         />
 
