@@ -8,6 +8,7 @@ import { sendFriendRequest, acceptFriendRequest, declineFriendRequest } from '@/
 import LocationEditForm from '@/app/profile/LocationEditForm'
 import { COUNTRIES, codeToFlag } from '@/app/admin/countries'
 import TournamentCard from '@/components/TournamentCard'
+import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
 
 export default async function ProfilePage({
   params,
@@ -86,6 +87,9 @@ export default async function ProfilePage({
   const adminIds = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean)
   const isDev    = process.env.NODE_ENV === 'development'
   const isAdmin  = isOwnProfile && (isDev || adminIds.includes(user.id))
+
+  // Friend activity — only fetched when viewing your own profile
+  const friendActivityItems = isOwnProfile ? await getFriendActivity(user.id, 5) : []
 
   type FriendStatus = 'none' | 'friends' | 'sent' | 'received'
   let friendStatus: FriendStatus = 'none'
@@ -518,7 +522,7 @@ export default async function ProfilePage({
           const ongoingChallenges = challenges.filter(c => c.status === 'accepted' || c.status === 'pending')
           if (ongoingChallenges.length === 0) return null
           return (
-            <div className="mt-10">
+            <div className="mt-10" id="challenges">
               <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.01em', marginBottom: '1rem' }}>
                 Challenges
               </h2>
@@ -559,6 +563,47 @@ export default async function ProfilePage({
             </div>
           )
         })()}
+
+        {/* ── Friend activity (own profile only) ────────────────────────────── */}
+        {isOwnProfile && friendActivityItems.length > 0 && (
+          <div className="mt-10">
+            <div className="flex items-center justify-between mb-4">
+              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.01em' }}>Friend activity</h2>
+              <Link href="/friends" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>See all friend activity →</Link>
+            </div>
+            <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+              {friendActivityItems.map((item, i) => {
+                const icon = item.type === 'picks' ? '🔒' : item.type === 'points' ? '⭐' : '👥'
+                return (
+                  <div
+                    key={`${item.type}-${item.user_id}-${item.date}-${i}`}
+                    className="flex items-center gap-3 px-5 py-3 border-b last:border-0"
+                    style={{ borderColor: 'var(--chalk-dim)' }}
+                  >
+                    <span style={{ fontSize: '1rem', flexShrink: 0 }}>{icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="truncate">
+                        <Link href={`/profile/${item.username}`} style={{ fontFamily: 'var(--font-display)', fontSize: '0.9rem', color: 'var(--ink)', textDecoration: 'none' }}>
+                          {item.username}
+                        </Link>
+                        {item.href ? (
+                          <Link href={item.href} style={{ fontSize: '0.875rem', color: 'var(--muted)', textDecoration: 'none' }}>
+                            {' '}{item.label}
+                          </Link>
+                        ) : (
+                          <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>{' '}{item.label}</span>
+                        )}
+                      </span>
+                    </div>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', flexShrink: 0 }}>
+                      {timeAgo(item.date)}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </main>
   )
