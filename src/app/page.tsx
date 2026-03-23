@@ -150,7 +150,7 @@ export default async function HomePage() {
     <main className="min-h-screen flex flex-col" style={{ background: 'var(--chalk)' }}>
 
       {/* ── Nav ───────────────────────────────────────────────────── */}
-      <nav className="border-b" style={{ borderColor: 'var(--chalk-dim)' }}>
+      <nav className="border-b sticky top-0 z-50" style={{ borderColor: 'var(--chalk-dim)', background: 'var(--chalk)' }}>
         <div className="max-w-5xl mx-auto flex items-center justify-between px-4 md:px-8 py-3 md:py-5">
           <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', color: 'var(--ink)' }}>
             Quiet Please
@@ -201,14 +201,17 @@ export default async function HomePage() {
       {liveTournaments.length > 0 && (
         <section className="py-8 md:py-12 border-t border-b" style={{ borderColor: 'var(--chalk-dim)', background: 'white' }}>
           <div className="max-w-5xl mx-auto px-4 md:px-8">
-            <div className="flex items-center gap-2 mb-5">
-              <span
-                className="inline-block w-2 h-2 rounded-full"
-                style={{ background: '#c84b31', boxShadow: '0 0 0 3px rgba(200,75,49,0.2)', flexShrink: 0 }}
-              />
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                Live right now
-              </span>
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2">
+                <span
+                  className="inline-block w-2 h-2 rounded-full"
+                  style={{ background: '#c84b31', boxShadow: '0 0 0 3px rgba(200,75,49,0.2)', flexShrink: 0 }}
+                />
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                  Live right now
+                </span>
+              </div>
+              <Link href="/tournaments" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>See all tournaments →</Link>
             </div>
             <div className="flex flex-col gap-3">
               {liveTournaments.map(t => (
