@@ -233,6 +233,7 @@ export default function ChallengeView({
           matchResults={matchResults}
           readOnly={false}
           hideSaveButtons={true}
+          hideBackLink={true}
           onPicksChange={handlePicksChange}
         />
 
@@ -385,6 +386,7 @@ export default function ChallengeView({
               matchResults={matchResults}
               readOnly={true}
               hideSaveButtons={true}
+              hideBackLink={true}
             />
           </div>
         )}
