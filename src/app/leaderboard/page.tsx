@@ -57,24 +57,60 @@ export default async function LeaderboardPage({
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
+  // Anonymous: show blurred leaderboard preview with signup overlay (FOMO, not a wall)
   if (!user) {
+    const { users: previewUsers, breakdownByUser: previewBreakdown } = await getLeaderboardData('ranking_points', 'worldwide', null, null)
     return (
       <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
         <Nav activePage="leaderboard" />
         <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1, marginBottom: '1rem' }}>Leaderboard</h1>
-          <div className="bg-white rounded-sm border py-16 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
-            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '0.5rem' }}>Sign up to see rankings</p>
-            <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem', maxWidth: '28rem', marginLeft: 'auto', marginRight: 'auto' }}>
-              Create a free account to compete on the global leaderboard, earn ranking points, and track your position.
+          <div className="mb-6">
+            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>Leaderboard</h1>
+            <p style={{ color: 'var(--muted)', fontSize: '0.875rem', marginTop: '0.4rem', lineHeight: 1.65 }}>
+              Global rankings · Rolling 52-week window · ATP &amp; WTA combined
             </p>
-            <Link
-              href="/signup"
-              className="px-6 py-2.5 text-sm font-medium text-white rounded-sm hover:opacity-90"
-              style={{ background: 'var(--court)', textDecoration: 'none' }}
-            >
-              Create account
-            </Link>
+          </div>
+
+          {/* Blurred table + overlay */}
+          <div style={{ position: 'relative' }}>
+            <div style={{ filter: 'blur(5px)', userSelect: 'none', pointerEvents: 'none' }}>
+              <LeaderboardTable
+                users={(previewUsers ?? []).map(u => ({
+                  id: u.id,
+                  username: u.username,
+                  country: u.country ?? null,
+                  points: u.ranking_points as number,
+                }))}
+                currentUserId=""
+                breakdownByUser={previewBreakdown}
+                scope="worldwide"
+              />
+            </div>
+
+            {/* Gradient fade + CTA */}
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: 'linear-gradient(to bottom, transparent 0%, rgba(245,242,235,0.5) 30%, rgba(245,242,235,0.97) 60%)',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'flex-end',
+              paddingBottom: '40px',
+            }}>
+              <div className="text-center">
+                <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '0.5rem', color: 'var(--ink)' }}>
+                  Sign up to see rankings
+                </p>
+                <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.25rem', maxWidth: '26rem' }}>
+                  Create a free account to compete on the global leaderboard and track your position.
+                </p>
+                <Link
+                  href="/signup"
+                  className="px-6 py-2.5 text-sm font-medium text-white rounded-sm hover:opacity-90"
+                  style={{ background: 'var(--court)', textDecoration: 'none' }}
+                >
+                  Create account
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
       </main>

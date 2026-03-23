@@ -24,7 +24,7 @@ export default function SignupPage() {
       router.push(`/check-email?email=${encodeURIComponent(email)}`)
       return
     }
-    router.push('/dashboard'); router.refresh()
+    router.push('/welcome'); router.refresh()
   }
 
   async function handleGoogleSignup() {

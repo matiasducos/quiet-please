@@ -55,7 +55,7 @@ export default async function ProfilePage({
     predQuery = predQuery.eq('is_fully_locked', true)
   }
 
-  const [{ count: usersAhead }, { data: predictions }, friendshipRes, { data: rawChallenges }] = await Promise.all([
+  const [{ count: usersAhead }, { data: predictions }, friendshipRes, { data: rawChallenges }, { data: rivalChallenges }] = await Promise.all([
     supabase.from('users').select('id', { count: 'exact', head: true }).gt('ranking_points', profile.ranking_points ?? 0),
     predQuery.order('created_at', { ascending: false }),
     !isOwnProfile
@@ -69,6 +69,12 @@ export default async function ProfilePage({
       .in('status', ['completed', 'accepted', 'pending'])
       .order('created_at', { ascending: false })
       .limit(10),
+    // All completed non-anonymous challenges — used for head-to-head rivalry stats (no limit)
+    admin.from('challenges')
+      .select('challenger_id, challenged_id, winner_id')
+      .or(`challenger_id.eq.${profile.id},challenged_id.eq.${profile.id}`)
+      .eq('status', 'completed')
+      .eq('is_anonymous', false),
   ])
 
   const globalRank = (usersAhead ?? 0) + 1
@@ -92,9 +98,11 @@ export default async function ProfilePage({
     else if (fs.status === 'pending') friendStatus = fs.requester_id === user.id ? 'sent' : 'received'
   }
 
-  const challengeOpponentIds = [...new Set(
-    (rawChallenges ?? []).map(c => c.challenger_id === profile.id ? c.challenged_id : c.challenger_id)
-  )]
+  const challengeOpponentIds = [...new Set([
+    ...(rawChallenges ?? []).map(c => c.challenger_id === profile.id ? c.challenged_id : c.challenger_id),
+    // Include rivals so one username fetch covers both sections
+    ...(rivalChallenges ?? []).map((c: any) => c.challenger_id === profile.id ? c.challenged_id : c.challenger_id),
+  ])]
   const challengeTournamentIds = [...new Set((rawChallenges ?? []).map(c => c.tournament_id))]
 
   let challengeOpponentNames: Record<string, string> = {}
@@ -131,6 +139,31 @@ export default async function ProfilePage({
       myPts, theirPts, won, lost, draw,
     }
   })
+
+  // ── Head-to-head rivalry stats ──────────────────────────────────────────
+  // Group completed non-anonymous challenges by opponent, count W/L/D
+  type RivalryStat = { opponentId: string; username: string; wins: number; losses: number; draws: number; total: number }
+  const rivalryMap = new Map<string, RivalryStat>()
+  for (const c of (rivalChallenges ?? []) as any[]) {
+    const opponentId = c.challenger_id === profile.id ? c.challenged_id : c.challenger_id
+    const username = challengeOpponentNames[opponentId] ?? 'Unknown'
+    const won  = c.winner_id === profile.id
+    const lost = c.winner_id !== null && c.winner_id !== profile.id
+    const draw = c.winner_id === null
+    const existing = rivalryMap.get(opponentId)
+    if (existing) {
+      if (won) existing.wins++
+      else if (lost) existing.losses++
+      else if (draw) existing.draws++
+      existing.total++
+    } else {
+      rivalryMap.set(opponentId, { opponentId, username, wins: won ? 1 : 0, losses: lost ? 1 : 0, draws: draw ? 1 : 0, total: 1 })
+    }
+  }
+  // Sort by most games played, then by wins as tiebreaker. Cap display at 10 rivals.
+  const rivalryStats = Array.from(rivalryMap.values())
+    .sort((a, b) => b.total - a.total || b.wins - a.wins)
+    .slice(0, 10)
 
   const showEditLocation = edit === 'location' && isOwnProfile
 
@@ -421,6 +454,64 @@ export default async function ProfilePage({
             </>
           )
         })()}
+
+        {/* ── Head-to-head ──────────────────────────────────────────────────── */}
+        {rivalryStats.length > 0 && (
+          <div className="mt-10">
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.01em', marginBottom: '1rem' }}>
+              Head-to-head
+            </h2>
+            <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+              <div className="overflow-x-auto">
+              <div className="min-w-[360px]">
+              <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
+                <div className="col-span-6" style={hStyle}>OPPONENT</div>
+                <div className="col-span-2 text-center" style={hStyle}>W</div>
+                <div className="col-span-2 text-center" style={hStyle}>L</div>
+                <div className="col-span-2 text-right" style={hStyle}>PLAYED</div>
+              </div>
+              {rivalryStats.map(r => (
+                <Link
+                  key={r.opponentId}
+                  href={`/profile/${r.username}`}
+                  className="grid grid-cols-12 px-5 py-4 border-b last:border-0 tournament-card"
+                  style={{ borderColor: 'var(--chalk-dim)', textDecoration: 'none' }}
+                >
+                  <div className="col-span-6 flex items-center">
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', color: 'var(--ink)' }}>
+                      {r.username}
+                    </span>
+                  </div>
+                  <div className="col-span-2 flex items-center justify-center">
+                    <span style={{
+                      fontFamily: 'var(--font-mono)', fontSize: '0.9rem',
+                      color: r.wins > r.losses ? 'var(--court)' : 'var(--ink)',
+                      fontWeight: r.wins > r.losses ? 600 : 400,
+                    }}>
+                      {r.wins}
+                    </span>
+                  </div>
+                  <div className="col-span-2 flex items-center justify-center">
+                    <span style={{
+                      fontFamily: 'var(--font-mono)', fontSize: '0.9rem',
+                      color: r.losses > r.wins ? '#c84b31' : 'var(--muted)',
+                      fontWeight: r.losses > r.wins ? 600 : 400,
+                    }}>
+                      {r.losses}
+                    </span>
+                  </div>
+                  <div className="col-span-2 flex items-center justify-end">
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>
+                      {r.total}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+              </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Ongoing Challenges ────────────────────────────────────────────── */}
         {(() => {
