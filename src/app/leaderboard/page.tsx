@@ -56,7 +56,30 @@ export default async function LeaderboardPage({
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+
+  if (!user) {
+    return (
+      <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
+        <Nav activePage="leaderboard" />
+        <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1, marginBottom: '1rem' }}>Leaderboard</h1>
+          <div className="bg-white rounded-sm border py-16 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '0.5rem' }}>Sign up to see rankings</p>
+            <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem', maxWidth: '28rem', marginLeft: 'auto', marginRight: 'auto' }}>
+              Create a free account to compete on the global leaderboard, earn ranking points, and track your position.
+            </p>
+            <Link
+              href="/signup"
+              className="px-6 py-2.5 text-sm font-medium text-white rounded-sm hover:opacity-90"
+              style={{ background: 'var(--court)', textDecoration: 'none' }}
+            >
+              Create account
+            </Link>
+          </div>
+        </div>
+      </main>
+    )
+  }
 
   const sp = await searchParams
   const scope:   Scope   = (sp.scope   as Scope   | undefined) ?? 'worldwide'

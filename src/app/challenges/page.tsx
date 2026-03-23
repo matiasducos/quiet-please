@@ -35,7 +35,45 @@ const PAST_LIMIT = 15
 
 export default async function ChallengesPage() {
   const { user, profile } = await getNavProfile()
-  if (!user) redirect('/login')
+
+  // Anonymous visitors see a landing page
+  if (!user) {
+    return (
+      <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
+        <Nav activePage="challenges" />
+        <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
+          <div className="mb-8">
+            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>Challenges</h1>
+            <p style={{ color: 'var(--muted)', fontSize: '0.875rem', lineHeight: 1.65, marginTop: '0.4rem' }}>
+              Pick a tournament, fill in your bracket, and challenge a friend. No account needed — just share the link.
+            </p>
+          </div>
+          <div className="bg-white rounded-sm border py-16 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '0.5rem' }}>Challenge a friend</p>
+            <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem', maxWidth: '28rem', marginLeft: 'auto', marginRight: 'auto' }}>
+              Pick any open tournament, make your bracket predictions, and send the link. Your friend makes theirs — whoever scores more points wins.
+            </p>
+            <div className="flex gap-3 justify-center">
+              <Link
+                href="/challenges/create"
+                className="px-6 py-2.5 text-sm font-medium text-white rounded-sm hover:opacity-90"
+                style={{ background: 'var(--court)', textDecoration: 'none' }}
+              >
+                Create a challenge
+              </Link>
+              <Link
+                href="/login"
+                className="px-6 py-2.5 text-sm rounded-sm border"
+                style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', textDecoration: 'none' }}
+              >
+                Sign in
+              </Link>
+            </div>
+          </div>
+        </div>
+      </main>
+    )
+  }
 
   const admin = createAdminClient()
 

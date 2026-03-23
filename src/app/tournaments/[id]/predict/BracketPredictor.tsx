@@ -112,6 +112,8 @@ export default function BracketPredictor({
   pickLocks = {},
   isFullyLocked = false,
   challengeContext,
+  onPicksChange,
+  hideSaveButtons = false,
 }: {
   tournament: any
   draw: Draw
@@ -126,6 +128,10 @@ export default function BracketPredictor({
   pickLocks?: Record<string, string>               // matchId → "auto" | "voluntary" | "auto_lock_all"
   isFullyLocked?: boolean
   challengeContext?: { opponentUsername: string; challengeId: string }
+  /** Called whenever picks change — used by anonymous challenge wrapper to track state */
+  onPicksChange?: (picks: Record<string, string>) => void
+  /** Hides built-in save/lock buttons — anonymous wrapper provides its own submit */
+  hideSaveButtons?: boolean
 }) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -262,6 +268,7 @@ export default function BracketPredictor({
     clearDownstream(matchId)
 
     setPicks(newPicks)
+    onPicksChange?.(newPicks)
     setSaved(false)
     setSlotError(null)
   }
@@ -448,7 +455,7 @@ export default function BracketPredictor({
                   ← Back
                 </Link>
               </>
-            ) : (
+            ) : hideSaveButtons ? null : (
               <>
                 <button
                   onClick={handleSave}
@@ -852,8 +859,8 @@ export default function BracketPredictor({
           </button>
         </div>
 
-        {/* Submit area — editing mode only */}
-        {isEditing && (
+        {/* Submit area — editing mode only (hidden when parent provides own buttons) */}
+        {isEditing && !hideSaveButtons && (
           <div className="mt-8 pt-6 border-t flex flex-col gap-3" style={{ borderColor: 'var(--chalk-dim)' }}>
             {/* Slot conflict error */}
             {slotError && (

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPointsForRound, calculateStreakMultiplier, buildFeedMap } from '@/lib/tennis'
-import type { DrawMatch } from '@/lib/tennis'
+import type { DrawMatch, Round, TournamentCategory } from '@/lib/tennis'
 import { sendPointsAwardedEmail } from '@/lib/email'
 
 function isAuthorized(request: Request): boolean {
@@ -427,6 +427,87 @@ export async function GET(request: Request) {
       console.error('[award-points] challenge scoring error:', challengeErr)
     }
 
+    // ── 12. Score anonymous challenges ────────────────────────────────────
+    let anonChallengesScored = 0
+    try {
+      const { data: anonChallenges } = await supabase
+        .from('challenges')
+        .select('id, tournament_id, creator_picks, opponent_picks, challenger_points, challenged_points, status')
+        .eq('is_anonymous', true)
+        .eq('status', 'active')
+
+      if (anonChallenges?.length) {
+        const { scoreAnonymousPicks } = await import('@/lib/tennis/anonymous-scoring')
+
+        for (const ac of anonChallenges) {
+          const bracket = bracketByTournament[ac.tournament_id]
+          if (!bracket) continue
+
+          const category = tournamentCategories[ac.tournament_id] as TournamentCategory | undefined
+          if (!category) continue
+
+          // Get match results for this tournament
+          const tournamentResults = allResults.filter(r => r.tournament_id === ac.tournament_id)
+          if (tournamentResults.length === 0) continue
+
+          const typedResults = tournamentResults
+            .filter((r: any) => r.score !== 'BYE')
+            .map((r: any) => ({
+              external_match_id: r.external_match_id,
+              round: r.round as Round,
+              winner_external_id: r.winner_external_id,
+              score: r.score,
+            }))
+
+          const creatorScore = scoreAnonymousPicks(
+            (ac.creator_picks as Record<string, string>) ?? {},
+            typedResults,
+            category,
+            bracket.matches,
+          )
+          const opponentScore = scoreAnonymousPicks(
+            (ac.opponent_picks as Record<string, string>) ?? {},
+            typedResults,
+            category,
+            bracket.matches,
+          )
+
+          // Build auto-locks for played matches
+          const creatorLocks: Record<string, string> = {}
+          const opponentLocks: Record<string, string> = {}
+          for (const r of typedResults) {
+            if ((ac.creator_picks as any)?.[r.external_match_id]) creatorLocks[r.external_match_id] = 'auto'
+            if ((ac.opponent_picks as any)?.[r.external_match_id]) opponentLocks[r.external_match_id] = 'auto'
+          }
+
+          const updateData: Record<string, any> = {
+            challenger_points: creatorScore.totalPoints,
+            challenged_points: opponentScore.totalPoints,
+            creator_pick_locks: creatorLocks,
+            opponent_pick_locks: opponentLocks,
+            updated_at: new Date().toISOString(),
+          }
+
+          // Check if tournament is completed → finalize challenge
+          const { data: tStatus } = await supabase
+            .from('tournaments')
+            .select('status')
+            .eq('id', ac.tournament_id)
+            .single()
+
+          if (tStatus?.status === 'completed') {
+            updateData.status = 'completed'
+            // winner_id stays null for anonymous — UI uses points comparison
+          }
+
+          await supabase.from('challenges').update(updateData).eq('id', ac.id)
+          anonChallengesScored++
+        }
+      }
+    } catch (anonErr) {
+      console.error('[award-points] anonymous challenge scoring error:', anonErr)
+    }
+
     return NextResponse.json({
       message: 'Points awarded successfully',
       new_results_processed: allResults.length,
@@ -436,6 +517,7 @@ export async function GET(request: Request) {
       points_by_user: globalUserPointsDelta,
       challenges_scored: challengesScored,
       challenges_expired: challengesExpired,
+      anonymous_challenges_scored: anonChallengesScored,
     })
 
   } catch (err) {
