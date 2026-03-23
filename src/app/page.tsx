@@ -82,8 +82,8 @@ function MockBracketPreview() {
     { p1: 'Fritz',     p2: 'Zverev',    picked: 'Zverev' },
   ]
   const qf: MatchData[] = [
-    { p1: 'Alcaraz', p2: 'Sinner',  picked: 'Alcaraz' },
-    { p1: 'Ruud',    p2: 'Zverev',  picked: 'Zverev' },
+    { p1: 'Alcaraz', p2: 'Medvedev', picked: 'Alcaraz' },
+    { p1: 'Ruud',    p2: 'Zverev',   picked: 'Zverev' },
   ]
   const sf: MatchData[] = [
     { p1: 'Alcaraz', p2: 'Zverev', picked: 'Alcaraz' },

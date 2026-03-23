@@ -109,9 +109,8 @@ export default async function OnboardingPage() {
             className="mb-14 rounded-sm border flex flex-col items-center justify-center gap-3 text-center"
             style={{
               borderColor: 'var(--chalk-dim)',
-              aspectRatio: '16/9',
+              height: '280px',
               background: 'white',
-              maxHeight: '360px',
             }}
           >
             <div style={{
