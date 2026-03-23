@@ -31,25 +31,43 @@ function MockBracketPreview() {
   const dim = 'var(--chalk-dim)'
   const muted = 'var(--muted)'
 
-  type MatchData = { p1: string; p2: string; picked: string; correct?: boolean }
+  type MatchData = { p1: string; p2: string; picked: string; correct?: boolean; wrong?: boolean }
 
-  function MatchCard({ p1, p2, picked, correct }: MatchData) {
+  function MatchCard({ p1, p2, picked, correct, wrong }: MatchData) {
+    const red = '#b91c1c'
     return (
       <div style={{ width: '116px', border: `1px solid ${dim}`, borderRadius: '3px', overflow: 'hidden', background: 'white', fontSize: '11px', fontFamily: 'var(--font-body)' }}>
         {[p1, p2].map(name => {
           const isPicked = name === picked
-          const bg = correct && isPicked ? '#e8f5e9' : isPicked ? '#eaf3de' : 'white'
-          const color = isPicked ? green : 'var(--ink)'
+          const isWrongPick   = !!wrong && isPicked        // user's pick — turned out wrong
+          const isActualWinner = !!wrong && !isPicked      // who actually won
+
+          const bg    = isWrongPick    ? '#fef2f2'
+                      : isActualWinner ? '#edf7f0'
+                      : correct && isPicked ? '#e8f5e9'
+                      : isPicked           ? '#eaf3de'
+                      : 'white'
+          const color = isWrongPick    ? red
+                      : isActualWinner ? green
+                      : isPicked       ? green
+                      : 'var(--ink)'
+          const border = isWrongPick    ? '#fca5a5'
+                       : isActualWinner ? green
+                       : isPicked       ? green
+                       : 'transparent'
           return (
             <div key={name} style={{
               padding: '5px 8px',
               background: bg,
               color,
-              borderLeft: `3px solid ${isPicked ? green : 'transparent'}`,
+              borderLeft: `3px solid ${border}`,
               borderBottom: `1px solid ${dim}`,
-              fontWeight: isPicked ? 500 : 400,
+              fontWeight: (isPicked || isActualWinner) ? 500 : 400,
             }}>
-              {name} {correct && isPicked && <span style={{ opacity: 0.7 }}>✓</span>}
+              {name}
+              {correct       && isPicked     && <span style={{ opacity: 0.7 }}> ✓</span>}
+              {isWrongPick                   && <span style={{ opacity: 0.8 }}> ✗</span>}
+              {isActualWinner                && <span style={{ opacity: 0.7 }}> ✓</span>}
             </div>
           )
         })}
@@ -59,7 +77,7 @@ function MockBracketPreview() {
 
   const r16: MatchData[] = [
     { p1: 'Djokovic',  p2: 'Alcaraz',  picked: 'Alcaraz',  correct: true },
-    { p1: 'Sinner',    p2: 'Medvedev',  picked: 'Sinner',   correct: true },
+    { p1: 'Sinner',    p2: 'Medvedev',  picked: 'Sinner',   wrong: true },
     { p1: 'Ruud',      p2: 'Rune',      picked: 'Ruud' },
     { p1: 'Fritz',     p2: 'Zverev',    picked: 'Zverev' },
   ]
