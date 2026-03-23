@@ -32,7 +32,7 @@ export default function HomePage() {
           <Link href="/signup" className="px-6 py-3.5 md:px-8 text-white text-sm font-medium rounded-sm hover:opacity-90" style={{ background: 'var(--court)' }}>
             Start predicting — it&apos;s free
           </Link>
-          <Link href="/challenges/create" className="px-6 py-3.5 md:px-8 text-sm font-medium rounded-sm border hover:bg-white transition-colors" style={{ borderColor: 'var(--chalk-dim)', color: 'var(--ink)' }}>
+          <Link href="/challenges/create" className="px-6 py-3.5 md:px-8 text-sm font-medium rounded-sm border transition-opacity hover:opacity-80" style={{ background: 'white', borderColor: 'var(--chalk-dim)', color: 'var(--ink)' }}>
             Challenge a friend
           </Link>
         </div>
