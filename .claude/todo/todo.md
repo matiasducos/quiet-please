@@ -33,6 +33,9 @@ _Nothing queued yet — add next items here._
 - On anonymous challenge completion: "Save your score — enter your email"
 - Re-engagement path for users who play without signing up
 
+### Season Reset (Leagues)
+- Option to reset league standings at the start of a new season
+
 ---
 
 ## Completed ✅
@@ -42,6 +45,8 @@ _Nothing queued yet — add next items here._
 - ✅ Homepage: live section, features redesign, bracket preview, leaderboard teaser — 2026-03-23
 - ✅ Leaderboard blurred preview for anonymous users — 2026-03-23
 - ✅ Dynamic OG images for challenge pages — 2026-03-23
-- ✅ Friends Activity Feed (friends page, last 30 days) — 2026-03-23
+- ✅ Friends Activity Feed (shared utility, dashboard + friends + profile pages, limit 15) — 2026-03-23
 - ✅ Challenge Rivalry / Head-to-Head Stats (profile page) — 2026-03-23
 - ✅ Onboarding Flow — `/welcome` page, video placeholder, post-signup redirect — 2026-03-23
+- ✅ Homepage features section — new title, card order, mixed colors, updated copy — 2026-03-23
+- ✅ Profile stats boxes centered (matches dashboard style) — 2026-03-23
