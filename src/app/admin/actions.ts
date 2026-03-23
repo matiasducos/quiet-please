@@ -281,7 +281,7 @@ export async function saveManualDraw(
     try {
       const { data: t } = await admin
         .from('tournaments')
-        .select('name, draw_close_at')
+        .select('name, location, flag_emoji, draw_close_at')
         .eq('id', tournamentId)
         .single()
       const { data: { users: allUsers } } = await admin.auth.admin.listUsers({ perPage: 1000 })
@@ -291,7 +291,7 @@ export async function saveManualDraw(
           user_id:       u.id,
           type:          'draw_open',
           tournament_id: tournamentId,
-          meta:          { tournament_name: t.name },
+          meta:          { tournament_name: t.name, tournament_location: t.location ?? null, tournament_flag_emoji: t.flag_emoji ?? null },
         }))
         await (admin as unknown as { from: (t: string) => { insert: (r: unknown) => Promise<unknown> } })
           .from('notifications').insert(rows)
@@ -1180,7 +1180,7 @@ export async function buildDraw(
   // Load tournament
   const { data: tournament, error: tErr } = await admin
     .from('tournaments')
-    .select('id, external_id, draw_size, tour, name, draw_close_at')
+    .select('id, external_id, draw_size, tour, name, location, flag_emoji, draw_close_at')
     .eq('id', tournamentId)
     .single()
 
@@ -1315,7 +1315,7 @@ export async function buildDraw(
         user_id: u.id,
         type: 'draw_open',
         tournament_id: tournamentId,
-        meta: { tournament_name: tournament.name },
+        meta: { tournament_name: tournament.name, tournament_location: tournament.location ?? null, tournament_flag_emoji: tournament.flag_emoji ?? null },
       }))
       await (admin as unknown as { from: (t: string) => { insert: (r: unknown) => Promise<unknown> } })
         .from('notifications').insert(rows)

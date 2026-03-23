@@ -248,7 +248,7 @@ export async function savePrediction({
         const [{ data: challenge }, { data: currentUserProfile }, { data: tournamentMeta }] = await Promise.all([
           admin.from('challenges').select('challenger_id, challenged_id').eq('id', challengeId).single(),
           admin.from('users').select('username').eq('id', user.id).single(),
-          admin.from('tournaments').select('name, location').eq('id', tournamentId).single(),
+          admin.from('tournaments').select('name, location, flag_emoji').eq('id', tournamentId).single(),
         ])
         if (challenge && currentUserProfile && tournamentMeta) {
           const opponentId = challenge.challenger_id === user.id
@@ -262,6 +262,7 @@ export async function savePrediction({
               username:        currentUserProfile.username,
               tournament_name: tournamentMeta.name,
               tournament_location: tournamentMeta.location ?? null,
+              tournament_flag_emoji: tournamentMeta.flag_emoji ?? null,
               challenge_id:    challengeId,
             },
           }])
@@ -275,7 +276,7 @@ export async function savePrediction({
             .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
             .eq('status', 'accepted'),
           admin.from('users').select('username').eq('id', user.id).single(),
-          admin.from('tournaments').select('name, location').eq('id', tournamentId).single(),
+          admin.from('tournaments').select('name, location, flag_emoji').eq('id', tournamentId).single(),
         ])
         if (friendships && friendships.length > 0 && currentUserProfile && tournamentMeta) {
           const friendIds = friendships.map(f =>
@@ -290,6 +291,7 @@ export async function savePrediction({
                 username:        currentUserProfile.username,
                 tournament_name: tournamentMeta.name,
                 tournament_location: tournamentMeta.location ?? null,
+                tournament_flag_emoji: tournamentMeta.flag_emoji ?? null,
               },
             }))
           )

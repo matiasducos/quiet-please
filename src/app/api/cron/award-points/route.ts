@@ -90,15 +90,17 @@ export async function GET(request: Request) {
     // Fetch tournament names + location + starts_at + category for notifications, expires_at, and league filtering
     const { data: tournamentData } = await supabase
       .from('tournaments')
-      .select('id, name, location, starts_at, category')
+      .select('id, name, location, flag_emoji, starts_at, category')
       .in('id', tournamentIds as string[])
     const tournamentNames: Record<string, string> = {}
     const tournamentLocations: Record<string, string | null> = {}
+    const tournamentFlags: Record<string, string | null> = {}
     const tournamentStartsAt: Record<string, string> = {}
     const tournamentCategories: Record<string, string> = {}
     for (const t of tournamentData ?? []) {
       tournamentNames[t.id] = t.name
       tournamentLocations[t.id] = t.location
+      tournamentFlags[t.id] = t.flag_emoji
       tournamentStartsAt[t.id] = t.starts_at
       tournamentCategories[t.id] = t.category
     }
@@ -290,7 +292,7 @@ export async function GET(request: Request) {
             user_id: userId,
             type: 'points_awarded',
             tournament_id: tId,
-            meta: { points: pts, tournament_name: tName, tournament_location: tournamentLocations[tId] ?? null },
+            meta: { points: pts, tournament_name: tName, tournament_location: tournamentLocations[tId] ?? null, tournament_flag_emoji: tournamentFlags[tId] ?? null },
           })
           emailJobs.push({ userId, tId, tName, pts })
         }

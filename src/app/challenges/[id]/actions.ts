@@ -44,7 +44,7 @@ export async function cancelChallenge(formData: FormData) {
   try {
     const [{ data: challengerProfile }, { data: tournament }] = await Promise.all([
       admin.from('users').select('username').eq('id', user.id).single(),
-      admin.from('tournaments').select('name').eq('id', challenge.tournament_id).single(),
+      admin.from('tournaments').select('name, location, flag_emoji').eq('id', challenge.tournament_id).single(),
     ])
     await insertNotifications([{
       user_id:       challenge.challenged_id,
@@ -53,6 +53,8 @@ export async function cancelChallenge(formData: FormData) {
       meta: {
         challenger_username: challengerProfile?.username ?? 'Someone',
         tournament_name:     tournament?.name            ?? 'a tournament',
+        tournament_location: tournament?.location ?? null,
+        tournament_flag_emoji: tournament?.flag_emoji ?? null,
       },
     }])
   } catch (e) {

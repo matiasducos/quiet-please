@@ -40,7 +40,7 @@ export async function GET(request: Request) {
 
     const { data: tournaments, error: fetchError } = await supabase
       .from('tournaments')
-      .select('id, external_id, name, status, draw_close_at, starts_at, ends_at')
+      .select('id, external_id, name, status, draw_close_at, starts_at, ends_at, location, flag_emoji')
       .or(
         `status.eq.accepting_predictions,` +
         `status.eq.draw_published,` +
@@ -153,7 +153,7 @@ export async function GET(request: Request) {
               user_id:       u.id,
               type:          'draw_open',
               tournament_id: tournament.id,
-              meta:          { tournament_name: tournament.name },
+              meta:          { tournament_name: tournament.name, tournament_location: tournament.location ?? null, tournament_flag_emoji: tournament.flag_emoji ?? null },
             }))
             await (supabase as any).from('notifications').insert(notificationRows)
           }

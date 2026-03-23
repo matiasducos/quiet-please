@@ -58,7 +58,7 @@ export async function createChallenge(formData: FormData) {
   try {
     const [{ data: challengerProfile }, { data: tournamentForNotif }] = await Promise.all([
       admin.from('users').select('username').eq('id', user.id).single(),
-      admin.from('tournaments').select('name, location').eq('id', tournamentId).single(),
+      admin.from('tournaments').select('name, location, flag_emoji').eq('id', tournamentId).single(),
     ])
     await insertNotifications([{
       user_id:       friendId,
@@ -68,6 +68,7 @@ export async function createChallenge(formData: FormData) {
         challenger_username: challengerProfile?.username ?? 'Someone',
         tournament_name:     tournamentForNotif?.name    ?? 'a tournament',
         tournament_location: tournamentForNotif?.location ?? null,
+        tournament_flag_emoji: tournamentForNotif?.flag_emoji ?? null,
       },
     }])
   } catch (e) {

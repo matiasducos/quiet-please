@@ -149,13 +149,13 @@ export default async function ChallengesPage() {
               </div>
             </div>
           )}
-          {c.status === 'accepted' && (c.myLivePoints > 0 || (c.bothLocked && c.theirLivePoints > 0)) && (
+          {c.status === 'accepted' && (
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', textAlign: 'right' }}>
-              <span style={{ color: 'var(--ink)' }}>{c.myLivePoints}</span>
-              <span style={{ color: 'var(--muted)' }}> vs </span>
-              <span style={{ color: 'var(--ink)' }}>{c.bothLocked ? c.theirLivePoints : '?'}</span>
-              <div style={{ fontSize: '0.65rem', color: 'var(--muted)', letterSpacing: '0.06em' }}>
-                LIVE
+              <span style={{ color: c.bothLocked && c.myLivePoints > c.theirLivePoints ? 'var(--court)' : 'var(--ink)' }}>{c.myLivePoints}</span>
+              <span style={{ color: 'var(--muted)' }}> – </span>
+              <span style={{ color: c.bothLocked && c.theirLivePoints > c.myLivePoints ? '#c84b31' : 'var(--ink)' }}>{c.bothLocked ? c.theirLivePoints : '?'}</span>
+              <div style={{ fontSize: '0.65rem', letterSpacing: '0.06em', color: !c.bothLocked ? 'var(--muted)' : c.myLivePoints > c.theirLivePoints ? 'var(--court)' : c.theirLivePoints > c.myLivePoints ? '#c84b31' : 'var(--muted)' }}>
+                {!c.bothLocked ? 'LIVE' : c.myLivePoints > c.theirLivePoints ? 'WINNING' : c.theirLivePoints > c.myLivePoints ? 'LOSING' : 'TIED'}
               </div>
             </div>
           )}
@@ -195,24 +195,22 @@ export default async function ChallengesPage() {
           </div>
 
           {/* Stats */}
-          {challenges.length > 0 && (
-            <div className="grid grid-cols-3 gap-2 md:gap-4 mt-6">
-              {[
-                { label: 'Active', value: active.length + needsAction.length + waiting.length },
-                { label: 'Won', value: challenges.filter(c => c.isWinner).length },
-                { label: 'Total', value: challenges.length },
-              ].map((stat, i) => (
-                <div key={i} className="bg-white rounded-sm border p-3 md:p-6 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>
-                    {stat.label}
-                  </div>
-                  <div className="text-xl md:text-3xl" style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.02em' }}>
-                    {stat.value}
-                  </div>
+          <div className="grid grid-cols-3 gap-2 md:gap-4 mt-6">
+            {[
+              { label: 'Active', value: active.length + needsAction.length + waiting.length },
+              { label: 'Won', value: challenges.filter(c => c.isWinner).length },
+              { label: 'Total', value: challenges.length },
+            ].map((stat, i) => (
+              <div key={i} className="bg-white rounded-sm border p-3 md:p-6 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>
+                  {stat.label}
                 </div>
-              ))}
-            </div>
-          )}
+                <div className="text-xl md:text-3xl" style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.02em' }}>
+                  {stat.value}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* No friends yet */}

@@ -216,29 +216,48 @@ export default async function ChallengeDetailPage({
                 </div>
               </div>
             </div>
-            {/* Live score — only show when tournament has started awarding points */}
-            {(myLivePoints > 0 || (myPicksLocked && theirPicksLocked && theirLivePoints > 0)) && (
-              <div className="border-t pt-3 mb-4" style={{ borderColor: 'var(--chalk-dim)' }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>
+            {/* Live score */}
+            <div className="border-t pt-3 mb-4" style={{ borderColor: 'var(--chalk-dim)' }}>
+              <div className="flex items-center justify-between mb-2">
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                   Live score
                 </div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.1rem' }}>
-                  <span style={{ color: 'var(--ink)' }}>{myLivePoints}</span>
-                  <span style={{ color: 'var(--muted)' }}> pts </span>
+                {myPicksLocked && theirPicksLocked && (
+                  <span style={{
+                    fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.06em',
+                    color: myLivePoints > theirLivePoints ? 'var(--court)' : theirLivePoints > myLivePoints ? '#c84b31' : 'var(--muted)',
+                  }}>
+                    {myLivePoints > theirLivePoints ? 'WINNING' : theirLivePoints > myLivePoints ? 'LOSING' : 'TIED'}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <span style={{ fontSize: '0.85rem', color: 'var(--ink)' }}>{myUsername} (you)</span>
+                  <span style={{
+                    fontFamily: 'var(--font-mono)', fontSize: '1rem',
+                    color: myPicksLocked && theirPicksLocked && myLivePoints > theirLivePoints ? 'var(--court)' : 'var(--ink)',
+                  }}>
+                    {myLivePoints} pts
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span style={{ fontSize: '0.85rem', color: 'var(--ink)' }}>{theirUsername}</span>
                   {myPicksLocked && theirPicksLocked ? (
-                    <>
-                      <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>vs </span>
-                      <span style={{ color: 'var(--ink)' }}>{theirLivePoints}</span>
-                      <span style={{ color: 'var(--muted)' }}> pts</span>
-                    </>
+                    <span style={{
+                      fontFamily: 'var(--font-mono)', fontSize: '1rem',
+                      color: theirLivePoints > myLivePoints ? '#c84b31' : 'var(--ink)',
+                    }}>
+                      {theirLivePoints} pts
+                    </span>
                   ) : (
-                    <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>
-                      · opponent score hidden until both locked
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>
+                      hidden until both locked
                     </span>
                   )}
                 </div>
               </div>
-            )}
+            </div>
             <div className="flex gap-3">
               <Link
                 href={`/tournaments/${challenge.tournament_id}/predict?challenge=${challenge.id}`}
