@@ -237,11 +237,11 @@ export default async function HomePage() {
                 The moment the official draw is published, your window opens. Pick the winner of every match — round by round — and lock in your predictions before each match starts. Back a player all the way to the title and earn compound bonus points through the streak multiplier.
               </p>
               <Link
-                href="/signup"
+                href="/tournaments"
                 className="inline-block mt-6 px-6 py-3 text-sm font-medium text-white rounded-sm hover:opacity-90"
                 style={{ background: 'var(--court)' }}
               >
-                Start free →
+                Start prediction →
               </Link>
             </div>
             <div className="rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
