@@ -17,14 +17,17 @@ export default function SignupPage() {
     setLoading(true); setError(null)
     if (username.length < 3) { setError('Username must be at least 3 characters.'); setLoading(false); return }
     const supabase = createClient()
-    const { data: signUpData, error } = await supabase.auth.signUp({ email, password, options: { data: { username }, emailRedirectTo: `${window.location.origin}/auth/callback` } })
+    // Pre-check username availability before attempting signup
+    const { data: taken } = await supabase.from('users').select('id').eq('username', username).maybeSingle()
+    if (taken) { setError('Username already taken — please choose a different one.'); setLoading(false); return }
+    const { data: signUpData, error } = await supabase.auth.signUp({ email, password, options: { data: { username }, emailRedirectTo: `${window.location.origin}/auth/callback?next=/onboarding` } })
     if (error) { setError(error.message); setLoading(false); return }
     // If email confirmation is required, session will be null — show check-email page
     if (!signUpData.session) {
       router.push(`/check-email?email=${encodeURIComponent(email)}`)
       return
     }
-    router.push('/welcome'); router.refresh()
+    router.push('/onboarding'); router.refresh()
   }
 
   async function handleGoogleSignup() {

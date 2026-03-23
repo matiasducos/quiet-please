@@ -5,15 +5,16 @@ import NotificationBell from './NotificationBell'
 interface NavProps {
   username?: string | null
   points?: number
-  activePage?: 'tournaments' | 'leaderboard' | 'leagues' | 'challenges'
+  activePage?: 'tournaments' | 'leaderboard' | 'leagues' | 'challenges' | 'onboarding'
   userId?: string | null
 }
 
 const NAV_LINKS = [
-  { href: '/tournaments',      label: 'Tournaments', page: 'tournaments' },
-  { href: '/leaderboard',      label: 'Leaderboard', page: 'leaderboard' },
-  { href: '/leagues',          label: 'Leagues',     page: 'leagues'     },
-  { href: '/challenges',       label: 'Challenges',  page: 'challenges'  },
+  { href: '/tournaments',      label: 'Tournaments',  page: 'tournaments'  },
+  { href: '/leaderboard',      label: 'Leaderboard',  page: 'leaderboard'  },
+  { href: '/leagues',          label: 'Leagues',      page: 'leagues'      },
+  { href: '/challenges',       label: 'Challenges',   page: 'challenges'   },
+  { href: '/onboarding',       label: 'How it works', page: 'onboarding'   },
 ] as const
 
 export default function Nav({ username, points = 0, activePage, userId }: NavProps) {

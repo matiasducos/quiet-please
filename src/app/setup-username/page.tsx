@@ -19,7 +19,7 @@ export default function SetupUsernamePage() {
       if (result.error) {
         setError(result.error)
       } else {
-        router.push('/welcome')
+        router.push('/onboarding')
         router.refresh()
       }
     })

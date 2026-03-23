@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { unstable_cache } from 'next/cache'
+import TournamentCard from '@/components/TournamentCard'
 
 // ── Cached homepage data: live tournaments + top players ──────────────────
 const getHomepageData = unstable_cache(
@@ -8,7 +9,7 @@ const getHomepageData = unstable_cache(
     const admin = createAdminClient()
     const [{ data: live }, { data: top }] = await Promise.all([
       admin.from('tournaments')
-        .select('id, name, location, flag_emoji, category, tour')
+        .select('id, name, location, flag_emoji, category, tour, surface, starts_at, ends_at, status')
         .eq('status', 'in_progress')
         .order('starts_at', { ascending: true })
         .limit(4),
@@ -23,19 +24,6 @@ const getHomepageData = unstable_cache(
   ['homepage-data'],
   { revalidate: 300 }
 )
-
-function categoryLabel(cat: string): string {
-  const map: Record<string, string> = {
-    grand_slam:   'Grand Slam',
-    masters_1000: 'Masters 1000',
-    atp_500:      'ATP 500',
-    atp_250:      'ATP 250',
-    wta_1000:     'WTA 1000',
-    wta_500:      'WTA 500',
-    wta_250:      'WTA 250',
-  }
-  return map[cat] ?? cat
-}
 
 // ── Static bracket mock (replace with /public/bracket-demo.gif when ready) ──
 function MockBracketPreview() {
@@ -205,23 +193,7 @@ export default async function HomePage() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {liveTournaments.map(t => (
-                <Link
-                  key={t.id}
-                  href={`/tournaments/${t.id}`}
-                  className="tournament-card block px-4 py-4 rounded-sm border"
-                  style={{ borderColor: 'var(--chalk-dim)', background: 'var(--chalk)', textDecoration: 'none' }}
-                >
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--court)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '5px' }}>
-                    {categoryLabel(t.category ?? '')}
-                  </div>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)', lineHeight: 1.2 }}>
-                    {t.flag_emoji && <span style={{ marginRight: '4px' }}>{t.flag_emoji}</span>}
-                    {t.location ?? t.name}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '4px' }}>
-                    {(t.tour ?? '').toUpperCase()} · View bracket →
-                  </div>
-                </Link>
+                <TournamentCard key={t.id} t={t} />
               ))}
             </div>
           </div>
