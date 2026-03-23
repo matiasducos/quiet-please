@@ -352,43 +352,49 @@ export default async function HomePage() {
               Everything in one place
             </div>
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.75rem, 4vw, 2.5rem)', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-              Built for serious tennis fans
+              Built for every tennis fan!
             </h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-px" style={{ background: 'var(--chalk-dim)', border: '1px solid var(--chalk-dim)' }}>
             {[
               {
                 n: '01',
-                label: 'Real ATP & WTA points',
-                desc: 'Your correct picks earn points using the exact same formula as the real tour. A Grand Slam winner pick is worth 2,000 points — the same as the actual champion earns.',
+                label: 'Worldwide rankings',
+                desc: 'See where you stand globally, in your country, and in your city. Rankings roll over a 52-week window — sustained accuracy beats a single lucky Grand Slam.',
+                bg: '#eef4ff',
               },
               {
                 n: '02',
-                label: 'The full calendar',
-                desc: 'All 60+ ATP and WTA tournaments from Melbourne to Miami, automatically synced the moment official draws are published. Nothing is manual.',
+                label: 'Private leagues',
+                desc: 'Create a group, share the invite code, and see who rules your circle through the full season. Filter standings by Grand Slams only or across the full calendar.',
+                bg: '#edf7f0',
               },
               {
                 n: '03',
-                label: 'Streak multiplier',
-                desc: 'Back a player across consecutive rounds and earn compound bonus points. Predict Alcaraz through 5 straight rounds correctly and the multiplier stacks on top.',
+                label: 'Head-to-head challenges',
+                desc: 'Send a bracket link to anyone. They fill in their picks, you both lock in, and the results settle the argument.',
+                bg: '#fff7ed',
               },
               {
                 n: '04',
-                label: 'Private leagues',
-                desc: 'Create a group, share the invite code, and see who rules your circle through the full season. Filter standings by Grand Slams only or across the full calendar.',
+                label: 'Streak multiplier',
+                desc: 'Back a player across consecutive rounds and earn compound bonus points. Predict any player through 5 straight rounds correctly and the multiplier stacks on top.',
+                bg: '#f5f0fc',
               },
               {
                 n: '05',
-                label: 'Head-to-head challenges',
-                desc: 'Send a bracket link to anyone — no account needed on their end. They fill in their picks, you both lock in, and the results settle the argument.',
+                label: 'The full calendar',
+                desc: 'All 60+ ATP and WTA tournaments from Melbourne to the ATP Finals, synced the moment official draws are published.',
+                bg: '#fffae6',
               },
               {
                 n: '06',
-                label: 'Worldwide rankings',
-                desc: 'See where you stand globally, in your country, and in your city. Rankings roll over a 52-week window — sustained accuracy beats a single lucky Grand Slam.',
+                label: 'Real ATP & WTA points',
+                desc: 'Your correct picks earn points using the exact same formula as the real tour. A Grand Slam winner pick is worth 2,000 points — the same as the actual champion earns.',
+                bg: '#fef0f4',
               },
             ].map((f, i) => (
-              <div key={i} className="px-6 py-8 md:px-8 md:py-10" style={{ background: 'var(--chalk)' }}>
+              <div key={i} className="px-6 py-8 md:px-8 md:py-10" style={{ background: f.bg }}>
                 <div className="text-xs tracking-widest uppercase mb-3" style={{ color: 'var(--court)', fontFamily: 'var(--font-mono)' }}>
                   {f.n}
                 </div>

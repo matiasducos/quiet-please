@@ -319,7 +319,7 @@ export default async function ProfilePage({
             { label: 'Tournaments',  value: globalPredCount,                                      sub: null },
             { label: 'Scored',       value: scoredCount > 0 ? scoredCount : '—',                 sub: scoredCount > 0 ? 'earned points' : null },
           ].map((stat, i) => (
-            <div key={i} className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <div key={i} className="bg-white rounded-sm border p-5 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>
                 {stat.label}
               </div>
