@@ -344,6 +344,7 @@ export default async function ProfilePage({
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: '#185FA5', fontWeight: 600 }}>
                   {profile.atp_ranking_points}
                 </span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.55rem', color: '#185FA5', opacity: 0.6 }}>52w</span>
               </div>
             )}
             {(profile.wta_ranking_points ?? 0) > 0 && (
@@ -352,10 +353,11 @@ export default async function ProfilePage({
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: '#993556', fontWeight: 600 }}>
                   {profile.wta_ranking_points}
                 </span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.55rem', color: '#993556', opacity: 0.6 }}>52w</span>
               </div>
             )}
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', alignSelf: 'center' }}>
-              all-time: {profile.total_points ?? 0} pts
+              lifetime: {profile.total_points ?? 0} pts
             </span>
           </div>
         )}

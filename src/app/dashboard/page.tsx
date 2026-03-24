@@ -3,7 +3,7 @@ import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
-import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
+import { getActivity, timeAgo } from '@/lib/friends/activity'
 
 export default async function DashboardPage() {
   const { user, profile } = await getNavProfile()
@@ -36,7 +36,7 @@ export default async function DashboardPage() {
     { label: 'Global rank',    value: `#${globalRank}` },
   ]
 
-  const friendActivity = await getFriendActivity(user.id, 5)
+  const activity = await getActivity(user.id, 8)
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
@@ -64,34 +64,40 @@ export default async function DashboardPage() {
           ))}
         </div>
 
-        {/* ─── Friend activity ────────────────────────────────────────────────── */}
-        {friendActivity.length > 0 && (
+        {/* ─── Activity ────────────────────────────────────────────────────────── */}
+        {activity.length > 0 && (
           <div className="mb-12">
             <div className="flex items-center justify-between mb-4">
-              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.01em' }}>Friend activity</h2>
-              <Link href="/friends" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>See all →</Link>
+              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.01em' }}>Activity</h2>
+              <Link href="/friends" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>See friend activity →</Link>
             </div>
             <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
-              {friendActivity.map((item, i) => {
-                const icon = item.type === 'picks' ? '🔒' : item.type === 'points' ? '⭐' : '👥'
+              {activity.map((item, i) => {
+                const icon = item.type === 'tournament' ? '🎾' : item.type === 'picks' ? '🔒' : item.type === 'points' ? '⭐' : '👥'
+                const isMe = item.user_id === user.id
                 return (
                   <div
-                    key={`${item.type}-${item.user_id}-${item.date}-${i}`}
+                    key={`${item.type}-${item.user_id ?? 'system'}-${item.date}-${i}`}
                     className="flex items-center gap-3 px-5 py-3 border-b last:border-0"
                     style={{ borderColor: 'var(--chalk-dim)' }}
                   >
                     <span style={{ fontSize: '1rem', flexShrink: 0 }}>{icon}</span>
                     <div className="flex-1 min-w-0">
                       <span className="truncate">
-                        <Link href={`/profile/${item.username}`} style={{ fontFamily: 'var(--font-display)', fontSize: '0.9rem', color: 'var(--ink)', textDecoration: 'none' }}>
-                          {item.username}
-                        </Link>
+                        {item.username ? (
+                          <>
+                            <Link href={`/profile/${item.username}`} style={{ fontFamily: 'var(--font-display)', fontSize: '0.9rem', color: isMe ? 'var(--court)' : 'var(--ink)', textDecoration: 'none' }}>
+                              {isMe ? 'You' : item.username}
+                            </Link>
+                            {' '}
+                          </>
+                        ) : null}
                         {item.href ? (
                           <Link href={item.href} style={{ fontSize: '0.875rem', color: 'var(--muted)', textDecoration: 'none' }}>
-                            {' '}{item.label}
+                            {item.label}
                           </Link>
                         ) : (
-                          <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>{' '}{item.label}</span>
+                          <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>{item.label}</span>
                         )}
                       </span>
                     </div>

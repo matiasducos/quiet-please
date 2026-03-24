@@ -237,7 +237,7 @@ export default async function ChallengesPage() {
             {[
               { label: 'Active', value: active.length + needsAction.length + waiting.length },
               { label: 'Won', value: challenges.filter(c => c.isWinner).length },
-              { label: 'Total', value: challenges.length },
+              { label: 'Total', value: challenges.filter(c => c.status !== 'cancelled').length },
             ].map((stat, i) => (
               <div key={i} className="bg-white rounded-sm border p-3 md:p-6 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>
