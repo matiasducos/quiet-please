@@ -69,7 +69,7 @@ export default async function DashboardPage() {
           <div className="mb-12">
             <div className="flex items-center justify-between mb-4">
               <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.01em' }}>Activity</h2>
-              <Link href="/friends" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>See friend activity →</Link>
+              <Link href="/friends" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>See all activities →</Link>
             </div>
             <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
               {activity.map((item, i) => {
