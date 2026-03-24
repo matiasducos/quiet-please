@@ -152,9 +152,14 @@ export default async function HomePage() {
       {/* ── Nav ───────────────────────────────────────────────────── */}
       <nav className="border-b sticky top-0 z-50" style={{ borderColor: 'var(--chalk-dim)', background: 'var(--chalk)' }}>
         <div className="max-w-5xl mx-auto flex items-center justify-between px-4 md:px-8 py-3 md:py-5">
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', color: 'var(--ink)' }}>
-            Quiet Please
-          </span>
+          <div className="flex items-center gap-6">
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', color: 'var(--ink)' }}>
+              Quiet Please
+            </span>
+            <Link href="/onboarding" style={{ fontSize: '0.875rem', color: 'var(--muted)', textDecoration: 'none' }}>
+              How it works
+            </Link>
+          </div>
           <div className="flex items-center gap-4">
             <Link href="/login" style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>Sign in</Link>
             <Link href="/signup" className="px-4 py-2 text-sm text-white rounded-sm hover:opacity-90" style={{ background: 'var(--court)' }}>
