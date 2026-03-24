@@ -20,7 +20,7 @@ const modes = [
   {
     number: '02',
     headline: 'Create a league with your group.',
-    body: 'Invite your friends, family, or tennis club into a private league. Everyone predicts the same tournaments, and the standings update automatically after every match result. Filter by Grand Slams only or the full calendar.',
+    body: 'Invite your friends, family, or tennis buddies into a private league. Everyone predicts the same tournaments, and the standings update automatically after every match result. Filter by Grand Slams only or the full calendar.',
     cta: 'Create a league',
     href: '/leagues',
     icon: '🏆',
