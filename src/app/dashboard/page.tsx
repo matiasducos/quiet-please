@@ -132,7 +132,7 @@ export default async function DashboardPage() {
               </div>
               <Link href="/tournaments" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>See all tournaments →</Link>
             </div>
-            <div className="flex flex-col gap-3">
+            <div className={`grid gap-3 ${liveTournaments.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
               {liveTournaments.map(t => (
                 <TournamentCard key={t.id} t={t} />
               ))}

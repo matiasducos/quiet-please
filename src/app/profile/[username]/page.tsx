@@ -237,13 +237,6 @@ export default async function ProfilePage({
                     </Link>
                   )}
                 </div>
-              ) : isOwnProfile ? (
-                <Link
-                  href={`/profile/${profile.username}?edit=location`}
-                  style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', textDecoration: 'none', display: 'inline-block', marginTop: '0.35rem' }}
-                >
-                  + Set your location
-                </Link>
               ) : null}
             </div>
 
@@ -309,6 +302,28 @@ export default async function ProfilePage({
             defaultCountry={profile.country ?? null}
             defaultCity={profile.city ?? null}
           />
+        )}
+
+        {/* ── Location nudge ─────────────────────────────────────────────── */}
+        {isOwnProfile && !profile.country && !showEditLocation && (
+          <Link
+            href={`/profile/${profile.username}?edit=location`}
+            className="flex items-center gap-3 mb-8 px-5 py-4 rounded-sm border"
+            style={{ background: '#fefcf3', borderColor: '#e8dfc0', textDecoration: 'none' }}
+          >
+            <span style={{ fontSize: '1.25rem' }}>📍</span>
+            <div>
+              <p style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', color: 'var(--ink)', marginBottom: '2px' }}>
+                Set up your location
+              </p>
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.03em' }}>
+                Unlock Country &amp; City leaderboards and compete locally
+              </p>
+            </div>
+            <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--court)', fontWeight: 500, flexShrink: 0 }}>
+              Set up →
+            </span>
+          </Link>
         )}
 
         {/* ── Stats grid ────────────────────────────────────────────────────── */}
