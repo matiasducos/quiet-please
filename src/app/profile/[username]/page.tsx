@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { sendFriendRequest, acceptFriendRequest, declineFriendRequest } from '@/app/friends/actions'
 import LocationEditForm from '@/app/profile/LocationEditForm'
+import UsernameEditForm from '@/app/profile/UsernameEditForm'
 import { COUNTRIES, codeToFlag } from '@/app/admin/countries'
 import TournamentCard from '@/components/TournamentCard'
 import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
@@ -170,6 +171,7 @@ export default async function ProfilePage({
     .slice(0, 10)
 
   const showEditLocation = edit === 'location' && isOwnProfile
+  const showEditUsername = edit === 'username' && isOwnProfile
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
@@ -202,9 +204,17 @@ export default async function ProfilePage({
               <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
                 {profile.username}
                 {isOwnProfile && (
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: '#1e4e8c', background: '#dbeafe', padding: '2px 8px', borderRadius: '2px', marginLeft: '0.75rem', verticalAlign: 'middle' }}>
-                    you
-                  </span>
+                  <>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: '#1e4e8c', background: '#dbeafe', padding: '2px 8px', borderRadius: '2px', marginLeft: '0.75rem', verticalAlign: 'middle' }}>
+                      you
+                    </span>
+                    <Link
+                      href={`/profile/${profile.username}?edit=username`}
+                      style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', marginLeft: '0.5rem', verticalAlign: 'middle', textDecoration: 'none' }}
+                    >
+                      edit
+                    </Link>
+                  </>
                 )}
                 {isAdmin && (
                   <Link
@@ -294,6 +304,11 @@ export default async function ProfilePage({
             )}
           </div>
         </div>
+
+        {/* ── Username edit form ───────────────────────────────────────────── */}
+        {showEditUsername && (
+          <UsernameEditForm username={profile.username} />
+        )}
 
         {/* ── Location edit form ────────────────────────────────────────────── */}
         {showEditLocation && (

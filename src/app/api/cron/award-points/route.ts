@@ -232,7 +232,12 @@ export async function GET(request: Request) {
 
     // ── 7. Insert point ledger + update predictions ────────────────────────
     if (ledgerRows.length > 0) {
-      const { error: ledgerError } = await supabase.from('point_ledger').insert(ledgerRows)
+      // Use upsert with ignoreDuplicates to safely handle concurrent cron runs.
+      // The DB unique constraint on (match_result_id, prediction_id) ensures
+      // no double-awards even if the application-level scoredPairs check races.
+      const { error: ledgerError } = await supabase
+        .from('point_ledger')
+        .upsert(ledgerRows, { onConflict: 'match_result_id,prediction_id', ignoreDuplicates: true })
       if (ledgerError) throw ledgerError
 
       // ── 8. Update prediction points_earned + expires_at ──────────────────

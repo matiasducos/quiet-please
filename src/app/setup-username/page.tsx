@@ -44,7 +44,7 @@ export default function SetupUsernamePage() {
             Pick your username
           </h1>
           <p style={{ fontSize: '0.875rem', color: 'var(--muted)', lineHeight: 1.6, marginBottom: '2rem' }}>
-            This is how you'll appear on leaderboards and to other players. You can't change it later.
+            This is how you'll appear on leaderboards and to other players. You can change it later from your profile.
           </p>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">

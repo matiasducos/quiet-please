@@ -270,6 +270,7 @@ export async function saveManualDraw(
 
   // Bust the ISR cache so tournament detail pages refresh immediately
   revalidateTag('tournament-detail')
+  revalidateTag('tournament-list')
 
   if (openPredictions) {
     await admin
@@ -1325,6 +1326,7 @@ export async function buildDraw(
   }
 
   revalidateTag('tournament-detail')
+  revalidateTag('tournament-list')
 
   return { ok: true, matchCount: allMatches.length }
 }
@@ -1428,6 +1430,7 @@ export async function saveMatchResult(
   }
 
   revalidateTag('tournament-detail')
+  revalidateTag('tournament-list')
   return { ok: true, cascadeDeleted }
 }
 
@@ -1471,5 +1474,6 @@ export async function clearMatchResult(
   if (error) return { ok: false, error: error.message }
 
   revalidateTag('tournament-detail')
+  revalidateTag('tournament-list')
   return { ok: true, cascadeDeleted }
 }

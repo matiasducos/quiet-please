@@ -6,14 +6,23 @@ import { revalidatePath } from 'next/cache'
 import { getPointsForRound } from '@/lib/tennis'
 import { TEST_EXTERNAL_ID, TEST_DRAW, TEST_RESULTS } from './constants'
 
+/** Verify the caller is an admin. Throws if not. */
+async function requireAdminAction() {
+  const userClient = await createClient()
+  const { data: { user } } = await userClient.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  const isDev = process.env.NODE_ENV === 'development'
+  const adminIds = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean)
+  if (!isDev && !adminIds.includes(user.id)) throw new Error('Not authorized')
+  return user
+}
+
 // ── Reset ──────────────────────────────────────────────────────────────────
 // Wipes all test tournament state (predictions, results, points) and puts
 // it back to "accepting_predictions" with the hardcoded draw.
 export async function resetTestTournament() {
   const supabase = createAdminClient()
-  const userClient = await createClient()
-  const { data: { user } } = await userClient.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  await requireAdminAction()
 
   const { data: existing } = await supabase
     .from('tournaments')
@@ -95,9 +104,7 @@ export async function resetTestTournament() {
 // Seeds the predetermined match results and scores all locked predictions.
 export async function simulateResults(tournamentId: string) {
   const supabase = createAdminClient()
-  const userClient = await createClient()
-  const { data: { user } } = await userClient.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  await requireAdminAction()
 
   // 1. Upsert match results
   const rows = TEST_RESULTS.map(r => ({

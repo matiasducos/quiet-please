@@ -7,8 +7,8 @@ Actionable follow-ups from a codebase review (March 2026). Check items off as yo
 ## Pre-launch checklist (paid ads / public traffic)
 
 - [ ] **Upgrade Next.js** past 16.1.6 — `npm audit` reports moderate advisories (Server Actions / dev HMR CSRF with `null` origin, `next/image` cache growth, postponed resume buffering DoS, rewrite request smuggling). Target a patched 16.2.x+ after testing.
-- [ ] **Harden OAuth callback redirect** — `src/app/auth/callback/route.ts` uses `next` from query string in `redirect(\`${origin}${next}\`)`. Restrict to safe relative paths (e.g. must start with `/`, reject `//`, reject absolute URLs) or allowlist destinations.
-- [ ] **Production surface: `/test-tournaments`** — Any logged-in user can access. Gate with `ADMIN_USER_IDS`, env flag, or remove from prod builds.
+- [x] **Harden OAuth callback redirect** ✅ 2026-03-25 — `getSafeRedirectPath()` validates `next` param: must start with `/`, rejects `//`, rejects protocol schemes and backslash tricks.
+- [x] **Production surface: `/test-tournaments`** ✅ 2026-03-25 — Gated with `requireAdmin()` on page + `requireAdminAction()` on server actions.
 - [ ] **Supabase Security Advisor** — Run in dashboard; fix RLS / policy warnings before scaling traffic.
 - [ ] **Secrets hygiene** — Confirm `CRON_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, and `ADMIN_USER_IDS` are set in prod; never commit real values. Audit tracked docs for accidental env leaks.
 - [ ] **Billing / abuse alerts** — Vercel, Supabase, api-tennis, Resend: caps and notifications before ad spend.

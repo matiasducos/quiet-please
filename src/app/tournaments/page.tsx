@@ -18,7 +18,7 @@ function getTournaments(tour: string, status: string) {
       return data ?? []
     },
     ['tournament-list', tour, status],
-    { revalidate: 3600 }
+    { revalidate: 3600, tags: ['tournament-list'] }
   )()
 }
 

@@ -9,7 +9,7 @@
 
 ### Cron Job: Resilience & Idempotency
 **File:** `src/app/api/cron/award-points/route.ts`
-- Add idempotency: check if `point_ledger` row already exists before inserting (prevent double-awards on retry)
+- ✅ Add idempotency: unique constraint on `point_ledger(match_result_id, prediction_id)` + `upsert` with `ignoreDuplicates: true` — 2026-03-25 (migration 028)
 - Add retry logic: Vercel cron failures are silent — add a `cron_runs` log table to track last success
 - Add alerting: ping a Slack webhook or send email if cron hasn't run in 25+ hours
 - Circuit breaker: if processing >500 predictions in a single run, log warning + continue (not abort)
@@ -26,10 +26,10 @@
 
 ## Medium Priority
 
-### Multiple getUser() Calls Per Request
-- Almost every page calls `supabase.auth.getUser()` then queries the user profile separately
-- Impact: ~2 DB roundtrips saved per page load
-- Fix: cache auth + profile in middleware or a shared server utility
+### Multiple getUser() Calls Per Request ✅ 2026-03-25
+- `getNavProfile()` already wrapped in `React.cache()` — deduplicates to 1 execution per RSC render
+- The 2 internal calls (getUser + profile query) are inherently serial since profile depends on `user.id`
+- No further optimization without risking auth session refresh
 
 ### Real-Time Layer (Supabase Realtime)
 - "Opponent just submitted their picks" → live update without page refresh
@@ -42,11 +42,10 @@
 - On draw publish / result entry, admin triggers `revalidatePath()` — confirm this is wired up everywhere
 - Add `revalidatePath` call in admin result-entry action
 
-### DB Index Audit
-- Confirm indexes exist on: `predictions.user_id`, `predictions.tournament_id`, `predictions.challenge_id`
-- `point_ledger.prediction_id`, `point_ledger.match_result_id`
-- `challenges.share_code` (already in migration 027)
-- `notifications.user_id + read_at` for unread count query
+### DB Index Audit ✅ 2026-03-25
+- ✅ All core indexes confirmed: predictions (user, tournament, challenge, global, locked, expires), point_ledger (user, tournament, prediction, match+prediction unique), challenges (share_code, anon_active, active_pair), notifications (user_unread partial), match_results (tournament)
+- ✅ Added missing `idx_league_members_league_user` on `(league_id, user_id)` — membership checks (migration 028)
+- ✅ Added missing `idx_league_members_league_points` on `(league_id, total_points DESC)` — leaderboard sorts (migration 028)
 
 ---
 

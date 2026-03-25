@@ -1,13 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { getNavProfile } from '@/lib/supabase/profile'
-import { redirect } from 'next/navigation'
+import { requireAdmin } from '@/app/admin/auth'
 import Nav from '@/components/Nav'
 import TestSandbox from './TestSandbox'
 import { TEST_EXTERNAL_ID } from './constants'
 
 export default async function TestTournamentsPage() {
+  await requireAdmin()  // Gate: only admins (redirects non-admins to /dashboard)
   const { user, profile } = await getNavProfile()
-  if (!user) redirect('/login')
+  if (!user) return null  // Shouldn't happen after requireAdmin()
 
   // Load test tournament state
   const supabase = await createClient()
