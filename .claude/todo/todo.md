@@ -6,7 +6,10 @@
 
 ## In Progress / Next Up
 
-_Nothing queued yet — add next items here._
+### Automated Match Result Syncing
+- Sync match results from api-tennis into the DB automatically
+- Previous attempt (10 commits) rolled back 2026-03-24 — issues with player name matching, round normalization, and API field mapping
+- Needs: reliable player matching strategy, proper round mapping, robust error handling
 
 ---
 
