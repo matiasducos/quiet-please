@@ -6,7 +6,6 @@ import { createClient } from '@/lib/supabase/client'
 
 export default function SignupPage() {
   const router = useRouter()
-  const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -15,19 +14,17 @@ export default function SignupPage() {
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true); setError(null)
-    if (username.length < 3) { setError('Username must be at least 3 characters.'); setLoading(false); return }
     const supabase = createClient()
-    // Pre-check username availability before attempting signup
-    const { data: taken } = await supabase.from('users').select('id').eq('username', username).maybeSingle()
-    if (taken) { setError('Username already taken — please choose a different one.'); setLoading(false); return }
-    const { data: signUpData, error } = await supabase.auth.signUp({ email, password, options: { data: { username }, emailRedirectTo: `${window.location.origin}/auth/callback?next=/onboarding` } })
+    // No username at signup — all users pick username at /setup-username after confirming email
+    const { data: signUpData, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard` } })
     if (error) { setError(error.message); setLoading(false); return }
     // If email confirmation is required, session will be null — show check-email page
     if (!signUpData.session) {
       router.push(`/check-email?email=${encodeURIComponent(email)}`)
       return
     }
-    router.push('/onboarding'); router.refresh()
+    // No confirmation needed → middleware redirects to /setup-username (username_is_set = false)
+    router.push('/dashboard'); router.refresh()
   }
 
   async function handleGoogleSignup() {
@@ -64,12 +61,6 @@ export default function SignupPage() {
             Already have an account?{' '}<Link href="/login" style={{ color: 'var(--court)' }}>Sign in</Link>
           </p>
           <form onSubmit={handleSignup} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.05em' }}>USERNAME</label>
-              <input type="text" value={username} onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,''))} required minLength={3} maxLength={20} placeholder="federer_fan"
-                className="w-full px-4 py-3 rounded-sm text-sm outline-none" style={{ background: 'white', border: '1.5px solid var(--chalk-dim)', fontFamily: 'var(--font-mono)' }}
-                onFocus={e => e.target.style.borderColor='var(--court)'} onBlur={e => e.target.style.borderColor='var(--chalk-dim)'} />
-            </div>
             <div className="flex flex-col gap-1.5">
               <label style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.05em' }}>EMAIL</label>
               <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="you@example.com"
