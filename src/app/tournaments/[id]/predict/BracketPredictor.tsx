@@ -115,6 +115,7 @@ export default function BracketPredictor({
   onPicksChange,
   hideSaveButtons = false,
   hideBackLink = false,
+  drawResultsMode = false,
 }: {
   tournament: any
   draw: Draw
@@ -135,6 +136,8 @@ export default function BracketPredictor({
   hideSaveButtons?: boolean
   /** Hides all back/navigation links — used when embedded in anonymous challenge views */
   hideBackLink?: boolean
+  /** When true, shows draw results UI (no picks, just actual winners) */
+  drawResultsMode?: boolean
 }) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -438,11 +441,13 @@ export default function BracketPredictor({
 
             {/* Pick counter */}
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
-              {readOnly
-                ? correctPicks !== null && totalResultsExcludingByes > 0
-                  ? `${correctPicks}/${totalResultsExcludingByes} correct`
-                  : `${pickedCount} picks`
-                : `${pickedCount}/${totalMatches} picks`}
+              {drawResultsMode
+                ? `${totalResultsExcludingByes}/${totalMatches} played`
+                : readOnly
+                  ? correctPicks !== null && totalResultsExcludingByes > 0
+                    ? `${correctPicks}/${totalResultsExcludingByes} correct`
+                    : `${pickedCount} picks`
+                  : `${pickedCount}/${totalMatches} picks`}
             </span>
 
             {/* Buttons: depends on state */}
@@ -493,13 +498,15 @@ export default function BracketPredictor({
           {/* First row: badge + (desktop legend) + share button */}
           <div className="max-w-5xl mx-auto flex items-center gap-3 px-4 md:px-6 py-2.5">
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: 'var(--muted)', fontWeight: 600, flexShrink: 0 }}>
-              LOCKED PICKS
+              {drawResultsMode ? 'DRAW RESULTS' : 'LOCKED PICKS'}
             </span>
             {/* Legend inline — desktop only */}
             <span className="hidden md:inline" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-              {matchResults && Object.keys(matchResults).length > 0
-                ? 'Green = correct · Red = wrong · Gold = actual winner you missed'
-                : 'Results not yet available — check back after matches are played.'}
+              {drawResultsMode
+                ? 'Gold = match winner'
+                : matchResults && Object.keys(matchResults).length > 0
+                  ? 'Green = correct · Red = wrong · Gold = actual winner you missed'
+                  : 'Results not yet available — check back after matches are played.'}
             </span>
             {shareUrl && (
               <button
@@ -519,9 +526,11 @@ export default function BracketPredictor({
           </div>
           {/* Legend below — mobile only */}
           <p className="max-w-5xl mx-auto md:hidden mt-1 px-4 md:px-6 pb-1" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-            {matchResults && Object.keys(matchResults).length > 0
-              ? 'Green = correct · Red = wrong · Gold = actual winner you missed'
-              : 'Results not yet available — check back after matches are played.'}
+            {drawResultsMode
+              ? 'Gold = match winner'
+              : matchResults && Object.keys(matchResults).length > 0
+                ? 'Green = correct · Red = wrong · Gold = actual winner you missed'
+                : 'Results not yet available — check back after matches are played.'}
           </p>
         </div>
       )}
@@ -571,23 +580,29 @@ export default function BracketPredictor({
           <Link href={`/tournaments/${tournament.id}`} style={{ color: 'var(--muted)' }}>{tournament.flag_emoji ? `${tournament.flag_emoji} ` : ''}{tournament.location ? `${tournament.location} · ${tournament.name}` : tournament.name}</Link>
           <span>/</span>
           <span>
-            {readOnly
-              ? `${username}'s picks`
-              : challengeContext
-                ? `Challenge vs ${challengeContext.opponentUsername}`
-                : 'Your picks'}
+            {drawResultsMode
+              ? 'Draw results'
+              : readOnly
+                ? `${username}'s picks`
+                : challengeContext
+                  ? `Challenge vs ${challengeContext.opponentUsername}`
+                  : 'Your picks'}
           </span>
         </div>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.02em' }}>
-          {readOnly
-            ? `${username}'s picks`
-            : challengeContext
-              ? `Challenge vs ${challengeContext.opponentUsername}`
-              : 'Make your predictions'}
+          {drawResultsMode
+            ? 'Draw Results'
+            : readOnly
+              ? `${username}'s picks`
+              : challengeContext
+                ? `Challenge vs ${challengeContext.opponentUsername}`
+                : 'Make your predictions'}
         </h1>
         <p style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
-          {readOnly
-            ? `View ${username}'s picks round by round.`
+          {drawResultsMode
+            ? 'Actual match results round by round.'
+            : readOnly
+              ? `View ${username}'s picks round by round.`
             : (() => {
                 const firstRound = sortedRounds[0]
                 const lastRound = sortedRounds[sortedRounds.length - 1]
