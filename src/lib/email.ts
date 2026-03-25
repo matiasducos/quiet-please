@@ -13,11 +13,23 @@ function canSend() {
   return true
 }
 
+function unsubscribeFooter(unsubscribeToken: string) {
+  const url = `${BASE_URL}/api/unsubscribe?token=${unsubscribeToken}`
+  return `
+    <div style="margin-top:40px;padding-top:20px;border-top:1px solid #e8e3d8;">
+      <p style="font-size:11px;color:#999;line-height:1.5;">
+        You received this email because you have an account on Quiet Please.<br/>
+        <a href="${url}" style="color:#999;text-decoration:underline;">Unsubscribe</a> from all email notifications.
+      </p>
+    </div>`
+}
+
 export async function sendDrawOpenEmail(opts: {
   to: string
   tournamentName: string
   tournamentId: string
   closeDate: string | null
+  unsubscribeToken: string
 }) {
   if (!canSend()) return
   const closeLine = opts.closeDate
@@ -39,6 +51,7 @@ export async function sendDrawOpenEmail(opts: {
             Make your picks →
           </a>
         </div>
+        ${unsubscribeFooter(opts.unsubscribeToken)}
       </div>`,
   })
 }
@@ -49,6 +62,7 @@ export async function sendPointsAwardedEmail(opts: {
   tournamentId: string
   points: number
   totalPoints: number
+  unsubscribeToken: string
 }) {
   if (!canSend()) return
   await resend!.emails.send({
@@ -67,6 +81,7 @@ export async function sendPointsAwardedEmail(opts: {
             View your picks →
           </a>
         </div>
+        ${unsubscribeFooter(opts.unsubscribeToken)}
       </div>`,
   })
 }

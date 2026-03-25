@@ -66,6 +66,11 @@ export default function LoginPage() {
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
+          <p className="mt-4 text-xs text-center" style={{ color: 'var(--muted)', lineHeight: 1.5 }}>
+            By signing in, you agree to our{' '}
+            <Link href="/terms" style={{ color: 'var(--court)', textDecoration: 'underline' }}>Terms</Link>{' '}and{' '}
+            <Link href="/privacy" style={{ color: 'var(--court)', textDecoration: 'underline' }}>Privacy Policy</Link>.
+          </p>
           <div className="flex items-center gap-3 my-6">
             <div className="flex-1 h-px" style={{ background: 'var(--chalk-dim)' }} />
             <span style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>OR</span>

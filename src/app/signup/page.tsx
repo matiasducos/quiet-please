@@ -74,6 +74,11 @@ export default function SignupPage() {
                 onFocus={e => e.target.style.borderColor='var(--court)'} onBlur={e => e.target.style.borderColor='var(--chalk-dim)'} />
             </div>
             {error && <p className="text-sm px-3 py-2 rounded-sm" style={{ background: '#fef2f2', color: '#b91c1c' }}>{error}</p>}
+            <p className="text-xs" style={{ color: 'var(--muted)', lineHeight: 1.5 }}>
+              By creating an account, you agree to our{' '}
+              <Link href="/terms" style={{ color: 'var(--court)', textDecoration: 'underline' }}>Terms of Service</Link>{' '}and{' '}
+              <Link href="/privacy" style={{ color: 'var(--court)', textDecoration: 'underline' }}>Privacy Policy</Link>.
+            </p>
             <button type="submit" disabled={loading} className="w-full py-3 text-sm font-medium text-white rounded-sm hover:opacity-90 disabled:opacity-50" style={{ background: 'var(--court)' }}>
               {loading ? 'Creating account…' : 'Create account'}
             </button>

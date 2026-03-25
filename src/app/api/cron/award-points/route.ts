@@ -311,11 +311,21 @@ export async function GET(request: Request) {
       // Fire-and-forget emails — don't block the cron response on slow SMTP calls.
       // Errors are logged but won't fail the cron run.
       if (emailJobs.length > 0) {
+        // Fetch email preferences for all users in this batch
+        const emailUserIds = [...new Set(emailJobs.map(j => j.userId))]
+        const { data: emailPrefs } = await supabase
+          .from('users')
+          .select('id, email_notifications, unsubscribe_token')
+          .in('id', emailUserIds)
+        const prefsMap = new Map((emailPrefs ?? []).map((p: any) => [p.id, p]))
+
         const sendEmails = async () => {
           for (let i = 0; i < emailJobs.length; i += 10) {
             await Promise.all(
               emailJobs.slice(i, i + 10).map(async (job) => {
                 try {
+                  const prefs = prefsMap.get(job.userId)
+                  if (prefs?.email_notifications === false) return // respect unsubscribe
                   const { data: { user: authUser } } = await supabase.auth.admin.getUserById(job.userId)
                   if (authUser?.email) {
                     await sendPointsAwardedEmail({
@@ -324,6 +334,7 @@ export async function GET(request: Request) {
                       tournamentId: job.tId,
                       points: job.pts,
                       totalPoints: globalUserPointsDelta[job.userId],
+                      unsubscribeToken: prefs?.unsubscribe_token ?? '',
                     })
                   }
                 } catch (emailErr) {

@@ -157,15 +157,26 @@ export async function GET(request: Request) {
             }))
             await (supabase as any).from('notifications').insert(notificationRows)
           }
+          // Fetch email preferences to respect unsubscribe
+          const { data: userPrefs } = await supabase
+            .from('users')
+            .select('id, email_notifications, unsubscribe_token')
+          const prefsMap = new Map((userPrefs ?? []).map((p: any) => [p.id, p]))
+
           // Send all emails in parallel — avoids O(n) sequential await per user.
           const emailResults = await Promise.allSettled(
             allUsers
-              .filter((u: any) => u.email)
+              .filter((u: any) => {
+                if (!u.email) return false
+                const prefs = prefsMap.get(u.id)
+                return prefs?.email_notifications !== false
+              })
               .map((u: any) => sendDrawOpenEmail({
-                to:             u.email,
-                tournamentName: tournament.name,
-                tournamentId:   tournament.id,
-                closeDate:      tournament.draw_close_at ?? null,
+                to:               u.email,
+                tournamentName:   tournament.name,
+                tournamentId:     tournament.id,
+                closeDate:        tournament.draw_close_at ?? null,
+                unsubscribeToken: prefsMap.get(u.id)?.unsubscribe_token ?? '',
               })),
           )
           const emailFailed = emailResults.filter(r => r.status === 'rejected').length

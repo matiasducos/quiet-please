@@ -6,6 +6,13 @@
 
 ## In Progress / Next Up
 
+### Facebook OAuth Setup (manual — Matias)
+- Code side done ✅ — button added to login & signup pages
+- **TODO:** Create Facebook App at developers.facebook.com (Consumer type)
+- **TODO:** Enable Facebook Login product, set redirect URI: `https://<project>.supabase.co/auth/v1/callback`
+- **TODO:** Copy App ID + App Secret → Supabase Dashboard → Auth → Providers → Facebook → Enable + paste
+- **TODO:** Set Facebook app to **Live mode** (not development)
+
 ### Automated Match Result Syncing
 - Sync match results from api-tennis into the DB automatically
 - Previous attempt (10 commits) rolled back 2026-03-24 — issues with player name matching, round normalization, and API field mapping
@@ -43,6 +50,10 @@
 
 ## Completed ✅
 
+- ✅ Live Right Now sections (dashboard, tournaments page, homepage grid) — 2026-03-25
+- ✅ Leaderboard: show all players (including 0 pts), location nudge banner — 2026-03-25
+- ✅ Profile: prominent location setup banner — 2026-03-25
+- ✅ Facebook OAuth button + Google button restyle — 2026-03-25
 - ✅ Anonymous challenges (`/c/[code]`) — 2026-03-23
 - ✅ Auth gates on leaderboard, leagues, challenges — 2026-03-23
 - ✅ Homepage: live section, features redesign, bracket preview, leaderboard teaser — 2026-03-23

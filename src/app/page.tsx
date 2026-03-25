@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { unstable_cache } from 'next/cache'
 import TournamentCard from '@/components/TournamentCard'
 import CountryFlag from '@/components/CountryFlag'
+import Footer from '@/components/Footer'
 
 // ── Cached homepage data: live tournaments + top players ──────────────────
 const getHomepageData = unstable_cache(
@@ -425,6 +426,7 @@ export default async function HomePage() {
         </div>
       </section>
 
+      <Footer />
     </main>
   )
 }
