@@ -101,7 +101,7 @@ export async function GET(request: Request) {
 
       // Bust the ISR cache for this tournament's detail page so users see
       // the draw immediately rather than waiting up to an hour.
-      revalidateTag('tournament-detail')
+      revalidateTag('tournament-detail', 'default')
 
       // ── Backfill dates from fixture data if tournament is still "Date TBC" ──
       // get_tournaments sometimes omits tournament_date for future events; but

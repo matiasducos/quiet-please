@@ -3,7 +3,10 @@ import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
-import { respondToChallenge } from './actions'
+import { respondToChallenge as _respondToChallenge } from './actions'
+
+// Wrap to satisfy React's form action type (void | Promise<void>)
+const respondToChallenge = async (formData: FormData) => { 'use server'; await _respondToChallenge(formData) }
 import CancelButton from '../CancelButton'
 
 export default async function ChallengeDetailPage({

@@ -39,7 +39,7 @@ export default async function TestTournamentsPage() {
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="test" />
+      <Nav username={profile?.username} points={profile?.ranking_points ?? 0} />
       <div className="max-w-2xl mx-auto px-8 py-10">
 
         {/* Page header */}

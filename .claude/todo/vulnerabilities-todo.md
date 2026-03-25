@@ -43,10 +43,10 @@ npm audit
 
 ## Code & config risks
 
-- [ ] **Development-only bypasses** — In `NODE_ENV === 'development'`, cron auth is open and admin tournament-status API skips admin user check. Do not expose dev server to the internet.
+- [x] **Development-only bypasses** ✅ 2026-03-25 — Documented. In `NODE_ENV === 'development'`: (1) `requireAdmin()` in `src/app/admin/auth.ts` grants admin to all authenticated users, (2) cron routes in `src/app/api/cron/*/route.ts` skip `CRON_SECRET` check. These are intentional DX shortcuts — **never expose the dev server to the internet**. Production is safe: `ADMIN_USER_IDS` is required, `CRON_SECRET` is enforced.
 - [x] **Middleware route coverage** ✅ 2026-03-25 — Audited: middleware protects `/dashboard`, `/profile`, `/predict`. All other routes use page-level or action-level auth. Public routes intentionally show gate UI.
-- [ ] **`next.config.ts`: `typescript.ignoreBuildErrors: true`** — Allows shipping with type errors; increases bug/reliability risk. Remove when the project type-checks clean (20+ errors, mostly stale `database.ts` types).
-- [x] **HTTP hardening** ✅ 2026-03-25 — Security headers in `next.config.ts`: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, HSTS (2yr + preload), `Permissions-Policy`. CSP deferred (needs testing with Next.js inline scripts).
+- [x] **`next.config.ts`: `typescript.ignoreBuildErrors`** ✅ 2026-03-25 — Removed. Fixed all 24 type errors: stale `database.ts` placeholder, `revalidateTag` Next.js 16 signature change, missing `flag_emoji`/`location` on admin types, `Json` type export, form action return types.
+- [x] **HTTP hardening** ✅ 2026-03-25 — Security headers in `next.config.ts`: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, HSTS (2yr + preload), `Permissions-Policy`. CSP added in report-only mode (switch to enforcing after monitoring).
 - [x] **Rate limiting** ✅ 2026-03-25 — Audited: Supabase Auth handles login/signup natively. App-level limits cover challenges (5/min), predictions (20/min), friend requests (10/min), anonymous challenges (3/hr per IP).
 - [ ] **`pdf-parse` (admin)** — Untrusted PDFs can be CPU/memory heavy; keep uploads size-limited and server-only; watch package advisories.
 
@@ -66,8 +66,8 @@ npm audit
 
 ## Public launch risk summary (qualitative)
 
-- **Organic / soft launch:** ✅ Acceptable — production env, RLS, OAuth hardened, security headers added, rate limiting in place.
-- **Paid ads at scale:** Treat as **low-moderate risk** — remaining items are operational (Supabase Security Advisor, billing alerts) and one config cleanup (`ignoreBuildErrors`).
+- **Organic / soft launch:** ✅ Acceptable — production env, RLS, OAuth hardened, security headers + CSP (report-only), rate limiting in place, type checking enforced.
+- **Paid ads at scale:** Treat as **low risk** — remaining items are operational (Supabase Security Advisor, billing alerts, `pdf-parse` monitoring). All code-level security items are addressed.
 
 ---
 

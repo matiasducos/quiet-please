@@ -35,6 +35,7 @@ interface ManualTournament {
   id: string; name: string; tour: string; category: string; status: string
   starts_at: string | null; surface: string | null
   has_draw: boolean
+  flag_emoji: string | null; location: string | null
 }
 
 export default function AdminPanel({ tournaments, scoringStatus }: { tournaments: ManualTournament[]; scoringStatus: ScoringTournament[] }) {

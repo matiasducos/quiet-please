@@ -269,8 +269,8 @@ export async function saveManualDraw(
   if (drawError) return { ok: false, error: drawError.message }
 
   // Bust the ISR cache so tournament detail pages refresh immediately
-  revalidateTag('tournament-detail')
-  revalidateTag('tournament-list')
+  revalidateTag('tournament-detail', 'default')
+  revalidateTag('tournament-list', 'default')
 
   if (openPredictions) {
     await admin
@@ -1126,6 +1126,7 @@ export async function getTournamentWithDraw(tournamentId: string): Promise<{
   tournament?: {
     id: string; name: string; external_id: string; tour: string; category: string
     status: string; draw_size: number | null; starts_at: string | null
+    location: string | null; flag_emoji: string | null
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   bracketData?: any
@@ -1137,7 +1138,7 @@ export async function getTournamentWithDraw(tournamentId: string): Promise<{
 
   const { data: tournament, error: tErr } = await admin
     .from('tournaments')
-    .select('id, name, external_id, tour, category, status, draw_size, starts_at')
+    .select('id, name, external_id, tour, category, status, draw_size, starts_at, location, flag_emoji')
     .eq('id', tournamentId)
     .single()
 
@@ -1159,6 +1160,7 @@ export async function getTournamentWithDraw(tournamentId: string): Promise<{
     tournament: tournament as {
       id: string; name: string; external_id: string; tour: string; category: string
       status: string; draw_size: number | null; starts_at: string | null
+      location: string | null; flag_emoji: string | null
     },
     bracketData: draw?.bracket_data ?? null,
     matchResults: (results ?? []) as Array<{ external_match_id: string; round: string; winner_external_id: string; loser_external_id: string; score: string | null }>,
@@ -1325,8 +1327,8 @@ export async function buildDraw(
     console.error('[buildDraw] notification error:', e)
   }
 
-  revalidateTag('tournament-detail')
-  revalidateTag('tournament-list')
+  revalidateTag('tournament-detail', 'default')
+  revalidateTag('tournament-list', 'default')
 
   return { ok: true, matchCount: allMatches.length }
 }
@@ -1429,8 +1431,8 @@ export async function saveMatchResult(
       .eq('status', 'accepting_predictions')
   }
 
-  revalidateTag('tournament-detail')
-  revalidateTag('tournament-list')
+  revalidateTag('tournament-detail', 'default')
+  revalidateTag('tournament-list', 'default')
   return { ok: true, cascadeDeleted }
 }
 
@@ -1473,7 +1475,7 @@ export async function clearMatchResult(
 
   if (error) return { ok: false, error: error.message }
 
-  revalidateTag('tournament-detail')
-  revalidateTag('tournament-list')
+  revalidateTag('tournament-detail', 'default')
+  revalidateTag('tournament-list', 'default')
   return { ok: true, cascadeDeleted }
 }

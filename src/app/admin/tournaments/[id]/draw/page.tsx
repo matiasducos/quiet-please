@@ -13,7 +13,7 @@ export default async function DrawPage({ params }: { params: Promise<{ id: strin
   const [{ data: tournament }, { data: draw }] = await Promise.all([
     admin
       .from('tournaments')
-      .select('id, name, draw_size, tour')
+      .select('id, name, draw_size, tour, location, flag_emoji')
       .eq('id', id)
       .single(),
     admin
