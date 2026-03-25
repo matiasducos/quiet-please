@@ -27,9 +27,10 @@ export default async function TournamentsPage({ searchParams }: { searchParams: 
   const activeTour   = params.tour === 'WTA' ? 'WTA' : 'ATP'
   const activeStatus = VALID_STATUSES.includes(params.status as any) ? params.status! : 'all'
 
-  const [{ user, profile }, tournaments] = await Promise.all([
+  const [{ user, profile }, tournaments, liveTournaments] = await Promise.all([
     getNavProfile(),
     getTournaments(activeTour, activeStatus),
+    getTournaments(activeTour, 'in_progress'),
   ])
 
   return (
@@ -39,6 +40,7 @@ export default async function TournamentsPage({ searchParams }: { searchParams: 
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
         <TournamentsClientList
           tournaments={tournaments}
+          liveTournaments={liveTournaments}
           activeTour={activeTour}
           activeStatus={activeStatus}
         />

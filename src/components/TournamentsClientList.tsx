@@ -7,6 +7,7 @@ import TournamentMonthGroup from './TournamentMonthGroup'
 
 interface Props {
   tournaments: any[]
+  liveTournaments: any[]
   activeTour: string
   activeStatus: string
 }
@@ -20,7 +21,7 @@ const STATUSES = [
   { key: 'completed',             label: 'Completed',      color: '#4a5568', bg: '#ebebea' },
 ]
 
-export default function TournamentsClientList({ tournaments, activeTour, activeStatus }: Props) {
+export default function TournamentsClientList({ tournaments, liveTournaments, activeTour, activeStatus }: Props) {
   const [query, setQuery] = useState('')
 
   const q = query.trim().toLowerCase()
@@ -128,6 +129,26 @@ export default function TournamentsClientList({ tournaments, activeTour, activeS
           )
         })}
       </div>
+
+      {/* ── Live Right Now ── */}
+      {liveTournaments.length > 0 && activeStatus === 'all' && !hasQuery && (
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <span
+              className="inline-block w-2.5 h-2.5 rounded-full"
+              style={{ background: '#c84b31', boxShadow: '0 0 0 3px rgba(200,75,49,0.2)', flexShrink: 0 }}
+            />
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              Live right now
+            </span>
+          </div>
+          <div className={`grid gap-3 ${liveTournaments.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+            {liveTournaments.map((t: any) => (
+              <TournamentCard key={t.id} t={t} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Tournament list ── */}
       {filtered.length === 0 ? (

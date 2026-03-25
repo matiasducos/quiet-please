@@ -17,7 +17,7 @@ function getLeaderboardData(pointsField: string, scope: Scope, scopeCountry: str
       let query = supabase
         .from('users')
         .select('id, username, ranking_points, atp_ranking_points, wta_ranking_points, country, city')
-        .gt(pointsField, 0)
+        .not('username', 'is', null)
         .order(pointsField, { ascending: false })
         .limit(50)
       if (scope === 'country' && scopeCountry) query = query.eq('country', scopeCountry)
@@ -147,11 +147,12 @@ export default async function LeaderboardPage({
   let myRank = myRankInList >= 0 ? myRankInList + 1 : null
   const myPoints = (profile as any)?.[pointsField] ?? 0
 
-  if (myRankInList < 0 && myPoints > 0) {
+  if (myRankInList < 0) {
     let countQuery = supabase
       .from('users')
       .select('id', { count: 'exact', head: true })
       .gt(pointsField, myPoints)
+      .not('username', 'is', null)
     if (scope === 'country' && scopeCountry)
       countQuery = countQuery.eq('country', scopeCountry)
     if (scope === 'city' && scopeCountry && scopeCity)
@@ -243,8 +244,20 @@ export default async function LeaderboardPage({
           </div>
         </div>
 
+        {/* ── Location nudge (inline, below pills) ────────────────────────── */}
+        {!profile?.country && (
+          <div className="mb-6 px-4 py-3 rounded-sm border" style={{ background: '#fefcf3', borderColor: '#e8dfc0' }}>
+            <p style={{ fontSize: '0.8rem', color: 'var(--ink)', lineHeight: 1.5 }}>
+              To unblock Country, City leaderboards, please{' '}
+              <Link href={`/profile/${profile?.username}`} style={{ color: 'var(--court)', fontWeight: 500 }}>
+                set up your location on your profile page
+              </Link>.
+            </p>
+          </div>
+        )}
+
         {/* ── My rank highlight ──────────────────────────────────────────────── */}
-        {myRank !== null && myPoints > 0 && (
+        {myRank !== null && (
           <div className="mb-6 px-5 py-4 rounded-sm border" style={{ background: '#edf4fc', borderColor: '#b8d4f0' }}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -281,17 +294,9 @@ export default async function LeaderboardPage({
         />
 
         <p className="mt-4 text-center" style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-          Showing top 50 · Rolling 52-week window · Points update after each result
+          Showing up to 50 players · Rolling 52-week window · Points update after each result
         </p>
 
-        {/* Profile nudge if location not set */}
-        {!profile?.country && (
-          <p className="mt-2 text-center" style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-            <Link href={`/profile/${profile?.username}`} style={{ color: 'var(--court)' }}>
-              Set your country and city
-            </Link>{' '}to unlock the country &amp; city leaderboards
-          </p>
-        )}
       </div>
     </main>
   )

@@ -3,6 +3,7 @@ import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
+import TournamentCard from '@/components/TournamentCard'
 import { getActivity, timeAgo } from '@/lib/friends/activity'
 
 export default async function DashboardPage() {
@@ -10,9 +11,9 @@ export default async function DashboardPage() {
   if (!user) redirect('/login')
 
   const supabase = await createClient()
-  const [{ data: upcomingTournaments }, { count: predictionCount }] = await Promise.all([
+  const [{ data: upcomingTournaments }, { count: predictionCount }, { data: liveTournaments }] = await Promise.all([
     supabase.from('tournaments')
-      .select('id, name, tour, surface, category, starts_at, status, location, flag_emoji')
+      .select('id, name, tour, surface, category, starts_at, ends_at, status, location, flag_emoji')
       .in('status', ['accepting_predictions', 'upcoming'])
       .order('starts_at', { ascending: true })
       .limit(3),
@@ -20,6 +21,11 @@ export default async function DashboardPage() {
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.id)
       .is('challenge_id', null),
+    supabase.from('tournaments')
+      .select('id, name, tour, surface, category, starts_at, ends_at, status, location, flag_emoji')
+      .eq('status', 'in_progress')
+      .order('starts_at', { ascending: true })
+      .limit(4),
   ])
 
   // Rank query depends on profile being loaded (needs ranking_points value)
@@ -107,6 +113,29 @@ export default async function DashboardPage() {
                   </div>
                 )
               })}
+            </div>
+          </div>
+        )}
+
+        {/* ─── Live Right Now ─────────────────────────────────────────────── */}
+        {liveTournaments && liveTournaments.length > 0 && (
+          <div className="mb-12">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span
+                  className="inline-block w-2 h-2 rounded-full"
+                  style={{ background: '#c84b31', boxShadow: '0 0 0 3px rgba(200,75,49,0.2)', flexShrink: 0 }}
+                />
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                  Live right now
+                </span>
+              </div>
+              <Link href="/tournaments" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>See all tournaments →</Link>
+            </div>
+            <div className="flex flex-col gap-3">
+              {liveTournaments.map(t => (
+                <TournamentCard key={t.id} t={t} />
+              ))}
             </div>
           </div>
         )}
