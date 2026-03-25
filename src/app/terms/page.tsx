@@ -164,12 +164,11 @@ export default function TermsOfService() {
 
           <Section title="13. Governing law">
             <p>
-              These Terms are governed by the laws of the Republic of Latvia, without regard to conflict
-              of law principles. Any disputes arising from these Terms shall be subject to the exclusive
-              jurisdiction of the courts of Latvia.
+              These Terms are governed by applicable law. Any disputes arising from these Terms shall
+              be resolved in accordance with the applicable jurisdiction.
             </p>
             <p>
-              If you are a consumer residing in the EU, you also benefit from any mandatory provisions
+              If you are a consumer residing in the EU, you benefit from any mandatory provisions
               of the law of your country of residence and may bring proceedings in the courts of your
               country of residence.
             </p>

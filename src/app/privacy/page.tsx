@@ -18,8 +18,8 @@ export default function PrivacyPolicy() {
           <Section title="1. Who we are">
             <p>
               Quiet Please (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;) operates the website{' '}
-              <strong>quiet-please.app</strong> (the &quot;Service&quot;). We are based in Latvia
-              and subject to the EU General Data Protection Regulation (GDPR).
+              <strong>quiet-please.app</strong> (the &quot;Service&quot;). We are subject to the
+              EU General Data Protection Regulation (GDPR).
             </p>
             <p>
               For any privacy-related questions, contact us at{' '}
@@ -144,7 +144,6 @@ export default function PrivacyPolicy() {
             </p>
             <p>
               You also have the right to lodge a complaint with your local data protection authority.
-              In Latvia, this is the Data State Inspectorate (Datu valsts inspekcija).
             </p>
           </Section>
 
