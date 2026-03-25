@@ -242,13 +242,13 @@ export default function TournamentMatchList({ rounds, matches, matchResults, mod
                           className="flex-1 py-1.5 px-2 rounded-sm"
                           style={{
                             fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
-                            background: result?.winner_external_id === player1?.externalId ? '#dcfce7' : !player1 ? '#f1f5f9' : 'transparent',
-                            color: player1 ? 'var(--ink)' : '#94a3b8',
-                            border: result?.winner_external_id === player1?.externalId ? '1px solid #86efac' : '1px solid transparent',
+                            background: result && player1 && result.winner_external_id === player1.externalId ? '#dcfce7' : !player1 ? '#f1f5f9' : 'transparent',
+                            color: 'var(--ink)',
+                            border: result && player1 && result.winner_external_id === player1.externalId ? '1px solid #86efac' : '1px solid transparent',
                           }}
                         >
                           {player1 ? <>{player1.name} {nameToFlag(player1.country) ?? ''}</> : 'TBD'}
-                          {result?.winner_external_id === player1?.externalId && ' ✓'}
+                          {result && player1 && result.winner_external_id === player1.externalId && ' ✓'}
                         </div>
 
                         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', flexShrink: 0 }}>vs</span>
@@ -258,13 +258,13 @@ export default function TournamentMatchList({ rounds, matches, matchResults, mod
                           className="flex-1 py-1.5 px-2 rounded-sm"
                           style={{
                             fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
-                            background: result?.winner_external_id === player2?.externalId ? '#dcfce7' : !player2 ? '#f1f5f9' : 'transparent',
-                            color: player2 ? 'var(--ink)' : '#94a3b8',
-                            border: result?.winner_external_id === player2?.externalId ? '1px solid #86efac' : '1px solid transparent',
+                            background: result && player2 && result.winner_external_id === player2.externalId ? '#dcfce7' : !player2 ? '#f1f5f9' : 'transparent',
+                            color: 'var(--ink)',
+                            border: result && player2 && result.winner_external_id === player2.externalId ? '1px solid #86efac' : '1px solid transparent',
                           }}
                         >
                           {player2 ? <>{player2.name} {nameToFlag(player2.country) ?? ''}</> : 'TBD'}
-                          {result?.winner_external_id === player2?.externalId && ' ✓'}
+                          {result && player2 && result.winner_external_id === player2.externalId && ' ✓'}
                         </div>
 
                         {/* Score */}
