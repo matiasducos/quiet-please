@@ -28,6 +28,11 @@ export default function PrivacyPolicy() {
           </Section>
 
           <Section title="2. Data we collect">
+            <p>
+              We collect the minimum personal data necessary to operate the Service and provide
+              you with a functional experience. Without this data, we would not be able to
+              create your account, track your predictions, or display leaderboards.
+            </p>
             <p>We collect the following categories of personal data:</p>
             <h4>Account data (when you sign up)</h4>
             <ul>
