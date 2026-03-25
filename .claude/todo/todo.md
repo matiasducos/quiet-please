@@ -50,6 +50,7 @@
 
 ## Completed ✅
 
+- ✅ Draw Results page (bracket UI with real winners) + Upcoming Matches page + tournament header buttons — 2026-03-25
 - ✅ Legal infrastructure: Privacy Policy, Terms of Service, signup consent, email unsubscribe, Footer — 2026-03-25
 - ✅ Security hardening: headers (HSTS, X-Frame-Options, nosniff, Permissions-Policy), CSP report-only, npm audit fix — 2026-03-25
 - ✅ Remove `typescript.ignoreBuildErrors` — fixed all 24 type errors, build now type-checks clean — 2026-03-25
