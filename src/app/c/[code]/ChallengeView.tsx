@@ -316,7 +316,7 @@ export default function ChallengeView({
           )}
 
           <div className="flex items-center justify-center gap-4" style={{ fontFamily: 'var(--font-mono)', fontSize: '1.25rem' }}>
-            <div className="text-right">
+            <div className="text-right flex-1">
               <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginBottom: '0.15rem' }}>
                 {challenge.creator_name ?? 'Player 1'}
               </div>
@@ -325,7 +325,7 @@ export default function ChallengeView({
               </span>
             </div>
             <span style={{ color: 'var(--muted)', fontSize: '1rem' }}>–</span>
-            <div className="text-left">
+            <div className="text-left flex-1">
               <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginBottom: '0.15rem' }}>
                 {challenge.opponent_name ?? (opponentName || 'Player 2')}
               </div>
