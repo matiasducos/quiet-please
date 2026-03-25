@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { unstable_cache } from 'next/cache'
 import TournamentCard from '@/components/TournamentCard'
-import { nameToFlag } from '@/app/admin/countries'
+import CountryFlag from '@/components/CountryFlag'
 
 // ── Cached homepage data: live tournaments + top players ──────────────────
 const getHomepageData = unstable_cache(
@@ -285,10 +285,8 @@ export default async function HomePage() {
                       {topPlayers.length > 0 ? (
                         <>
                           <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', color: 'var(--ink)' }}>{p.username}</span>
-                          {p.country && nameToFlag(p.country) && (
-                            <span style={{ fontSize: '0.85rem', flexShrink: 0 }} title={p.country}>
-                              {nameToFlag(p.country)}
-                            </span>
+                          {p.country && (
+                            <CountryFlag country={p.country} size={14} />
                           )}
                         </>
                       ) : (

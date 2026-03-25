@@ -7,7 +7,8 @@ import Nav from '@/components/Nav'
 import { sendFriendRequest, acceptFriendRequest, declineFriendRequest } from '@/app/friends/actions'
 import LocationEditForm from '@/app/profile/LocationEditForm'
 import UsernameEditForm from '@/app/profile/UsernameEditForm'
-import { COUNTRIES, codeToFlag } from '@/app/admin/countries'
+import { COUNTRIES } from '@/app/admin/countries'
+import CountryFlag from '@/components/CountryFlag'
 import TournamentCard from '@/components/TournamentCard'
 import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
 
@@ -232,11 +233,9 @@ export default async function ProfilePage({
               {/* Location display */}
               {(profile.country || profile.city) ? (
                 <div className="flex items-center gap-2 mt-1.5">
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>
-                    {(() => {
-                      const match = COUNTRIES.find(c => c.name === profile.country)
-                      return match ? codeToFlag(match.code) : '📍'
-                    })()} {[profile.city, profile.country].filter(Boolean).join(', ')}
+                  <span className="flex items-center gap-1.5" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>
+                    {profile.country ? <CountryFlag country={profile.country} size={14} /> : <span>📍</span>}
+                    {[profile.city, profile.country].filter(Boolean).join(', ')}
                   </span>
                   {isOwnProfile && (
                     <Link

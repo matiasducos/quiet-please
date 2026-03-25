@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { nameToFlag } from '@/app/admin/countries'
+import CountryFlag from '@/components/CountryFlag'
 
 interface UserRow {
   id: string
@@ -111,10 +111,8 @@ export default function LeaderboardTable({
                       you
                     </span>
                   )}
-                  {scope === 'worldwide' && u.country && nameToFlag(u.country) && (
-                    <span style={{ fontSize: '0.85rem', flexShrink: 0 }} title={u.country}>
-                      {nameToFlag(u.country)}
-                    </span>
+                  {scope === 'worldwide' && u.country && (
+                    <CountryFlag country={u.country} size={16} />
                   )}
                   {breakdown.length > 0 && (
                     <span style={{
