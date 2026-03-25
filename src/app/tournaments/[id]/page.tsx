@@ -194,13 +194,29 @@ export default async function TournamentDetailPage({ params }: { params: Promise
               </span>
 
               {(t.status === 'in_progress' || t.status === 'completed') && (
-                <Link
-                  href={`/leaderboard/tournaments/${t.id}`}
-                  className="px-3 py-1 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
-                  style={{ background: 'var(--court)', color: 'white', textDecoration: 'none' }}
-                >
-                  See results
-                </Link>
+                <>
+                  <Link
+                    href={`/leaderboard/tournaments/${t.id}`}
+                    className="px-3 py-1 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
+                    style={{ background: 'var(--court)', color: 'white', textDecoration: 'none' }}
+                  >
+                    See results
+                  </Link>
+                  <Link
+                    href={`/tournaments/${t.id}/results`}
+                    className="px-3 py-1 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
+                    style={{ background: 'white', color: 'var(--ink)', textDecoration: 'none', border: '1px solid var(--chalk-dim)' }}
+                  >
+                    Draw results
+                  </Link>
+                  <Link
+                    href={`/tournaments/${t.id}/upcoming`}
+                    className="px-3 py-1 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
+                    style={{ background: 'white', color: 'var(--ink)', textDecoration: 'none', border: '1px solid var(--chalk-dim)' }}
+                  >
+                    Upcoming
+                  </Link>
+                </>
               )}
 
               {t.draw_close_at && (
