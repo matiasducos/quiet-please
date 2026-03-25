@@ -396,10 +396,13 @@ export default function BracketPredictor({
     return { done, total }
   }
 
-  // Count correctly picked vs total picked (for read-only summary)
+  // Count correctly picked vs total played (for read-only summary), excluding BYE matches
   const correctPicks = readOnly && matchResults
-    ? Object.entries(picks).filter(([matchId, playerId]) => matchResults[matchId] === playerId).length
+    ? Object.entries(picks).filter(([matchId, playerId]) => !byeMatchIds.has(matchId) && matchResults[matchId] === playerId).length
     : null
+  const totalResultsExcludingByes = matchResults
+    ? Object.keys(matchResults).filter(matchId => !byeMatchIds.has(matchId)).length
+    : 0
 
   // Check if we're in challenge mode with empty picks (for import prompt)
   // Only show import banner on first visit (no prediction saved yet) with no picks
@@ -436,8 +439,8 @@ export default function BracketPredictor({
             {/* Pick counter */}
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
               {readOnly
-                ? correctPicks !== null && matchResults && Object.keys(matchResults).length > 0
-                  ? `${correctPicks}/${Object.keys(matchResults).length} correct`
+                ? correctPicks !== null && totalResultsExcludingByes > 0
+                  ? `${correctPicks}/${totalResultsExcludingByes} correct`
                   : `${pickedCount} picks`
                 : `${pickedCount}/${totalMatches} picks`}
             </span>
@@ -547,8 +550,8 @@ export default function BracketPredictor({
                     fontSize: '0.55rem',
                     padding: '1px 4px',
                     borderRadius: '2px',
-                    background: allDone ? '#dcfce7' : 'var(--chalk)',
-                    color: allDone ? '#166534' : 'var(--muted)',
+                    background: allDone ? '#dbeafe' : 'var(--chalk)',
+                    color: allDone ? '#1e40af' : 'var(--muted)',
                   }}>
                     {stats.done}/{stats.total}
                   </span>
