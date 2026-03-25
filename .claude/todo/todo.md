@@ -50,6 +50,10 @@
 
 ## Completed ✅
 
+- ✅ Legal infrastructure: Privacy Policy, Terms of Service, signup consent, email unsubscribe, Footer — 2026-03-25
+- ✅ Security hardening: headers (HSTS, X-Frame-Options, nosniff, Permissions-Policy), CSP report-only, npm audit fix — 2026-03-25
+- ✅ Remove `typescript.ignoreBuildErrors` — fixed all 24 type errors, build now type-checks clean — 2026-03-25
+- ✅ Security audit: middleware routes, secrets hygiene, rate limiting, dev-only bypasses documented — 2026-03-25
 - ✅ Live Right Now sections (dashboard, tournaments page, homepage grid) — 2026-03-25
 - ✅ Leaderboard: show all players (including 0 pts), location nudge banner — 2026-03-25
 - ✅ Profile: prominent location setup banner — 2026-03-25
