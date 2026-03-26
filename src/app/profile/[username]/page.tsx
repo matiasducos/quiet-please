@@ -48,8 +48,9 @@ export default async function ProfilePage({
   const admin = createAdminClient()
 
   // ── Parallel fetch: rank, predictions (global + all for stats), friendship, challenges
-  // Use admin for predictions — RLS may block reads even for own predictions
-  let predQuery = admin
+  // RLS policy "Locked global predictions are publicly readable" (migration 030)
+  // allows reading any user's locked predictions; own predictions readable via auth.uid()
+  let predQuery = supabase
     .from('predictions')
     .select('id, points_earned, created_at, is_fully_locked, tournaments(id, name, tour, category, surface, starts_at, ends_at, status, location, flag_emoji)')
     .eq('user_id', profile.id)
