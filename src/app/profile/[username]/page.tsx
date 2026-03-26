@@ -48,7 +48,8 @@ export default async function ProfilePage({
   const admin = createAdminClient()
 
   // ── Parallel fetch: rank, predictions (global + all for stats), friendship, challenges
-  let predQuery = supabase
+  // Use admin for predictions — RLS may block reads even for own predictions
+  let predQuery = admin
     .from('predictions')
     .select('id, points_earned, created_at, is_fully_locked, tournaments(id, name, tour, category, surface, starts_at, ends_at, status, location, flag_emoji)')
     .eq('user_id', profile.id)
@@ -145,7 +146,7 @@ export default async function ProfilePage({
     }
   })
 
-  const ongoingChallengeCount = challenges.filter(c => c.status === 'accepted' || c.status === 'pending').length
+  const ongoingChallengeCount = challenges.filter(c => c.status === 'accepted').length
 
   // ── Head-to-head rivalry stats ──────────────────────────────────────────
   // Group completed non-anonymous challenges by opponent, count W/L/D
