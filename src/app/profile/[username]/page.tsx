@@ -82,8 +82,7 @@ export default async function ProfilePage({
 
   const globalRank = (usersAhead ?? 0) + 1
 
-  const globalPredCount = predictions?.length ?? 0
-  const scoredCount = predictions?.filter(p => (p.points_earned ?? 0) > 0).length ?? 0
+  const completedPredCount = predictions?.filter(p => (p.tournaments as any)?.status === 'completed').length ?? 0
   const memberSince  = new Date(profile.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 
   const adminIds = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean)
@@ -145,6 +144,8 @@ export default async function ProfilePage({
       myPts, theirPts, won, lost, draw,
     }
   })
+
+  const ongoingChallengeCount = challenges.filter(c => c.status === 'accepted' || c.status === 'pending').length
 
   // ── Head-to-head rivalry stats ──────────────────────────────────────────
   // Group completed non-anonymous challenges by opponent, count W/L/D
@@ -343,10 +344,10 @@ export default async function ProfilePage({
         {/* ── Stats grid ────────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
           {[
-            { label: 'Ranking pts',  value: profile.ranking_points ?? 0,                         sub: '52-week rolling' },
-            { label: 'Rank',         value: `#${globalRank}`,                                     sub: null },
-            { label: 'Tournaments',  value: globalPredCount,                                      sub: null },
-            { label: 'Scored',       value: scoredCount > 0 ? scoredCount : '—',                 sub: scoredCount > 0 ? 'earned points' : null },
+            { label: 'Ranking pts',          value: profile.ranking_points ?? 0,   sub: '52-week rolling' },
+            { label: 'Rank',                 value: `#${globalRank}`,              sub: null },
+            { label: 'Completed',            value: completedPredCount,            sub: 'tournaments' },
+            { label: 'Ongoing challenges',   value: ongoingChallengeCount,         sub: ongoingChallengeCount > 0 ? 'active' : null },
           ].map((stat, i) => (
             <div key={i} className="bg-white rounded-sm border p-5 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>
@@ -364,32 +365,26 @@ export default async function ProfilePage({
           ))}
         </div>
 
-        {/* Circuit breakdown — only shown when user has circuit-specific points */}
-        {((profile.atp_ranking_points ?? 0) > 0 || (profile.wta_ranking_points ?? 0) > 0) && (
-          <div className="flex gap-3 mb-8">
-            {(profile.atp_ranking_points ?? 0) > 0 && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-sm border" style={{ borderColor: '#bee3f8', background: '#ebf8ff' }}>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#185FA5' }}>ATP</span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: '#185FA5', fontWeight: 600 }}>
-                  {profile.atp_ranking_points}
-                </span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.55rem', color: '#185FA5', opacity: 0.6 }}>52w</span>
-              </div>
-            )}
-            {(profile.wta_ranking_points ?? 0) > 0 && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-sm border" style={{ borderColor: '#fbb6ce', background: '#fff5f7' }}>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#993556' }}>WTA</span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: '#993556', fontWeight: 600 }}>
-                  {profile.wta_ranking_points}
-                </span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.55rem', color: '#993556', opacity: 0.6 }}>52w</span>
-              </div>
-            )}
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', alignSelf: 'center' }}>
-              lifetime: {profile.total_points ?? 0} pts
+        {/* Circuit breakdown — always shown */}
+        <div className="flex flex-wrap gap-3 mb-8">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-sm border" style={{ borderColor: '#bee3f8', background: '#ebf8ff' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#185FA5' }}>ATP</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: '#185FA5', fontWeight: 600 }}>
+              {profile.atp_ranking_points ?? 0}
             </span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.55rem', color: '#185FA5', opacity: 0.6 }}>52w</span>
           </div>
-        )}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-sm border" style={{ borderColor: '#fbb6ce', background: '#fff5f7' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#993556' }}>WTA</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: '#993556', fontWeight: 600 }}>
+              {profile.wta_ranking_points ?? 0}
+            </span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.55rem', color: '#993556', opacity: 0.6 }}>52w</span>
+          </div>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', alignSelf: 'center' }}>
+            lifetime: {profile.total_points ?? 0} pts
+          </span>
+        </div>
 
         {/* ── Active predictions (in-progress tournaments) ────────────────── */}
         {(() => {
