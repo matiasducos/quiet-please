@@ -1,8 +1,8 @@
 import { Resend } from 'resend'
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
-const FROM = process.env.EMAIL_FROM ?? 'Quiet Please <notifications@quiet-please.app>'
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://quiet-please.app'
+const FROM = process.env.EMAIL_FROM ?? 'Quiet Please <notifications@quietplease.app>'
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://quietplease.app'
 
 // No-op in dev / when key is missing
 function canSend() {

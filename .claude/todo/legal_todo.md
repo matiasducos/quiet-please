@@ -7,7 +7,7 @@
 - ✅ Email unsubscribe mechanism (DB column + one-click link + cron filtering)
 - ✅ Footer with legal links (Terms, Privacy, Contact)
 - ⬜ Run migration `029_email_unsubscribe.sql` in Supabase dashboard
-- ⬜ Set up `support@quiet-please.app` mailbox
+- ⬜ Set up `support@quietplease.app` mailbox
 
 ## Phase 2 — High Priority
 - ⬜ Cookie consent banner (Vercel Analytics + `username_is_set` cookie)
@@ -32,7 +32,7 @@
 
 ## Notes
 - Operator: Quiet Please
-- Contact: support@quiet-please.app
+- Contact: support@quietplease.app
 - Minimum age: 16+
 - No gambling/betting — free prediction game with virtual points only
 - If prizes or real money are EVER added, gambling licensing is required in most jurisdictions

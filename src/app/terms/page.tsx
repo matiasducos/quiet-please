@@ -17,7 +17,7 @@ export default function TermsOfService() {
         <div className="prose" style={{ fontFamily: 'var(--font-body)', fontSize: '0.95rem', lineHeight: 1.7, color: 'var(--ink)' }}>
           <Section title="1. Acceptance of terms">
             <p>
-              By accessing or using Quiet Please at <strong>quiet-please.app</strong> (the &quot;Service&quot;),
+              By accessing or using Quiet Please at <strong>quietplease.app</strong> (the &quot;Service&quot;),
               you agree to be bound by these Terms of Service (&quot;Terms&quot;). If you do not agree,
               do not use the Service.
             </p>
@@ -146,7 +146,7 @@ export default function TermsOfService() {
             <p>
               You may stop using the Service at any time. You may request account deletion by contacting
               us at{' '}
-              <a href="mailto:support@quiet-please.app" style={{ color: 'var(--court)' }}>support@quiet-please.app</a>.
+              <a href="mailto:support@quietplease.app" style={{ color: 'var(--court)' }}>support@quietplease.app</a>.
             </p>
             <p>
               We may suspend or terminate your access to the Service at any time, for any reason, with
@@ -177,7 +177,7 @@ export default function TermsOfService() {
           <Section title="14. Contact">
             <p>
               If you have any questions about these Terms, contact us at:<br />
-              <a href="mailto:support@quiet-please.app" style={{ color: 'var(--court)' }}>support@quiet-please.app</a>
+              <a href="mailto:support@quietplease.app" style={{ color: 'var(--court)' }}>support@quietplease.app</a>
             </p>
           </Section>
         </div>

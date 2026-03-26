@@ -99,7 +99,19 @@ a:active {
 }
 
 /* Bracket navigation connectors */
-.bracket-nav-btn:hover > div {
+.bracket-nav-btn,
+.bracket-nav-btn:focus,
+.bracket-nav-btn:active {
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+.bracket-nav-btn:focus-visible {
+  outline: 2px solid var(--court) !important;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.bracket-nav-btn:hover .bracket-line {
   border-color: var(--court) !important;
 }
 .bracket-nav-btn:hover > span {
