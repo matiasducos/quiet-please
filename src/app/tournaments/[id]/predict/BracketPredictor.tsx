@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { savePrediction, importGlobalPicks } from './actions'
 import CountryFlag from '@/components/CountryFlag'
 import H2HDrawer from '@/components/H2HDrawer'
+import { useSwipeNavigation } from '@/hooks/useSwipeNavigation'
 
 interface Player {
   externalId: string
@@ -169,6 +170,75 @@ export default function BracketPredictor({
   const totalMatches = draw.matches.length - byeMatchIds.size
   const pickedCount = Object.keys(picks).filter(id => !byeMatchIds.has(id)).length
   const challengeId = challengeContext?.challengeId ?? null
+
+  // ── Bracket navigation ─────────────────────────────────────────────────
+  // Reverse map: nextMatchId → [feeder matchId, ...]
+  const reverseMap: Record<string, string[]> = {}
+  for (const [matchId, entry] of Object.entries(feedMap)) {
+    if (!reverseMap[entry.nextMatchId]) reverseMap[entry.nextMatchId] = []
+    reverseMap[entry.nextMatchId].push(matchId)
+  }
+
+  const pendingScrollTarget = useRef<string | null>(null)
+  const matchContainerRef = useRef<HTMLDivElement>(null)
+
+  // After round changes, scroll to pending target match
+  useEffect(() => {
+    if (!pendingScrollTarget.current) return
+    const target = pendingScrollTarget.current
+    pendingScrollTarget.current = null
+
+    requestAnimationFrame(() => {
+      const el = matchContainerRef.current?.querySelector(
+        `[data-match-id="${target}"]`
+      ) as HTMLElement | null
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.style.outline = '2px solid var(--court)'
+        el.style.outlineOffset = '4px'
+        el.style.borderRadius = '4px'
+        setTimeout(() => {
+          el.style.outline = ''
+          el.style.outlineOffset = ''
+          el.style.borderRadius = ''
+        }, 1200)
+      }
+    })
+  }, [activeRound])
+
+  /** Navigate forward: go to next round, scroll to the target match */
+  const navigateForward = useCallback((nextMatchId: string) => {
+    const nextMatch = draw.matches.find(m => m.matchId === nextMatchId)
+    if (!nextMatch) return
+    pendingScrollTarget.current = nextMatchId
+    setActiveRound(nextMatch.round)
+  }, [draw.matches])
+
+  /** Navigate backward: go to previous round, scroll to feeder matches */
+  const navigateBackward = useCallback((matchId: string) => {
+    const feeders = reverseMap[matchId]
+    if (!feeders?.length) return
+    const feederMatch = draw.matches.find(m => m.matchId === feeders[0])
+    if (!feederMatch) return
+    pendingScrollTarget.current = feeders[0]
+    setActiveRound(feederMatch.round)
+  }, [draw.matches, reverseMap])
+
+  // Swipe navigation callbacks
+  const handleSwipeLeft = useCallback(() => {
+    const idx = sortedRounds.indexOf(activeRound)
+    if (idx < sortedRounds.length - 1) setActiveRound(sortedRounds[idx + 1])
+  }, [activeRound, sortedRounds])
+
+  const handleSwipeRight = useCallback(() => {
+    const idx = sortedRounds.indexOf(activeRound)
+    if (idx > 0) setActiveRound(sortedRounds[idx - 1])
+  }, [activeRound, sortedRounds])
+
+  const swipeRef = useSwipeNavigation({
+    onSwipeLeft: handleSwipeLeft,
+    onSwipeRight: handleSwipeRight,
+  })
 
   // ── Per-match lock state ─────────────────────────────────────────────────
   /** Check if a match is locked (any reason: result, voluntary, full lock) */
@@ -626,7 +696,13 @@ export default function BracketPredictor({
       )}
 
       {/* Matches */}
-      <div className="max-w-xl mx-auto px-4 md:px-6 py-6">
+      <div
+        className="max-w-xl mx-auto px-4 md:px-6 py-6"
+        ref={(el) => {
+          matchContainerRef.current = el
+          ;(swipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+        }}
+      >
 
         {/* Import from global banner (challenge mode with empty picks) */}
         {showImportBanner && (
@@ -757,8 +833,58 @@ export default function BracketPredictor({
                 )
               }
 
+              const isFirstRound = sortedRounds.indexOf(activeRound) === 0
+              const isLastRound = sortedRounds.indexOf(activeRound) === sortedRounds.length - 1
+              const hasForward = !isLastRound && group.some(m => feedMap[m.matchId])
+              const hasBackward = !isFirstRound && group.some(m => reverseMap[m.matchId]?.length)
+
               return (
-                <div key={gi} className="flex items-stretch">
+                <div key={gi} className="flex items-stretch" data-match-id={group[0].matchId}>
+                  {/* Left bracket connector — backward navigation */}
+                  {hasBackward && (
+                    <button
+                      onClick={() => navigateBackward(group[0].matchId)}
+                      className="bracket-nav-btn"
+                      style={{
+                        width: '48px', position: 'relative', flexShrink: 0, alignSelf: 'stretch',
+                        background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
+                        display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '4px',
+                      }}
+                      aria-label="Go to previous round"
+                      title="View feeder matches"
+                    >
+                      {group.length === 2 ? (
+                        <>
+                          {/* Top pair: 2 mini rectangles with bracket merging right */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '2px', height: '28px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
+                              <div className="bracket-line" style={{ width: '10px', height: '6px', borderRadius: '1px', border: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                              <div className="bracket-line" style={{ width: '10px', height: '6px', borderRadius: '1px', border: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                            </div>
+                            <div className="bracket-line" style={{ flex: 1, borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                          </div>
+                          {/* Bottom pair: 2 mini rectangles with bracket merging right */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '2px', height: '28px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
+                              <div className="bracket-line" style={{ width: '10px', height: '6px', borderRadius: '1px', border: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                              <div className="bracket-line" style={{ width: '10px', height: '6px', borderRadius: '1px', border: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                            </div>
+                            <div className="bracket-line" style={{ flex: 1, borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                          </div>
+                        </>
+                      ) : (
+                        /* Single match: 2 mini rects merging into a line */
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', height: '28px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
+                            <div className="bracket-line" style={{ width: '10px', height: '6px', borderRadius: '1px', border: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                            <div className="bracket-line" style={{ width: '10px', height: '6px', borderRadius: '1px', border: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                          </div>
+                          <div className="bracket-line" style={{ flex: 1, borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                        </div>
+                      )}
+                    </button>
+                  )}
+
                   {/* Match cards column */}
                   <div className="flex flex-col gap-2 flex-1">
                     {group.map((match) => {
@@ -855,21 +981,78 @@ export default function BracketPredictor({
                     })}
                   </div>
 
-                  {/* Bracket connector — right-side ⊣ shape linking the two matches that feed the same next-round slot */}
-                  {group.length === 2 && (
-                    <div style={{ width: '20px', position: 'relative', flexShrink: 0, alignSelf: 'stretch' }}>
-                      <div style={{
-                        position: 'absolute',
-                        top: '25%',
-                        bottom: '25%',
-                        left: '4px',
-                        right: 0,
-                        borderTop: '1.5px solid var(--muted)',
-                        borderRight: '1.5px solid var(--muted)',
-                        borderBottom: '1.5px solid var(--muted)',
-                        borderRadius: '0 3px 3px 0',
-                      }} />
-                    </div>
+                  {/* Right bracket connector — forward navigation */}
+                  {hasForward && (
+                    <button
+                      onClick={() => {
+                        const nextMatchId = feedMap[group[0].matchId]?.nextMatchId
+                        if (nextMatchId) navigateForward(nextMatchId)
+                      }}
+                      className="bracket-nav-btn"
+                      style={{
+                        width: '48px', position: 'relative', flexShrink: 0, alignSelf: 'stretch',
+                        background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
+                      }}
+                      aria-label="Go to next round"
+                      title="View next round match"
+                    >
+                      {group.length === 2 ? (
+                        <>
+                          {/* Horizontal stub from top match midpoint */}
+                          <div className="bracket-line" style={{
+                            position: 'absolute', top: '25%', left: 0, width: '40%',
+                            borderBottom: '1.5px solid var(--muted)',
+                            transition: 'border-color 0.15s ease',
+                          }} />
+                          {/* Horizontal stub from bottom match midpoint */}
+                          <div className="bracket-line" style={{
+                            position: 'absolute', bottom: '25%', left: 0, width: '40%',
+                            borderBottom: '1.5px solid var(--muted)',
+                            transition: 'border-color 0.15s ease',
+                          }} />
+                          {/* Vertical line connecting the two stubs */}
+                          <div className="bracket-line" style={{
+                            position: 'absolute', top: '25%', bottom: '25%', left: '40%',
+                            borderRight: '1.5px solid var(--muted)',
+                            transition: 'border-color 0.15s ease',
+                          }} />
+                          {/* Horizontal line from midpoint extending right */}
+                          <div className="bracket-line" style={{
+                            position: 'absolute', top: '50%', left: '40%', right: '10px',
+                            borderBottom: '1.5px solid var(--muted)',
+                            transition: 'border-color 0.15s ease',
+                          }} />
+                          {/* Arrow head pointing right */}
+                          <div className="bracket-line" style={{
+                            position: 'absolute', top: '50%', right: '2px',
+                            transform: 'translateY(-50%)',
+                            width: 0, height: 0,
+                            borderTop: '5px solid transparent',
+                            borderBottom: '5px solid transparent',
+                            borderLeft: '7px solid var(--muted)',
+                            transition: 'border-color 0.15s ease',
+                          }} />
+                        </>
+                      ) : (
+                        <>
+                          {/* Single match: horizontal line to arrow */}
+                          <div className="bracket-line" style={{
+                            position: 'absolute', top: '50%', left: '4px', right: '10px',
+                            borderBottom: '1.5px solid var(--muted)',
+                            transition: 'border-color 0.15s ease',
+                          }} />
+                          <div className="bracket-line" style={{
+                            position: 'absolute', top: '50%', right: '2px',
+                            transform: 'translateY(-50%)',
+                            width: 0, height: 0,
+                            borderTop: '5px solid transparent',
+                            borderBottom: '5px solid transparent',
+                            borderLeft: '7px solid var(--muted)',
+                            transition: 'border-color 0.15s ease',
+                          }} />
+                        </>
+                      )}
+                    </button>
                   )}
                 </div>
               )
