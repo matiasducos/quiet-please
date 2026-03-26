@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { triggerCron, sendTestNotification } from './actions'
-import type { ScoringTournament } from './actions'
+import type { ScoringTournament, CronRun } from './actions'
 import { NOTIFICATION_TYPES } from './constants'
 import type { NotificationType } from './constants'
 
@@ -29,6 +29,17 @@ function formatCronSchedule(utcHour: number | null): string {
 type EndpointKey = typeof ENDPOINTS[number]['key']
 type AsyncStatus = { type: 'idle' | 'loading' | 'success' | 'error'; message?: string }
 
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins  = Math.floor(diff / 60000)
+  const hours = Math.floor(mins / 60)
+  const days  = Math.floor(hours / 24)
+  if (days  > 0) return `${days}d ago`
+  if (hours > 0) return `${hours}h ago`
+  if (mins  > 0) return `${mins}m ago`
+  return 'just now'
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface ManualTournament {
@@ -38,7 +49,7 @@ interface ManualTournament {
   flag_emoji: string | null; location: string | null
 }
 
-export default function AdminPanel({ tournaments, scoringStatus }: { tournaments: ManualTournament[]; scoringStatus: ScoringTournament[] }) {
+export default function AdminPanel({ tournaments, scoringStatus, cronRuns }: { tournaments: ManualTournament[]; scoringStatus: ScoringTournament[]; cronRuns: CronRun[] }) {
   // ── Cron state ──────────────────────────────────────────────────────────────
   const [cronStatuses, setCronStatuses] = useState<Record<EndpointKey, AsyncStatus>>(
     Object.fromEntries(ENDPOINTS.map(e => [e.key, { type: 'idle' }])) as Record<EndpointKey, AsyncStatus>
@@ -385,6 +396,64 @@ export default function AdminPanel({ tournaments, scoringStatus }: { tournaments
             )
           })}
         </div>
+
+        {/* ── Recent Cron Runs ── */}
+        {cronRuns.length > 0 && (
+          <div className="mt-8">
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em', marginBottom: '0.75rem' }}>
+              Recent cron runs
+            </h2>
+            <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+              <div className="overflow-x-auto">
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#fafaf8', borderBottom: '1px solid var(--chalk-dim)' }}>
+                      {['Job', 'Status', 'Duration', 'When', 'Summary'].map(h => (
+                        <th key={h} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.06em', color: 'var(--muted)', textTransform: 'uppercase', textAlign: 'left', padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cronRuns.map(run => {
+                      const statusColor = run.status === 'success' ? '#166534' : run.status === 'error' ? '#991b1b' : '#92400e'
+                      const statusBg = run.status === 'success' ? '#dcfce7' : run.status === 'error' ? '#fee2e2' : '#fef3c7'
+                      const ago = timeAgo(run.started_at)
+                      const duration = run.duration_ms != null ? (run.duration_ms < 1000 ? `${run.duration_ms}ms` : `${(run.duration_ms / 1000).toFixed(1)}s`) : '—'
+                      const summaryStr = run.error
+                        ? run.error
+                        : run.summary
+                          ? Object.entries(run.summary).filter(([k]) => k !== 'message' && k !== 'points_by_user').map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v).substring(0, 60) : v}`).join(', ')
+                          : '—'
+                      return (
+                        <tr key={run.id} style={{ borderBottom: '1px solid var(--chalk-dim)' }}>
+                          <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--ink)', padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                            {run.job_name}
+                          </td>
+                          <td style={{ padding: '8px 12px' }}>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: statusColor, background: statusBg, padding: '2px 8px', borderRadius: '2px' }}>
+                              {run.status}
+                            </span>
+                          </td>
+                          <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                            {duration}
+                          </td>
+                          <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                            {ago}
+                          </td>
+                          <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: run.error ? '#991b1b' : 'var(--muted)', padding: '8px 12px', maxWidth: '300px' }} className="truncate">
+                            {summaryStr}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Test Notifications ── */}
         <div className="mt-10">

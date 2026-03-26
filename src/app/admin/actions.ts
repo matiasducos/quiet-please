@@ -1479,3 +1479,31 @@ export async function clearMatchResult(
   revalidateTag('tournament-list', 'default')
   return { ok: true, cascadeDeleted }
 }
+
+// ── Cron runs log ──────────────────────────────────────────────────────────
+
+export interface CronRun {
+  id: string
+  job_name: string
+  status: string
+  started_at: string
+  finished_at: string | null
+  duration_ms: number | null
+  summary: Record<string, unknown> | null
+  error: string | null
+}
+
+export async function getCronRuns(): Promise<CronRun[]> {
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('cron_runs')
+    .select('*')
+    .order('started_at', { ascending: false })
+    .limit(20)
+
+  if (error) {
+    console.error('[admin] Failed to fetch cron runs:', error)
+    return []
+  }
+  return (data ?? []) as CronRun[]
+}
