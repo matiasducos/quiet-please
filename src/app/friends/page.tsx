@@ -260,8 +260,7 @@ export default async function FriendsPage({
                       style={{ borderColor: 'var(--chalk-dim)' }}
                     >
                       <span style={{ fontSize: '1rem', flexShrink: 0 }}>{icon}</span>
-                      <div className="flex-1 min-w-0">
-                        <span className="truncate">
+                      <div className="flex-1 min-w-0 truncate">
                           <Link href={`/profile/${item.username}`} style={{ fontFamily: 'var(--font-display)', fontSize: '0.9rem', color: 'var(--ink)', textDecoration: 'none' }}>
                             {item.username}
                           </Link>
@@ -272,7 +271,6 @@ export default async function FriendsPage({
                           ) : (
                             <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>{' '}{item.label}</span>
                           )}
-                        </span>
                       </div>
                       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', flexShrink: 0 }}>
                         {timeAgo(item.date)}

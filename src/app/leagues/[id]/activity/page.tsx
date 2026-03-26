@@ -109,7 +109,7 @@ export default async function LeagueActivityPage({ params }: { params: Promise<{
               return (
                 <div key={`${item.type}-${item.user_id}-${item.date}-${i}`} className="flex items-center gap-3 px-5 py-3 border-b last:border-0" style={{ borderColor: 'var(--chalk-dim)' }}>
                   <span style={{ fontSize: '1rem', flexShrink: 0 }}>{icon}</span>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 truncate">
                     <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.9rem', color: isMe ? 'var(--court)' : 'var(--ink)' }}>
                       <Link href={`/profile/${item.username}`} style={{ color: 'inherit', textDecoration: 'none' }}>{item.username}</Link>
                     </span>
