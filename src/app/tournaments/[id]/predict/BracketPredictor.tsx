@@ -855,31 +855,32 @@ export default function BracketPredictor({
                     >
                       {group.length === 2 ? (
                         <>
-                          {/* Top pair: 2 mini rectangles with bracket merging right */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '2px', height: '28px' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
-                              <div className="bracket-line" style={{ width: '10px', height: '6px', borderRadius: '1px', border: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
-                              <div className="bracket-line" style={{ width: '10px', height: '6px', borderRadius: '1px', border: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
-                            </div>
-                            <div className="bracket-line" style={{ flex: 1, borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                          {/* Top feeder bracket: ⊃ shape merging two lines into one */}
+                          <div style={{ position: 'absolute', top: '12.5%', bottom: 'calc(50% + 6px)', left: '4px', right: '8px' }}>
+                            {/* Top horizontal stub */}
+                            <div className="bracket-line" style={{ position: 'absolute', top: 0, left: 0, width: '40%', borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                            {/* Bottom horizontal stub */}
+                            <div className="bracket-line" style={{ position: 'absolute', bottom: 0, left: 0, width: '40%', borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                            {/* Vertical connecting line */}
+                            <div className="bracket-line" style={{ position: 'absolute', top: 0, bottom: 0, left: '40%', borderRight: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                            {/* Horizontal line to match */}
+                            <div className="bracket-line" style={{ position: 'absolute', top: '50%', left: '40%', right: 0, borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
                           </div>
-                          {/* Bottom pair: 2 mini rectangles with bracket merging right */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '2px', height: '28px' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
-                              <div className="bracket-line" style={{ width: '10px', height: '6px', borderRadius: '1px', border: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
-                              <div className="bracket-line" style={{ width: '10px', height: '6px', borderRadius: '1px', border: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
-                            </div>
-                            <div className="bracket-line" style={{ flex: 1, borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                          {/* Bottom feeder bracket: ⊃ shape */}
+                          <div style={{ position: 'absolute', top: 'calc(50% + 6px)', bottom: '12.5%', left: '4px', right: '8px' }}>
+                            <div className="bracket-line" style={{ position: 'absolute', top: 0, left: 0, width: '40%', borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                            <div className="bracket-line" style={{ position: 'absolute', bottom: 0, left: 0, width: '40%', borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                            <div className="bracket-line" style={{ position: 'absolute', top: 0, bottom: 0, left: '40%', borderRight: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                            <div className="bracket-line" style={{ position: 'absolute', top: '50%', left: '40%', right: 0, borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
                           </div>
                         </>
                       ) : (
-                        /* Single match: 2 mini rects merging into a line */
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', height: '28px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
-                            <div className="bracket-line" style={{ width: '10px', height: '6px', borderRadius: '1px', border: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
-                            <div className="bracket-line" style={{ width: '10px', height: '6px', borderRadius: '1px', border: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
-                          </div>
-                          <div className="bracket-line" style={{ flex: 1, borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                        /* Single match: ⊃ shape — two lines merging into one */
+                        <div style={{ position: 'absolute', top: '25%', bottom: '25%', left: '4px', right: '8px' }}>
+                          <div className="bracket-line" style={{ position: 'absolute', top: 0, left: 0, width: '40%', borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                          <div className="bracket-line" style={{ position: 'absolute', bottom: 0, left: 0, width: '40%', borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                          <div className="bracket-line" style={{ position: 'absolute', top: 0, bottom: 0, left: '40%', borderRight: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                          <div className="bracket-line" style={{ position: 'absolute', top: '50%', left: '40%', right: 0, borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
                         </div>
                       )}
                     </button>
