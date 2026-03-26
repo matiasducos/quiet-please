@@ -115,6 +115,7 @@ export default function BracketPredictor({
   onPicksChange,
   hideSaveButtons = false,
   hideBackLink = false,
+  hideNav = false,
   drawResultsMode = false,
 }: {
   tournament: any
@@ -136,6 +137,8 @@ export default function BracketPredictor({
   hideSaveButtons?: boolean
   /** Hides all back/navigation links — used when embedded in anonymous challenge views */
   hideBackLink?: boolean
+  /** Hides the entire internal nav bar — used when embedded in a page that already has navigation */
+  hideNav?: boolean
   /** When true, shows draw results UI (no picks, just actual winners) */
   drawResultsMode?: boolean
 }) {
@@ -421,6 +424,7 @@ export default function BracketPredictor({
       <div style={{ position: 'sticky', top: 0, zIndex: 10 }}>
 
       {/* Nav */}
+      {!hideNav && (
       <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="max-w-5xl mx-auto flex items-center justify-between px-4 md:px-6 py-4">
           {/* Logo */}
@@ -491,9 +495,10 @@ export default function BracketPredictor({
           </div>
         </div>
       </nav>
+      )}
 
       {/* Read-only banner (viewing someone else's picks) */}
-      {readOnly && (
+      {readOnly && !hideNav && (
         <div style={{ background: '#f1efe8', borderBottom: '1px solid var(--chalk-dim)' }}>
           {/* First row: badge + (desktop legend) + share button */}
           <div className="max-w-5xl mx-auto flex items-center gap-3 px-4 md:px-6 py-2.5">
@@ -574,6 +579,7 @@ export default function BracketPredictor({
       </div>{/* end sticky top block */}
 
       {/* Header */}
+      {!hideNav && (
       <div className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="max-w-5xl mx-auto px-4 md:px-6 py-5">
         <div className="flex items-center gap-2 mb-1" style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
@@ -615,9 +621,10 @@ export default function BracketPredictor({
         </p>
         </div>
       </div>
+      )}
 
       {/* Matches */}
-      <div className="max-w-2xl mx-auto px-4 md:px-6 py-6">
+      <div className="max-w-xl mx-auto px-4 md:px-6 py-6">
 
         {/* Import from global banner (challenge mode with empty picks) */}
         {showImportBanner && (
@@ -688,7 +695,7 @@ export default function BracketPredictor({
                   <button
                     onClick={() => player && pickWinner(match.matchId, player.externalId)}
                     disabled={!player || matchLocked || isBye}
-                    className={`pick-btn w-full flex items-center justify-between px-4 py-4 text-left${withBorderBottom ? ' border-b' : ''}`}
+                    className={`pick-btn w-full flex items-center justify-between px-4 py-3 text-left${withBorderBottom ? ' border-b' : ''}`}
                     style={{
                       borderColor: 'var(--chalk-dim)',
                       background: style.bg,
@@ -737,8 +744,9 @@ export default function BracketPredictor({
                         {state === 'correct' && matchPoints?.[match.matchId] != null
                           ? (() => {
                               const mp = matchPoints[match.matchId]
+                              const basePoints = mp.streakMultiplier > 1 ? Math.round(mp.points / mp.streakMultiplier) : mp.points
                               const streakLabel = mp.streakMultiplier > 1 ? ` ×${mp.streakMultiplier}` : ''
-                              return `✓ +${mp.points} pts${streakLabel}`
+                              return `✓ +${basePoints} pts${streakLabel}`
                             })()
                           : style.label}
                       </span>

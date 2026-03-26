@@ -345,7 +345,7 @@ export default function ChallengeView({
         {/* Bracket tabs */}
         {draw?.matches && (
           <div className="mb-6">
-            <div className="flex gap-0 mb-4 border-b" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <div className="flex items-center gap-0 mb-4 border-b" style={{ borderColor: 'var(--chalk-dim)' }}>
               {(['creator', 'opponent'] as const).map((tab) => {
                 const isActive = bracketTab === tab
                 const label = tab === 'creator'
@@ -370,6 +370,22 @@ export default function ChallengeView({
                   </button>
                 )
               })}
+              {/* Correct counter */}
+              {(() => {
+                const activePicks = bracketTab === 'creator'
+                  ? (challenge.creator_picks ?? {})
+                  : (challenge.opponent_picks ?? opponentPicks)
+                const resultsCount = Object.keys(matchResults).length
+                if (resultsCount === 0) return null
+                const correctCount = Object.entries(activePicks).filter(
+                  ([matchId, playerId]) => matchResults[matchId] === playerId
+                ).length
+                return (
+                  <span className="ml-auto" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                    {correctCount}/{resultsCount} correct
+                  </span>
+                )
+              })()}
             </div>
 
             <BracketPredictor
@@ -387,6 +403,7 @@ export default function ChallengeView({
               readOnly={true}
               hideSaveButtons={true}
               hideBackLink={true}
+              hideNav={true}
             />
           </div>
         )}

@@ -41,7 +41,7 @@ async function fetchUserEvents(
       .order('submitted_at', { ascending: false })
       .limit(limits.picks),
     admin.from('point_ledger')
-      .select('user_id, tournament_id, points, awarded_at, users(username), tournaments(name, location, flag_emoji)')
+      .select('user_id, tournament_id, points, awarded_at, predictions(challenge_id), users(username), tournaments(name, location, flag_emoji)')
       .in('user_id', userIds)
       .gte('awarded_at', since)
       .order('awarded_at', { ascending: false })
@@ -66,13 +66,16 @@ async function fetchUserEvents(
     }
   })
 
-  // Aggregate points by user + tournament
+  // Aggregate points by user + tournament + source (ranking vs challenge)
   const pointsMap = new Map<string, {
     user_id: string; username: string; points: number
     tournament_name: string; awarded_at: string; tournament_id: string
+    source: 'ranking' | 'challenge'
   }>()
   for (const row of (pointsRows ?? []) as any[]) {
-    const key = `${row.user_id}:${row.tournament_id}`
+    const isChallenge = row.predictions?.challenge_id != null
+    const source = isChallenge ? 'challenge' : 'ranking'
+    const key = `${row.user_id}:${row.tournament_id}:${source}`
     const existing = pointsMap.get(key)
     const flag = row.tournaments?.flag_emoji ? `${row.tournaments.flag_emoji} ` : ''
     if (existing) {
@@ -86,6 +89,7 @@ async function fetchUserEvents(
         tournament_name: `${flag}${row.tournaments?.location ?? row.tournaments?.name ?? 'a tournament'}`,
         awarded_at: row.awarded_at,
         tournament_id: row.tournament_id,
+        source,
       })
     }
   }
@@ -93,7 +97,7 @@ async function fetchUserEvents(
     type: 'points' as const,
     user_id: p.user_id,
     username: p.username,
-    label: `earned ${p.points} pts at ${p.tournament_name}`,
+    label: `earned ${p.points} ${p.source === 'challenge' ? 'challenge' : 'ranking'} pts at ${p.tournament_name}`,
     date: p.awarded_at,
     href: `/tournaments/${p.tournament_id}`,
   }))

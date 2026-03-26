@@ -8,6 +8,7 @@ import { respondToChallenge as _respondToChallenge } from './actions'
 // Wrap to satisfy React's form action type (void | Promise<void>)
 const respondToChallenge = async (formData: FormData) => { 'use server'; await _respondToChallenge(formData) }
 import CancelButton from '../CancelButton'
+import ChallengePicksTabs from './ChallengePicksTabs'
 
 export default async function ChallengeDetailPage({
   params,
@@ -59,11 +60,15 @@ export default async function ChallengeDetailPage({
   let theirPickCount   = 0
   let myLivePoints     = 0
   let theirLivePoints  = 0
+  let myPicks: Record<string, string> = {}
+  let theirPicks: Record<string, string> = {}
+  let myPredId: string | null = null
+  let theirPredId: string | null = null
 
   if (['accepted', 'completed'].includes(challenge.status)) {
     const { data: preds } = await admin
       .from('predictions')
-      .select('user_id, is_fully_locked, picks, points_earned')
+      .select('id, user_id, is_fully_locked, picks, points_earned')
       .eq('challenge_id', challenge.id)
       .eq('tournament_id', challenge.tournament_id)
 
@@ -72,10 +77,46 @@ export default async function ChallengeDetailPage({
 
     myPicksLocked    = myPred?.is_fully_locked === true
     theirPicksLocked = theirPred?.is_fully_locked === true
-    myPickCount      = Object.keys((myPred?.picks as Record<string, string> | null) ?? {}).length
-    theirPickCount   = Object.keys((theirPred?.picks as Record<string, string> | null) ?? {}).length
+    myPicks          = (myPred?.picks as Record<string, string> | null) ?? {}
+    theirPicks       = (theirPred?.picks as Record<string, string> | null) ?? {}
+    myPickCount      = Object.keys(myPicks).length
+    theirPickCount   = Object.keys(theirPicks).length
     myLivePoints     = myPred?.points_earned ?? 0
     theirLivePoints  = theirPred?.points_earned ?? 0
+    myPredId         = myPred?.id ?? null
+    theirPredId      = theirPred?.id ?? null
+  }
+
+  // Fetch draw, match results, and per-match points when both picks are locked
+  let drawData: any = null
+  let matchResultsMap: Record<string, string> = {}
+  let myMatchPoints: Record<string, { points: number; streakMultiplier: number }> = {}
+  let theirMatchPoints: Record<string, { points: number; streakMultiplier: number }> = {}
+
+  if (myPicksLocked && theirPicksLocked) {
+    const [{ data: drawRow }, { data: resultsData }, { data: myPointsData }, { data: theirPointsData }] = await Promise.all([
+      admin.from('draws').select('bracket_data').eq('tournament_id', challenge.tournament_id).single(),
+      admin.from('match_results').select('external_match_id, winner_external_id').eq('tournament_id', challenge.tournament_id),
+      myPredId ? admin.from('point_ledger').select('points, streak_multiplier, match_results(external_match_id)').eq('prediction_id', myPredId) : Promise.resolve({ data: null }),
+      theirPredId ? admin.from('point_ledger').select('points, streak_multiplier, match_results(external_match_id)').eq('prediction_id', theirPredId) : Promise.resolve({ data: null }),
+    ])
+
+    drawData = drawRow?.bracket_data ?? null
+    matchResultsMap = Object.fromEntries(
+      (resultsData ?? []).map((r: any) => [r.external_match_id, r.winner_external_id])
+    )
+    myMatchPoints = Object.fromEntries(
+      (myPointsData ?? []).filter((r: any) => r.match_results?.external_match_id).map((r: any) => [
+        r.match_results.external_match_id,
+        { points: r.points, streakMultiplier: r.streak_multiplier ?? 1 },
+      ])
+    )
+    theirMatchPoints = Object.fromEntries(
+      (theirPointsData ?? []).filter((r: any) => r.match_results?.external_match_id).map((r: any) => [
+        r.match_results.external_match_id,
+        { points: r.points, streakMultiplier: r.streak_multiplier ?? 1 },
+      ])
+    )
   }
 
   // Pending challenges only auto-expire for completed tournaments (not in_progress)
@@ -189,7 +230,7 @@ export default async function ChallengeDetailPage({
         )}
 
         {/* ── Active (accepted) ────────────────────────────────────────────── */}
-        {effectiveStatus === 'accepted' && (
+        {effectiveStatus === 'accepted' && (<>
           <div className="bg-white rounded-sm border p-6 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
             <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '1rem' }}>Challenge active</p>
             <div className="flex flex-col gap-2 mb-4">
@@ -261,26 +302,32 @@ export default async function ChallengeDetailPage({
                 </div>
               </div>
             </div>
-            <div className="flex gap-3">
-              <Link
-                href={`/tournaments/${challenge.tournament_id}/predict?challenge=${challenge.id}`}
-                className="inline-block px-5 py-2.5 text-sm font-medium text-white rounded-sm hover:opacity-90"
-                style={{ background: 'var(--court)', textDecoration: 'none' }}
-              >
-                {myPicksLocked ? 'Review your picks →' : myPickCount > 0 ? 'Edit your picks →' : 'Make your picks →'}
-              </Link>
-              {myPicksLocked && theirPicksLocked && (
+            {!myPicksLocked && (
+              <div className="flex gap-3">
                 <Link
-                  href={`/tournaments/${challenge.tournament_id}/picks/${theirUsername}?challenge=${challenge.id}`}
-                  className="inline-block px-5 py-2.5 text-sm rounded-sm border hover:bg-white transition-colors"
-                  style={{ borderColor: 'var(--chalk-dim)', color: 'var(--ink)', textDecoration: 'none' }}
+                  href={`/tournaments/${challenge.tournament_id}/predict?challenge=${challenge.id}`}
+                  className="inline-block px-5 py-2.5 text-sm font-medium text-white rounded-sm hover:opacity-90"
+                  style={{ background: 'var(--court)', textDecoration: 'none' }}
                 >
-                  View {theirUsername}&apos;s picks →
+                  {myPickCount > 0 ? 'Edit your picks →' : 'Make your picks →'}
                 </Link>
-              )}
-            </div>
+              </div>
+            )}
           </div>
-        )}
+          {myPicksLocked && theirPicksLocked && drawData && (
+            <ChallengePicksTabs
+              tournament={tournament}
+              draw={drawData}
+              myPicks={myPicks}
+              theirPicks={theirPicks}
+              myUsername={myUsername ?? 'You'}
+              theirUsername={theirUsername ?? 'Opponent'}
+              matchResults={matchResultsMap}
+              myMatchPoints={myMatchPoints}
+              theirMatchPoints={theirMatchPoints}
+            />
+          )}
+        </>)}
 
         {/* ── Completed ───────────────────────────────────────────────────── */}
         {effectiveStatus === 'completed' && (
@@ -312,16 +359,20 @@ export default async function ChallengeDetailPage({
               )}
             </div>
 
-            {/* View brackets — challenge-specific predict page */}
-            <div className="flex gap-3">
-              <Link
-                href={`/tournaments/${challenge.tournament_id}/predict?challenge=${challenge.id}`}
-                className="flex-1 px-4 py-3 text-sm text-center rounded-sm border"
-                style={{ borderColor: 'var(--chalk-dim)', color: 'var(--ink)', textDecoration: 'none', background: 'white' }}
-              >
-                View challenge picks →
-              </Link>
-            </div>
+            {/* Inline bracket tabs */}
+            {drawData && (
+              <ChallengePicksTabs
+                tournament={tournament}
+                draw={drawData}
+                myPicks={myPicks}
+                theirPicks={theirPicks}
+                myUsername={myUsername ?? 'You'}
+                theirUsername={theirUsername ?? 'Opponent'}
+                matchResults={matchResultsMap}
+                myMatchPoints={myMatchPoints}
+                theirMatchPoints={theirMatchPoints}
+              />
+            )}
           </>
         )}
 
