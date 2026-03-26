@@ -25,8 +25,6 @@ export default async function ProfilePage({
   if (!user) redirect('/login')
 
   const supabase = await createClient()
-  // Refresh auth context — required for RLS auth.uid() to work in PostgREST queries
-  await supabase.auth.getUser()
   const { data: profile } = await supabase
     .from('users')
     .select('id, username, total_points, ranking_points, atp_ranking_points, wta_ranking_points, country, city, created_at')
