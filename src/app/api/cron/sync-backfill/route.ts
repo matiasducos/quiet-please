@@ -17,6 +17,7 @@ import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { tennisAdapter } from '@/lib/tennis'
+import { withCronLogging } from '@/lib/cron-logger'
 import type { Json } from '@/types/database'
 
 function isAuthorized(request: Request): boolean {
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  try {
+  return withCronLogging('sync-backfill', async () => {
     const supabase = createAdminClient()
     const now = new Date().toISOString()
 
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
       .order('starts_at', { ascending: true })
 
     if (!tournaments?.length) {
-      return NextResponse.json({ message: 'No past tournaments to backfill', processed: 0 })
+      return { status: 200, body: { message: 'No past tournaments to backfill', processed: 0 } }
     }
 
     console.log(`[sync-backfill] Processing ${tournaments.length} past tournaments`)
@@ -118,17 +119,9 @@ export async function GET(request: Request) {
       await new Promise(r => setTimeout(r, 400)) // rate limit between tournaments
     }
 
-    return NextResponse.json({
-      message: 'Backfill complete',
-      processed: results.length,
-      results,
-    })
-  } catch (err) {
-    console.error('[sync-backfill] Error:', err)
-    Sentry.captureException(err)
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Unknown error' },
-      { status: 500 }
-    )
-  }
+    return {
+      status: 200,
+      body: { message: 'Backfill complete', processed: results.length, results },
+    }
+  })
 }

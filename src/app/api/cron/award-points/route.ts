@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getPointsForRound, calculateStreakMultiplier, buildFeedMap } from '@/lib/tennis'
 import type { DrawMatch, Round, TournamentCategory } from '@/lib/tennis'
 import { sendPointsAwardedEmail } from '@/lib/email'
+import { withCronLogging } from '@/lib/cron-logger'
 
 function isAuthorized(request: Request): boolean {
   if (process.env.NODE_ENV === 'development') return true
@@ -17,7 +18,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  try {
+  return withCronLogging('award-points', async () => {
     const supabase = createAdminClient()
 
     // ── 1. Get all match results ──────────────────────────────────────────
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
       .order('played_at', { ascending: true })
 
     if (!allResults?.length) {
-      return NextResponse.json({ message: 'No match results found', awarded: 0 })
+      return { status: 200, body: { message: 'No match results found', awarded: 0 } }
     }
 
     // ── 2. Get already scored (match_result_id, prediction_id) pairs ──────
@@ -66,10 +67,18 @@ export async function GET(request: Request) {
     }
 
     if (!predictions.length) {
-      return NextResponse.json({ message: 'No predictions found', awarded: 0 })
+      return { status: 200, body: { message: 'No predictions found', awarded: 0 } }
     }
 
     console.log(`[award-points] ${predictions.length} predictions to check across ${tournamentIds.length} tournaments`)
+
+    // ── Circuit breaker: warn on high volume ────────────────────────────
+    if (predictions.length > 500) {
+      Sentry.captureMessage(
+        `[award-points] High volume: ${predictions.length} predictions across ${tournamentIds.length} tournaments`,
+        'warning',
+      )
+    }
 
     // ── 4. Load bracket data for streak calculation ───────────────────────
     const { data: draws } = await supabase
@@ -529,24 +538,19 @@ export async function GET(request: Request) {
       Sentry.captureException(anonErr)
     }
 
-    return NextResponse.json({
-      message: 'Points awarded successfully',
-      new_results_processed: allResults.length,
-      point_entries_created: ledgerRows.length,
-      users_awarded: Object.keys(globalUserPointsDelta).length,
-      auto_locks_applied: autoLocksApplied,
-      points_by_user: globalUserPointsDelta,
-      challenges_scored: challengesScored,
-      challenges_expired: challengesExpired,
-      anonymous_challenges_scored: anonChallengesScored,
-    })
-
-  } catch (err) {
-    console.error('[award-points] Error:', err)
-    Sentry.captureException(err)
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Unknown error' },
-      { status: 500 }
-    )
-  }
+    return {
+      status: 200,
+      body: {
+        message: 'Points awarded successfully',
+        new_results_processed: allResults.length,
+        point_entries_created: ledgerRows.length,
+        users_awarded: Object.keys(globalUserPointsDelta).length,
+        auto_locks_applied: autoLocksApplied,
+        points_by_user: globalUserPointsDelta,
+        challenges_scored: challengesScored,
+        challenges_expired: challengesExpired,
+        anonymous_challenges_scored: anonChallengesScored,
+      },
+    }
+  })
 }

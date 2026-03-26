@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { tennisAdapter } from '@/lib/tennis'
+import { withCronLogging } from '@/lib/cron-logger'
 
 function isAuthorized(request: Request): boolean {
   if (process.env.NODE_ENV === 'development') return true
@@ -15,7 +16,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  try {
+  return withCronLogging('sync-results', async () => {
     const supabase = createAdminClient()
 
     const { data: tournaments } = await supabase
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
       .in('status', ['accepting_predictions', 'in_progress'])
 
     if (!tournaments?.length) {
-      return NextResponse.json({ message: 'No active tournaments', synced: 0 })
+      return { status: 200, body: { message: 'No active tournaments', synced: 0 } }
     }
 
     const results = []
@@ -74,9 +75,6 @@ export async function GET(request: Request) {
       }
     }
 
-    return NextResponse.json({ message: 'Result sync complete', results })
-  } catch (err) {
-    Sentry.captureException(err)
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 })
-  }
+    return { status: 200, body: { message: 'Result sync complete', results } }
+  })
 }

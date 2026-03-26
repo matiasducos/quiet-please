@@ -4,6 +4,7 @@ import { revalidateTag } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { tennisAdapter } from '@/lib/tennis'
 import { sendDrawOpenEmail } from '@/lib/email'
+import { withCronLogging } from '@/lib/cron-logger'
 import type { Json } from '@/types/database'
 
 // Allow up to 60 s — parallel getDraw() calls + DB writes need headroom.
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  try {
+  return withCronLogging('sync-draws', async () => {
     const supabase = createAdminClient()
 
     // Draws are never published more than ~2 weeks before a tournament starts,
@@ -50,9 +51,9 @@ export async function GET(request: Request) {
         `and(status.eq.upcoming,starts_at.is.null,starts_year.eq.${currentYear})`
       )
       .order('starts_at', { ascending: true })
-    if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 })
+    if (fetchError) throw new Error(fetchError.message)
     if (!tournaments || tournaments.length === 0) {
-      return NextResponse.json({ message: 'No tournaments to sync', synced: 0 })
+      return { status: 200, body: { message: 'No tournaments to sync', synced: 0 } }
     }
     console.log(`[sync-draws] Fetching draws for ${tournaments.length} tournaments in parallel`)
 
@@ -194,9 +195,6 @@ export async function GET(request: Request) {
 
       results.push({ name: tournament.name, status: 'synced', matches: draw.matches.length })
     }
-    return NextResponse.json({ message: 'Draw sync complete', results })
-  } catch (err) {
-    Sentry.captureException(err)
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 })
-  }
+    return { status: 200, body: { message: 'Draw sync complete', results } }
+  })
 }

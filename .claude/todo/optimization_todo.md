@@ -10,17 +10,17 @@
 ### Cron Job: Resilience & Idempotency
 **File:** `src/app/api/cron/award-points/route.ts`
 - ✅ Add idempotency: unique constraint on `point_ledger(match_result_id, prediction_id)` + `upsert` with `ignoreDuplicates: true` — 2026-03-25 (migration 028)
-- Add retry logic: Vercel cron failures are silent — add a `cron_runs` log table to track last success
+- ✅ Cron run logging: `cron_runs` table tracks every execution (status, duration, summary) — 2026-03-26 (migration 031)
+- ✅ Circuit breaker: Sentry warning when predictions > 500 — 2026-03-26
 - Add alerting: ping a Slack webhook or send email if cron hasn't run in 25+ hours
-- Circuit breaker: if processing >500 predictions in a single run, log warning + continue (not abort)
 - Consider splitting into two crons: `award-points` (frequent, match-by-match) and `recalculate-rankings` (nightly)
 
-### Cron Job: Circuit Breaker / Pagination Guard
+### Cron Job: Timeout Guard (future)
 **File:** `src/app/api/cron/award-points/route.ts`
 - The cron fetches all active predictions. At 10k users this could be 50k+ rows.
 - Current: fetches in pages of 1000 — good. But no timeout guard.
 - Add: hard stop at 10 minutes (Vercel Pro timeout), checkpoint resume via `cron_cursor` table
-- Add: per-run metrics logged to Supabase (`cron_metrics` table: run_at, predictions_scored, duration_ms, errors)
+- `cron_runs` table now tracks duration_ms — use this to set baseline before adding guards
 
 ---
 

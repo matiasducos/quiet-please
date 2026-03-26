@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { withCronLogging } from '@/lib/cron-logger'
 
 const BASE_URL = 'https://api.api-tennis.com/tennis/'
 
@@ -92,22 +93,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const apiKey = process.env.TENNIS_API_KEY
-  if (!apiKey) {
-    return NextResponse.json({ error: 'TENNIS_API_KEY not configured' }, { status: 500 })
-  }
+  return withCronLogging('sync-tournaments', async () => {
+    const apiKey = process.env.TENNIS_API_KEY
+    if (!apiKey) {
+      throw new Error('TENNIS_API_KEY not configured')
+    }
 
-  // ── 1. Fetch from api-tennis.com ─────────────────────────────────────────
-  let apiTournaments: any[]
-  try {
-    apiTournaments = await fetchApiTournaments(apiKey)
-  } catch (err) {
-    Sentry.captureException(err)
-    return NextResponse.json({
-      error: 'Failed to fetch tournaments from api-tennis.com',
-      detail: err instanceof Error ? err.message : String(err),
-    }, { status: 500 })
-  }
+    // ── 1. Fetch from api-tennis.com ─────────────────────────────────────────
+    const apiTournaments = await fetchApiTournaments(apiKey)
 
   // ── 2. Load all existing DB rows ─────────────────────────────────────────
   const supabase = createAdminClient()
@@ -115,9 +108,7 @@ export async function GET(request: Request) {
     .from('tournaments')
     .select('id, name, external_id, starts_at')
 
-  if (dbError) {
-    return NextResponse.json({ error: dbError.message }, { status: 500 })
-  }
+    if (dbError) throw new Error(dbError.message)
 
   // Primary map: "external_id::year" → DB row
   //   Used to check if we already have this year's entry — if so, skip entirely.
@@ -248,23 +239,22 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({
-    message:           'Tournaments synced',
-    api_total:         apiTournaments.length,
-    // Diagnostic: what ATP/WTA tournaments the API returned (sorted alphabetically)
-    found_atp:         foundAtp.sort(),
-    found_wta:         foundWta.sort(),
-    // Already in DB — silently skipped (existing year entries)
-    already_in_db_count: alreadyInDb.length,
-    already_in_db:     alreadyInDb.sort(),
-    // New inserts this run
-    inserted:          insertedCount,
-    inserted_names:    toInsert.map((t: any) => t.name).sort(),
-    // Migrations
-    migrated_count:    migrated.length,
-    migrated,
-    // Filtered out (non-ATP/WTA)
-    skipped_count:     skipped.length,
-    ...(errors.length ? { errors } : {}),
+    return {
+      status: 200,
+      body: {
+        message:           'Tournaments synced',
+        api_total:         apiTournaments.length,
+        found_atp:         foundAtp.sort(),
+        found_wta:         foundWta.sort(),
+        already_in_db_count: alreadyInDb.length,
+        already_in_db:     alreadyInDb.sort(),
+        inserted:          insertedCount,
+        inserted_names:    toInsert.map((t: any) => t.name).sort(),
+        migrated_count:    migrated.length,
+        migrated,
+        skipped_count:     skipped.length,
+        ...(errors.length ? { errors } : {}),
+      },
+    }
   })
 }
