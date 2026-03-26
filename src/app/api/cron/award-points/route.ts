@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPointsForRound, calculateStreakMultiplier, buildFeedMap } from '@/lib/tennis'
 import type { DrawMatch, Round, TournamentCategory } from '@/lib/tennis'
@@ -339,16 +340,18 @@ export async function GET(request: Request) {
                   }
                 } catch (emailErr) {
                   console.error(`[award-points] email error for ${job.userId}:`, emailErr)
+                  Sentry.captureException(emailErr)
                 }
               })
             )
           }
         }
         // Don't await — let emails send in background
-        sendEmails().catch(e => console.error('[award-points] email batch error:', e))
+        sendEmails().catch(e => { console.error('[award-points] email batch error:', e); Sentry.captureException(e) })
       }
     } catch (notifyErr) {
       console.error('[award-points] notification error:', notifyErr)
+      Sentry.captureException(notifyErr)
     }
 
     // ── 11. Score and finalize completed challenges ───────────────────────
@@ -441,6 +444,7 @@ export async function GET(request: Request) {
       }
     } catch (challengeErr) {
       console.error('[award-points] challenge scoring error:', challengeErr)
+      Sentry.captureException(challengeErr)
     }
 
     // ── 12. Score anonymous challenges ────────────────────────────────────
@@ -522,6 +526,7 @@ export async function GET(request: Request) {
       }
     } catch (anonErr) {
       console.error('[award-points] anonymous challenge scoring error:', anonErr)
+      Sentry.captureException(anonErr)
     }
 
     return NextResponse.json({
@@ -538,6 +543,7 @@ export async function GET(request: Request) {
 
   } catch (err) {
     console.error('[award-points] Error:', err)
+    Sentry.captureException(err)
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Unknown error' },
       { status: 500 }

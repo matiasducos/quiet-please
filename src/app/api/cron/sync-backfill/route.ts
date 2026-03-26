@@ -14,6 +14,7 @@
  */
 
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { tennisAdapter } from '@/lib/tennis'
 import type { Json } from '@/types/database'
@@ -70,6 +71,7 @@ export async function GET(request: Request) {
           result.draw = 'none'
         }
       } catch (err) {
+        Sentry.captureException(err)
         result.draw_error = err instanceof Error ? err.message : 'Unknown'
       }
 
@@ -99,6 +101,7 @@ export async function GET(request: Request) {
           result.results = 'none'
         }
       } catch (err) {
+        Sentry.captureException(err)
         result.results_error = err instanceof Error ? err.message : 'Unknown'
       }
 
@@ -122,6 +125,7 @@ export async function GET(request: Request) {
     })
   } catch (err) {
     console.error('[sync-backfill] Error:', err)
+    Sentry.captureException(err)
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Unknown error' },
       { status: 500 }

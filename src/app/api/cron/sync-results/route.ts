@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { tennisAdapter } from '@/lib/tennis'
 
@@ -68,12 +69,14 @@ export async function GET(request: Request) {
 
         results.push({ name: tournament.name, status: 'synced', matches: matchResults.length })
       } catch (err) {
+        Sentry.captureException(err)
         results.push({ name: tournament.name, status: 'error', error: err instanceof Error ? err.message : 'Unknown' })
       }
     }
 
     return NextResponse.json({ message: 'Result sync complete', results })
   } catch (err) {
+    Sentry.captureException(err)
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 })
   }
 }

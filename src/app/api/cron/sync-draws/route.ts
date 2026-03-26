@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 import { revalidateTag } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { tennisAdapter } from '@/lib/tennis'
@@ -186,6 +187,7 @@ export async function GET(request: Request) {
           )
         } catch (notifyErr) {
           console.error('[sync-draws] notification error:', notifyErr)
+          Sentry.captureException(notifyErr)
         }
       }
       // If already accepting_predictions: no status change, just refresh draw data.
@@ -194,6 +196,7 @@ export async function GET(request: Request) {
     }
     return NextResponse.json({ message: 'Draw sync complete', results })
   } catch (err) {
+    Sentry.captureException(err)
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 })
   }
 }

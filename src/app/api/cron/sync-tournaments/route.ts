@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 const BASE_URL = 'https://api.api-tennis.com/tennis/'
@@ -101,6 +102,7 @@ export async function GET(request: Request) {
   try {
     apiTournaments = await fetchApiTournaments(apiKey)
   } catch (err) {
+    Sentry.captureException(err)
     return NextResponse.json({
       error: 'Failed to fetch tournaments from api-tennis.com',
       detail: err instanceof Error ? err.message : String(err),

@@ -22,10 +22,6 @@
 
 ## Queued (Not Yet Scoped)
 
-### Error Monitoring (Sentry)
-- Add Sentry for silent cron failures, bracket logic edge cases, DB write errors
-- Priority: before large user growth
-
 ### Season-Long Narrative in Notifications
 - "You're currently ranked #47 — Wimbledon starts in 8 weeks and 2,400 points are on the table"
 - Personalized ranking + upcoming tournament digest
@@ -50,6 +46,10 @@
 
 ## Completed ✅
 
+- ✅ Sentry error monitoring: client + server + edge + cron jobs, global error boundary, tunnel route — 2026-03-26
+- ✅ H2H side drawer on bracket cards (mock data, DSG API ready) — 2026-03-26
+- ✅ Activity feed mobile truncation fix — 2026-03-26
+- ✅ ATP/WTA copy rewrite (avoid implying official affiliation) — 2026-03-26
 - ✅ Draw Results page (bracket UI with real winners) + Upcoming Matches page + tournament header buttons — 2026-03-25
 - ✅ Legal infrastructure: Privacy Policy, Terms of Service, signup consent, email unsubscribe, Footer — 2026-03-25
 - ✅ Security hardening: headers (HSTS, X-Frame-Options, nosniff, Permissions-Policy), CSP report-only, npm audit fix — 2026-03-25
