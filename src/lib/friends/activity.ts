@@ -148,7 +148,7 @@ async function fetchTournamentEvents(
       .select('external_match_id, round, winner_external_id, loser_external_id, score, played_at, tournament_id, tournaments(name, location, flag_emoji)')
       .in('tournament_id', tournamentIds)
       .gte('played_at', since)
-      .neq('score', 'BYE')
+      .or('score.neq.BYE,score.is.null')
       .order('played_at', { ascending: false })
       .limit(50),
   ])
