@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { savePrediction, importGlobalPicks } from './actions'
 import CountryFlag from '@/components/CountryFlag'
+import H2HDrawer from '@/components/H2HDrawer'
 
 interface Player {
   externalId: string
@@ -156,6 +157,7 @@ export default function BracketPredictor({
   const [slotError, setSlotError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [showImport, setShowImport] = useState(true)
+  const [h2hPlayers, setH2HPlayers] = useState<{ player1: Player; player2: Player } | null>(null)
   const [activeRound, setActiveRound] = useState(() => {
     const sorted = draw.rounds.slice().sort((a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b))
     return sorted[0] ?? 'QF'
@@ -829,7 +831,21 @@ export default function BracketPredictor({
 
                           {renderPlayer(match, p1, 'player1', s1, true)}
 
-                          <div className="flex items-center justify-center py-1" style={{ background: '#fafaf8' }}>
+                          <div className="flex items-center justify-center py-1 gap-2" style={{ background: '#fafaf8' }}>
+                            {p1 && p2 && !isBye && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setH2HPlayers({ player1: p1, player2: p2 }) }}
+                                className="h2h-btn"
+                                style={{
+                                  fontFamily: 'var(--font-mono)', fontSize: '0.55rem', letterSpacing: '0.04em',
+                                  color: 'var(--court)', background: 'white',
+                                  border: '1px solid var(--chalk-dim)', borderRadius: '2px',
+                                  padding: '2px 6px', lineHeight: 1, cursor: 'pointer',
+                                }}
+                              >
+                                H2H
+                              </button>
+                            )}
                             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.1em' }}>VS</span>
                           </div>
 
@@ -961,6 +977,16 @@ export default function BracketPredictor({
           </div>
         )}
       </div>
+
+      {/* H2H drawer */}
+      {h2hPlayers && (
+        <H2HDrawer
+          player1={h2hPlayers.player1}
+          player2={h2hPlayers.player2}
+          surface={tournament.surface ?? null}
+          onClose={() => setH2HPlayers(null)}
+        />
+      )}
     </div>
   )
 }
