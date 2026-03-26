@@ -183,7 +183,7 @@ export default async function HomePage() {
           Predict.<br /><em style={{ color: 'var(--court)' }}>Compete.</em><br />Win.
         </h1>
         <p className="mt-8" style={{ fontSize: '1.125rem', color: 'var(--muted)', maxWidth: '42ch', lineHeight: '1.6', fontWeight: 300 }}>
-          Fill out the bracket before the draw closes. Earn real ATP &amp; WTA points for every correct pick. Challenge your friends across the full season.
+          Fill out the bracket before the draw closes. Earn prediction points based on ATP &amp; WTA scoring for every correct pick. Challenge your friends across the full season.
         </p>
         <div className="flex flex-col sm:flex-row items-center gap-3 mt-10">
           <Link
@@ -391,8 +391,8 @@ export default async function HomePage() {
               },
               {
                 n: '06',
-                label: 'Real ATP & WTA points',
-                desc: 'Your correct picks earn points using the exact same formula as the real tour. A Grand Slam winner pick is worth 2,000 points — the same as the actual champion earns.',
+                label: 'ATP & WTA-style scoring',
+                desc: 'Your correct picks earn points using the same scoring formula as the professional tour. A correct Grand Slam winner pick is worth 2,000 points — matching what the actual champion earns on tour.',
               },
             ].map((f, i) => (
               <div key={i} className="px-6 py-8 md:px-8 md:py-10" style={{ background: i % 2 === 0 ? '#eef4ff' : '#edf7f0' }}>
