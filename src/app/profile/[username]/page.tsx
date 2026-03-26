@@ -54,7 +54,7 @@ export default async function ProfilePage({
   // allows reading any user's locked predictions; own predictions readable via auth.uid()
   let predQuery = supabase
     .from('predictions')
-    .select('id, points_earned, created_at, is_fully_locked, tournaments(id, name, tour, category, surface, starts_at, ends_at, status, location, flag_emoji)')
+    .select('id, points_earned, submitted_at, is_fully_locked, tournaments(id, name, tour, category, surface, starts_at, ends_at, status, location, flag_emoji)')
     .eq('user_id', profile.id)
     .is('challenge_id', null)
 
@@ -62,9 +62,9 @@ export default async function ProfilePage({
     predQuery = predQuery.eq('is_fully_locked', true)
   }
 
-  const [{ count: usersAhead }, predResult, friendshipRes, { data: rawChallenges }, { data: rivalChallenges }] = await Promise.all([
+  const [{ count: usersAhead }, { data: predictions }, friendshipRes, { data: rawChallenges }, { data: rivalChallenges }] = await Promise.all([
     supabase.from('users').select('id', { count: 'exact', head: true }).gt('ranking_points', profile.ranking_points ?? 0),
-    predQuery.order('created_at', { ascending: false }),
+    predQuery.order('submitted_at', { ascending: false }),
     !isOwnProfile
       ? admin.from('friendships').select('id, status, requester_id')
           .or(`and(requester_id.eq.${user.id},addressee_id.eq.${profile.id}),and(requester_id.eq.${profile.id},addressee_id.eq.${user.id})`)
@@ -85,13 +85,6 @@ export default async function ProfilePage({
   ])
 
   const globalRank = (usersAhead ?? 0) + 1
-
-  // Debug: log prediction query result to diagnose empty predictions
-  if (predResult.error) {
-    console.error('[profile] predictions query error:', predResult.error.message, predResult.error.code, predResult.error.details)
-  }
-  console.log('[profile] predictions query:', { userId: profile.id, count: predResult.data?.length ?? 0, error: predResult.error?.message ?? null })
-  const predictions = predResult.data
 
   const completedPredCount = predictions?.filter(p => (p.tournaments as any)?.status === 'completed').length ?? 0
   const memberSince  = new Date(profile.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
