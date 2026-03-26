@@ -97,3 +97,11 @@ a:active {
 .h2h-btn:hover {
   border-color: var(--court) !important;
 }
+
+/* Bracket navigation connectors */
+.bracket-nav-btn:hover > div {
+  border-color: var(--court) !important;
+}
+.bracket-nav-btn:hover > span {
+  color: var(--court) !important;
+}
