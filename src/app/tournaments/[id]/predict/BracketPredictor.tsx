@@ -194,14 +194,6 @@ export default function BracketPredictor({
       ) as HTMLElement | null
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        el.style.outline = '2px solid var(--court)'
-        el.style.outlineOffset = '4px'
-        el.style.borderRadius = '4px'
-        setTimeout(() => {
-          el.style.outline = ''
-          el.style.outlineOffset = ''
-          el.style.borderRadius = ''
-        }, 1200)
       }
     })
   }, [activeRound])
@@ -858,29 +850,29 @@ export default function BracketPredictor({
                           {/* Top feeder bracket: ⊃ shape merging two lines into one */}
                           <div style={{ position: 'absolute', top: '12.5%', bottom: 'calc(50% + 6px)', left: '4px', right: '8px' }}>
                             {/* Top horizontal stub */}
-                            <div className="bracket-line" style={{ position: 'absolute', top: 0, left: 0, width: '40%', borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                            <div style={{ position: 'absolute', top: '0px', left: '0px', width: '40%', borderBottom: '1.5px solid var(--muted)' }} />
                             {/* Bottom horizontal stub */}
-                            <div className="bracket-line" style={{ position: 'absolute', bottom: 0, left: 0, width: '40%', borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                            <div style={{ position: 'absolute', bottom: '0px', left: '0px', width: '40%', borderBottom: '1.5px solid var(--muted)' }} />
                             {/* Vertical connecting line */}
-                            <div className="bracket-line" style={{ position: 'absolute', top: 0, bottom: 0, left: '40%', borderRight: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                            <div style={{ position: 'absolute', top: '0px', bottom: '0px', left: '40%', borderRight: '1.5px solid var(--muted)' }} />
                             {/* Horizontal line to match */}
-                            <div className="bracket-line" style={{ position: 'absolute', top: '50%', left: '40%', right: 0, borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                            <div style={{ position: 'absolute', top: '50%', left: '40%', right: '0px', borderBottom: '1.5px solid var(--muted)' }} />
                           </div>
                           {/* Bottom feeder bracket: ⊃ shape */}
                           <div style={{ position: 'absolute', top: 'calc(50% + 6px)', bottom: '12.5%', left: '4px', right: '8px' }}>
-                            <div className="bracket-line" style={{ position: 'absolute', top: 0, left: 0, width: '40%', borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
-                            <div className="bracket-line" style={{ position: 'absolute', bottom: 0, left: 0, width: '40%', borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
-                            <div className="bracket-line" style={{ position: 'absolute', top: 0, bottom: 0, left: '40%', borderRight: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
-                            <div className="bracket-line" style={{ position: 'absolute', top: '50%', left: '40%', right: 0, borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                            <div style={{ position: 'absolute', top: '0px', left: '0px', width: '40%', borderBottom: '1.5px solid var(--muted)' }} />
+                            <div style={{ position: 'absolute', bottom: '0px', left: '0px', width: '40%', borderBottom: '1.5px solid var(--muted)' }} />
+                            <div style={{ position: 'absolute', top: '0px', bottom: '0px', left: '40%', borderRight: '1.5px solid var(--muted)' }} />
+                            <div style={{ position: 'absolute', top: '50%', left: '40%', right: '0px', borderBottom: '1.5px solid var(--muted)' }} />
                           </div>
                         </>
                       ) : (
                         /* Single match: ⊃ shape — two lines merging into one */
                         <div style={{ position: 'absolute', top: '25%', bottom: '25%', left: '4px', right: '8px' }}>
-                          <div className="bracket-line" style={{ position: 'absolute', top: 0, left: 0, width: '40%', borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
-                          <div className="bracket-line" style={{ position: 'absolute', bottom: 0, left: 0, width: '40%', borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
-                          <div className="bracket-line" style={{ position: 'absolute', top: 0, bottom: 0, left: '40%', borderRight: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
-                          <div className="bracket-line" style={{ position: 'absolute', top: '50%', left: '40%', right: 0, borderBottom: '1.5px solid var(--muted)', transition: 'border-color 0.15s ease' }} />
+                          <div style={{ position: 'absolute', top: '0px', left: '0px', width: '40%', borderBottom: '1.5px solid var(--muted)' }} />
+                          <div style={{ position: 'absolute', bottom: '0px', left: '0px', width: '40%', borderBottom: '1.5px solid var(--muted)' }} />
+                          <div style={{ position: 'absolute', top: '0px', bottom: '0px', left: '40%', borderRight: '1.5px solid var(--muted)' }} />
+                          <div style={{ position: 'absolute', top: '50%', left: '40%', right: '0px', borderBottom: '1.5px solid var(--muted)' }} />
                         </div>
                       )}
                     </button>
@@ -1000,58 +992,17 @@ export default function BracketPredictor({
                       {group.length === 2 ? (
                         <>
                           {/* Horizontal stub from top match midpoint */}
-                          <div className="bracket-line" style={{
-                            position: 'absolute', top: '25%', left: 0, width: '40%',
-                            borderBottom: '1.5px solid var(--muted)',
-                            transition: 'border-color 0.15s ease',
-                          }} />
+                          <div style={{ position: 'absolute', top: '25%', left: '0px', width: '40%', borderBottom: '1.5px solid var(--muted)' }} />
                           {/* Horizontal stub from bottom match midpoint */}
-                          <div className="bracket-line" style={{
-                            position: 'absolute', bottom: '25%', left: 0, width: '40%',
-                            borderBottom: '1.5px solid var(--muted)',
-                            transition: 'border-color 0.15s ease',
-                          }} />
+                          <div style={{ position: 'absolute', bottom: '25%', left: '0px', width: '40%', borderBottom: '1.5px solid var(--muted)' }} />
                           {/* Vertical line connecting the two stubs */}
-                          <div className="bracket-line" style={{
-                            position: 'absolute', top: '25%', bottom: '25%', left: '40%',
-                            borderRight: '1.5px solid var(--muted)',
-                            transition: 'border-color 0.15s ease',
-                          }} />
+                          <div style={{ position: 'absolute', top: '25%', bottom: '25%', left: '40%', borderRight: '1.5px solid var(--muted)' }} />
                           {/* Horizontal line from midpoint extending right */}
-                          <div className="bracket-line" style={{
-                            position: 'absolute', top: '50%', left: '40%', right: '10px',
-                            borderBottom: '1.5px solid var(--muted)',
-                            transition: 'border-color 0.15s ease',
-                          }} />
-                          {/* Arrow head pointing right */}
-                          <div className="bracket-line" style={{
-                            position: 'absolute', top: '50%', right: '2px',
-                            transform: 'translateY(-50%)',
-                            width: 0, height: 0,
-                            borderTop: '5px solid transparent',
-                            borderBottom: '5px solid transparent',
-                            borderLeft: '7px solid var(--muted)',
-                            transition: 'border-color 0.15s ease',
-                          }} />
+                          <div style={{ position: 'absolute', top: '50%', left: '40%', right: '4px', borderBottom: '1.5px solid var(--muted)' }} />
                         </>
                       ) : (
-                        <>
-                          {/* Single match: horizontal line to arrow */}
-                          <div className="bracket-line" style={{
-                            position: 'absolute', top: '50%', left: '4px', right: '10px',
-                            borderBottom: '1.5px solid var(--muted)',
-                            transition: 'border-color 0.15s ease',
-                          }} />
-                          <div className="bracket-line" style={{
-                            position: 'absolute', top: '50%', right: '2px',
-                            transform: 'translateY(-50%)',
-                            width: 0, height: 0,
-                            borderTop: '5px solid transparent',
-                            borderBottom: '5px solid transparent',
-                            borderLeft: '7px solid var(--muted)',
-                            transition: 'border-color 0.15s ease',
-                          }} />
-                        </>
+                        /* Single match: horizontal line */
+                        <div style={{ position: 'absolute', top: '50%', left: '4px', right: '4px', borderBottom: '1.5px solid var(--muted)' }} />
                       )}
                     </button>
                   )}
