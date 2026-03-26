@@ -32,7 +32,7 @@ The app is live in production. Phases 4–8 are complete. Latest migration: `027
 - ⚠️ 2026 ATP/WTA calendar incomplete — free-tier API missing 250-level events. Upgrade path: api-tennis.com direct subscription ($40/mo). Adapter layer already built — only `TENNIS_API_KEY` + base URL need changing.
 - ✅ Cron: all jobs working; award-points also scores/expires anonymous + authenticated challenges
 - ✅ Mobile responsive layouts throughout
-- ✅ Deployed to https://quiet-please.vercel.app with Vercel Analytics
+- ✅ Deployed to https://quietplease.app (custom domain) with Vercel Analytics
 
 ### Known bugs / tech debt
 - TypeScript build errors suppressed via `ignoreBuildErrors: true` — fix by running `supabase gen types typescript` after applying migrations

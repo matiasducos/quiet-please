@@ -18,12 +18,12 @@ export default function PrivacyPolicy() {
           <Section title="1. Who we are">
             <p>
               Quiet Please (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;) operates the website{' '}
-              <strong>quiet-please.app</strong> (the &quot;Service&quot;). We are subject to the
+              <strong>quietplease.app</strong> (the &quot;Service&quot;). We are subject to the
               EU General Data Protection Regulation (GDPR).
             </p>
             <p>
               For any privacy-related questions, contact us at{' '}
-              <a href="mailto:support@quiet-please.app" style={{ color: 'var(--court)' }}>support@quiet-please.app</a>.
+              <a href="mailto:support@quietplease.app" style={{ color: 'var(--court)' }}>support@quietplease.app</a>.
             </p>
           </Section>
 
@@ -144,7 +144,7 @@ export default function PrivacyPolicy() {
             </ul>
             <p>
               To exercise any of these rights, email us at{' '}
-              <a href="mailto:support@quiet-please.app" style={{ color: 'var(--court)' }}>support@quiet-please.app</a>.
+              <a href="mailto:support@quietplease.app" style={{ color: 'var(--court)' }}>support@quietplease.app</a>.
               We will respond within 30 days.
             </p>
             <p>
@@ -179,7 +179,7 @@ export default function PrivacyPolicy() {
           <Section title="13. Contact">
             <p>
               If you have any questions about this Privacy Policy, contact us at:<br />
-              <a href="mailto:support@quiet-please.app" style={{ color: 'var(--court)' }}>support@quiet-please.app</a>
+              <a href="mailto:support@quietplease.app" style={{ color: 'var(--court)' }}>support@quietplease.app</a>
             </p>
           </Section>
         </div>

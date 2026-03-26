@@ -10,7 +10,7 @@ export default function Footer() {
         <div className="flex items-center gap-4">
           <Link href="/terms" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Terms</Link>
           <Link href="/privacy" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Privacy</Link>
-          <a href="mailto:support@quiet-please.app" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Contact</a>
+          <a href="mailto:support@quietplease.app" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Contact</a>
         </div>
       </div>
     </footer>
