@@ -219,8 +219,8 @@ async function fetchTournamentEvents(
       const score = r.score ? ` ${r.score}` : ''
 
       events.push({
-        type: 'result', user_id: null, username: null,
-        label: `${winner} d. ${loser}${score} — ${round} at ${tName}`,
+        type: 'result', user_id: null, username: winner,
+        label: `d. ${loser}${score} — ${round} at ${tName}`,
         date: r.played_at,
         href: `/tournaments/${r.tournament_id}/results`,
       })

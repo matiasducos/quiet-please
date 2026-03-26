@@ -92,9 +92,15 @@ export default async function DashboardPage() {
                       <span className="truncate">
                         {item.username ? (
                           <>
-                            <Link href={`/profile/${item.username}`} style={{ fontFamily: 'var(--font-display)', fontSize: '0.9rem', color: isMe ? 'var(--court)' : 'var(--ink)', textDecoration: 'none' }}>
-                              {isMe ? 'You' : item.username}
-                            </Link>
+                            {item.type === 'result' ? (
+                              <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.9rem', color: 'var(--ink)' }}>
+                                {item.username}
+                              </span>
+                            ) : (
+                              <Link href={`/profile/${item.username}`} style={{ fontFamily: 'var(--font-display)', fontSize: '0.9rem', color: isMe ? 'var(--court)' : 'var(--ink)', textDecoration: 'none' }}>
+                                {isMe ? 'You' : item.username}
+                              </Link>
+                            )}
                             {' '}
                           </>
                         ) : null}
