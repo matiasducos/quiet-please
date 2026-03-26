@@ -2,7 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type ActivityItem = {
-  type: 'picks' | 'points' | 'league' | 'tournament'
+  type: 'picks' | 'points' | 'league' | 'tournament' | 'result'
   user_id: string | null
   username: string | null
   label: string
@@ -134,11 +134,24 @@ async function fetchTournamentEvents(
   const tournamentIds = [...new Set((relevantPreds ?? []).map((p: any) => p.tournament_id))]
   if (tournamentIds.length === 0) return []
 
-  const { data: tournaments } = await admin
-    .from('tournaments')
-    .select('id, name, location, flag_emoji, status, starts_at, ends_at')
-    .in('id', tournamentIds)
-    .in('status', ['accepting_predictions', 'draw_published', 'in_progress', 'completed'])
+  const ROUND_LABELS: Record<string, string> = {
+    R128: 'R128', R64: 'R64', R32: 'R32',
+    R16: 'R16', QF: 'Quarterfinals', SF: 'Semifinals', F: 'Final',
+  }
+
+  const [{ data: tournaments }, { data: recentResults }] = await Promise.all([
+    admin.from('tournaments')
+      .select('id, name, location, flag_emoji, status, starts_at, ends_at')
+      .in('id', tournamentIds)
+      .in('status', ['accepting_predictions', 'draw_published', 'in_progress', 'completed']),
+    admin.from('match_results')
+      .select('external_match_id, round, winner_external_id, loser_external_id, score, played_at, tournament_id, tournaments(name, location, flag_emoji)')
+      .in('tournament_id', tournamentIds)
+      .gte('played_at', since)
+      .neq('score', 'BYE')
+      .order('played_at', { ascending: false })
+      .limit(50),
+  ])
 
   const events: ActivityItem[] = []
   for (const t of tournaments ?? []) {
@@ -172,6 +185,44 @@ async function fetchTournamentEvents(
         label: `${displayName} — tournament completed`,
         date: t.ends_at,
         href: `/tournaments/${t.id}`,
+      })
+    }
+  }
+
+  // ── Match result events — resolve player names from draw bracket data ──
+  if (recentResults && recentResults.length > 0) {
+    const resultTournamentIds = [...new Set(recentResults.map((r: any) => r.tournament_id))]
+    const { data: draws } = await admin
+      .from('draws')
+      .select('tournament_id, bracket_data')
+      .in('tournament_id', resultTournamentIds)
+
+    // Build player name lookup: tournamentId → externalId → name
+    const playerNames = new Map<string, Map<string, string>>()
+    for (const d of draws ?? []) {
+      const names = new Map<string, string>()
+      for (const m of ((d.bracket_data as any)?.matches ?? []) as any[]) {
+        if (m.player1?.externalId) names.set(m.player1.externalId, m.player1.name)
+        if (m.player2?.externalId) names.set(m.player2.externalId, m.player2.name)
+      }
+      playerNames.set(d.tournament_id, names)
+    }
+
+    for (const r of recentResults as any[]) {
+      if (!r.played_at) continue
+      const names = playerNames.get(r.tournament_id)
+      const winner = names?.get(r.winner_external_id) ?? 'Unknown'
+      const loser = names?.get(r.loser_external_id) ?? 'Unknown'
+      const flag = r.tournaments?.flag_emoji ? `${r.tournaments.flag_emoji} ` : ''
+      const tName = `${flag}${r.tournaments?.location ?? r.tournaments?.name ?? 'a tournament'}`
+      const round = ROUND_LABELS[r.round] ?? r.round
+      const score = r.score ? ` ${r.score}` : ''
+
+      events.push({
+        type: 'result', user_id: null, username: null,
+        label: `${winner} d. ${loser}${score} — ${round} at ${tName}`,
+        date: r.played_at,
+        href: `/tournaments/${r.tournament_id}/results`,
       })
     }
   }

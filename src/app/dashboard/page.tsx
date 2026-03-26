@@ -79,7 +79,7 @@ export default async function DashboardPage() {
             </div>
             <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
               {activity.map((item, i) => {
-                const icon = item.type === 'tournament' ? '🎾' : item.type === 'picks' ? '🔒' : item.type === 'points' ? '⭐' : '👥'
+                const icon = item.type === 'tournament' ? '🎾' : item.type === 'result' ? '🏆' : item.type === 'picks' ? '🔒' : item.type === 'points' ? '⭐' : '👥'
                 const isMe = item.user_id === user.id
                 return (
                   <div

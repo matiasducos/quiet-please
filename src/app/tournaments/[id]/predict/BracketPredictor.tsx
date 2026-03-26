@@ -695,7 +695,7 @@ export default function BracketPredictor({
                   <button
                     onClick={() => player && pickWinner(match.matchId, player.externalId)}
                     disabled={!player || matchLocked || isBye}
-                    className={`pick-btn w-full flex items-center justify-between px-4 py-3 text-left${withBorderBottom ? ' border-b' : ''}`}
+                    className={`pick-btn w-full flex items-center justify-between px-3 py-2 text-left${withBorderBottom ? ' border-b' : ''}`}
                     style={{
                       borderColor: 'var(--chalk-dim)',
                       background: style.bg,
@@ -703,16 +703,16 @@ export default function BracketPredictor({
                       opacity: !player ? 0.35 : 1,
                     }}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                       {player?.seed ? (
                         <span style={{
                           fontFamily: 'var(--font-mono)',
-                          fontSize: '0.6rem',
+                          fontSize: '0.55rem',
                           fontWeight: 600,
                           color: 'white',
                           background: '#5a5a4a',
-                          minWidth: '18px',
-                          height: '18px',
+                          minWidth: '16px',
+                          height: '16px',
                           borderRadius: '2px',
                           display: 'flex',
                           alignItems: 'center',
@@ -720,13 +720,13 @@ export default function BracketPredictor({
                           flexShrink: 0,
                         }}>{player.seed}</span>
                       ) : (
-                        <span style={{ minWidth: '18px', flexShrink: 0 }} />
+                        <span style={{ minWidth: '16px', flexShrink: 0 }} />
                       )}
-                      <span className="truncate" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', letterSpacing: '-0.01em', color: player ? 'var(--ink)' : 'var(--muted)' }}>
+                      <span className="truncate" style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', letterSpacing: '-0.01em', color: player ? 'var(--ink)' : 'var(--muted)' }}>
                         {player?.name ?? (isBye ? 'BYE' : 'TBD')}
                       </span>
                       {player?.country && player.country.toLowerCase() !== 'world' && (
-                        <CountryFlag country={player.country} size={16} />
+                        <CountryFlag country={player.country} size={14} />
                       )}
                     </div>
                     {state !== 'none' && (
@@ -758,7 +758,7 @@ export default function BracketPredictor({
               return (
                 <div key={gi} className="flex items-stretch">
                   {/* Match cards column */}
-                  <div className="flex flex-col gap-3 flex-1">
+                  <div className="flex flex-col gap-2 flex-1">
                     {group.map((match) => {
                       const i = matchIndex++
                       const isBye = byeMatchIds.has(match.matchId)
@@ -784,8 +784,8 @@ export default function BracketPredictor({
                       return (
                         <div key={match.matchId} className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: isBye ? '#bfdbfe' : 'var(--chalk-dim)' }}>
                           {/* Match header */}
-                          <div className="px-4 py-2 border-b flex items-center justify-between" style={{ borderColor: isBye ? '#bfdbfe' : 'var(--chalk-dim)', background: isBye ? '#eff6ff' : '#fafaf8' }}>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: isBye ? '#1e40af' : 'var(--muted)', letterSpacing: '0.05em' }}>
+                          <div className="px-3 py-1.5 border-b flex items-center justify-between" style={{ borderColor: isBye ? '#bfdbfe' : 'var(--chalk-dim)', background: isBye ? '#eff6ff' : '#fafaf8' }}>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: isBye ? '#1e40af' : 'var(--muted)', letterSpacing: '0.05em' }}>
                               MATCH {i + 1}{isBye ? ' · BYE' : ''}
                             </span>
 
