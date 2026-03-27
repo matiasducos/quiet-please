@@ -41,7 +41,7 @@ export async function GET(request: Request) {
     // auto-picks are still useful for unplayed matches.
     const { data: tournaments, error: tErr } = await supabase
       .from('tournaments')
-      .select('id, external_id, name, tour, category, surface, location, flag_emoji, starts_at, ends_at')
+      .select('id, external_id, name, tour, category, surface, location, flag_emoji, starts_at, ends_at, status')
       .in('status', ['accepting_predictions', 'in_progress'])
       .not('surface', 'is', null)
 
@@ -98,7 +98,9 @@ export async function GET(request: Request) {
     // Filter to tournaments needing processing:
     // - No run exists, OR
     // - Draw was synced more recently (draw change), OR
-    // - Previous run produced 0 predictions (conditions may have changed: new users, new configs)
+    // - Previous run produced 0 predictions (conditions may have changed), OR
+    // - Tournament is in_progress and has new match results since last run, OR
+    // - There are new enabled users who haven't been processed yet
     const eligibleTournaments = tournaments.filter(t => {
       const draw = drawMap.get(t.id)
       if (!draw) return false
@@ -115,7 +117,16 @@ export async function GET(request: Request) {
       if (!lastRun.had_predictions) return true
 
       // Re-run if draw was synced more recently (draw change)
-      return new Date(draw.synced_at) > new Date(lastRun.created_at)
+      if (new Date(draw.synced_at) > new Date(lastRun.created_at)) return true
+
+      // In-progress tournaments: always re-run (new results may be available,
+      // new users may be enabled, configs may have changed)
+      if (t.status === 'in_progress') return true
+
+      // Accepting predictions: re-run (new users may be enabled)
+      if (t.status === 'accepting_predictions') return true
+
+      return false
     })
 
     if (!eligibleTournaments.length) {
