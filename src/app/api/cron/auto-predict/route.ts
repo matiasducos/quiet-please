@@ -63,24 +63,29 @@ export async function GET(request: Request) {
 
     const drawMap = new Map(draws.map(d => [d.tournament_id, d]))
 
-    // Check which tournaments already had auto-predict runs
+    // Check which tournaments already had successful auto-predict runs
+    // (runs that actually created predictions)
     const { data: existingRuns } = await supabase
       .from('auto_predict_runs')
-      .select('tournament_id, created_at')
+      .select('tournament_id, created_at, predictions_created, predictions_updated')
       .in('tournament_id', tournamentIds)
-      .eq('triggered_by', 'cron')
       .order('created_at', { ascending: false })
 
     // Latest run per tournament
-    const latestRunMap = new Map<string, string>()
+    const latestRunMap = new Map<string, { created_at: string; had_predictions: boolean }>()
     for (const run of existingRuns ?? []) {
       if (!latestRunMap.has(run.tournament_id)) {
-        latestRunMap.set(run.tournament_id, run.created_at)
+        latestRunMap.set(run.tournament_id, {
+          created_at: run.created_at,
+          had_predictions: (run.predictions_created ?? 0) > 0 || (run.predictions_updated ?? 0) > 0,
+        })
       }
     }
 
     // Filter to tournaments needing processing:
-    // Either no run exists, OR draw was synced more recently than the last run
+    // - No run exists, OR
+    // - Draw was synced more recently (draw change), OR
+    // - Previous run produced 0 predictions (conditions may have changed: new users, new configs)
     const eligibleTournaments = tournaments.filter(t => {
       const draw = drawMap.get(t.id)
       if (!draw) return false
@@ -90,11 +95,14 @@ export async function GET(request: Request) {
       const hasPlayers = matches.some(m => m.player1 !== null || m.player2 !== null)
       if (!hasPlayers) return false
 
-      const lastRunAt = latestRunMap.get(t.id)
-      if (!lastRunAt) return true // Never run before
+      const lastRun = latestRunMap.get(t.id)
+      if (!lastRun) return true // Never run before
+
+      // Re-run if previous run produced 0 predictions (user may have configured since)
+      if (!lastRun.had_predictions) return true
 
       // Re-run if draw was synced more recently (draw change)
-      return new Date(draw.synced_at) > new Date(lastRunAt)
+      return new Date(draw.synced_at) > new Date(lastRun.created_at)
     })
 
     if (!eligibleTournaments.length) {
