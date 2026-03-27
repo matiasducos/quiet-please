@@ -147,7 +147,7 @@ export async function GET(request: Request) {
     }
 
     // ── 4. Process each tournament × user ───────────────────────────────────
-    const results: Array<{ tournament: string; users: number; created: number; updated: number; errors: string[] }> = []
+    const results: Array<{ tournament: string; users: number; created: number; updated: number; errors: string[]; skipped?: Array<{ userId: string; reason: string }> }> = []
     const allNotifications: Array<{ user_id: string; type: string; tournament_id: string; meta: Record<string, unknown> }> = []
 
     for (const tournament of eligibleTournaments) {
@@ -161,11 +161,17 @@ export async function GET(request: Request) {
         weeks = getTournamentISOWeeks(tournament.starts_at, tournament.ends_at)
       }
 
+      // Track skip reasons for debugging
+      const skipped: Array<{ userId: string; reason: string }> = []
+
       for (const userId of userIds) {
         try {
           // a. Resolve player list for this user + tournament
           const tourConfigs = userConfigs.get(userId)?.get(tournament.tour)
-          if (!tourConfigs) continue // User has no config for this tour
+          if (!tourConfigs) {
+            skipped.push({ userId, reason: `no_config_for_${tournament.tour}` })
+            continue
+          }
 
           // Surface-specific override → default fallback
           const surface = tournament.surface as string
@@ -174,11 +180,17 @@ export async function GET(request: Request) {
             ? surfacePlayers
             : tourConfigs.default
 
-          if (!priorityPlayers || priorityPlayers.length === 0) continue
+          if (!priorityPlayers || priorityPlayers.length === 0) {
+            skipped.push({ userId, reason: 'no_players_configured' })
+            continue
+          }
 
           // b. Check if user already has a fully-locked prediction (manual lock — respect it)
           const existingPred = predMap.get(`${userId}:${tournament.id}`)
-          if (existingPred?.is_fully_locked) continue
+          if (existingPred?.is_fully_locked) {
+            skipped.push({ userId, reason: 'already_fully_locked' })
+            continue
+          }
 
           // c. Weekly slot check
           if (weeks.length > 0) {
@@ -201,7 +213,10 @@ export async function GET(request: Request) {
               const existingRank = CATEGORY_RANK[existingCategory] ?? 0
               const newRank = CATEGORY_RANK[tournament.category] ?? 0
 
-              if (newRank <= existingRank) continue // Lower or equal priority — skip
+              if (newRank <= existingRank) {
+                skipped.push({ userId, reason: `weekly_slot_conflict_${existingCategory}` })
+                continue
+              }
 
               // Higher priority: delete old weekly slots and prediction
               const oldTournamentId = conflicts[0].tournament_id
@@ -222,12 +237,22 @@ export async function GET(request: Request) {
           }
 
           // d. Generate auto picks
+          const playerIds = priorityPlayers.map(p => p.player_external_id)
+          const drawPlayerIds = matches.slice(0, 10).flatMap(m =>
+            [m.player1?.externalId, m.player2?.externalId].filter(Boolean)
+          )
           const autoResult = generateAutoPicks(
             matches,
             priorityPlayers.map(p => ({ externalId: p.player_external_id, priority: p.priority })),
           )
 
-          if (!autoResult) continue // No picks possible
+          if (!autoResult) {
+            skipped.push({
+              userId,
+              reason: `no_picks_generated (configured: [${playerIds.join(',')}], sample_draw: [${drawPlayerIds.slice(0, 6).join(',')}])`,
+            })
+            continue
+          }
 
           const { picks, pickSources } = autoResult
           const now = new Date().toISOString()
@@ -325,7 +350,7 @@ export async function GET(request: Request) {
         errors: tournamentResult.errors.length > 0 ? tournamentResult.errors : null,
       })
 
-      results.push(tournamentResult)
+      results.push({ ...tournamentResult, skipped })
     }
 
     // Bulk insert notifications
