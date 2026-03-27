@@ -5,6 +5,7 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import TournamentCard from '@/components/TournamentCard'
 import { getActivity, timeAgo } from '@/lib/friends/activity'
+import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 
 export default async function DashboardPage() {
   const { user, profile } = await getNavProfile()
@@ -28,13 +29,24 @@ export default async function DashboardPage() {
       .limit(4),
   ])
 
-  // Rank query depends on profile being loaded (needs ranking_points value)
-  const { count: higherCount } = await supabase
-    .from('users')
-    .select('id', { count: 'exact', head: true })
-    .gt('ranking_points', profile?.ranking_points ?? 0)
+  // Rank + engagement in parallel (both depend on prior data)
+  const liveIds = (liveTournaments ?? []).map(t => t.id)
+  const [{ count: higherCount }, engagement] = await Promise.all([
+    supabase
+      .from('users')
+      .select('id', { count: 'exact', head: true })
+      .gt('ranking_points', profile?.ranking_points ?? 0),
+    getTournamentEngagement(liveIds),
+  ])
 
   const globalRank = (higherCount ?? 0) + 1
+
+  // Enrich live tournaments with engagement counts
+  const enrichedLive = (liveTournaments ?? []).map(t => ({
+    ...t,
+    prediction_count: engagement[t.id]?.predictions ?? 0,
+    challenge_count: engagement[t.id]?.challenges ?? 0,
+  }))
 
   const stats = [
     { label: 'Ranking points', value: profile?.ranking_points ?? 0 },
@@ -122,7 +134,7 @@ export default async function DashboardPage() {
         )}
 
         {/* ─── Live Right Now ─────────────────────────────────────────────── */}
-        {liveTournaments && liveTournaments.length > 0 && (
+        {enrichedLive.length > 0 && (
           <div className="mb-12">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -136,8 +148,8 @@ export default async function DashboardPage() {
               </div>
               <Link href="/tournaments" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>See all tournaments →</Link>
             </div>
-            <div className={`grid gap-3 ${liveTournaments.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
-              {liveTournaments.map(t => (
+            <div className={`grid gap-3 ${enrichedLive.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+              {enrichedLive.map(t => (
                 <TournamentCard key={t.id} t={t} />
               ))}
             </div>
