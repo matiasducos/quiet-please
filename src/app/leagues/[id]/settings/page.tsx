@@ -71,6 +71,8 @@ export default async function LeagueSettingsPage({ params }: { params: Promise<{
           initialDescription={league.description ?? ''}
           initialIsPublic={league.is_public}
           initialTournamentTypes={league.allowed_tournament_types as string[] | null}
+          initialSurfaces={league.allowed_surfaces as string[] | null}
+          initialSeasonStart={league.season_start_date as string | null}
           members={memberList}
           isOwner={isOwner}
         />

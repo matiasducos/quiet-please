@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 
 const VALID_TYPES = ['grand_slam', 'masters_1000', '500', '250'] as const
+const VALID_SURFACES = ['hard', 'clay', 'grass'] as const
 
 export async function createLeague(formData: FormData) {
   const supabase = await createClient()
@@ -16,6 +17,7 @@ export async function createLeague(formData: FormData) {
   const description = formData.get('description') as string
   const isPublic = formData.get('is_public') === 'true'
   const typesRaw = formData.get('tournament_types') as string | null
+  const surfacesRaw = formData.get('surfaces') as string | null
 
   if (!name?.trim()) return { error: 'League name is required' }
 
@@ -25,6 +27,15 @@ export async function createLeague(formData: FormData) {
     const parsed = typesRaw.split(',').filter(t => VALID_TYPES.includes(t as any))
     if (parsed.length > 0 && parsed.length < VALID_TYPES.length) {
       allowedTypes = parsed
+    }
+  }
+
+  // Parse & validate surfaces
+  let allowedSurfaces: string[] | null = null
+  if (surfacesRaw) {
+    const parsed = surfacesRaw.split(',').filter(s => VALID_SURFACES.includes(s as any))
+    if (parsed.length > 0 && parsed.length < VALID_SURFACES.length) {
+      allowedSurfaces = parsed
     }
   }
 
@@ -38,6 +49,7 @@ export async function createLeague(formData: FormData) {
       owner_id: user.id,
       is_public: isPublic,
       allowed_tournament_types: allowedTypes,
+      allowed_surfaces: allowedSurfaces,
     })
     .select()
     .single()

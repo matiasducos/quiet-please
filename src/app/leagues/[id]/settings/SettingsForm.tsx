@@ -1,13 +1,19 @@
 'use client'
 
 import { useState } from 'react'
-import { updateLeagueSettings, kickMember, deleteLeague, leaveLeague } from '../actions'
+import { updateLeagueSettings, kickMember, deleteLeague, leaveLeague, resetLeagueSeason } from '../actions'
 
 const TOURNAMENT_TYPES = [
   { value: 'grand_slam', label: 'Grand Slams' },
   { value: 'masters_1000', label: 'Masters 1000' },
   { value: '500', label: '500s' },
   { value: '250', label: '250s' },
+] as const
+
+const SURFACES = [
+  { value: 'hard', label: 'Hard' },
+  { value: 'clay', label: 'Clay' },
+  { value: 'grass', label: 'Grass' },
 ] as const
 
 type Member = {
@@ -23,6 +29,8 @@ export default function SettingsForm({
   initialDescription,
   initialIsPublic,
   initialTournamentTypes,
+  initialSurfaces,
+  initialSeasonStart,
   members: initialMembers,
   isOwner,
 }: {
@@ -31,6 +39,8 @@ export default function SettingsForm({
   initialDescription: string
   initialIsPublic: boolean
   initialTournamentTypes: string[] | null
+  initialSurfaces: string[] | null
+  initialSeasonStart: string | null
   members: Member[]
   isOwner: boolean
 }) {
@@ -38,14 +48,21 @@ export default function SettingsForm({
   const [saving, setSaving] = useState(false)
   const [isPublic, setIsPublic] = useState(initialIsPublic)
   const [selectedTypes, setSelectedTypes] = useState<string[]>(initialTournamentTypes ?? [])
+  const [selectedSurfaces, setSelectedSurfaces] = useState<string[]>(initialSurfaces ?? [])
   const [members, setMembers] = useState(initialMembers)
   const [kickingId, setKickingId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [leaving, setLeaving] = useState(false)
+  const [resetting, setResetting] = useState(false)
 
   function toggleType(val: string) {
     if (!isOwner) return
     setSelectedTypes(prev => prev.includes(val) ? prev.filter(t => t !== val) : [...prev, val])
+  }
+
+  function toggleSurface(val: string) {
+    if (!isOwner) return
+    setSelectedSurfaces(prev => prev.includes(val) ? prev.filter(s => s !== val) : [...prev, val])
   }
 
   async function handleSave(formData: FormData) {
@@ -54,11 +71,22 @@ export default function SettingsForm({
     setError(null)
     formData.set('is_public', isPublic ? 'true' : 'false')
     formData.set('tournament_types', selectedTypes.join(','))
+    formData.set('surfaces', selectedSurfaces.join(','))
     const result = await updateLeagueSettings(leagueId, formData)
     if (result?.error) {
       setError(result.error)
       setSaving(false)
     }
+  }
+
+  async function handleResetSeason() {
+    if (!confirm('Reset the season? All standings will start fresh. This cannot be undone.')) return
+    setResetting(true)
+    const result = await resetLeagueSeason(leagueId)
+    if (result?.error) {
+      alert(result.error)
+    }
+    setResetting(false)
   }
 
   async function handleKick(userId: string, username: string) {
@@ -208,6 +236,39 @@ export default function SettingsForm({
           </p>
         </div>
 
+        {/* Surfaces */}
+        <div className="flex flex-col gap-1.5">
+          <label style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.05em' }}>
+            SURFACES <span style={{ opacity: 0.5 }}>(optional filter)</span>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {SURFACES.map(s => {
+              const active = selectedSurfaces.includes(s.value)
+              return (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => toggleSurface(s.value)}
+                  className="px-3 py-1.5 rounded-sm text-sm transition-colors"
+                  style={{
+                    background: active ? '#1e4e8c' : isOwner ? 'white' : '#fafaf8',
+                    color: active ? 'white' : 'var(--ink)',
+                    border: `1.5px solid ${active ? '#1e4e8c' : 'var(--chalk-dim)'}`,
+                    cursor: isOwner ? 'pointer' : 'default',
+                  }}
+                >
+                  {s.label}
+                </button>
+              )
+            })}
+          </div>
+          <p style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '2px' }}>
+            {selectedSurfaces.length === 0
+              ? 'All surfaces count toward standings.'
+              : `Only ${selectedSurfaces.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(', ')} tournaments will count.${isOwner ? ' Changes apply going forward.' : ''}`}
+          </p>
+        </div>
+
         {error && (
           <p className="text-sm px-3 py-2 rounded-sm" style={{ background: '#fef2f2', color: '#b91c1c' }}>{error}</p>
         )}
@@ -269,6 +330,31 @@ export default function SettingsForm({
           {leaving ? 'Leaving…' : 'Leave league'}
         </button>
       </div>
+
+      {/* Season reset — owner only */}
+      {isOwner && (
+        <div className="pt-6" style={{ borderTop: '1px solid var(--chalk-dim)' }}>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', marginBottom: '0.5rem' }}>Season</h2>
+          <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '0.5rem' }}>
+            {initialSeasonStart
+              ? `Current season started ${new Date(initialSeasonStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.`
+              : 'Season started when the league was created.'}
+            {' '}Points also roll off after 52 weeks automatically.
+          </p>
+          <button
+            type="button"
+            onClick={handleResetSeason}
+            disabled={resetting}
+            className="px-4 py-2 text-sm rounded-sm border transition-colors hover:opacity-80 disabled:opacity-40"
+            style={{ color: '#92400e', borderColor: '#fde68a', background: '#fffbeb' }}
+          >
+            {resetting ? 'Resetting…' : '🔄 Reset season'}
+          </button>
+          <p style={{ fontSize: '0.7rem', color: 'var(--muted)', marginTop: '0.5rem' }}>
+            Resets all standings to zero. Previous predictions are not deleted — they just won&apos;t count anymore.
+          </p>
+        </div>
+      )}
 
       {/* Danger zone — owner only */}
       {isOwner && (

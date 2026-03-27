@@ -25,19 +25,31 @@ const TOURNAMENT_TYPES = [
   { value: '250', label: '250s' },
 ] as const
 
+const SURFACES = [
+  { value: 'hard', label: 'Hard' },
+  { value: 'clay', label: 'Clay' },
+  { value: 'grass', label: 'Grass' },
+] as const
+
 export default function NewLeaguePage() {
   const [error, setError] = useState<string | null>(null)
   const [isPublic, setIsPublic] = useState(false)
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
+  const [selectedSurfaces, setSelectedSurfaces] = useState<string[]>([])
 
   function toggleType(val: string) {
     setSelectedTypes(prev => prev.includes(val) ? prev.filter(t => t !== val) : [...prev, val])
+  }
+
+  function toggleSurface(val: string) {
+    setSelectedSurfaces(prev => prev.includes(val) ? prev.filter(s => s !== val) : [...prev, val])
   }
 
   async function handleSubmit(formData: FormData) {
     setError(null)
     formData.set('is_public', isPublic ? 'true' : 'false')
     formData.set('tournament_types', selectedTypes.join(','))
+    formData.set('surfaces', selectedSurfaces.join(','))
     const result = await createLeague(formData)
     if (result?.error) {
       setError(result.error)
@@ -151,6 +163,38 @@ export default function NewLeaguePage() {
               {selectedTypes.length === 0
                 ? 'All tournament types count toward standings.'
                 : `Only ${selectedTypes.length} selected type${selectedTypes.length > 1 ? 's' : ''} will count.`}
+            </p>
+          </div>
+
+          {/* Surface filter */}
+          <div className="flex flex-col gap-1.5">
+            <label style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.05em' }}>
+              SURFACES <span style={{ opacity: 0.5 }}>(optional filter)</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {SURFACES.map(s => {
+                const active = selectedSurfaces.includes(s.value)
+                return (
+                  <button
+                    key={s.value}
+                    type="button"
+                    onClick={() => toggleSurface(s.value)}
+                    className="px-3 py-1.5 rounded-sm text-sm transition-colors"
+                    style={{
+                      background: active ? '#1e4e8c' : 'white',
+                      color: active ? 'white' : 'var(--ink)',
+                      border: `1.5px solid ${active ? '#1e4e8c' : 'var(--chalk-dim)'}`,
+                    }}
+                  >
+                    {s.label}
+                  </button>
+                )
+              })}
+            </div>
+            <p style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '2px' }}>
+              {selectedSurfaces.length === 0
+                ? 'All surfaces count toward standings.'
+                : `Only ${selectedSurfaces.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(', ')} tournaments will count.`}
             </p>
           </div>
 
