@@ -246,18 +246,25 @@ export async function GET(request: Request) {
 
           // d. Generate auto picks
           const playerIds = priorityPlayers.map(p => p.player_external_id)
-          const drawPlayerIds = matches.slice(0, 10).flatMap(m =>
-            [m.player1?.externalId, m.player2?.externalId].filter(Boolean)
-          )
           const autoResult = generateAutoPicks(
             matches,
             priorityPlayers.map(p => ({ externalId: p.player_external_id, priority: p.priority })),
           )
 
           if (!autoResult) {
+            // Enhanced diagnostics: find where configured players appear in the draw
+            const playerMatches = matches.filter(m =>
+              playerIds.includes(m.player1?.externalId ?? '') || playerIds.includes(m.player2?.externalId ?? '')
+            ).map(m => `${m.round}:${m.matchId}(${m.player1?.externalId ?? 'null'} vs ${m.player2?.externalId ?? 'null'})`)
+
+            const roundCounts = matches.reduce((acc, m) => {
+              acc[m.round] = (acc[m.round] ?? 0) + 1
+              return acc
+            }, {} as Record<string, number>)
+
             skipped.push({
               userId,
-              reason: `no_picks_generated (configured: [${playerIds.join(',')}], sample_draw: [${drawPlayerIds.slice(0, 6).join(',')}])`,
+              reason: `no_picks_generated (configured: [${playerIds.join(',')}], total_matches: ${matches.length}, rounds: ${JSON.stringify(roundCounts)}, player_appears_in: [${playerMatches.join('; ')}])`,
             })
             continue
           }
