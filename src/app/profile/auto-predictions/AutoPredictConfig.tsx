@@ -5,10 +5,10 @@ import type { AutoPredictConfig as Config } from './actions'
 import { searchPlayersForAutoPredict, saveAutoPredictList, removeAutoPredictOverride } from './actions'
 
 type PlayerSlot = { externalId: string; name: string; priority: number }
-type Surface = 'default' | 'hard' | 'clay' | 'grass'
+type RealSurface = 'hard' | 'clay' | 'grass'
 type Tour = 'ATP' | 'WTA'
 
-const SURFACES: { key: Surface; label: string }[] = [
+const SURFACES: { key: RealSurface; label: string }[] = [
   { key: 'hard', label: 'Hard' },
   { key: 'clay', label: 'Clay' },
   { key: 'grass', label: 'Grass' },
@@ -45,11 +45,11 @@ function TourSection({
   surfaces: { default: PlayerSlot[]; hard: PlayerSlot[]; clay: PlayerSlot[]; grass: PlayerSlot[] }
   onUpdate: (s: typeof surfaces) => void
 }) {
-  const [expandedOverrides, setExpandedOverrides] = useState<Set<Surface>>(
+  const [expandedOverrides, setExpandedOverrides] = useState<Set<RealSurface>>(
     new Set(SURFACES.filter(s => surfaces[s.key].length > 0).map(s => s.key))
   )
 
-  const toggleOverride = (surface: Surface) => {
+  const toggleOverride = (surface: RealSurface) => {
     setExpandedOverrides(prev => {
       const next = new Set(prev)
       if (next.has(surface)) {
