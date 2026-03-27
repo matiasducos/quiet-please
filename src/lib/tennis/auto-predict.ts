@@ -80,27 +80,30 @@ export function generateAutoPicks(
       // BYEs already handled — skip
       if (isByeMatch(match)) continue
 
-      // Resolve who is in each slot
+      // Resolve who is in each slot (may be null if feeder match unresolvable)
       const p1Id = resolveSlotPlayer(match, 'player1', reverseFeedMap, matchWinners)
       const p2Id = resolveSlotPlayer(match, 'player2', reverseFeedMap, matchWinners)
 
-      // Both slots must be resolvable to make a prediction
-      if (!p1Id || !p2Id) continue
-
-      const p1Priority = priorityMap.get(p1Id)
-      const p2Priority = priorityMap.get(p2Id)
+      // Check if either resolved player is in the priority list
+      const p1Priority = p1Id ? priorityMap.get(p1Id) : undefined
+      const p2Priority = p2Id ? priorityMap.get(p2Id) : undefined
 
       let winnerId: string | null = null
 
       if (p1Priority !== undefined && p2Priority !== undefined) {
         // Both in list → lower priority number wins
-        winnerId = p1Priority <= p2Priority ? p1Id : p2Id
+        winnerId = p1Priority <= p2Priority ? p1Id! : p2Id!
       } else if (p1Priority !== undefined) {
-        winnerId = p1Id
+        // p1 is in list (p2 may be known or unknown) → pick p1
+        winnerId = p1Id!
       } else if (p2Priority !== undefined) {
-        winnerId = p2Id
+        // p2 is in list (p1 may be known or unknown) → pick p2
+        winnerId = p2Id!
+      } else if (p1Id && p2Id) {
+        // Both known but neither is in the priority list → leave unpredicted
+        continue
       } else {
-        // Neither is in the priority list → leave unpredicted
+        // One or both slots unknown AND no priority player → skip
         continue
       }
 
