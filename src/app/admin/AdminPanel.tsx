@@ -599,9 +599,18 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
                 {apCronStatus.type === 'loading' ? 'Running…' : 'Run Auto-Predict Now'}
               </button>
               {apCronStatus.type !== 'idle' && apCronStatus.type !== 'loading' && (
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: apCronStatus.type === 'error' ? '#991b1b' : '#166534' }}>
-                  {apCronStatus.type === 'success' ? '✓ ' : '✗ '}{apCronStatus.message?.slice(0, 120)}
-                </span>
+                <pre
+                  className="mt-3 p-3 rounded-sm border overflow-x-auto"
+                  style={{
+                    fontFamily: 'var(--font-mono)', fontSize: '0.65rem', lineHeight: 1.5,
+                    color: apCronStatus.type === 'error' ? '#991b1b' : '#166534',
+                    background: apCronStatus.type === 'error' ? '#fef2f2' : '#f0fdf4',
+                    borderColor: apCronStatus.type === 'error' ? '#fecaca' : '#bbf7d0',
+                    maxHeight: '300px', overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                  }}
+                >
+                  {apCronStatus.type === 'success' ? '✓ ' : '✗ '}{apCronStatus.message}
+                </pre>
               )}
             </div>
 
