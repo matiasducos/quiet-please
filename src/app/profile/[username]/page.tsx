@@ -252,15 +252,24 @@ export default async function ProfilePage({
               ) : null}
             </div>
 
-            {/* Friends link / Add friend / Status buttons */}
+            {/* Friends + Auto-Predictions links */}
             {isOwnProfile && (
-              <Link
-                href="/friends"
-                className="px-4 py-2 text-sm rounded-sm border hover:opacity-80"
-                style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white', textDecoration: 'none', fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}
-              >
-                Friends →
-              </Link>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <Link
+                  href="/friends"
+                  className="px-4 py-2 text-sm rounded-sm border hover:opacity-80"
+                  style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white', textDecoration: 'none', fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}
+                >
+                  Friends →
+                </Link>
+                <Link
+                  href="/profile/auto-predictions"
+                  className="px-4 py-2 text-sm rounded-sm border hover:opacity-80"
+                  style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white', textDecoration: 'none', fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}
+                >
+                  Auto-Predictions →
+                </Link>
+              </div>
             )}
 
             {!isOwnProfile && (

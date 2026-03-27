@@ -7,6 +7,7 @@ export const NOTIFICATION_TYPES = [
   'friend_request',
   'friend_accepted',
   'friend_picks_locked',
+  'auto_predictions_generated',
 ] as const
 
 export type NotificationType = typeof NOTIFICATION_TYPES[number]
