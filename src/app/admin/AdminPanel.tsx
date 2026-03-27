@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { triggerCron, sendTestNotification } from './actions'
-import type { ScoringTournament, CronRun } from './actions'
+import { triggerCron, sendTestNotification, searchUsersForAutoPredict, toggleAutoPredict } from './actions'
+import type { ScoringTournament, CronRun, AutoPredictStats } from './actions'
 import { NOTIFICATION_TYPES } from './constants'
 import type { NotificationType } from './constants'
 
@@ -14,6 +14,7 @@ const ENDPOINTS = [
   { key: 'sync-draws',       label: 'Sync Draws',       description: 'Fetch draws for upcoming tournaments, open predictions', scheduleUtcHour: 9,  disabled: true  },
   { key: 'sync-results',     label: 'Sync Results',     description: 'Fetch match results for in-progress tournaments',    scheduleUtcHour: 12,   disabled: true  },
   { key: 'sync-backfill',    label: 'Sync Backfill',    description: 'Process past tournaments (on-demand)',               scheduleUtcHour: null, disabled: true  },
+  { key: 'auto-predict',     label: 'Auto-Predict',     description: 'Generate predictions for auto-predict users',        scheduleUtcHour: 9.5,  disabled: true  },
 ] as const
 
 function formatCronSchedule(utcHour: number | null): string {
@@ -41,7 +42,7 @@ function timeAgo(dateStr: string): string {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'tournaments' | 'award-points' | 'cron-jobs' | 'test-notifications'
+type Tab = 'tournaments' | 'award-points' | 'auto-predict' | 'cron-jobs' | 'test-notifications'
 
 interface ManualTournament {
   id: string; name: string; tour: string; category: string; status: string
@@ -53,13 +54,14 @@ interface ManualTournament {
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'tournaments',        label: 'Tournaments',       icon: '🎾' },
   { key: 'award-points',       label: 'Award Points',      icon: '⭐' },
+  { key: 'auto-predict',       label: 'Auto-Predict',      icon: '🤖' },
   { key: 'cron-jobs',          label: 'Cron Jobs',         icon: '⚙️' },
   { key: 'test-notifications', label: 'Notifications',     icon: '🔔' },
 ]
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function AdminPanel({ tournaments, scoringStatus, cronRuns }: { tournaments: ManualTournament[]; scoringStatus: ScoringTournament[]; cronRuns: CronRun[] }) {
+export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoPredictStats }: { tournaments: ManualTournament[]; scoringStatus: ScoringTournament[]; cronRuns: CronRun[]; autoPredictStats: AutoPredictStats }) {
   const [activeTab, setActiveTab] = useState<Tab>('tournaments')
   const [tournamentSearch, setTournamentSearch] = useState('')
 
@@ -123,7 +125,47 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns }: { t
   function getBadge(tab: Tab): string | null {
     if (tab === 'tournaments') return `${tournaments.length}`
     if (tab === 'award-points' && pendingCount > 0) return `${pendingCount}`
+    if (tab === 'auto-predict') return `${autoPredictStats.enabledCount}`
     return null
+  }
+
+  // ── Auto-predict state ──────────────────────────────────────────────────────
+  const [apSearch, setApSearch] = useState('')
+  const [apUsers, setApUsers] = useState<Array<{ id: string; username: string; auto_predict_enabled: boolean }>>([])
+  const [apSearching, setApSearching] = useState(false)
+  const [apToggling, setApToggling] = useState<string | null>(null)
+  const [apCronStatus, setApCronStatus] = useState<AsyncStatus>({ type: 'idle' })
+  const [apSearchTimer, setApSearchTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
+
+  async function handleApSearch(q: string) {
+    setApSearch(q)
+    if (apSearchTimer) clearTimeout(apSearchTimer)
+    setApSearchTimer(setTimeout(async () => {
+      setApSearching(true)
+      try {
+        const { users } = await searchUsersForAutoPredict(q)
+        setApUsers(users)
+      } finally {
+        setApSearching(false)
+      }
+    }, 300))
+  }
+
+  async function handleApToggle(userId: string, enabled: boolean) {
+    setApToggling(userId)
+    await toggleAutoPredict(userId, enabled)
+    setApUsers(prev => prev.map(u => u.id === userId ? { ...u, auto_predict_enabled: enabled } : u))
+    setApToggling(null)
+  }
+
+  async function handleRunAutoPredict() {
+    setApCronStatus({ type: 'loading' })
+    try {
+      const { ok, data } = await triggerCron('auto-predict')
+      setApCronStatus({ type: ok ? 'success' : 'error', message: JSON.stringify(data, null, 2) })
+    } catch (err) {
+      setApCronStatus({ type: 'error', message: String(err) })
+    }
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -167,7 +209,7 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns }: { t
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
 
         {/* ── Tab grid ── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-8">
           {TABS.map(tab => {
             const isActive = activeTab === tab.key
             const badge = getBadge(tab.key)
@@ -524,6 +566,105 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns }: { t
         )}
 
         {/* ── Test Notifications tab ── */}
+        {/* ── Auto-Predict tab ── */}
+        {activeTab === 'auto-predict' && (
+          <div>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.3rem', marginBottom: '0.5rem' }}>Auto-Predict</h2>
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', marginBottom: '1.5rem' }}>
+              Toggle auto-predictions per user. Enabled users can configure their priority players on their profile.
+            </p>
+
+            {/* Run button */}
+            <div className="flex items-center gap-3 mb-6">
+              <button
+                onClick={handleRunAutoPredict}
+                disabled={apCronStatus.type === 'loading'}
+                className="px-4 py-2 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
+                style={{ background: 'var(--court)', color: 'white' }}
+              >
+                {apCronStatus.type === 'loading' ? 'Running…' : 'Run Auto-Predict Now'}
+              </button>
+              {apCronStatus.type !== 'idle' && apCronStatus.type !== 'loading' && (
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: apCronStatus.type === 'error' ? '#991b1b' : '#166534' }}>
+                  {apCronStatus.type === 'success' ? '✓ ' : '✗ '}{apCronStatus.message?.slice(0, 120)}
+                </span>
+              )}
+            </div>
+
+            {/* User search */}
+            <input
+              type="text"
+              value={apSearch}
+              onChange={e => handleApSearch(e.target.value)}
+              placeholder="Search users by username..."
+              className="w-full px-4 py-2.5 border rounded-sm mb-4"
+              style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', borderColor: 'var(--chalk-dim)', outline: 'none' }}
+            />
+
+            {apSearching && (
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>Searching...</p>
+            )}
+
+            {/* User list */}
+            {apUsers.length > 0 && (
+              <div className="border rounded-sm overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+                {apUsers.map(u => (
+                  <div
+                    key={u.id}
+                    className="flex items-center justify-between px-4 py-3 border-b last:border-b-0"
+                    style={{ borderColor: 'var(--chalk-dim)', background: 'white' }}
+                  >
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>
+                      {u.username}
+                    </span>
+                    <button
+                      onClick={() => handleApToggle(u.id, !u.auto_predict_enabled)}
+                      disabled={apToggling === u.id}
+                      className="px-3 py-1 text-xs font-medium rounded-sm transition-opacity"
+                      style={{
+                        background: u.auto_predict_enabled ? '#dcfce7' : '#f3f4f6',
+                        color: u.auto_predict_enabled ? '#166534' : 'var(--muted)',
+                        border: `1px solid ${u.auto_predict_enabled ? '#bbf7d0' : 'var(--chalk-dim)'}`,
+                        fontFamily: 'var(--font-mono)',
+                        opacity: apToggling === u.id ? 0.5 : 1,
+                      }}
+                    >
+                      {u.auto_predict_enabled ? 'Enabled ✓' : 'Disabled'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Recent runs */}
+            {autoPredictStats.recentRuns.length > 0 && (
+              <div className="mt-8">
+                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', marginBottom: '0.5rem' }}>Recent Runs</h3>
+                <div className="border rounded-sm overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+                  <div className="overflow-x-auto">
+                    <div className="min-w-[400px]">
+                      <div className="grid grid-cols-12 px-4 py-2 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafafa' }}>
+                        <span className="col-span-3" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', textTransform: 'uppercase' }}>Trigger</span>
+                        <span className="col-span-3" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', textTransform: 'uppercase' }}>Users</span>
+                        <span className="col-span-3" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', textTransform: 'uppercase' }}>Created</span>
+                        <span className="col-span-3" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', textTransform: 'uppercase' }}>Updated</span>
+                      </div>
+                      {autoPredictStats.recentRuns.map(run => (
+                        <div key={run.id} className="grid grid-cols-12 px-4 py-2.5 border-b last:border-b-0" style={{ borderColor: 'var(--chalk-dim)', background: 'white' }}>
+                          <span className="col-span-3" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>{run.triggered_by}</span>
+                          <span className="col-span-3" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>{run.users_processed}</span>
+                          <span className="col-span-3" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>{run.predictions_created}</span>
+                          <span className="col-span-3" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>{timeAgo(run.created_at)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === 'test-notifications' && (
           <div>
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em', marginBottom: '0.75rem' }}>

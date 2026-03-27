@@ -1507,3 +1507,72 @@ export async function getCronRuns(): Promise<CronRun[]> {
   }
   return (data ?? []) as CronRun[]
 }
+
+// ── Auto-Predict admin actions ──────────────────────────────────────────────
+
+export type AutoPredictStats = {
+  enabledCount: number
+  recentRuns: Array<{
+    id: string
+    tournament_id: string
+    triggered_by: string
+    users_processed: number
+    predictions_created: number
+    predictions_updated: number
+    created_at: string
+  }>
+}
+
+export async function getAutoPredictStats(): Promise<AutoPredictStats> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  const [{ count }, { data: runs }] = await Promise.all([
+    admin.from('users').select('id', { count: 'exact', head: true }).eq('auto_predict_enabled', true),
+    admin.from('auto_predict_runs')
+      .select('id, tournament_id, triggered_by, users_processed, predictions_created, predictions_updated, created_at')
+      .order('created_at', { ascending: false })
+      .limit(10),
+  ])
+
+  return {
+    enabledCount: count ?? 0,
+    recentRuns: (runs ?? []) as AutoPredictStats['recentRuns'],
+  }
+}
+
+export async function searchUsersForAutoPredict(
+  query: string,
+): Promise<{ users: Array<{ id: string; username: string; auto_predict_enabled: boolean }> }> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  let q = admin
+    .from('users')
+    .select('id, username, auto_predict_enabled')
+    .order('username')
+    .limit(20)
+
+  if (query.trim()) {
+    q = q.ilike('username', `%${query}%`)
+  }
+
+  const { data } = await q
+  return { users: (data ?? []) as Array<{ id: string; username: string; auto_predict_enabled: boolean }> }
+}
+
+export async function toggleAutoPredict(
+  userId: string,
+  enabled: boolean,
+): Promise<{ ok: boolean; error?: string }> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  const { error } = await admin
+    .from('users')
+    .update({ auto_predict_enabled: enabled })
+    .eq('id', userId)
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}

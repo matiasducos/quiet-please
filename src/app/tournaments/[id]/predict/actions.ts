@@ -114,6 +114,12 @@ export async function savePrediction({
   }
   if (challengeId) row.challenge_id = challengeId
 
+  // Pick source tracking: all user-submitted picks are "manual"
+  const newPickSources: Record<string, string> = {}
+  for (const matchId of Object.keys(picks)) {
+    newPickSources[matchId] = 'manual'
+  }
+
   if (isFullyLocked) {
     row.is_fully_locked = true
     row.fully_locked_at = fullyLockedAt
@@ -127,17 +133,22 @@ export async function savePrediction({
   let insertedPredictionId: string | undefined
 
   if (predictionId) {
-    // Merge lock state: fetch existing pick_locks first, then merge new locks
-    if (pickLocksUpdate) {
-      const { data: existingPred } = await supabase
-        .from('predictions')
-        .select('pick_locks')
-        .eq('id', predictionId)
-        .single()
+    // Merge lock state + pick sources: fetch existing, then merge
+    const { data: existingPred } = await supabase
+      .from('predictions')
+      .select('pick_locks, pick_sources')
+      .eq('id', predictionId)
+      .single()
 
+    if (pickLocksUpdate) {
       const existingLocks = (existingPred?.pick_locks as Record<string, string>) ?? {}
       row.pick_locks = { ...existingLocks, ...pickLocksUpdate }
     }
+
+    // Merge pick_sources: preserve existing "auto" for untouched matches,
+    // override with "manual" for matches the user explicitly submitted
+    const existingSources = (existingPred?.pick_sources as Record<string, string>) ?? {}
+    row.pick_sources = { ...existingSources, ...newPickSources }
 
     const { error } = await supabase
       .from('predictions')
@@ -224,6 +235,9 @@ export async function savePrediction({
     if (pickLocksUpdate) {
       row.pick_locks = pickLocksUpdate
     }
+
+    // Set pick_sources for new predictions (all manual)
+    row.pick_sources = newPickSources
 
     const { data: newPred, error } = await supabase
       .from('predictions')
