@@ -208,39 +208,48 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
 
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
 
-        {/* ── Tab grid ── */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-8">
-          {TABS.map(tab => {
-            const isActive = activeTab === tab.key
-            const badge = getBadge(tab.key)
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className="flex items-center gap-2 px-4 py-3 rounded-sm border transition-colors text-left"
-                style={{
-                  background: isActive ? 'white' : 'transparent',
-                  borderColor: isActive ? 'var(--ink)' : 'var(--chalk-dim)',
-                  cursor: 'pointer',
-                }}
-              >
-                <span style={{ fontSize: '1rem' }}>{tab.icon}</span>
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.85rem', color: isActive ? 'var(--ink)' : 'var(--muted)', fontWeight: isActive ? 600 : 400 }}>
-                  {tab.label}
-                </span>
-                {badge && (
-                  <span style={{
-                    fontFamily: 'var(--font-mono)', fontSize: '0.6rem',
-                    color: tab.key === 'award-points' ? '#92400e' : 'var(--muted)',
-                    background: tab.key === 'award-points' ? '#fef3c7' : 'var(--chalk)',
-                    padding: '1px 6px', borderRadius: '9999px', marginLeft: 'auto',
-                  }}>
-                    {badge}
+        {/* ── Tab grid + quick links ── */}
+        <div className="flex items-end justify-between gap-4 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 flex-1">
+            {TABS.map(tab => {
+              const isActive = activeTab === tab.key
+              const badge = getBadge(tab.key)
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className="flex items-center gap-2 px-4 py-3 rounded-sm border transition-colors text-left"
+                  style={{
+                    background: isActive ? 'white' : 'transparent',
+                    borderColor: isActive ? 'var(--ink)' : 'var(--chalk-dim)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span style={{ fontSize: '1rem' }}>{tab.icon}</span>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.85rem', color: isActive ? 'var(--ink)' : 'var(--muted)', fontWeight: isActive ? 600 : 400 }}>
+                    {tab.label}
                   </span>
-                )}
-              </button>
-            )
-          })}
+                  {badge && (
+                    <span style={{
+                      fontFamily: 'var(--font-mono)', fontSize: '0.6rem',
+                      color: tab.key === 'award-points' ? '#92400e' : 'var(--muted)',
+                      background: tab.key === 'award-points' ? '#fef3c7' : 'var(--chalk)',
+                      padding: '1px 6px', borderRadius: '9999px', marginLeft: 'auto',
+                    }}>
+                      {badge}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+          <Link
+            href="/admin/players"
+            className="hidden md:flex items-center gap-1.5 px-3 py-2.5 rounded-sm border transition-opacity hover:opacity-80 flex-shrink-0"
+            style={{ borderColor: 'var(--chalk-dim)', background: 'white', textDecoration: 'none', fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--ink)' }}
+          >
+            👤 Manage Players
+          </Link>
         </div>
 
         {/* ── Tournaments tab ── */}
