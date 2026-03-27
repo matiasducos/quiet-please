@@ -153,8 +153,13 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
 
   async function handleApToggle(userId: string, enabled: boolean) {
     setApToggling(userId)
-    await toggleAutoPredict(userId, enabled)
-    setApUsers(prev => prev.map(u => u.id === userId ? { ...u, auto_predict_enabled: enabled } : u))
+    const result = await toggleAutoPredict(userId, enabled)
+    if (result.ok) {
+      setApUsers(prev => prev.map(u => u.id === userId ? { ...u, auto_predict_enabled: enabled } : u))
+    } else {
+      console.error('[auto-predict] toggle failed:', result.error)
+      alert(`Failed to toggle: ${result.error}`)
+    }
     setApToggling(null)
   }
 

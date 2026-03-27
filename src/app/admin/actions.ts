@@ -1568,11 +1568,14 @@ export async function toggleAutoPredict(
   await assertAdmin()
   const admin = createAdminClient()
 
-  const { error } = await admin
+  const { data, error } = await admin
     .from('users')
-    .update({ auto_predict_enabled: enabled })
+    .update({ auto_predict_enabled: enabled } as any)
     .eq('id', userId)
+    .select('id, auto_predict_enabled')
+    .single()
 
   if (error) return { ok: false, error: error.message }
+  if (!data) return { ok: false, error: 'User not found' }
   return { ok: true }
 }

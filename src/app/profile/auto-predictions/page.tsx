@@ -1,29 +1,22 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
+import { getNavProfile } from '@/lib/supabase/profile'
 import { getAutoPredictConfig } from './actions'
 import AutoPredictConfig from './AutoPredictConfig'
 import Nav from '@/components/Nav'
 
 export default async function AutoPredictionsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  const { user, profile } = await getNavProfile()
+  if (!user || !profile) redirect('/login')
 
   const config = await getAutoPredictConfig()
 
-  const { data: profile } = await supabase
-    .from('users')
-    .select('username')
-    .eq('id', user.id)
-    .single()
-
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav />
+      <Nav username={profile.username} points={profile.ranking_points} userId={user.id} />
       <div className="max-w-2xl mx-auto px-4 md:px-8 py-10">
         <Link
-          href={`/profile/${profile?.username ?? ''}`}
+          href={`/profile/${profile.username}`}
           style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.05em', textDecoration: 'none' }}
         >
           ← Profile
