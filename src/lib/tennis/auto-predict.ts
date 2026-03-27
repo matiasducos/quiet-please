@@ -1,10 +1,15 @@
 /**
  * Auto-prediction engine.
  *
- * Given a tournament draw and a user's priority player list, generates
- * a full bracket prediction by propagating picks round-by-round.
+ * Given a tournament draw, match results, and a user's priority player list,
+ * generates bracket predictions by propagating picks round-by-round.
+ *
+ * For in-progress tournaments, already-played matches are treated as immutable
+ * facts — the actual winner is used (not predicted), and the auto-predictor
+ * only generates picks for remaining unplayed matches.
  *
  * Rules:
+ *  - Already-played matches: use the actual result (immutable, not a "pick")
  *  - If one player in a match is in the priority list → pick that player.
  *  - If both are in the list → pick the higher-priority one (lower number).
  *  - If neither is in the list → leave unpredicted.
@@ -34,12 +39,17 @@ export interface AutoPicksResult {
 
 /**
  * Generate auto-picks for a bracket given a user's priority player list.
- * Returns null if no picks could be generated (e.g. none of the priority
- * players appear in the draw).
+ *
+ * @param matches - The full bracket from the draw
+ * @param priorityPlayers - User's priority players sorted by priority (1 = highest)
+ * @param matchResults - Already-played match results: matchId → winnerExternalId.
+ *                       These are treated as immutable facts, not predictions.
+ * @returns picks + pickSources, or null if no picks could be generated
  */
 export function generateAutoPicks(
   matches: DrawMatch[],
   priorityPlayers: PriorityPlayer[],
+  matchResults: Record<string, string> = {},
 ): AutoPicksResult | null {
   if (priorityPlayers.length === 0 || matches.length === 0) return null
 
@@ -57,11 +67,12 @@ export function generateAutoPicks(
   const picks: Record<string, string> = {}
   const pickSources: Record<string, string> = {}
 
-  // Track determined winners per match (BYE auto-advances + our picks).
+  // Track determined winners per match.
+  // Sources: BYE auto-advances, actual match results, and our auto-picks.
   // Later rounds use this to resolve who is in each slot.
   const matchWinners: Record<string, string> = {}
 
-  // Phase 1: Pre-populate BYE winners (any round)
+  // Phase 1a: Pre-populate BYE winners (any round)
   for (const m of matches) {
     if (isByeMatch(m)) {
       const winner = m.player1 ?? m.player2
@@ -69,6 +80,14 @@ export function generateAutoPicks(
         matchWinners[m.matchId] = winner.externalId
       }
     }
+  }
+
+  // Phase 1b: Pre-populate actual match results (already-played matches)
+  // These are immutable facts — the auto-predictor does NOT override them.
+  const playedMatchIds = new Set<string>()
+  for (const [matchId, winnerId] of Object.entries(matchResults)) {
+    matchWinners[matchId] = winnerId
+    playedMatchIds.add(matchId)
   }
 
   // Phase 2: Process round-by-round, earliest to latest
@@ -79,6 +98,9 @@ export function generateAutoPicks(
     for (const match of roundMatches) {
       // BYEs already handled — skip
       if (isByeMatch(match)) continue
+
+      // Already-played matches are immutable — don't generate a pick
+      if (playedMatchIds.has(match.matchId)) continue
 
       // Resolve who is in each slot (may be null if feeder match unresolvable)
       const p1Id = resolveSlotPlayer(match, 'player1', reverseFeedMap, matchWinners)
@@ -122,7 +144,7 @@ export function generateAutoPicks(
  *
  * Checks in order:
  *  1. Direct draw data (first-round matches have players directly)
- *  2. Feeder match winner from matchWinners (BYE auto-advance or our pick)
+ *  2. Feeder match winner from matchWinners (BYE, result, or our pick)
  *
  * Returns the player's externalId, or null if unresolvable.
  */
