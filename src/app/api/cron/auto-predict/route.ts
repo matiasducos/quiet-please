@@ -317,13 +317,36 @@ export async function GET(request: Request) {
           tournamentResult.users++
 
           if (existingPred) {
-            // UPDATE existing (unlocked) prediction
+            // UPDATE existing auto-generated prediction — MERGE, don't replace.
+            // Existing picks are immutable; we only add new picks for newly-resolvable matches.
+            const { data: currentPred } = await supabase
+              .from('predictions')
+              .select('picks, pick_sources, pick_locks')
+              .eq('id', existingPred.id)
+              .single()
+
+            const existingPicks = (currentPred?.picks as Record<string, string>) ?? {}
+            const existingSources = (currentPred?.pick_sources as Record<string, string>) ?? {}
+            const existingLocks = (currentPred?.pick_locks as Record<string, string>) ?? {}
+
+            // Merge: existing picks are preserved, new auto-picks fill in gaps
+            const mergedPicks = { ...existingPicks, ...picks }
+            const mergedSources = { ...existingSources, ...pickSources }
+            const mergedLocks = { ...existingLocks, ...pickLocks }
+
+            // Check if there are actually new picks to add
+            const newPickCount = Object.keys(picks).filter(k => !(k in existingPicks)).length
+            if (newPickCount === 0) {
+              skipped.push({ userId, reason: 'no_new_picks_to_add' })
+              continue
+            }
+
             const { error } = await supabase
               .from('predictions')
               .update({
-                picks,
-                pick_sources: pickSources,
-                pick_locks: pickLocks,
+                picks: mergedPicks,
+                pick_sources: mergedSources,
+                pick_locks: mergedLocks,
                 is_fully_locked: true,
                 fully_locked_at: now,
                 updated_at: now,
