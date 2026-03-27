@@ -4,6 +4,7 @@ import { unstable_cache } from 'next/cache'
 import TournamentCard from '@/components/TournamentCard'
 import CountryFlag from '@/components/CountryFlag'
 import Footer from '@/components/Footer'
+import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 
 // ── Cached homepage data: live tournaments + top players ──────────────────
 const getHomepageData = unstable_cache(
@@ -21,7 +22,18 @@ const getHomepageData = unstable_cache(
         .order('ranking_points', { ascending: false })
         .limit(5),
     ])
-    return { liveTournaments: live ?? [], topPlayers: top ?? [] }
+
+    const liveTournaments = live ?? []
+
+    // Enrich live tournaments with engagement counts
+    const engagement = await getTournamentEngagement(liveTournaments.map(t => t.id))
+    const enrichedLive = liveTournaments.map(t => ({
+      ...t,
+      prediction_count: engagement[t.id]?.predictions ?? 0,
+      challenge_count: engagement[t.id]?.challenges ?? 0,
+    }))
+
+    return { liveTournaments: enrichedLive, topPlayers: top ?? [] }
   },
   ['homepage-data'],
   { revalidate: 300 }

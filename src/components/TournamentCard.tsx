@@ -60,6 +60,8 @@ export interface TournamentCardData {
   status: string
   location?: string | null
   flag_emoji?: string | null
+  prediction_count?: number
+  challenge_count?: number
 }
 
 export default function TournamentCard({ t, disableLink }: { t: TournamentCardData; disableLink?: boolean }) {
@@ -151,22 +153,54 @@ export default function TournamentCard({ t, disableLink }: { t: TournamentCardDa
           {displayLocation ? <>{t.name} · {dateRange}</> : dateRange}
         </div>
 
-        {/* Surface badge */}
-        <span
-          style={{
-            display: 'inline-block',
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.6rem',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            background: surface.bg,
-            color: surface.text,
-            padding: '3px 8px',
-            borderRadius: '2px',
-          }}
-        >
-          {surface.label}
-        </span>
+        {/* Surface badge + engagement stats (inline) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <span
+            style={{
+              display: 'inline-block',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.6rem',
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              background: surface.bg,
+              color: surface.text,
+              padding: '3px 8px',
+              borderRadius: '2px',
+            }}
+          >
+            {surface.label}
+          </span>
+
+          {(t.prediction_count ?? 0) + (t.challenge_count ?? 0) > 0 && t.status !== 'upcoming' && (
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.6rem',
+                color: 'var(--muted)',
+                letterSpacing: '0.03em',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              {(t.prediction_count ?? 0) > 0 && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                  <span style={{ fontSize: '0.7rem' }}>🎯</span>
+                  {t.prediction_count} {t.prediction_count === 1 ? 'prediction' : 'predictions'}
+                </span>
+              )}
+              {(t.prediction_count ?? 0) > 0 && (t.challenge_count ?? 0) > 0 && (
+                <span style={{ color: 'var(--chalk-dim)' }}>·</span>
+              )}
+              {(t.challenge_count ?? 0) > 0 && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                  <span style={{ fontSize: '0.7rem' }}>⚔️</span>
+                  {t.challenge_count} {t.challenge_count === 1 ? 'challenge' : 'challenges'}
+                </span>
+              )}
+            </span>
+          )}
+        </div>
 
         {/* CTA when predictions are open */}
         {canPredict && (
