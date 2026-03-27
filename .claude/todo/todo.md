@@ -39,8 +39,12 @@
 - On anonymous challenge completion: "Save your score — enter your email"
 - Re-engagement path for users who play without signing up
 
-### Season Reset (Leagues)
-- Option to reset league standings at the start of a new season
+### ✅ Season Reset + Surface Filters (Leagues) — 2026-03-27
+- `season_start_date` column + 52-week rolling window (whichever is more recent)
+- Owner can reset season in settings → standings go to zero
+- `allowed_surfaces` column: filter leagues by hard/clay/grass
+- Both recalculation functions updated
+- Migration: `032_league_seasons_surfaces.sql`
 
 ---
 

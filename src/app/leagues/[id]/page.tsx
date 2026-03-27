@@ -15,6 +15,12 @@ const TYPE_LABELS: Record<string, string> = {
   '250': '250s',
 }
 
+const SURFACE_LABELS: Record<string, string> = {
+  hard: 'Hard',
+  clay: 'Clay',
+  grass: 'Grass',
+}
+
 const ACTIVITY_PREVIEW_LIMIT = 15
 
 function timeAgo(dateStr: string): string {
@@ -104,18 +110,27 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
         .in('id', tournamentIds)
         .order('starts_at', { ascending: false })
 
+      // Season boundary: GREATEST(season_start_date, now - 52 weeks)
+      const seasonStart = league.season_start_date ? new Date(league.season_start_date as string) : new Date(league.created_at)
+      const weekAgo52 = new Date()
+      weekAgo52.setDate(weekAgo52.getDate() - 364)
+      const boundary = seasonStart > weekAgo52 ? seasonStart : weekAgo52
+
       leagueTournaments = (tournaments ?? []).filter(t => {
-        // Filter to "this season" — tournaments that started within the last 52 weeks
         if (!t.starts_at) return false
-        const weekAgo52 = new Date()
-        weekAgo52.setDate(weekAgo52.getDate() - 364)
-        return new Date(t.starts_at) >= weekAgo52
+        return new Date(t.starts_at) >= boundary
       })
 
       // Respect league tournament type filter
       const allowedTypes = league.allowed_tournament_types as string[] | null
       if (allowedTypes) {
         leagueTournaments = leagueTournaments.filter(t => allowedTypes.includes(t.category))
+      }
+
+      // Respect league surface filter
+      const allowedSurfaces = league.allowed_surfaces as string[] | null
+      if (allowedSurfaces) {
+        leagueTournaments = leagueTournaments.filter(t => t.surface && allowedSurfaces.includes(t.surface))
       }
     }
   }
@@ -144,7 +159,7 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
     const [{ data: lockedPicks }, { data: pointsRows }] = await Promise.all([
       admin
         .from('predictions')
-        .select('user_id, tournament_id, submitted_at, users(username), tournaments(name, location, flag_emoji, category)')
+        .select('user_id, tournament_id, submitted_at, users(username), tournaments(name, location, flag_emoji, category, surface)')
         .in('user_id', memberIds)
         .eq('is_fully_locked', true)
         .is('challenge_id', null)
@@ -152,15 +167,20 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
         .limit(50),
       admin
         .from('point_ledger')
-        .select('user_id, tournament_id, points, awarded_at, users(username), tournaments(name, location, flag_emoji, category)')
+        .select('user_id, tournament_id, points, awarded_at, users(username), tournaments(name, location, flag_emoji, category, surface)')
         .in('user_id', memberIds)
         .order('awarded_at', { ascending: false })
         .limit(100),
     ])
 
-    // Respect league tournament type filter for activity items
+    // Respect league tournament type + surface filters for activity items
     const allowedTypes = league.allowed_tournament_types as string[] | null
-    const typeFilter = (t: any) => !allowedTypes || allowedTypes.includes(t?.tournaments?.category)
+    const allowedSurfacesActivity = league.allowed_surfaces as string[] | null
+    const typeFilter = (t: any) => {
+      if (allowedTypes && !allowedTypes.includes(t?.tournaments?.category)) return false
+      if (allowedSurfacesActivity && (!t?.tournaments?.surface || !allowedSurfacesActivity.includes(t?.tournaments?.surface))) return false
+      return true
+    }
 
     const joinEvents: ActivityItem[] = (members ?? []).map(m => ({
       type: 'join',
@@ -241,9 +261,15 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
               </Link>
             </div>
             {league.description && <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>{league.description}</p>}
-            {league.allowed_tournament_types && (
+            {(league.allowed_tournament_types || league.allowed_surfaces) && (
               <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#1e4e8c', marginTop: '0.4rem' }}>
-                Counting: {(league.allowed_tournament_types as string[]).map(t => TYPE_LABELS[t] ?? t).join(', ')}
+                {league.allowed_tournament_types && (
+                  <>Counting: {(league.allowed_tournament_types as string[]).map(t => TYPE_LABELS[t] ?? t).join(', ')}</>
+                )}
+                {league.allowed_tournament_types && league.allowed_surfaces && ' · '}
+                {league.allowed_surfaces && (
+                  <>Surfaces: {(league.allowed_surfaces as string[]).map(s => SURFACE_LABELS[s] ?? s).join(', ')}</>
+                )}
               </p>
             )}
           </div>

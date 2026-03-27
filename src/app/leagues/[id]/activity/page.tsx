@@ -25,7 +25,7 @@ export default async function LeagueActivityPage({ params }: { params: Promise<{
   const admin = createAdminClient()
 
   const [{ data: league }, { data: myMembership }, { data: members }] = await Promise.all([
-    supabase.from('leagues').select('id, name, allowed_tournament_types').eq('id', id).single(),
+    supabase.from('leagues').select('id, name, allowed_tournament_types, allowed_surfaces').eq('id', id).single(),
     supabase.from('league_members').select('league_id').eq('league_id', id).eq('user_id', user.id).single(),
     supabase.from('league_members').select('user_id, joined_at, users(username)').eq('league_id', id),
   ])
@@ -41,16 +41,21 @@ export default async function LeagueActivityPage({ params }: { params: Promise<{
   if (memberIds.length > 0) {
     const [{ data: lockedPicks }, { data: pointsRows }] = await Promise.all([
       admin.from('predictions')
-        .select('user_id, tournament_id, submitted_at, users(username), tournaments(name, location, flag_emoji, category)')
+        .select('user_id, tournament_id, submitted_at, users(username), tournaments(name, location, flag_emoji, category, surface)')
         .in('user_id', memberIds).eq('is_fully_locked', true).is('challenge_id', null)
         .order('submitted_at', { ascending: false }).limit(200),
       admin.from('point_ledger')
-        .select('user_id, tournament_id, points, awarded_at, users(username), tournaments(name, location, flag_emoji, category)')
+        .select('user_id, tournament_id, points, awarded_at, users(username), tournaments(name, location, flag_emoji, category, surface)')
         .in('user_id', memberIds).order('awarded_at', { ascending: false }).limit(500),
     ])
 
     const allowedTypes = league.allowed_tournament_types as string[] | null
-    const typeFilter = (t: any) => !allowedTypes || allowedTypes.includes(t?.tournaments?.category)
+    const allowedSurfaces = league.allowed_surfaces as string[] | null
+    const typeFilter = (t: any) => {
+      if (allowedTypes && !allowedTypes.includes(t?.tournaments?.category)) return false
+      if (allowedSurfaces && (!t?.tournaments?.surface || !allowedSurfaces.includes(t?.tournaments?.surface))) return false
+      return true
+    }
 
     const joinEvents: ActivityItem[] = (members ?? []).map(m => ({
       type: 'join', user_id: m.user_id, username: (m.users as any)?.username ?? 'Unknown', label: 'joined the league', date: m.joined_at,

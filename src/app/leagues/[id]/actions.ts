@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 
 const VALID_TYPES = ['grand_slam', 'masters_1000', '500', '250'] as const
+const VALID_SURFACES = ['hard', 'clay', 'grass'] as const
 
 export async function kickMember(leagueId: string, targetUserId: string) {
   const supabase = await createClient()
@@ -242,6 +243,7 @@ export async function updateLeagueSettings(leagueId: string, formData: FormData)
   const description = formData.get('description') as string
   const isPublic = formData.get('is_public') === 'true'
   const typesRaw = formData.get('tournament_types') as string | null
+  const surfacesRaw = formData.get('surfaces') as string | null
 
   if (!name?.trim()) return { error: 'League name is required' }
 
@@ -253,6 +255,14 @@ export async function updateLeagueSettings(leagueId: string, formData: FormData)
     }
   }
 
+  let allowedSurfaces: string[] | null = null
+  if (surfacesRaw) {
+    const parsed = surfacesRaw.split(',').filter(s => VALID_SURFACES.includes(s as any))
+    if (parsed.length > 0 && parsed.length < VALID_SURFACES.length) {
+      allowedSurfaces = parsed
+    }
+  }
+
   const { error } = await admin
     .from('leagues')
     .update({
@@ -260,14 +270,55 @@ export async function updateLeagueSettings(leagueId: string, formData: FormData)
       description: description?.trim() || null,
       is_public: isPublic,
       allowed_tournament_types: allowedTypes,
+      allowed_surfaces: allowedSurfaces,
     })
     .eq('id', leagueId)
 
   if (error) return { error: error.message }
+
+  // Recalculate all members' points with new filters
+  await admin.rpc('recalculate_league_points')
 
   revalidatePath(`/leagues/${leagueId}`)
   revalidatePath(`/leagues/${leagueId}/settings`)
   revalidatePath('/leagues')
   revalidatePath('/leagues/browse')
   redirect(`/leagues/${leagueId}`)
+}
+
+export async function resetLeagueSeason(leagueId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const admin = createAdminClient()
+
+  // Verify caller is the league owner
+  const { data: league } = await admin
+    .from('leagues')
+    .select('owner_id')
+    .eq('id', leagueId)
+    .single()
+
+  if (!league || league.owner_id !== user.id) {
+    return { error: 'Only the league owner can reset the season' }
+  }
+
+  // Set season_start_date to now — this makes recalculate_league_points
+  // ignore all predictions from tournaments before this date
+  const { error } = await admin
+    .from('leagues')
+    .update({ season_start_date: new Date().toISOString() })
+    .eq('id', leagueId)
+
+  if (error) return { error: error.message }
+
+  // Recalculate — all members will drop to 0 since no tournaments
+  // have started after the new season_start_date yet
+  await admin.rpc('recalculate_league_points')
+
+  revalidatePath(`/leagues/${leagueId}`)
+  revalidatePath(`/leagues/${leagueId}/settings`)
+  revalidatePath('/leagues')
+  redirect(`/leagues/${leagueId}/settings`)
 }
