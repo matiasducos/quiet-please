@@ -36,10 +36,13 @@ export async function GET(request: Request) {
 
     // ── 1. Find eligible tournaments ────────────────────────────────────────
     // Must be accepting_predictions, have a draw with players, and have a surface set
+    // Include both accepting_predictions and in_progress tournaments.
+    // In-progress: a user might be enabled after the tournament started —
+    // auto-picks are still useful for unplayed matches.
     const { data: tournaments, error: tErr } = await supabase
       .from('tournaments')
       .select('id, external_id, name, tour, category, surface, location, flag_emoji, starts_at, ends_at')
-      .eq('status', 'accepting_predictions')
+      .in('status', ['accepting_predictions', 'in_progress'])
       .not('surface', 'is', null)
 
     if (tErr) throw new Error(`Tournaments query failed: ${tErr.message}`)
