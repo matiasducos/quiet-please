@@ -18,7 +18,7 @@ export const getPredictionMode = unstable_cache(
       .single()
 
     if (error || !data) return 'anytime' // safe default
-    return (data.value as PredictionMode) ?? 'anytime'
+    return String(data.value).includes('pre_tournament') ? 'pre_tournament' : 'anytime'
   },
   ['prediction-mode'],
   { revalidate: 60, tags: ['app-settings'] }
