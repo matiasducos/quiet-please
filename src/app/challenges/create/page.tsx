@@ -1,21 +1,20 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
-import { getPredictableStatuses } from '@/lib/app-settings'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 
+// Challenges are always open for accepting_predictions + in_progress regardless of prediction mode toggle
+const CHALLENGE_STATUSES = ['accepting_predictions', 'in_progress']
+
 export default async function CreateChallengePage() {
   // Optional auth — works for both anonymous and logged-in users
-  const [{ profile }, predictableStatuses] = await Promise.all([
-    getNavProfile().catch(() => ({ user: null, profile: null })),
-    getPredictableStatuses(),
-  ])
+  const { profile } = await getNavProfile().catch(() => ({ user: null, profile: null }))
   const admin = createAdminClient()
 
   const { data: tournaments } = await admin
     .from('tournaments')
     .select('id, name, tour, category, surface, starts_at, ends_at, status, location, flag_emoji')
-    .in('status', predictableStatuses)
+    .in('status', CHALLENGE_STATUSES)
     .order('starts_at', { ascending: true })
 
   return (

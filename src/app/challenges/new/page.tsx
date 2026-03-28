@@ -1,6 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
-import { getPredictableStatuses } from '@/lib/app-settings'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
@@ -115,10 +114,8 @@ export default async function NewChallengePage({
     .eq('id', friendId)
     .single()
 
-  // Tournaments available for challenges — respects prediction mode setting
-  const predictableStatuses = await getPredictableStatuses()
-  // Also include 'upcoming' so users can see what's coming
-  const challengeStatuses = [...new Set(['upcoming', ...predictableStatuses])]
+  // Challenges always open for accepting_predictions + in_progress regardless of prediction mode toggle
+  const challengeStatuses = ['upcoming', 'accepting_predictions', 'in_progress']
   const { data: tournaments } = await admin
     .from('tournaments')
     .select('id, name, tour, category, surface, starts_at, ends_at, status, location, flag_emoji')

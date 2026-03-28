@@ -763,7 +763,7 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
                 Prediction Mode
               </h3>
               <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', marginBottom: '16px' }}>
-                Controls when users can submit predictions for tournaments.
+                Controls when users can submit predictions for tournaments. Does not affect challenges.
               </p>
 
               <div className="flex flex-col gap-3">
@@ -848,8 +848,9 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
 
             <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
               <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', lineHeight: 1.6 }}>
-                <strong>Impact:</strong> This setting affects all prediction submissions (global, challenges, anonymous challenges) and auto-predict.
-                When set to &quot;pre-tournament only&quot;, in-progress tournaments will show brackets as read-only.
+                <strong>Impact:</strong> This setting affects tournament prediction submissions and auto-predict only.
+                Challenges (both anonymous and user challenges) are always open for <code>accepting_predictions</code> and <code>in_progress</code> tournaments regardless of this setting.
+                When set to &quot;pre-tournament only&quot;, in-progress tournaments will show brackets as read-only for predictions.
                 Switch back to &quot;anytime&quot; once the real-time match data API is connected.
               </p>
             </div>

@@ -4,8 +4,6 @@ import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import AnonymousCreateFlow from './AnonymousCreateFlow'
-import { canPredictForStatus } from '@/lib/app-settings'
-
 export default async function CreateChallengeForTournamentPage({
   params,
 }: {
@@ -23,8 +21,8 @@ export default async function CreateChallengeForTournamentPage({
   ])
 
   if (!tournament) notFound()
-  const canPredictNow = await canPredictForStatus(tournament.status)
-  if (!canPredictNow) {
+  // Challenges are always open for accepting_predictions and in_progress, regardless of prediction mode toggle
+  if (!['accepting_predictions', 'in_progress'].includes(tournament.status)) {
     redirect('/challenges/create')
   }
 

@@ -4,7 +4,6 @@ import { headers } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateShareCode } from '@/lib/share-code'
 import { rateLimit } from '@/lib/rate-limit'
-import { canPredictForStatus } from '@/lib/app-settings'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -36,8 +35,8 @@ export async function createAnonymousChallenge(data: {
     .single()
 
   if (!tournament) return { ok: false, error: 'Tournament not found.' }
-  const canPredictNow = await canPredictForStatus(tournament.status)
-  if (!canPredictNow) {
+  // Challenges always open for accepting_predictions + in_progress regardless of prediction mode toggle
+  if (!['accepting_predictions', 'in_progress'].includes(tournament.status)) {
     return { ok: false, error: 'This tournament is not open for predictions.' }
   }
 
