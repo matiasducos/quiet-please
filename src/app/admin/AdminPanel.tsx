@@ -233,47 +233,48 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
 
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
 
-        {/* ── Tab grid + quick links ── */}
-        <div className="flex items-end justify-between gap-4 mb-8">
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-2 flex-1">
-            {TABS.map(tab => {
-              const isActive = activeTab === tab.key
-              const badge = getBadge(tab.key)
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className="flex items-center gap-2 px-4 py-3 rounded-sm border transition-colors text-left"
-                  style={{
-                    background: isActive ? 'white' : 'transparent',
-                    borderColor: isActive ? 'var(--ink)' : 'var(--chalk-dim)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <span style={{ fontSize: '1rem' }}>{tab.icon}</span>
-                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.85rem', color: isActive ? 'var(--ink)' : 'var(--muted)', fontWeight: isActive ? 600 : 400 }}>
-                    {tab.label}
+        {/* ── Tab grid ── */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-8">
+          {TABS.map(tab => {
+            const isActive = activeTab === tab.key
+            const badge = getBadge(tab.key)
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className="flex items-center gap-2 px-4 py-3 rounded-sm border transition-colors text-left"
+                style={{
+                  background: isActive ? 'white' : 'transparent',
+                  borderColor: isActive ? 'var(--ink)' : 'var(--chalk-dim)',
+                  cursor: 'pointer',
+                }}
+              >
+                <span style={{ fontSize: '1rem' }}>{tab.icon}</span>
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.85rem', color: isActive ? 'var(--ink)' : 'var(--muted)', fontWeight: isActive ? 600 : 400 }}>
+                  {tab.label}
+                </span>
+                {badge && (
+                  <span style={{
+                    fontFamily: 'var(--font-mono)', fontSize: '0.6rem',
+                    color: tab.key === 'award-points' ? '#92400e' : 'var(--muted)',
+                    background: tab.key === 'award-points' ? '#fef3c7' : 'var(--chalk)',
+                    padding: '1px 6px', borderRadius: '9999px', marginLeft: 'auto',
+                  }}>
+                    {badge}
                   </span>
-                  {badge && (
-                    <span style={{
-                      fontFamily: 'var(--font-mono)', fontSize: '0.6rem',
-                      color: tab.key === 'award-points' ? '#92400e' : 'var(--muted)',
-                      background: tab.key === 'award-points' ? '#fef3c7' : 'var(--chalk)',
-                      padding: '1px 6px', borderRadius: '9999px', marginLeft: 'auto',
-                    }}>
-                      {badge}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
+                )}
+              </button>
+            )
+          })}
           <Link
             href="/admin/players"
-            className="hidden md:flex items-center gap-1.5 px-3 py-2.5 rounded-sm border transition-opacity hover:opacity-80 flex-shrink-0"
-            style={{ borderColor: 'var(--chalk-dim)', background: 'white', textDecoration: 'none', fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--ink)' }}
+            className="flex items-center gap-2 px-4 py-3 rounded-sm border transition-colors"
+            style={{ borderColor: 'var(--chalk-dim)', background: 'transparent', textDecoration: 'none' }}
           >
-            👤 Manage Players
+            <span style={{ fontSize: '1rem' }}>👤</span>
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.85rem', color: 'var(--muted)' }}>
+              Manage Players
+            </span>
           </Link>
         </div>
 
@@ -284,22 +285,13 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
               <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em' }}>
                 Manual Tournaments
               </h2>
-              <div className="flex gap-2">
-                <Link
-                  href="/admin/players"
-                  className="px-3 py-1.5 text-sm rounded-sm transition-opacity hover:opacity-90"
-                  style={{ border: '1px solid var(--chalk-dim)', color: 'var(--ink)', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}
-                >
-                  Manage Players
-                </Link>
-                <Link
-                  href="/admin/tournaments/new"
-                  className="px-3 py-1.5 text-sm rounded-sm transition-opacity hover:opacity-90"
-                  style={{ background: 'var(--court)', color: 'white', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}
-                >
-                  + Create
-                </Link>
-              </div>
+              <Link
+                href="/admin/tournaments/new"
+                className="px-3 py-1.5 text-sm rounded-sm transition-opacity hover:opacity-90"
+                style={{ background: 'var(--court)', color: 'white', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}
+              >
+                + Create
+              </Link>
             </div>
 
             {/* Search bar */}
