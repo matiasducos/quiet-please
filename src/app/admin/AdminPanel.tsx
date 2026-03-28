@@ -176,18 +176,20 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
   }
 
   // ── Settings state ─────────────────────────────────────────────────────────
-  const [predictionMode, setPredictionMode] = useState<PredictionMode>(appSettings.prediction_mode)
+  const [savedMode, setSavedMode] = useState<PredictionMode>(appSettings.prediction_mode ?? 'anytime')
+  const [pendingMode, setPendingMode] = useState<PredictionMode>(appSettings.prediction_mode ?? 'anytime')
   const [settingsStatus, setSettingsStatus] = useState<AsyncStatus>({ type: 'idle' })
 
-  async function handleUpdatePredictionMode(mode: PredictionMode) {
-    setPredictionMode(mode)
+  async function handleSavePredictionMode() {
     setSettingsStatus({ type: 'loading' })
     try {
-      const result = await updatePredictionMode(mode)
-      setSettingsStatus({
-        type: result.ok ? 'success' : 'error',
-        message: result.ok ? `Prediction mode updated to "${mode}"` : result.error,
-      })
+      const result = await updatePredictionMode(pendingMode)
+      if (result.ok) {
+        setSavedMode(pendingMode)
+        setSettingsStatus({ type: 'success', message: `Saved — prediction mode is now "${pendingMode}"` })
+      } else {
+        setSettingsStatus({ type: 'error', message: result.error })
+      }
     } catch (err) {
       setSettingsStatus({ type: 'error', message: String(err) })
     }
@@ -782,11 +784,11 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
                     border: '#fde68a',
                   },
                 ]).map(opt => {
-                  const isSelected = predictionMode === opt.value
+                  const isSelected = pendingMode === opt.value
                   return (
                     <button
                       key={opt.value}
-                      onClick={() => handleUpdatePredictionMode(opt.value)}
+                      onClick={() => { setPendingMode(opt.value); setSettingsStatus({ type: 'idle' }) }}
                       disabled={settingsStatus.type === 'loading'}
                       className="text-left p-4 rounded-sm border transition-all"
                       style={{
@@ -823,16 +825,24 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
                 })}
               </div>
 
-              {settingsStatus.type !== 'idle' && settingsStatus.type !== 'loading' && (
-                <div className="mt-3">
+              <div className="flex items-center gap-4 mt-4">
+                <button
+                  onClick={handleSavePredictionMode}
+                  disabled={settingsStatus.type === 'loading' || pendingMode === savedMode}
+                  className="px-5 py-2 rounded-sm text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-40"
+                  style={{ background: 'var(--court)', color: 'white', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', cursor: pendingMode === savedMode ? 'default' : 'pointer' }}
+                >
+                  {settingsStatus.type === 'loading' ? 'Saving…' : 'Save Changes'}
+                </button>
+                {settingsStatus.type !== 'idle' && settingsStatus.type !== 'loading' && (
                   <span style={{
                     fontFamily: 'var(--font-mono)', fontSize: '0.7rem',
                     color: settingsStatus.type === 'error' ? '#991b1b' : '#166534',
                   }}>
                     {settingsStatus.type === 'success' ? '✓ ' : '✗ '}{settingsStatus.message}
                   </span>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
