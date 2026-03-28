@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { triggerCron, sendTestNotification, searchUsersForAutoPredict, toggleAutoPredict } from './actions'
-import type { ScoringTournament, CronRun, AutoPredictStats } from './actions'
+import { triggerCron, sendTestNotification, searchUsersForAutoPredict, toggleAutoPredict, updatePredictionMode } from './actions'
+import type { ScoringTournament, CronRun, AutoPredictStats, AppSettings } from './actions'
+import type { PredictionMode } from '@/lib/app-settings'
 import { NOTIFICATION_TYPES } from './constants'
 import type { NotificationType } from './constants'
 
@@ -42,7 +43,7 @@ function timeAgo(dateStr: string): string {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'tournaments' | 'award-points' | 'auto-predict' | 'cron-jobs' | 'test-notifications'
+type Tab = 'tournaments' | 'award-points' | 'auto-predict' | 'cron-jobs' | 'test-notifications' | 'settings'
 
 interface ManualTournament {
   id: string; name: string; tour: string; category: string; status: string
@@ -57,11 +58,12 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'auto-predict',       label: 'Auto-Predict',      icon: '🤖' },
   { key: 'cron-jobs',          label: 'Cron Jobs',         icon: '⚙️' },
   { key: 'test-notifications', label: 'Notifications',     icon: '🔔' },
+  { key: 'settings',           label: 'Settings',          icon: '🔧' },
 ]
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoPredictStats }: { tournaments: ManualTournament[]; scoringStatus: ScoringTournament[]; cronRuns: CronRun[]; autoPredictStats: AutoPredictStats }) {
+export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoPredictStats, appSettings }: { tournaments: ManualTournament[]; scoringStatus: ScoringTournament[]; cronRuns: CronRun[]; autoPredictStats: AutoPredictStats; appSettings: AppSettings }) {
   const [activeTab, setActiveTab] = useState<Tab>('tournaments')
   const [tournamentSearch, setTournamentSearch] = useState('')
 
@@ -173,6 +175,24 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
     }
   }
 
+  // ── Settings state ─────────────────────────────────────────────────────────
+  const [predictionMode, setPredictionMode] = useState<PredictionMode>(appSettings.prediction_mode)
+  const [settingsStatus, setSettingsStatus] = useState<AsyncStatus>({ type: 'idle' })
+
+  async function handleUpdatePredictionMode(mode: PredictionMode) {
+    setPredictionMode(mode)
+    setSettingsStatus({ type: 'loading' })
+    try {
+      const result = await updatePredictionMode(mode)
+      setSettingsStatus({
+        type: result.ok ? 'success' : 'error',
+        message: result.ok ? `Prediction mode updated to "${mode}"` : result.error,
+      })
+    } catch (err) {
+      setSettingsStatus({ type: 'error', message: String(err) })
+    }
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
@@ -215,7 +235,7 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
 
         {/* ── Tab grid + quick links ── */}
         <div className="flex items-end justify-between gap-4 mb-8">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 flex-1">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-2 flex-1">
             {TABS.map(tab => {
               const isActive = activeTab === tab.key
               const badge = getBadge(tab.key)
@@ -731,6 +751,104 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
                   </span>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Settings tab ── */}
+        {activeTab === 'settings' && (
+          <div>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em', marginBottom: '0.75rem' }}>
+              Settings
+            </h2>
+
+            {/* Prediction Mode */}
+            <div className="bg-white rounded-sm border p-5 mb-4" style={{ borderColor: 'var(--chalk-dim)' }}>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', marginBottom: '4px' }}>
+                Prediction Mode
+              </h3>
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', marginBottom: '16px' }}>
+                Controls when users can submit predictions for tournaments.
+              </p>
+
+              <div className="flex flex-col gap-3">
+                {([
+                  {
+                    value: 'anytime' as PredictionMode,
+                    label: 'Allow predictions anytime',
+                    description: 'Users can predict during "accepting predictions" and "in progress" status. Requires real-time match data to lock played matches.',
+                    color: '#166534',
+                    bg: '#dcfce7',
+                    border: '#bbf7d0',
+                  },
+                  {
+                    value: 'pre_tournament' as PredictionMode,
+                    label: 'Only before tournament starts',
+                    description: 'Users can only predict during "accepting predictions" status. Once the first match starts (in progress), predictions close. Safe mode — no real-time API needed.',
+                    color: '#92400e',
+                    bg: '#fef3c7',
+                    border: '#fde68a',
+                  },
+                ]).map(opt => {
+                  const isSelected = predictionMode === opt.value
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => handleUpdatePredictionMode(opt.value)}
+                      disabled={settingsStatus.type === 'loading'}
+                      className="text-left p-4 rounded-sm border transition-all"
+                      style={{
+                        borderColor: isSelected ? opt.border : 'var(--chalk-dim)',
+                        background: isSelected ? opt.bg : 'transparent',
+                        opacity: settingsStatus.type === 'loading' ? 0.6 : 1,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span style={{
+                          width: '16px', height: '16px', borderRadius: '50%',
+                          border: `2px solid ${isSelected ? opt.color : 'var(--chalk-dim)'}`,
+                          background: isSelected ? opt.color : 'transparent',
+                          display: 'inline-block', flexShrink: 0,
+                        }} />
+                        <span style={{
+                          fontFamily: 'var(--font-display)', fontSize: '0.9rem',
+                          color: isSelected ? opt.color : 'var(--ink)',
+                          fontWeight: isSelected ? 600 : 400,
+                        }}>
+                          {opt.label}
+                        </span>
+                      </div>
+                      <p style={{
+                        fontFamily: 'var(--font-mono)', fontSize: '0.7rem',
+                        color: isSelected ? opt.color : 'var(--muted)',
+                        marginLeft: '24px', lineHeight: 1.5,
+                      }}>
+                        {opt.description}
+                      </p>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {settingsStatus.type !== 'idle' && settingsStatus.type !== 'loading' && (
+                <div className="mt-3">
+                  <span style={{
+                    fontFamily: 'var(--font-mono)', fontSize: '0.7rem',
+                    color: settingsStatus.type === 'error' ? '#991b1b' : '#166534',
+                  }}>
+                    {settingsStatus.type === 'success' ? '✓ ' : '✗ '}{settingsStatus.message}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', lineHeight: 1.6 }}>
+                <strong>Impact:</strong> This setting affects all prediction submissions (global, challenges, anonymous challenges) and auto-predict.
+                When set to &quot;pre-tournament only&quot;, in-progress tournaments will show brackets as read-only.
+                Switch back to &quot;anytime&quot; once the real-time match data API is connected.
+              </p>
             </div>
           </div>
         )}

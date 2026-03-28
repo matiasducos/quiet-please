@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
+import { getPredictableStatuses } from '@/lib/app-settings'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 
@@ -39,11 +40,12 @@ export default async function OnboardingPage() {
   const { user, profile } = await getNavProfile()
   const admin = createAdminClient()
 
-  // Find the first live or upcoming tournament for the "Get started" CTA
+  // Find the first predictable tournament for the "Get started" CTA
+  const predictableStatuses = await getPredictableStatuses()
   const { data: liveTournaments } = await admin
     .from('tournaments')
     .select('id, name, location, flag_emoji')
-    .in('status', ['in_progress', 'accepting_predictions'])
+    .in('status', predictableStatuses)
     .order('starts_at', { ascending: true })
     .limit(1)
 

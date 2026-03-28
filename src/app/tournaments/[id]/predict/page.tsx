@@ -4,6 +4,7 @@ import Link from 'next/link'
 import BracketPredictor from './BracketPredictor'
 import { TEST_EXTERNAL_ID } from '@/app/test-tournaments/constants'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
+import { canPredictForStatus } from '@/lib/app-settings'
 
 export default async function PredictPage({
   params,
@@ -56,7 +57,8 @@ export default async function PredictPage({
   const isManual = tournament.is_manual === true
   const returnUrl = isTest ? '/test-tournaments' : `/tournaments/${id}`
 
-  if (tournament.status !== 'accepting_predictions' && tournament.status !== 'in_progress') {
+  const canPredictNow = await canPredictForStatus(tournament.status)
+  if (!canPredictNow) {
     redirect(returnUrl)
   }
 

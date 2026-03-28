@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import type { Database } from '@/types/database'
 import Nav from '@/components/Nav'
+import { canPredictForStatus } from '@/lib/app-settings'
 
 type TournamentRow = Database['public']['Tables']['tournaments']['Row']
 
@@ -104,9 +105,9 @@ export default async function TournamentDetailPage({ params }: { params: Promise
   const surface = SURFACE_COLORS[t.surface ?? 'hard']
   const status  = STATUS_STYLES[t.status ?? 'upcoming']
 
-  // Allow predictions for accepting_predictions AND in_progress (for unplayed matches)
-  const canPredict = (t.status === 'accepting_predictions' || t.status === 'in_progress') &&
-    !prediction?.is_fully_locked
+  // Allow predictions based on the current prediction mode setting
+  const statusAllowed = await canPredictForStatus(t.status ?? 'upcoming')
+  const canPredict = statusAllowed && !prediction?.is_fully_locked
   const hasDraw = draw && draw.bracket_data
 
   return (

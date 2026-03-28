@@ -4,6 +4,7 @@ import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import AnonymousCreateFlow from './AnonymousCreateFlow'
+import { canPredictForStatus } from '@/lib/app-settings'
 
 export default async function CreateChallengeForTournamentPage({
   params,
@@ -22,7 +23,8 @@ export default async function CreateChallengeForTournamentPage({
   ])
 
   if (!tournament) notFound()
-  if (!['accepting_predictions', 'in_progress'].includes(tournament.status)) {
+  const canPredictNow = await canPredictForStatus(tournament.status)
+  if (!canPredictNow) {
     redirect('/challenges/create')
   }
 

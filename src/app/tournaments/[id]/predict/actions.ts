@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
 import { insertNotifications } from '@/lib/notifications'
 import { rateLimit } from '@/lib/rate-limit'
+import { canPredictForStatus } from '@/lib/app-settings'
 
 export type SaveResult =
   | { success: true; predictionId?: string }
@@ -47,6 +48,16 @@ export async function savePrediction({
   // Rate limit: 20 saves per minute per user
   const rl = rateLimit(`save:${user.id}`, { maxRequests: 20, windowMs: 60_000 })
   if (rl.limited) return { success: false, error: 'unknown', message: `Too many requests. Try again in ${rl.retryAfter}s.` }
+
+  // ── 0. Verify tournament status is allowed under current prediction mode ──
+  const { data: tournamentRow } = await supabase
+    .from('tournaments')
+    .select('status')
+    .eq('id', tournamentId)
+    .single()
+  if (!tournamentRow) return { success: false, error: 'unknown', message: 'Tournament not found' }
+  const allowed = await canPredictForStatus(tournamentRow.status)
+  if (!allowed) return { success: false, error: 'unknown', message: 'Predictions are closed for this tournament.' }
 
   // ── 1. Guard against changing picks for played matches ─────────────────
   // Fetch match results for this tournament to determine which picks are frozen

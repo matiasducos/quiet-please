@@ -5,6 +5,7 @@ import { withCronLogging } from '@/lib/cron-logger'
 import { insertNotifications } from '@/lib/notifications'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
 import { generateAutoPicks } from '@/lib/tennis/auto-predict'
+import { getPredictableStatuses } from '@/lib/app-settings'
 import type { DrawMatch } from '@/lib/tennis/types'
 
 // Allow up to 60 s — need headroom for multiple user × tournament combos
@@ -35,14 +36,15 @@ export async function GET(request: Request) {
     const supabase = createAdminClient()
 
     // ── 1. Find eligible tournaments ────────────────────────────────────────
-    // Must be accepting_predictions, have a draw with players, and have a surface set
-    // Include both accepting_predictions and in_progress tournaments.
-    // In-progress: a user might be enabled after the tournament started —
-    // auto-picks are still useful for unplayed matches.
+    // Must have a draw with players and a surface set.
+    // Statuses are determined by the app-wide prediction mode setting:
+    //   'anytime' → accepting_predictions + in_progress
+    //   'pre_tournament' → accepting_predictions only
+    const predictableStatuses = await getPredictableStatuses()
     const { data: tournaments, error: tErr } = await supabase
       .from('tournaments')
       .select('id, external_id, name, tour, category, surface, location, flag_emoji, starts_at, ends_at, status')
-      .in('status', ['accepting_predictions', 'in_progress'])
+      .in('status', predictableStatuses)
       .not('surface', 'is', null)
 
     if (tErr) throw new Error(`Tournaments query failed: ${tErr.message}`)

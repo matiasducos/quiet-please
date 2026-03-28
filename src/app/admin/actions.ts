@@ -1579,3 +1579,52 @@ export async function toggleAutoPredict(
   if (!data) return { ok: false, error: 'User not found' }
   return { ok: true }
 }
+
+// ── App Settings ─────────────────────────────────────────────────────────────
+
+import type { PredictionMode } from '@/lib/app-settings'
+
+export type AppSettings = {
+  prediction_mode: PredictionMode
+}
+
+export async function getAppSettings(): Promise<AppSettings> {
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('app_settings')
+    .select('key, value')
+
+  if (error || !data) return { prediction_mode: 'anytime' }
+
+  const settings: AppSettings = { prediction_mode: 'anytime' }
+  for (const row of data) {
+    if (row.key === 'prediction_mode') {
+      settings.prediction_mode = (row.value as PredictionMode) ?? 'anytime'
+    }
+  }
+  return settings
+}
+
+export async function updatePredictionMode(
+  mode: PredictionMode,
+): Promise<{ ok: boolean; error?: string }> {
+  await assertAdmin()
+  if (mode !== 'anytime' && mode !== 'pre_tournament') {
+    return { ok: false, error: 'Invalid mode' }
+  }
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('app_settings')
+    .upsert(
+      { key: 'prediction_mode', value: JSON.stringify(mode), updated_at: new Date().toISOString() },
+      { onConflict: 'key' },
+    )
+
+  if (error) return { ok: false, error: error.message }
+
+  // Bust the cached prediction mode so all pages pick it up immediately
+  revalidateTag('app-settings', 'default')
+
+  return { ok: true }
+}

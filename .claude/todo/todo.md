@@ -20,6 +20,15 @@
 
 ---
 
+### Internationalization (i18n / Translation)
+- ~139 files with hardcoded English strings, zero i18n infrastructure today
+- Recommended library: `next-intl` (built for App Router, TypeScript support, locale routing)
+- Scope: 90–150 hours for full extraction + infrastructure + first language
+- Strategy: defer until international expansion is closer; then extract in a single 2–4 week sprint
+- Dynamic content adds complexity: status labels, notification templates, `timeAgo()`, pluralization
+
+---
+
 ## Queued (Not Yet Scoped)
 
 ### Season-Long Narrative in Notifications
