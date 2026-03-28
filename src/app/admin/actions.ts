@@ -1599,7 +1599,7 @@ export async function getAppSettings(): Promise<AppSettings> {
   const settings: AppSettings = { prediction_mode: 'anytime' }
   for (const row of data) {
     if (row.key === 'prediction_mode') {
-      settings.prediction_mode = (row.value as PredictionMode) ?? 'anytime'
+      settings.prediction_mode = row.value === 'pre_tournament' ? 'pre_tournament' : 'anytime'
     }
   }
   return settings

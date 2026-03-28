@@ -176,8 +176,9 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
   }
 
   // ── Settings state ─────────────────────────────────────────────────────────
-  const [savedMode, setSavedMode] = useState<PredictionMode>(appSettings.prediction_mode ?? 'anytime')
-  const [pendingMode, setPendingMode] = useState<PredictionMode>(appSettings.prediction_mode ?? 'anytime')
+  const initMode: PredictionMode = appSettings.prediction_mode === 'pre_tournament' ? 'pre_tournament' : 'anytime'
+  const [savedMode, setSavedMode] = useState<PredictionMode>(initMode)
+  const [pendingMode, setPendingMode] = useState<PredictionMode>(initMode)
   const [settingsStatus, setSettingsStatus] = useState<AsyncStatus>({ type: 'idle' })
 
   async function handleSavePredictionMode() {
