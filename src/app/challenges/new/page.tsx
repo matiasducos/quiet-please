@@ -151,7 +151,7 @@ export default async function NewChallengePage({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {tournaments.map((t: any) => (
               <div key={t.id} className="relative">
-                <TournamentCard t={t} />
+                <TournamentCard t={t} disableLink />
                 <div className="absolute bottom-4 right-4">
                   <ChallengeButton friendId={friendId} tournamentId={t.id} />
                 </div>
