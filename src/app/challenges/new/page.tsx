@@ -150,12 +150,12 @@ export default async function NewChallengePage({
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {tournaments.map((t: any) => (
-              <div key={t.id} className="flex flex-col gap-2">
-                <TournamentCard t={t} disableLink />
-                <div className="flex justify-end">
-                  <ChallengeButton friendId={friendId} tournamentId={t.id} />
-                </div>
-              </div>
+              <TournamentCard
+                key={t.id}
+                t={t}
+                disableLink
+                action={<ChallengeButton friendId={friendId} tournamentId={t.id} />}
+              />
             ))}
           </div>
         )}

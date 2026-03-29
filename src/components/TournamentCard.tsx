@@ -1,3 +1,4 @@
+import React from 'react'
 import Link from 'next/link'
 
 // ── Tier stripe: tour + category → brand colour + display label ────────────
@@ -64,7 +65,7 @@ export interface TournamentCardData {
   challenge_count?: number
 }
 
-export default function TournamentCard({ t, disableLink }: { t: TournamentCardData; disableLink?: boolean }) {
+export default function TournamentCard({ t, disableLink, action }: { t: TournamentCardData; disableLink?: boolean; action?: React.ReactNode }) {
   const tierKey = `${t.tour}|${t.category}`
   const tier    = TIER[tierKey] ?? { label: t.tour, bg: '#4a5568', text: '#fff' }
   const surface = SURFACE_COLORS[(t.surface as keyof typeof SURFACE_COLORS) ?? 'hard']
@@ -214,6 +215,21 @@ export default function TournamentCard({ t, disableLink }: { t: TournamentCardDa
             <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--court)' }}>
               Make your predictions →
             </span>
+          </div>
+        )}
+
+        {/* Action slot (e.g. challenge button) */}
+        {action && (
+          <div
+            style={{
+              marginTop: '12px',
+              paddingTop: '12px',
+              borderTop: '1px solid var(--chalk-dim)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+            }}
+          >
+            {action}
           </div>
         )}
       </div>
