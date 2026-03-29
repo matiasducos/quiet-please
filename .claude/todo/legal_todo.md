@@ -1,11 +1,6 @@
 # Legal Todo — Quiet Please
 
-## Phase 1 — ✅ Shipped March 25, 2026
-- ✅ Privacy Policy page (`/privacy`)
-- ✅ Terms of Service page (`/terms`)
-- ✅ Consent text on signup and login pages
-- ✅ Email unsubscribe mechanism (DB column + one-click link + cron filtering)
-- ✅ Footer with legal links (Terms, Privacy, Contact)
+## Phase 1 — Remaining
 - ⬜ Run migration `029_email_unsubscribe.sql` in Supabase dashboard
 - ⬜ Set up `support@quietplease.app` mailbox
 
