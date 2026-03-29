@@ -57,7 +57,11 @@ export default async function PredictPage({
   const isManual = tournament.is_manual === true
   const returnUrl = isTest ? '/test-tournaments' : `/tournaments/${id}`
 
-  const canPredictNow = await canPredictForStatus(tournament.status)
+  // Challenges always allow in_progress + accepting_predictions regardless of the
+  // global prediction mode toggle — only standalone predictions respect the toggle.
+  const canPredictNow = challengeId
+    ? ['accepting_predictions', 'in_progress'].includes(tournament.status)
+    : await canPredictForStatus(tournament.status)
   if (!canPredictNow) {
     redirect(returnUrl)
   }
