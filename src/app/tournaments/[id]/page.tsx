@@ -395,6 +395,8 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                     ? 'Predictions will open when the draw is published.'
                     : t.status === 'completed'
                     ? 'This tournament has ended.'
+                    : t.status === 'in_progress'
+                    ? 'This tournament is already underway. Predictions are closed.'
                     : 'Predictions are closed for this tournament.'}
                 </p>
               )}

@@ -56,8 +56,12 @@ export async function savePrediction({
     .eq('id', tournamentId)
     .single()
   if (!tournamentRow) return { success: false, error: 'unknown', message: 'Tournament not found' }
-  const allowed = await canPredictForStatus(tournamentRow.status)
-  if (!allowed) return { success: false, error: 'unknown', message: 'Predictions are closed for this tournament.' }
+  // Challenges always allow in_progress + accepting_predictions regardless of the
+  // global prediction mode toggle — only standalone predictions respect the toggle.
+  const allowed = challengeId
+    ? ['accepting_predictions', 'in_progress'].includes(tournamentRow.status)
+    : await canPredictForStatus(tournamentRow.status)
+  if (!allowed) return { success: false, error: 'unknown', message: 'Predictions are closed for this tournament — the prediction window has passed.' }
 
   // ── 1. Guard against changing picks for played matches ─────────────────
   // Fetch match results for this tournament to determine which picks are frozen
