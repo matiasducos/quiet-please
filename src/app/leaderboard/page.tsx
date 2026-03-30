@@ -42,22 +42,31 @@ function getLeaderboardData(pointsField: string, scope: Scope, scopeCountry: str
         breakdownByUser[p.user_id].push({ tournament_id: p.tournament_id, name: t.location ?? t.name, tour: t.tour ?? '', points: p.points_earned ?? 0, flag: t.flag_emoji ?? null })
       }
 
-      // Accuracy stats per user: tournament count + correct/total picks
+      // Accuracy stats per user: tournament count + correct picks / total picks made
       const statsByUser: Record<string, { tournaments: number; totalPicks: number; correctPicks: number }> = {}
-      for (const uid of userIds) {
-        const uniqueTournaments = new Set(
-          (userPredictions ?? []).filter(p => p.user_id === uid).map(p => p.tournament_id)
-        )
-        statsByUser[uid] = { tournaments: uniqueTournaments.size, totalPicks: 0, correctPicks: 0 }
-      }
       if (userIds.length > 0) {
+        // Fetch ALL predictions (including 0-point ones) to count total picks from JSONB
+        const { data: allPreds } = await supabase
+          .from('predictions')
+          .select('user_id, tournament_id, picks')
+          .in('user_id', userIds)
+          .is('challenge_id', null)
+
+        // Count tournaments and total picks per user
+        for (const pred of allPreds ?? []) {
+          if (!statsByUser[pred.user_id]) statsByUser[pred.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0 }
+          statsByUser[pred.user_id].tournaments++
+          const picks = pred.picks as Record<string, string> | null
+          if (picks) statsByUser[pred.user_id].totalPicks += Object.keys(picks).length
+        }
+
+        // Correct picks = point_ledger rows with points > 0
         const { data: ledgerData } = await supabase
           .from('point_ledger')
           .select('user_id, points')
           .in('user_id', userIds)
         for (const row of ledgerData ?? []) {
           if (!statsByUser[row.user_id]) statsByUser[row.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0 }
-          statsByUser[row.user_id].totalPicks++
           if ((row.points ?? 0) > 0) statsByUser[row.user_id].correctPicks++
         }
       }
