@@ -4,6 +4,7 @@ import { getNavProfile } from '@/lib/supabase/profile'
 import Nav from '@/components/Nav'
 import TournamentsClientList from '@/components/TournamentsClientList'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
+import { getPredictableStatuses } from '@/lib/app-settings'
 
 const VALID_STATUSES = ['upcoming', 'draw_published', 'accepting_predictions', 'in_progress', 'completed'] as const
 
@@ -37,10 +38,11 @@ export default async function TournamentsPage({ searchParams }: { searchParams: 
   const activeTour   = params.tour === 'WTA' ? 'WTA' : 'ATP'
   const activeStatus = VALID_STATUSES.includes(params.status as any) ? params.status! : 'all'
 
-  const [{ user, profile }, tournaments, liveTournaments] = await Promise.all([
+  const [{ user, profile }, tournaments, liveTournaments, predictableStatuses] = await Promise.all([
     getNavProfile(),
     getTournaments(activeTour, activeStatus),
     getTournaments(activeTour, 'in_progress'),
+    getPredictableStatuses(),
   ])
 
   // Collect unique IDs for non-upcoming tournaments and fetch engagement
@@ -68,6 +70,7 @@ export default async function TournamentsPage({ searchParams }: { searchParams: 
           liveTournaments={enrich(liveTournaments)}
           activeTour={activeTour}
           activeStatus={activeStatus}
+          predictableStatuses={predictableStatuses}
         />
       </div>
     </main>

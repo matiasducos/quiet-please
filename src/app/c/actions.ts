@@ -4,6 +4,7 @@ import { headers } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateShareCode } from '@/lib/share-code'
 import { rateLimit } from '@/lib/rate-limit'
+import { isManualLockMode } from '@/lib/app-settings'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,22 @@ export async function createAnonymousChallenge(data: {
   // Validate picks (must have at least 1)
   if (!data.creatorPicks || Object.keys(data.creatorPicks).length === 0) {
     return { ok: false, error: 'You must make at least one pick.' }
+  }
+
+  // Strip picks for admin-locked matches (manual_lock mode)
+  if (await isManualLockMode()) {
+    const { data: drawRow } = await admin
+      .from('draws')
+      .select('locked_matches')
+      .eq('tournament_id', data.tournamentId)
+      .single()
+    const adminLocked = (drawRow?.locked_matches as Record<string, string>) ?? {}
+    for (const matchId of Object.keys(adminLocked)) {
+      delete data.creatorPicks[matchId]
+    }
+    if (Object.keys(data.creatorPicks).length === 0) {
+      return { ok: false, error: 'All selected matches are locked. No picks to save.' }
+    }
   }
 
   // Validate name
@@ -127,6 +144,22 @@ export async function submitOpponentPicks(data: {
     return { ok: false, error: 'You must make at least one pick.' }
   }
 
+  // Strip picks for admin-locked matches (manual_lock mode)
+  if (await isManualLockMode()) {
+    const { data: drawRow } = await admin
+      .from('draws')
+      .select('locked_matches')
+      .eq('tournament_id', challenge.tournament_id)
+      .single()
+    const adminLocked = (drawRow?.locked_matches as Record<string, string>) ?? {}
+    for (const matchId of Object.keys(adminLocked)) {
+      delete data.opponentPicks[matchId]
+    }
+    if (Object.keys(data.opponentPicks).length === 0) {
+      return { ok: false, error: 'All selected matches are locked. No picks to save.' }
+    }
+  }
+
   const opponentName = data.opponentName.trim().slice(0, 30) || 'Player 2'
 
   // Update challenge
@@ -166,7 +199,7 @@ export async function getAnonymousChallenge(shareCode: string) {
   // Fetch tournament + draw + match results in parallel
   const [{ data: tournament }, { data: drawData }, { data: matchResults }] = await Promise.all([
     admin.from('tournaments').select('id, name, status, tour, category, surface, starts_at, ends_at, location, flag_emoji').eq('id', challenge.tournament_id).single(),
-    admin.from('draws').select('bracket_data').eq('tournament_id', challenge.tournament_id).single(),
+    admin.from('draws').select('bracket_data, locked_matches').eq('tournament_id', challenge.tournament_id).single(),
     admin.from('match_results').select('id, external_match_id, round, winner_external_id, loser_external_id, score, played_at').eq('tournament_id', challenge.tournament_id),
   ])
 
@@ -174,6 +207,7 @@ export async function getAnonymousChallenge(shareCode: string) {
     challenge,
     tournament,
     draw: drawData?.bracket_data ?? null,
+    lockedMatches: (drawData?.locked_matches as Record<string, string>) ?? {},
     matchResults: matchResults ?? [],
   }
 }

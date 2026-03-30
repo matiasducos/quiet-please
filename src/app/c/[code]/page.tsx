@@ -15,7 +15,7 @@ export default async function SharedChallengePage({
   const result = await getAnonymousChallenge(code)
   if (!result) notFound()
 
-  const { challenge, tournament, draw, matchResults } = result
+  const { challenge, tournament, draw, lockedMatches, matchResults } = result
   if (!tournament) notFound()
 
   // Build match results map for BracketPredictor
@@ -36,6 +36,7 @@ export default async function SharedChallengePage({
           matchResults={matchResultsMap}
           rawMatchResults={matchResults}
           shareCode={code}
+          adminLockedMatches={Object.keys(lockedMatches).length > 0 ? lockedMatches : undefined}
         />
       </div>
     </main>

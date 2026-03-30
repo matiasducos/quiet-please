@@ -176,7 +176,7 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
   }
 
   // ── Settings state ─────────────────────────────────────────────────────────
-  const initMode: PredictionMode = appSettings.prediction_mode === 'pre_tournament' ? 'pre_tournament' : 'anytime'
+  const initMode: PredictionMode = appSettings.prediction_mode === 'pre_tournament' ? 'pre_tournament' : appSettings.prediction_mode === 'manual_lock' ? 'manual_lock' : 'anytime'
   const [savedMode, setSavedMode] = useState<PredictionMode>(initMode)
   const [pendingMode, setPendingMode] = useState<PredictionMode>(initMode)
   const [settingsStatus, setSettingsStatus] = useState<AsyncStatus>({ type: 'idle' })
@@ -784,6 +784,14 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
                     bg: '#fef3c7',
                     border: '#fde68a',
                   },
+                  {
+                    value: 'manual_lock' as PredictionMode,
+                    label: 'Manual match lock',
+                    description: 'You manually lock each match from the results page before it starts. Predictions stay open for unlocked matches. Missed matches show the actual winner for the next round.',
+                    color: '#4338ca',
+                    bg: '#eef2ff',
+                    border: '#c7d2fe',
+                  },
                 ]).map(opt => {
                   const isSelected = pendingMode === opt.value
                   return (
@@ -848,10 +856,11 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
 
             <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
               <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', lineHeight: 1.6 }}>
-                <strong>Impact:</strong> This setting affects tournament prediction submissions and auto-predict only.
-                Challenges (both anonymous and user challenges) are always open for <code>accepting_predictions</code> and <code>in_progress</code> tournaments regardless of this setting.
-                When set to &quot;pre-tournament only&quot;, in-progress tournaments will show brackets as read-only for predictions.
-                Switch back to &quot;anytime&quot; once the real-time match data API is connected.
+                <strong>Impact:</strong> &quot;Anytime&quot; and &quot;pre-tournament&quot; modes affect tournament predictions and auto-predict only —
+                challenges are always open for <code>accepting_predictions</code> and <code>in_progress</code> tournaments.
+                <br/><br/>
+                <strong>&quot;Manual match lock&quot;</strong> is different: admin-locked matches are blocked for <strong>all prediction types</strong> including challenges.
+                Lock matches from the tournament results page before they start. Users who miss a locked match can still predict subsequent rounds using the actual winner.
               </p>
             </div>
           </div>

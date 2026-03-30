@@ -42,7 +42,27 @@ function getLeaderboardData(pointsField: string, scope: Scope, scopeCountry: str
         breakdownByUser[p.user_id].push({ tournament_id: p.tournament_id, name: t.location ?? t.name, tour: t.tour ?? '', points: p.points_earned ?? 0, flag: t.flag_emoji ?? null })
       }
 
-      return { users: users ?? [], breakdownByUser }
+      // Accuracy stats per user: tournament count + correct/total picks
+      const statsByUser: Record<string, { tournaments: number; totalPicks: number; correctPicks: number }> = {}
+      for (const uid of userIds) {
+        const uniqueTournaments = new Set(
+          (userPredictions ?? []).filter(p => p.user_id === uid).map(p => p.tournament_id)
+        )
+        statsByUser[uid] = { tournaments: uniqueTournaments.size, totalPicks: 0, correctPicks: 0 }
+      }
+      if (userIds.length > 0) {
+        const { data: ledgerData } = await supabase
+          .from('point_ledger')
+          .select('user_id, points')
+          .in('user_id', userIds)
+        for (const row of ledgerData ?? []) {
+          if (!statsByUser[row.user_id]) statsByUser[row.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0 }
+          statsByUser[row.user_id].totalPicks++
+          if ((row.points ?? 0) > 0) statsByUser[row.user_id].correctPicks++
+        }
+      }
+
+      return { users: users ?? [], breakdownByUser, statsByUser }
     },
     ['leaderboard', pointsField, scope, scopeCountry ?? '_', scopeCity ?? '_'],
     { revalidate: 300 }
@@ -83,6 +103,7 @@ export default async function LeaderboardPage({
                 }))}
                 currentUserId=""
                 breakdownByUser={previewBreakdown}
+                statsByUser={{}}
                 scope="worldwide"
               />
             </div>
@@ -139,7 +160,7 @@ export default async function LeaderboardPage({
   const scopeCity    = sp.city    ?? (scope === 'city'      ? profile?.city    ?? null : null)
 
   // ── Cached leaderboard data (shared across all users in same view) ─────
-  const { users, breakdownByUser } = await getLeaderboardData(pointsField, scope, scopeCountry, scopeCity)
+  const { users, breakdownByUser, statsByUser } = await getLeaderboardData(pointsField, scope, scopeCountry, scopeCity)
 
   // ── My rank: position in the current scope/circuit view ─────────────────
   const myRankInList = users?.findIndex(u => u.id === user.id) ?? -1
@@ -290,6 +311,7 @@ export default async function LeaderboardPage({
           }))}
           currentUserId={user.id}
           breakdownByUser={breakdownByUser}
+          statsByUser={statsByUser}
           scope={scope}
         />
 

@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
 import { insertNotifications } from '@/lib/notifications'
 import { rateLimit } from '@/lib/rate-limit'
-import { canPredictForStatus } from '@/lib/app-settings'
+import { canPredictForStatus, isManualLockMode } from '@/lib/app-settings'
 
 export type SaveResult =
   | { success: true; predictionId?: string }
@@ -92,6 +92,36 @@ export async function savePrediction({
       }
       if (changedPlayedMatches.length > 0) {
         return { success: false, error: 'played_matches', matchIds: changedPlayedMatches }
+      }
+    }
+  }
+
+  // ── 1b. Admin match locks (manual_lock mode — applies to ALL prediction types) ─
+  if (await isManualLockMode()) {
+    const { data: drawRow } = await supabase
+      .from('draws')
+      .select('locked_matches')
+      .eq('tournament_id', tournamentId)
+      .single()
+
+    const adminLocked = (drawRow?.locked_matches as Record<string, string>) ?? {}
+    if (Object.keys(adminLocked).length > 0) {
+      // Strip picks for admin-locked matches (silently — UI should prevent these)
+      for (const matchId of Object.keys(adminLocked)) {
+        if (matchId in picks) {
+          // If this is an update and the pick existed before the lock, preserve it
+          if (predictionId) {
+            const { data: existingPred } = await supabase
+              .from('predictions')
+              .select('picks')
+              .eq('id', predictionId)
+              .single()
+            const oldPicks = (existingPred?.picks as Record<string, string>) ?? {}
+            // Only preserve if the pick hasn't changed
+            if (oldPicks[matchId] && picks[matchId] === oldPicks[matchId]) continue
+          }
+          delete picks[matchId]
+        }
       }
     }
   }

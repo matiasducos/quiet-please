@@ -1,7 +1,7 @@
 import { unstable_cache } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export type PredictionMode = 'anytime' | 'pre_tournament'
+export type PredictionMode = 'anytime' | 'pre_tournament' | 'manual_lock'
 
 /**
  * Cached read of the prediction mode setting.
@@ -18,7 +18,10 @@ export const getPredictionMode = unstable_cache(
       .single()
 
     if (error || !data) return 'anytime' // safe default
-    return String(data.value).includes('pre_tournament') ? 'pre_tournament' : 'anytime'
+    const raw = String(data.value)
+    if (raw.includes('pre_tournament')) return 'pre_tournament'
+    if (raw.includes('manual_lock')) return 'manual_lock'
+    return 'anytime'
   },
   ['prediction-mode'],
   { revalidate: 60, tags: ['app-settings'] }
@@ -31,6 +34,7 @@ export const getPredictionMode = unstable_cache(
 export async function getPredictableStatuses(): Promise<string[]> {
   const mode = await getPredictionMode()
   if (mode === 'pre_tournament') return ['accepting_predictions']
+  // Both 'anytime' and 'manual_lock' allow in_progress (manual_lock adds per-match checks separately)
   return ['accepting_predictions', 'in_progress']
 }
 
@@ -40,4 +44,13 @@ export async function getPredictableStatuses(): Promise<string[]> {
 export async function canPredictForStatus(status: string): Promise<boolean> {
   const allowed = await getPredictableStatuses()
   return allowed.includes(status)
+}
+
+/**
+ * Check if the current prediction mode is manual_lock.
+ * Used to determine whether per-match admin lock checks should be enforced.
+ */
+export async function isManualLockMode(): Promise<boolean> {
+  const mode = await getPredictionMode()
+  return mode === 'manual_lock'
 }
