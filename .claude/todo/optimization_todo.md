@@ -9,9 +9,6 @@
 
 ### Cron Job: Resilience & Idempotency
 **File:** `src/app/api/cron/award-points/route.ts`
-- ✅ Add idempotency: unique constraint on `point_ledger(match_result_id, prediction_id)` + `upsert` with `ignoreDuplicates: true` — 2026-03-25 (migration 028)
-- ✅ Cron run logging: `cron_runs` table tracks every execution (status, duration, summary) — 2026-03-26 (migration 031)
-- ✅ Circuit breaker: Sentry warning when predictions > 500 — 2026-03-26
 - Add alerting: ping a Slack webhook or send email if cron hasn't run in 25+ hours
 - Consider splitting into two crons: `award-points` (frequent, match-by-match) and `recalculate-rankings` (nightly)
 
@@ -26,11 +23,6 @@
 
 ## Medium Priority
 
-### Multiple getUser() Calls Per Request ✅ 2026-03-25
-- `getNavProfile()` already wrapped in `React.cache()` — deduplicates to 1 execution per RSC render
-- The 2 internal calls (getUser + profile query) are inherently serial since profile depends on `user.id`
-- No further optimization without risking auth session refresh
-
 ### Real-Time Layer (Supabase Realtime)
 - "Opponent just submitted their picks" → live update without page refresh
 - "Match result just came in" → bracket updates live
@@ -41,11 +33,6 @@
 - Currently tournaments use `revalidate: 3600` (1 hour)
 - On draw publish / result entry, admin triggers `revalidatePath()` — confirm this is wired up everywhere
 - Add `revalidatePath` call in admin result-entry action
-
-### DB Index Audit ✅ 2026-03-25
-- ✅ All core indexes confirmed: predictions (user, tournament, challenge, global, locked, expires), point_ledger (user, tournament, prediction, match+prediction unique), challenges (share_code, anon_active, active_pair), notifications (user_unread partial), match_results (tournament)
-- ✅ Added missing `idx_league_members_league_user` on `(league_id, user_id)` — membership checks (migration 028)
-- ✅ Added missing `idx_league_members_league_points` on `(league_id, total_points DESC)` — leaderboard sorts (migration 028)
 
 ---
 
@@ -81,23 +68,3 @@
 - Audit `BracketPredictor.tsx` — large component with complex state
 - Consider lazy-loading the predictor on predict pages (it's not above the fold)
 - Check for duplicate Supabase client instances across server components
-
----
-
-## Completed ✅
-
-- ✅ Parallelize award-points cron — switched to `Promise.all` batches of 50
-- ✅ Batch prediction + auto-lock updates in cron — parallel batches of 50
-- ✅ Composite index on point_ledger — migration 016 (`idx_point_ledger_match_prediction`)
-- ✅ Rate limiting on server actions — in-memory sliding-window, applied to savePrediction / createChallenge / sendFriendRequest
-- ✅ Paginate leaderboard predictions query — added `.limit(500)`
-- ✅ Cron pagination — paginated per-tournament (1000/page), O(1) lookup by tournament_id
-- ✅ Race condition on challenge creation — unique partial index in migration 019
-- ✅ Cache admin ID list — module-level `Set` in `src/app/admin/actions.ts`
-- ✅ Leaderboard rank COUNT query — `select('id')` instead of `select('*')`, cached with `unstable_cache` (5 min TTL)
-- ✅ Email notifications fire-and-forget in cron
-- ✅ Parallelize page queries — all main pages use `Promise.all`
-- ✅ Batch weekly slot checks — single `.or()` query
-- ✅ Fix `unstable_cache` keys — include filter params in key arrays
-- ✅ Country flags on leaderboard
-- ✅ Location prominence swap — city/country as primary heading across entire app
