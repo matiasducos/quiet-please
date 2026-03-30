@@ -5,7 +5,7 @@ import { withCronLogging } from '@/lib/cron-logger'
 import { insertNotifications } from '@/lib/notifications'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
 import { generateAutoPicks } from '@/lib/tennis/auto-predict'
-import { getPredictableStatuses } from '@/lib/app-settings'
+import { getPredictableStatuses, isManualLockMode } from '@/lib/app-settings'
 import type { DrawMatch } from '@/lib/tennis/types'
 
 // Allow up to 60 s — need headroom for multiple user × tournament combos
@@ -57,7 +57,7 @@ export async function GET(request: Request) {
     const [{ data: draws }, { data: allMatchResults }] = await Promise.all([
       supabase
         .from('draws')
-        .select('tournament_id, bracket_data, synced_at')
+        .select('tournament_id, bracket_data, locked_matches, synced_at')
         .in('tournament_id', tournamentIds),
       supabase
         .from('match_results')
@@ -292,7 +292,21 @@ export async function GET(request: Request) {
             continue
           }
 
-          const { picks, pickSources } = autoResult
+          let { picks, pickSources } = autoResult
+
+          // Strip admin-locked matches from auto-picks (manual_lock mode)
+          if (await isManualLockMode()) {
+            const adminLocked = (draw.locked_matches as Record<string, string>) ?? {}
+            for (const matchId of Object.keys(adminLocked)) {
+              delete picks[matchId]
+              delete pickSources[matchId]
+            }
+            if (Object.keys(picks).length === 0) {
+              skipped.push({ userId, reason: 'all_matches_admin_locked' })
+              continue
+            }
+          }
+
           const now = new Date().toISOString()
 
           // Build pick_locks: every predicted match gets 'auto_lock_all'

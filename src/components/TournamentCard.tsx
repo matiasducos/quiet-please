@@ -65,12 +65,15 @@ export interface TournamentCardData {
   challenge_count?: number
 }
 
-export default function TournamentCard({ t, disableLink, action }: { t: TournamentCardData; disableLink?: boolean; action?: React.ReactNode }) {
+export default function TournamentCard({ t, disableLink, action, predictableStatuses }: { t: TournamentCardData; disableLink?: boolean; action?: React.ReactNode; predictableStatuses?: string[] }) {
   const tierKey = `${t.tour}|${t.category}`
   const tier    = TIER[tierKey] ?? { label: t.tour, bg: '#4a5568', text: '#fff' }
   const surface = SURFACE_COLORS[(t.surface as keyof typeof SURFACE_COLORS) ?? 'hard']
   const statusLabel = STATUS_LABELS[t.status ?? 'upcoming'] ?? 'Upcoming'
-  const canPredict  = t.status === 'accepting_predictions'
+  const canPredict  = predictableStatuses
+    ? predictableStatuses.includes(t.status)
+    : t.status === 'accepting_predictions'
+  const isCompleted = t.status === 'completed'
   const dateRange   = formatDateRange(t.starts_at, t.ends_at)
 
   // If location is missing but name contains " - City", use the city as a fallback
@@ -80,9 +83,11 @@ export default function TournamentCard({ t, disableLink, action }: { t: Tourname
   const displayLocation = t.location ?? fallbackLocation
 
   const Wrapper = disableLink ? 'div' : Link
+  const cardBg = isCompleted ? '#f7f5f0' : 'white'
+  const cardBorder = isCompleted ? '#e0dbd2' : 'var(--chalk-dim)'
   const wrapperProps = disableLink
-    ? { className: 'block rounded-sm border bg-white overflow-hidden', style: { borderColor: 'var(--chalk-dim)' } }
-    : { href: `/tournaments/${t.id}`, className: 'tournament-card block rounded-sm border bg-white overflow-hidden', style: { borderColor: 'var(--chalk-dim)', textDecoration: 'none' } }
+    ? { className: 'block rounded-sm border overflow-hidden', style: { borderColor: cardBorder, background: cardBg } }
+    : { href: `/tournaments/${t.id}`, className: 'tournament-card block rounded-sm border overflow-hidden', style: { borderColor: cardBorder, background: cardBg, textDecoration: 'none' } }
 
   return (
     <Wrapper {...wrapperProps as any}>

@@ -119,6 +119,7 @@ export default function BracketPredictor({
   hideBackLink = false,
   hideNav = false,
   drawResultsMode = false,
+  adminLockedMatches,
 }: {
   tournament: any
   draw: Draw
@@ -143,6 +144,8 @@ export default function BracketPredictor({
   hideNav?: boolean
   /** When true, shows draw results UI (no picks, just actual winners) */
   drawResultsMode?: boolean
+  /** Admin-locked matches (manual_lock mode): matchId → ISO timestamp when locked */
+  adminLockedMatches?: Record<string, string>
 }) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -233,20 +236,22 @@ export default function BracketPredictor({
   })
 
   // ── Per-match lock state ─────────────────────────────────────────────────
-  /** Check if a match is locked (any reason: result, voluntary, full lock) */
+  /** Check if a match is locked (any reason: result, voluntary, full lock, admin lock) */
   function isMatchLocked(matchId: string): boolean {
     if (readOnly || fullyLocked) return true
     if (matchResults?.[matchId]) return true           // Match has been played
+    if (adminLockedMatches?.[matchId]) return true     // Admin locked (manual_lock mode)
     if (currentPickLocks[matchId]) return true          // Voluntarily locked
     return false
   }
 
   /** Display state for the match header badge */
-  type LockDisplay = 'editable' | 'voluntary_locked' | 'auto_locked' | 'fully_locked' | 'bye'
+  type LockDisplay = 'editable' | 'voluntary_locked' | 'auto_locked' | 'admin_locked' | 'fully_locked' | 'bye'
   function getMatchLockDisplay(matchId: string): LockDisplay {
     if (byeMatchIds.has(matchId)) return 'bye'
     if (readOnly || fullyLocked) return 'fully_locked'
     if (matchResults?.[matchId]) return 'auto_locked'
+    if (adminLockedMatches?.[matchId]) return 'admin_locked'
     if (currentPickLocks[matchId]) return 'voluntary_locked'
     return 'editable'
   }
@@ -301,7 +306,13 @@ export default function BracketPredictor({
 
     // 3. User's pick from feeder match
     const pickedId = picks[feederMatchId]
-    if (!pickedId) return null
+    if (!pickedId) {
+      // 3b. If feeder is admin-locked and has a result, show actual winner (cascade for missed picks)
+      if (adminLockedMatches?.[feederMatchId] && feederWinnerId) {
+        return allPlayers.get(feederWinnerId) ?? { externalId: feederWinnerId, name: feederWinnerId, country: '' }
+      }
+      return null
+    }
 
     // Resolve the picked player — might be directly on the feeder or recursively resolved
     if (feederMatch.player1?.externalId === pickedId) return feederMatch.player1
@@ -929,6 +940,11 @@ export default function BracketPredictor({
                             {!deadPick && lockDisplay === 'auto_locked' && (
                               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em', color: 'var(--muted)' }}>
                                 PLAYED
+                              </span>
+                            )}
+                            {!deadPick && lockDisplay === 'admin_locked' && (
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em', color: '#4338ca' }}>
+                                LOCKED
                               </span>
                             )}
                             {!deadPick && showLockBtn && (

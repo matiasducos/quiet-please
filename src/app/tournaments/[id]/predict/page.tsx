@@ -4,7 +4,7 @@ import Link from 'next/link'
 import BracketPredictor from './BracketPredictor'
 import { TEST_EXTERNAL_ID } from '@/app/test-tournaments/constants'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
-import { canPredictForStatus } from '@/lib/app-settings'
+import { canPredictForStatus, isManualLockMode } from '@/lib/app-settings'
 
 export default async function PredictPage({
   params,
@@ -42,7 +42,7 @@ export default async function PredictPage({
     challengeRes,
   ] = await Promise.all([
     supabase.from('tournaments').select('*').eq('id', id).single(),
-    supabase.from('draws').select('bracket_data').eq('tournament_id', id).single(),
+    supabase.from('draws').select('bracket_data, locked_matches').eq('tournament_id', id).single(),
     predictionQuery.single(),
     supabase.from('users').select('username').eq('id', user.id).single(),
     supabase.from('match_results').select('external_match_id, winner_external_id').eq('tournament_id', id),
@@ -62,7 +62,10 @@ export default async function PredictPage({
   const canPredictNow = challengeId
     ? ['accepting_predictions', 'in_progress'].includes(tournament.status)
     : await canPredictForStatus(tournament.status)
-  if (!canPredictNow) {
+
+  // Allow read-only viewing of completed tournaments when user has a prediction
+  const isCompletedWithPicks = tournament.status === 'completed' && prediction
+  if (!canPredictNow && !isCompletedWithPicks) {
     redirect(returnUrl)
   }
 
@@ -168,8 +171,15 @@ export default async function PredictPage({
     }
   }
 
-  // ── Fully locked → show read-only bracket with results overlay ─────────
+  // ── Fully locked or completed → show read-only bracket with results overlay ─
   const isFullyLocked = prediction?.is_fully_locked === true
+  const forceReadOnly = !!isCompletedWithPicks
+
+  // ── Admin locked matches (manual_lock mode) ─────────────────────────────
+  const manualLock = await isManualLockMode()
+  const adminLockedMatches = manualLock
+    ? (draw.locked_matches as Record<string, string>) ?? {}
+    : undefined
 
   return (
     <BracketPredictor
@@ -183,8 +193,10 @@ export default async function PredictPage({
       matchPoints={matchPoints}
       pickLocks={(prediction?.pick_locks as Record<string, string>) ?? {}}
       isFullyLocked={isFullyLocked}
+      readOnly={forceReadOnly}
       challengeContext={challengeContext}
       shareUrl={!challengeId && profile?.username ? `/tournaments/${id}/picks/${profile.username}` : undefined}
+      adminLockedMatches={adminLockedMatches}
     />
   )
 }

@@ -1130,6 +1130,7 @@ export async function getTournamentWithDraw(tournamentId: string): Promise<{
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   bracketData?: any
+  lockedMatches?: Record<string, string>
   matchResults?: Array<{ external_match_id: string; round: string; winner_external_id: string; loser_external_id: string; score: string | null }>
   error?: string
 }> {
@@ -1146,7 +1147,7 @@ export async function getTournamentWithDraw(tournamentId: string): Promise<{
 
   const { data: draw } = await admin
     .from('draws')
-    .select('bracket_data')
+    .select('bracket_data, locked_matches')
     .eq('tournament_id', tournamentId)
     .single()
 
@@ -1163,6 +1164,7 @@ export async function getTournamentWithDraw(tournamentId: string): Promise<{
       location: string | null; flag_emoji: string | null
     },
     bracketData: draw?.bracket_data ?? null,
+    lockedMatches: (draw?.locked_matches as Record<string, string>) ?? {},
     matchResults: (results ?? []) as Array<{ external_match_id: string; round: string; winner_external_id: string; loser_external_id: string; score: string | null }>,
   }
 }
@@ -1226,15 +1228,23 @@ export async function buildDraw(
   const allMatches: any[] = []
 
   // First round — players from slots
+  let qualifierCounter = 0
   slots.forEach((slot, i) => {
     const idx = String(i + 1).padStart(3, '0')
-    const p1 = slot.player1ExternalId ? playerMap.get(slot.player1ExternalId) ?? null : null
-    const p2 = slot.player2ExternalId ? playerMap.get(slot.player2ExternalId) ?? null : null
+    const matchId = `${externalId}-${firstRound}-${idx}`
+    const resolveSlot = (extId: string | null) => {
+      if (!extId) return null
+      if (extId === 'QUALIFIER') {
+        qualifierCounter++
+        return { externalId: `qualifier-${qualifierCounter}`, name: 'Qualifier', country: '' }
+      }
+      return playerMap.get(extId) ?? null
+    }
     allMatches.push({
-      matchId: `${externalId}-${firstRound}-${idx}`,
+      matchId,
       round: firstRound,
-      player1: p1,
-      player2: p2,
+      player1: resolveSlot(slot.player1ExternalId),
+      player2: resolveSlot(slot.player2ExternalId),
     })
   })
 
@@ -1599,7 +1609,8 @@ export async function getAppSettings(): Promise<AppSettings> {
   const settings: AppSettings = { prediction_mode: 'anytime' }
   for (const row of data) {
     if (row.key === 'prediction_mode') {
-      settings.prediction_mode = String(row.value).includes('pre_tournament') ? 'pre_tournament' : 'anytime'
+      const v = String(row.value)
+      settings.prediction_mode = v.includes('pre_tournament') ? 'pre_tournament' : v.includes('manual_lock') ? 'manual_lock' : 'anytime'
     }
   }
   return settings
@@ -1609,7 +1620,7 @@ export async function updatePredictionMode(
   mode: PredictionMode,
 ): Promise<{ ok: boolean; error?: string }> {
   await assertAdmin()
-  if (mode !== 'anytime' && mode !== 'pre_tournament') {
+  if (mode !== 'anytime' && mode !== 'pre_tournament' && mode !== 'manual_lock') {
     return { ok: false, error: 'Invalid mode' }
   }
 
@@ -1626,5 +1637,129 @@ export async function updatePredictionMode(
   // Bust the cached prediction mode so all pages pick it up immediately
   revalidateTag('app-settings', 'default')
 
+  return { ok: true }
+}
+
+// ── Match Locks (manual_lock mode) ──────────────────────────────────────────
+
+/**
+ * Lock specific matches for a tournament.
+ * Adds matchIds to draws.locked_matches JSONB with current timestamp.
+ */
+export async function lockMatches(
+  tournamentId: string,
+  matchIds: string[],
+): Promise<{ ok: boolean; error?: string }> {
+  await assertAdmin()
+  if (!matchIds.length) return { ok: false, error: 'No match IDs provided' }
+
+  const admin = createAdminClient()
+
+  // Fetch current locked_matches
+  const { data: draw, error: fetchErr } = await admin
+    .from('draws')
+    .select('locked_matches')
+    .eq('tournament_id', tournamentId)
+    .single()
+
+  if (fetchErr || !draw) return { ok: false, error: fetchErr?.message ?? 'Draw not found' }
+
+  const current = (draw.locked_matches as Record<string, string>) ?? {}
+  const now = new Date().toISOString()
+  const updated = { ...current }
+  for (const id of matchIds) {
+    if (!updated[id]) updated[id] = now
+  }
+
+  const { error } = await admin
+    .from('draws')
+    .update({ locked_matches: updated })
+    .eq('tournament_id', tournamentId)
+
+  if (error) return { ok: false, error: error.message }
+
+  revalidateTag('app-settings', 'default')
+  return { ok: true }
+}
+
+/**
+ * Unlock specific matches for a tournament.
+ * Removes matchIds from draws.locked_matches JSONB.
+ */
+export async function unlockMatches(
+  tournamentId: string,
+  matchIds: string[],
+): Promise<{ ok: boolean; error?: string }> {
+  await assertAdmin()
+  if (!matchIds.length) return { ok: false, error: 'No match IDs provided' }
+
+  const admin = createAdminClient()
+
+  const { data: draw, error: fetchErr } = await admin
+    .from('draws')
+    .select('locked_matches')
+    .eq('tournament_id', tournamentId)
+    .single()
+
+  if (fetchErr || !draw) return { ok: false, error: fetchErr?.message ?? 'Draw not found' }
+
+  const current = (draw.locked_matches as Record<string, string>) ?? {}
+  const updated = { ...current }
+  for (const id of matchIds) {
+    delete updated[id]
+  }
+
+  const { error } = await admin
+    .from('draws')
+    .update({ locked_matches: updated })
+    .eq('tournament_id', tournamentId)
+
+  if (error) return { ok: false, error: error.message }
+
+  revalidateTag('app-settings', 'default')
+  return { ok: true }
+}
+
+/**
+ * Lock all matches in a specific round.
+ */
+export async function lockRound(
+  tournamentId: string,
+  round: string,
+): Promise<{ ok: boolean; error?: string }> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  // Fetch bracket data to get matchIds for the round
+  const { data: draw, error: fetchErr } = await admin
+    .from('draws')
+    .select('bracket_data, locked_matches')
+    .eq('tournament_id', tournamentId)
+    .single()
+
+  if (fetchErr || !draw?.bracket_data) return { ok: false, error: fetchErr?.message ?? 'Draw not found' }
+
+  const bracket = draw.bracket_data as { matches: Array<{ matchId: string; round: string }> }
+  const roundMatchIds = bracket.matches
+    .filter(m => m.round === round)
+    .map(m => m.matchId)
+
+  if (!roundMatchIds.length) return { ok: false, error: 'No matches found for this round' }
+
+  const current = (draw.locked_matches as Record<string, string>) ?? {}
+  const now = new Date().toISOString()
+  const updated = { ...current }
+  for (const id of roundMatchIds) {
+    if (!updated[id]) updated[id] = now
+  }
+
+  const { error } = await admin
+    .from('draws')
+    .update({ locked_matches: updated })
+    .eq('tournament_id', tournamentId)
+
+  if (error) return { ok: false, error: error.message }
+
+  revalidateTag('app-settings', 'default')
   return { ok: true }
 }

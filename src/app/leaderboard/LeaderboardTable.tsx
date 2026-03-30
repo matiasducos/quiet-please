@@ -26,15 +26,23 @@ const hStyle: React.CSSProperties = {
   letterSpacing: '0.05em',
 }
 
+interface UserStats {
+  tournaments: number
+  totalPicks: number
+  correctPicks: number
+}
+
 export default function LeaderboardTable({
   users,
   currentUserId,
   breakdownByUser,
+  statsByUser,
   scope,
 }: {
   users: UserRow[]
   currentUserId: string
   breakdownByUser: Record<string, TournamentBreakdown[]>
+  statsByUser: Record<string, UserStats>
   scope: string
 }) {
   const [expandedUser, setExpandedUser] = useState<string | null>(null)
@@ -45,8 +53,10 @@ export default function LeaderboardTable({
       <div className="min-w-[500px]">
       <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
         <div className="col-span-1"  style={hStyle}>RANK</div>
-        <div className="col-span-8"  style={hStyle}>PLAYER</div>
-        <div className="col-span-3 text-right" style={hStyle}>POINTS</div>
+        <div className="col-span-5"  style={hStyle}>PLAYER</div>
+        <div className="col-span-2 text-right hidden sm:block" style={hStyle}>TOURNAMENTS</div>
+        <div className="col-span-2 text-right hidden sm:block" style={hStyle}>ACCURACY</div>
+        <div className="col-span-2 text-right" style={hStyle}>POINTS</div>
       </div>
 
       {users.length === 0 ? (
@@ -64,6 +74,10 @@ export default function LeaderboardTable({
           const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null
           const isExpanded = expandedUser === u.id
           const breakdown = breakdownByUser[u.id] ?? []
+          const stats = statsByUser[u.id]
+          const accuracy = stats && stats.totalPicks > 0
+            ? Math.round((stats.correctPicks / stats.totalPicks) * 100)
+            : null
 
           return (
             <div key={u.id}>
@@ -89,7 +103,7 @@ export default function LeaderboardTable({
                     </span>
                   )}
                 </div>
-                <div className="col-span-8 flex items-center gap-2 min-w-0">
+                <div className="col-span-5 flex items-center gap-2 min-w-0">
                   <Link
                     href={`/profile/${u.username}`}
                     onClick={e => e.stopPropagation()}
@@ -125,7 +139,21 @@ export default function LeaderboardTable({
                     </span>
                   )}
                 </div>
-                <div className="col-span-3 flex items-center justify-end">
+                <div className="col-span-2 hidden sm:flex items-center justify-end">
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>
+                    {stats?.tournaments ?? 0}
+                  </span>
+                </div>
+                <div className="col-span-2 hidden sm:flex items-center justify-end">
+                  {accuracy !== null ? (
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: accuracy >= 50 ? '#166534' : 'var(--muted)' }}>
+                      {accuracy}%
+                    </span>
+                  ) : (
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>—</span>
+                  )}
+                </div>
+                <div className="col-span-2 flex items-center justify-end">
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: u.points > 0 ? 'var(--ink)' : 'var(--muted)' }}>
                     {u.points}
                   </span>

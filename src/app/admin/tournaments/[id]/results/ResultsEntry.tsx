@@ -2,8 +2,9 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
-import { saveMatchResult, clearMatchResult, setTournamentStatus } from '../../../actions'
+import { saveMatchResult, clearMatchResult, setTournamentStatus, lockMatches, unlockMatches, lockRound } from '../../../actions'
 import { nameToFlag } from '@/app/admin/countries'
+import type { PredictionMode } from '@/lib/app-settings'
 
 interface Player {
   externalId: string
@@ -37,6 +38,8 @@ interface ResultsEntryProps {
     matches: DrawMatch[]
   }
   matchResults: MatchResult[]
+  lockedMatches: Record<string, string>
+  predictionMode: PredictionMode
 }
 
 const ROUND_LABELS: Record<string, string> = {
@@ -57,6 +60,8 @@ export default function ResultsEntry({
   tournamentStatus,
   bracketData,
   matchResults: initialResults,
+  lockedMatches: initialLocked,
+  predictionMode,
 }: ResultsEntryProps) {
   const [results, setResults] = useState<MatchResult[]>(initialResults)
   const [savingMatch, setSavingMatch] = useState<string | null>(null)
@@ -67,6 +72,12 @@ export default function ResultsEntry({
 
   // Tracks which matches are in "edit" mode (re-selecting winner)
   const [editingMatches, setEditingMatches] = useState<Set<string>>(new Set())
+
+  // ── Lock state (manual_lock mode) ──
+  const isManualLock = predictionMode === 'manual_lock'
+  const [locked, setLocked] = useState<Record<string, string>>(initialLocked)
+  const [lockingMatch, setLockingMatch] = useState<string | null>(null)
+  const [lockingRound, setLockingRound] = useState<string | null>(null)
 
   // Build a map of matchId → result
   const resultMap = useMemo(() => {
@@ -93,6 +104,12 @@ export default function ResultsEntry({
     const roundMatches = bracketData.matches.filter(m => m.round === round)
     const entered = roundMatches.filter(m => resultMap.has(m.matchId)).length
     return { entered, total: roundMatches.length }
+  }
+
+  function getRoundLockProgress(round: string): { locked: number; total: number } {
+    const roundMatches = bracketData.matches.filter(m => m.round === round)
+    const lockedCount = roundMatches.filter(m => locked[m.matchId]).length
+    return { locked: lockedCount, total: roundMatches.length }
   }
 
   function toggleRound(round: string) {
@@ -213,6 +230,50 @@ export default function ResultsEntry({
     }
   }
 
+  async function handleToggleLock(matchId: string) {
+    setLockingMatch(matchId)
+    try {
+      const isLocked = !!locked[matchId]
+      const { ok, error } = isLocked
+        ? await unlockMatches(tournamentId, [matchId])
+        : await lockMatches(tournamentId, [matchId])
+      if (ok) {
+        setLocked(prev => {
+          const next = { ...prev }
+          if (isLocked) delete next[matchId]
+          else next[matchId] = new Date().toISOString()
+          return next
+        })
+      } else {
+        alert(error ?? 'Failed to toggle lock')
+      }
+    } finally {
+      setLockingMatch(null)
+    }
+  }
+
+  async function handleLockRound(round: string) {
+    setLockingRound(round)
+    try {
+      const { ok, error } = await lockRound(tournamentId, round)
+      if (ok) {
+        const roundMatchIds = bracketData.matches.filter(m => m.round === round).map(m => m.matchId)
+        const now = new Date().toISOString()
+        setLocked(prev => {
+          const next = { ...prev }
+          for (const id of roundMatchIds) {
+            if (!next[id]) next[id] = now
+          }
+          return next
+        })
+      } else {
+        alert(error ?? 'Failed to lock round')
+      }
+    } finally {
+      setLockingRound(null)
+    }
+  }
+
   async function handleMarkComplete() {
     setCompleteStatus({ type: 'loading' })
     const { ok, error } = await setTournamentStatus(tournamentId, 'completed')
@@ -232,7 +293,7 @@ export default function ResultsEntry({
             &larr; Admin
           </Link>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: 'var(--muted)', textTransform: 'uppercase' }}>
-            Results
+            Results{isManualLock ? ' + Locks' : ''}
           </span>
         </div>
       </nav>
@@ -251,6 +312,11 @@ export default function ResultsEntry({
           </p>
           <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', marginTop: '0.25rem' }}>
             Status: {tournamentStatus}
+            {isManualLock && (
+              <span style={{ marginLeft: '12px', color: '#4338ca', background: '#eef2ff', padding: '2px 8px', borderRadius: '9999px', fontSize: '0.65rem' }}>
+                Manual lock mode
+              </span>
+            )}
           </p>
         </div>
 
@@ -259,10 +325,12 @@ export default function ResultsEntry({
           const { entered, total } = getRoundProgress(round)
           const isExpanded = expandedRounds.has(round)
           const isComplete = entered === total
+          const lockProgress = isManualLock ? getRoundLockProgress(round) : null
+          const isRoundFullyLocked = lockProgress ? lockProgress.locked === lockProgress.total : false
 
           return (
             <div key={round} style={{ marginBottom: '10px' }}>
-              {/* Round header — styled like TournamentMonthGroup */}
+              {/* Round header */}
               <button
                 type="button"
                 onClick={() => toggleRound(round)}
@@ -292,6 +360,18 @@ export default function ResultsEntry({
                   >
                     {entered}/{total}
                   </span>
+                  {isManualLock && lockProgress && (
+                    <span style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.6rem',
+                      color: isRoundFullyLocked ? '#4338ca' : 'var(--muted)',
+                      background: isRoundFullyLocked ? '#eef2ff' : 'transparent',
+                      padding: isRoundFullyLocked ? '1px 6px' : '0',
+                      borderRadius: '9999px',
+                    }}>
+                      {lockProgress.locked}/{lockProgress.total} locked
+                    </span>
+                  )}
                 </div>
                 <span
                   style={{
@@ -326,12 +406,37 @@ export default function ResultsEntry({
                     boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
                   }}
                 >
+                  {/* Lock entire round button */}
+                  {isManualLock && !isRoundFullyLocked && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); handleLockRound(round) }}
+                      disabled={lockingRound === round}
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '0.65rem',
+                        color: '#4338ca',
+                        background: '#eef2ff',
+                        border: '1px solid #c7d2fe',
+                        borderRadius: '4px',
+                        padding: '6px 12px',
+                        cursor: 'pointer',
+                        alignSelf: 'flex-start',
+                        opacity: lockingRound === round ? 0.5 : 1,
+                      }}
+                    >
+                      {lockingRound === round ? 'Locking...' : `Lock entire ${ROUND_LABELS[round] ?? round}`}
+                    </button>
+                  )}
+
                   {roundMatches.map(match => {
                     const result = resultMap.get(match.matchId)
                     const isEditing = editingMatches.has(match.matchId)
                     const { player1, player2 } = resolveMatchPlayers(match)
                     const isBye = result?.loser_external_id === 'bye'
                     const isSaving = savingMatch === match.matchId
+                    const isLocked = !!locked[match.matchId]
+                    const isLocking = lockingMatch === match.matchId
                     // Playable if both players known and either no result or in edit mode
                     const playable = player1 !== null && player2 !== null && (!result || isEditing)
 
@@ -340,11 +445,20 @@ export default function ResultsEntry({
                         key={match.matchId}
                         className="bg-white rounded-sm border p-3"
                         style={{
-                          borderColor: result && !isEditing ? '#bbf7d0' : 'var(--chalk-dim)',
+                          borderColor: isLocked && isManualLock
+                            ? '#c7d2fe'
+                            : result && !isEditing ? '#bbf7d0' : 'var(--chalk-dim)',
                           opacity: isBye ? 0.5 : 1,
                         }}
                       >
                         <div className="flex items-center gap-2">
+                          {/* Lock indicator */}
+                          {isManualLock && isLocked && !isBye && (
+                            <span style={{ fontSize: '0.7rem', flexShrink: 0 }} title="Locked — predictions blocked">
+                              🔒
+                            </span>
+                          )}
+
                           {/* Player 1 */}
                           <button
                             type="button"
@@ -453,6 +567,30 @@ export default function ResultsEntry({
                               }}
                             >
                               Cancel
+                            </button>
+                          )}
+
+                          {/* Lock/unlock toggle — only in manual_lock mode, not for BYEs */}
+                          {isManualLock && !isBye && (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleLock(match.matchId)}
+                              disabled={isLocking}
+                              title={isLocked ? 'Unlock predictions for this match' : 'Lock predictions for this match'}
+                              style={{
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: '0.6rem',
+                                color: isLocked ? '#4338ca' : 'var(--muted)',
+                                background: isLocked ? '#eef2ff' : 'none',
+                                border: `1px solid ${isLocked ? '#c7d2fe' : 'var(--chalk-dim)'}`,
+                                borderRadius: '2px',
+                                padding: '2px 6px',
+                                cursor: 'pointer',
+                                opacity: isLocking ? 0.5 : 1,
+                                flexShrink: 0,
+                              }}
+                            >
+                              {isLocking ? '...' : isLocked ? 'Unlock' : 'Lock'}
                             </button>
                           )}
                         </div>

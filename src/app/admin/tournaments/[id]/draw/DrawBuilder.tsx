@@ -42,8 +42,8 @@ function PlayerCombobox({
   placeholder,
   existingSelections,
 }: {
-  value: PlayerOption | 'BYE' | null
-  onChange: (p: PlayerOption | 'BYE' | null) => void
+  value: PlayerOption | 'BYE' | 'QUALIFIER' | null
+  onChange: (p: PlayerOption | 'BYE' | 'QUALIFIER' | null) => void
   tour: 'ATP' | 'WTA'
   placeholder: string
   existingSelections: Set<string>
@@ -103,6 +103,13 @@ function PlayerCombobox({
     setResults([])
   }
 
+  function selectQualifier() {
+    onChange('QUALIFIER')
+    setQuery('')
+    setOpen(false)
+    setResults([])
+  }
+
   function clearSelection() {
     onChange(null)
     setQuery('')
@@ -130,6 +137,15 @@ function PlayerCombobox({
     return (
       <div className="flex items-center gap-2 px-3 py-2.5">
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', fontStyle: 'italic' }}>BYE</span>
+        <button type="button" onClick={clearSelection} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#991b1b', cursor: 'pointer', background: 'none', border: 'none' }}>✕</button>
+      </div>
+    )
+  }
+
+  if (value === 'QUALIFIER') {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2.5">
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: '#4338ca', fontStyle: 'italic' }}>Qualifier</span>
         <button type="button" onClick={clearSelection} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#991b1b', cursor: 'pointer', background: 'none', border: 'none' }}>✕</button>
       </div>
     )
@@ -177,6 +193,19 @@ function PlayerCombobox({
             onMouseOut={e => (e.currentTarget.style.background = 'white')}
           >
             BYE
+          </div>
+
+          {/* Qualifier option */}
+          <div
+            onClick={selectQualifier}
+            style={{
+              padding: '6px 8px', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
+              color: '#4338ca', fontStyle: 'italic', borderBottom: '1px solid var(--chalk-dim)',
+            }}
+            onMouseOver={e => (e.currentTarget.style.background = 'var(--chalk)')}
+            onMouseOut={e => (e.currentTarget.style.background = 'white')}
+          >
+            Qualifier
           </div>
 
           {searching && (
@@ -271,10 +300,10 @@ function MatchCard({
   existingSelections,
 }: {
   matchNumber: number
-  player1: PlayerOption | 'BYE' | null
-  player2: PlayerOption | 'BYE' | null
-  onChangeP1: (v: PlayerOption | 'BYE' | null) => void
-  onChangeP2: (v: PlayerOption | 'BYE' | null) => void
+  player1: PlayerOption | 'BYE' | 'QUALIFIER' | null
+  player2: PlayerOption | 'BYE' | 'QUALIFIER' | null
+  onChangeP1: (v: PlayerOption | 'BYE' | 'QUALIFIER' | null) => void
+  onChangeP2: (v: PlayerOption | 'BYE' | 'QUALIFIER' | null) => void
   tour: 'ATP' | 'WTA'
   existingSelections: Set<string>
 }) {
@@ -378,7 +407,7 @@ function BracketConnector() {
 
 export default function DrawBuilder({ tournamentId, tournamentName, tournamentLocation, flagEmoji, drawSize, tour, existingSlots }: DrawBuilderProps) {
   const matchCount = drawSize / 2
-  type Slot = PlayerOption | 'BYE' | null
+  type Slot = PlayerOption | 'BYE' | 'QUALIFIER' | null
 
   const rounds = getRounds(drawSize)
   const firstRound = rounds[0]
@@ -406,8 +435,8 @@ export default function DrawBuilder({ tournamentId, tournamentName, tournamentLo
   // Track all selected player external_ids to prevent duplicates
   const existingSelections = new Set<string>()
   for (const slot of slots) {
-    if (slot.player1 && slot.player1 !== 'BYE') existingSelections.add(slot.player1.external_id)
-    if (slot.player2 && slot.player2 !== 'BYE') existingSelections.add(slot.player2.external_id)
+    if (slot.player1 && typeof slot.player1 === 'object') existingSelections.add(slot.player1.external_id)
+    if (slot.player2 && typeof slot.player2 === 'object') existingSelections.add(slot.player2.external_id)
   }
 
   function updateSlot(index: number, side: 'player1' | 'player2', value: Slot) {
@@ -423,9 +452,15 @@ export default function DrawBuilder({ tournamentId, tournamentName, tournamentLo
   async function handleSave() {
     setStatus({ type: 'loading' })
     try {
+      const resolveSlot = (v: Slot): string | null => {
+        if (!v) return null
+        if (v === 'BYE') return null
+        if (v === 'QUALIFIER') return 'QUALIFIER'
+        return v.external_id
+      }
       const payload = slots.map(s => ({
-        player1ExternalId: s.player1 === 'BYE' ? null : (s.player1?.external_id ?? null),
-        player2ExternalId: s.player2 === 'BYE' ? null : (s.player2?.external_id ?? null),
+        player1ExternalId: resolveSlot(s.player1),
+        player2ExternalId: resolveSlot(s.player2),
       }))
       const { ok, error, matchCount: mc } = await buildDraw(tournamentId, payload)
       if (ok) {

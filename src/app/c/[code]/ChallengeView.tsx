@@ -21,6 +21,7 @@ export default function ChallengeView({
   matchResults,
   rawMatchResults,
   shareCode,
+  adminLockedMatches,
 }: {
   challenge: any
   tournament: any
@@ -28,6 +29,7 @@ export default function ChallengeView({
   matchResults: Record<string, string>
   rawMatchResults: MatchResultEntry[]
   shareCode: string
+  adminLockedMatches?: Record<string, string>
 }) {
   const [role, setRole] = useState<'creator' | 'opponent' | 'viewer'>('viewer')
   const [opponentName, setOpponentName] = useState('')
@@ -181,6 +183,7 @@ export default function ChallengeView({
           readOnly={true}
           hideSaveButtons={true}
           hideBackLink={true}
+          adminLockedMatches={adminLockedMatches}
         />
       </div>
     )
@@ -235,6 +238,7 @@ export default function ChallengeView({
           hideSaveButtons={true}
           hideBackLink={true}
           onPicksChange={handlePicksChange}
+          adminLockedMatches={adminLockedMatches}
         />
 
         {/* Submit button */}
@@ -404,6 +408,7 @@ export default function ChallengeView({
               hideSaveButtons={true}
               hideBackLink={true}
               hideNav={true}
+              adminLockedMatches={adminLockedMatches}
             />
           </div>
         )}

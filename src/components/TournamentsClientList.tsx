@@ -10,6 +10,7 @@ interface Props {
   liveTournaments: any[]
   activeTour: string
   activeStatus: string
+  predictableStatuses?: string[]
 }
 
 const STATUSES = [
@@ -21,7 +22,7 @@ const STATUSES = [
   { key: 'completed',             label: 'Completed',      color: '#4a5568', bg: '#ebebea' },
 ]
 
-export default function TournamentsClientList({ tournaments, liveTournaments, activeTour, activeStatus }: Props) {
+export default function TournamentsClientList({ tournaments, liveTournaments, activeTour, activeStatus, predictableStatuses }: Props) {
   const [query, setQuery] = useState('')
 
   const q = query.trim().toLowerCase()
@@ -144,7 +145,7 @@ export default function TournamentsClientList({ tournaments, liveTournaments, ac
           </div>
           <div className={`grid gap-3 ${liveTournaments.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
             {liveTournaments.map((t: any) => (
-              <TournamentCard key={t.id} t={t} />
+              <TournamentCard key={t.id} t={t} predictableStatuses={predictableStatuses} />
             ))}
           </div>
         </div>
@@ -183,7 +184,7 @@ export default function TournamentsClientList({ tournaments, liveTournaments, ac
               defaultOpen={hasQuery || group.key === currentMonthKey}
             >
               {group.list.map((t: any) => (
-                <TournamentCard key={t.id} t={t} />
+                <TournamentCard key={t.id} t={t} predictableStatuses={predictableStatuses} />
               ))}
             </TournamentMonthGroup>
           ))}
