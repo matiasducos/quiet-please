@@ -16,6 +16,7 @@ const ENDPOINTS = [
   { key: 'sync-results',     label: 'Sync Results',     description: 'Fetch match results for in-progress tournaments',    scheduleUtcHour: 12,   disabled: true  },
   { key: 'sync-backfill',    label: 'Sync Backfill',    description: 'Process past tournaments (on-demand)',               scheduleUtcHour: null, disabled: true  },
   { key: 'auto-predict',     label: 'Auto-Predict',     description: 'Generate predictions for auto-predict users',        scheduleUtcHour: 9.5,  disabled: true  },
+  { key: 'sync-live-status', label: 'Sync Live Status', description: 'Poll DSG for live match statuses, auto-lock started matches (realtime mode)', scheduleUtcHour: null, disabled: true  },
 ] as const
 
 function formatCronSchedule(utcHour: number | null): string {
@@ -176,7 +177,10 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
   }
 
   // ── Settings state ─────────────────────────────────────────────────────────
-  const initMode: PredictionMode = appSettings.prediction_mode === 'pre_tournament' ? 'pre_tournament' : appSettings.prediction_mode === 'manual_lock' ? 'manual_lock' : 'anytime'
+  const initMode: PredictionMode = appSettings.prediction_mode === 'pre_tournament' ? 'pre_tournament'
+    : appSettings.prediction_mode === 'manual_lock' ? 'manual_lock'
+    : appSettings.prediction_mode === 'realtime' ? 'realtime'
+    : 'anytime'
   const [savedMode, setSavedMode] = useState<PredictionMode>(initMode)
   const [pendingMode, setPendingMode] = useState<PredictionMode>(initMode)
   const [settingsStatus, setSettingsStatus] = useState<AsyncStatus>({ type: 'idle' })
@@ -791,6 +795,14 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
                     color: '#4338ca',
                     bg: '#eef2ff',
                     border: '#c7d2fe',
+                  },
+                  {
+                    value: 'realtime' as PredictionMode,
+                    label: 'Real-time auto-lock (DSG)',
+                    description: 'Matches are automatically locked when DSG live data detects they have started (polled every 2 min). You can still manually lock/unlock from the results page. Requires DSG credentials + competition ID on each tournament.',
+                    color: '#0369a1',
+                    bg: '#e0f2fe',
+                    border: '#7dd3fc',
                   },
                 ]).map(opt => {
                   const isSelected = pendingMode === opt.value

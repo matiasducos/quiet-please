@@ -1041,6 +1041,7 @@ export async function getTournament(tournamentId: string): Promise<{
     id: string; name: string; tour: string; category: string
     country: string; city: string; surface: string | null
     starts_at: string | null; draw_size: number | null; status: string
+    dsg_competition_id: string | null
   }
   error?: string
 }> {
@@ -1049,7 +1050,7 @@ export async function getTournament(tournamentId: string): Promise<{
 
   const { data: tournament, error } = await admin
     .from('tournaments')
-    .select('id, name, tour, category, location, surface, starts_at, draw_size, status')
+    .select('id, name, tour, category, location, surface, starts_at, draw_size, status, dsg_competition_id')
     .eq('id', tournamentId)
     .single()
 
@@ -1074,6 +1075,7 @@ export async function getTournament(tournamentId: string): Promise<{
       starts_at: tournament.starts_at,
       draw_size: tournament.draw_size as number | null,
       status: tournament.status,
+      dsg_competition_id: (tournament as any).dsg_competition_id ?? null,
     },
   }
 }
@@ -1089,6 +1091,7 @@ export async function updateTournament(
     surface: 'hard' | 'clay' | 'grass'
     startsAt: string
     drawSize: 32 | 64 | 128
+    dsgCompetitionId?: string | null
   },
 ): Promise<{ ok: boolean; error?: string }> {
   await assertAdmin()
@@ -1114,6 +1117,7 @@ export async function updateTournament(
       ends_at: endsAt.toISOString(),
       starts_year,
       draw_size: data.drawSize,
+      dsg_competition_id: data.dsgCompetitionId ?? null,
     })
     .eq('id', tournamentId)
 
@@ -1610,7 +1614,10 @@ export async function getAppSettings(): Promise<AppSettings> {
   for (const row of data) {
     if (row.key === 'prediction_mode') {
       const v = String(row.value)
-      settings.prediction_mode = v.includes('pre_tournament') ? 'pre_tournament' : v.includes('manual_lock') ? 'manual_lock' : 'anytime'
+      settings.prediction_mode = v.includes('pre_tournament') ? 'pre_tournament'
+        : v.includes('manual_lock') ? 'manual_lock'
+        : v.includes('realtime') ? 'realtime'
+        : 'anytime'
     }
   }
   return settings
@@ -1620,7 +1627,8 @@ export async function updatePredictionMode(
   mode: PredictionMode,
 ): Promise<{ ok: boolean; error?: string }> {
   await assertAdmin()
-  if (mode !== 'anytime' && mode !== 'pre_tournament' && mode !== 'manual_lock') {
+  const VALID_MODES: PredictionMode[] = ['anytime', 'pre_tournament', 'manual_lock', 'realtime']
+  if (!VALID_MODES.includes(mode)) {
     return { ok: false, error: 'Invalid mode' }
   }
 
@@ -1637,6 +1645,105 @@ export async function updatePredictionMode(
   // Bust the cached prediction mode so all pages pick it up immediately
   revalidateTag('app-settings', 'default')
 
+  return { ok: true }
+}
+
+// ── Player ID Mapping (DSG integration) ─────────────────────────────────────
+
+import { isDSGConfigured, getDSGClient } from '@/lib/tennis/providers/dsg'
+import { generateMappingCandidates, type PlayerMappingCandidate, type ApiTennisPlayer, type DSGPlayer } from '@/lib/tennis/player-mapping'
+
+/**
+ * Bootstrap player mapping: fetch player lists from both APIs,
+ * run fuzzy matching, and return candidate list for admin review.
+ */
+export async function bootstrapPlayerMapping(): Promise<{
+  ok: boolean
+  candidates?: PlayerMappingCandidate[]
+  error?: string
+}> {
+  await assertAdmin()
+
+  if (!isDSGConfigured()) {
+    return { ok: false, error: 'DSG_CLIENT_ID and DSG_AUTH_KEY environment variables are not set.' }
+  }
+
+  const admin = createAdminClient()
+
+  // 1. Fetch api-tennis players from our database
+  // These are players that appear in current bracket_data
+  const { data: dbPlayers, error: dbErr } = await admin
+    .from('players')
+    .select('external_id, name, country, tour')
+    .order('name')
+
+  if (dbErr) return { ok: false, error: `DB error: ${dbErr.message}` }
+
+  const apiTennisPlayers: ApiTennisPlayer[] = (dbPlayers ?? []).map(p => ({
+    id: p.external_id,
+    name: p.name,
+    country: p.country ?? '',
+  }))
+
+  // 2. Fetch DSG contestants
+  const dsg = getDSGClient()
+  let dsgPlayers: DSGPlayer[]
+  try {
+    const raw = await dsg.getContestants()
+    dsgPlayers = raw.map(c => ({
+      id: c.id,
+      name: c.name,
+      nationality: c.nationality ?? '',
+    }))
+  } catch (err) {
+    return { ok: false, error: `DSG API error: ${err instanceof Error ? err.message : String(err)}` }
+  }
+
+  if (!dsgPlayers.length) {
+    return { ok: false, error: 'DSG returned 0 contestants. Check API credentials or endpoint.' }
+  }
+
+  // 3. Generate fuzzy match candidates
+  const candidates = generateMappingCandidates(apiTennisPlayers, dsgPlayers)
+
+  return { ok: true, candidates }
+}
+
+/**
+ * Save verified player mappings to the database.
+ * Upserts by api_tennis_id (ON CONFLICT).
+ */
+export async function savePlayerMappings(
+  mappings: Array<{
+    apiTennisId: string
+    dsgPlayerId: string
+    playerName: string
+    country: string
+    matchMethod: string
+    matchScore: number
+  }>,
+): Promise<{ ok: boolean; error?: string }> {
+  await assertAdmin()
+
+  if (!mappings.length) return { ok: false, error: 'No mappings to save' }
+
+  const admin = createAdminClient()
+  const rows = mappings.map(m => ({
+    api_tennis_id: m.apiTennisId,
+    dsg_player_id: m.dsgPlayerId,
+    player_name: m.playerName,
+    country: m.country || null,
+    match_method: m.matchMethod,
+    match_score: m.matchScore,
+    verified: true,
+    updated_at: new Date().toISOString(),
+  }))
+
+  const { error } = await admin
+    .from('player_id_map')
+    .upsert(rows, { onConflict: 'api_tennis_id' })
+
+  if (error) return { ok: false, error: error.message }
   return { ok: true }
 }
 

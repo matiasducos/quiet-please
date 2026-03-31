@@ -17,6 +17,7 @@ interface TournamentData {
   starts_at: string | null
   draw_size: number | null
   status: string
+  dsg_competition_id: string | null
 }
 
 export default function TournamentEditor({ tournament }: { tournament: TournamentData }) {
@@ -37,6 +38,7 @@ export default function TournamentEditor({ tournament }: { tournament: Tournamen
   const [drawSize, setDrawSize] = useState<32 | 64 | 128>(
     (tournament.draw_size as 32 | 64 | 128) ?? 32,
   )
+  const [dsgCompetitionId, setDsgCompetitionId] = useState(tournament.dsg_competition_id ?? '')
 
   const [status, setStatus] = useState<{ type: 'idle' | 'loading' | 'error' | 'success'; message?: string }>({ type: 'idle' })
 
@@ -55,6 +57,7 @@ export default function TournamentEditor({ tournament }: { tournament: Tournamen
         surface,
         startsAt,
         drawSize,
+        dsgCompetitionId: dsgCompetitionId.trim() || null,
       })
       if (ok) {
         setStatus({ type: 'success', message: 'Tournament updated successfully.' })
@@ -167,6 +170,20 @@ export default function TournamentEditor({ tournament }: { tournament: Tournamen
                   <option value={128}>128</option>
                 </select>
               </div>
+            </div>
+
+            {/* DSG Competition ID (for live status polling) */}
+            <div>
+              <label style={labelStyle}>DSG Competition ID (Optional)</label>
+              <input
+                value={dsgCompetitionId}
+                onChange={e => setDsgCompetitionId(e.target.value)}
+                placeholder="e.g., 12345 — set for real-time auto-lock"
+                style={{ ...inputStyle, width: '100%' }}
+              />
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', marginTop: '2px' }}>
+                Links this tournament to DSG live data. Required for real-time mode auto-locking.
+              </p>
             </div>
           </div>
 
