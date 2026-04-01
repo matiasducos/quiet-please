@@ -1685,22 +1685,23 @@ export async function bootstrapPlayerMapping(): Promise<{
     country: p.country ?? '',
   }))
 
-  // 2. Fetch DSG contestants
+  // 2. Fetch DSG players from recent match data
+  // (get_contestants is unavailable on current plan — extract from matches instead)
   const dsg = getDSGClient()
   let dsgPlayers: DSGPlayer[]
   try {
-    const raw = await dsg.getContestants()
-    dsgPlayers = raw.map(c => ({
-      id: c.id,
-      name: c.name,
-      nationality: c.nationality ?? '',
+    const raw = await dsg.getPlayersFromRecentMatches(10080)  // 7 days of matches
+    dsgPlayers = raw.map(p => ({
+      id: p.id,
+      name: p.name,
+      nationality: p.nationality,
     }))
   } catch (err) {
     return { ok: false, error: `DSG API error: ${err instanceof Error ? err.message : String(err)}` }
   }
 
   if (!dsgPlayers.length) {
-    return { ok: false, error: 'DSG returned 0 contestants. Check API credentials or endpoint.' }
+    return { ok: false, error: 'DSG returned 0 players from recent matches. Try again when matches are active.' }
   }
 
   // 3. Generate fuzzy match candidates

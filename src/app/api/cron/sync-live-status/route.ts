@@ -8,16 +8,19 @@
  * Only runs when prediction_mode === 'realtime'. Exits early otherwise.
  *
  * Flow:
- *   1. Get in-progress tournaments with a DSG competition ID
- *   2. For each tournament, fetch DSG match statuses
- *   3. Map DSG matches → bracket matches via player_id_map
- *   4. Auto-lock started matches in draws.locked_matches
+ *   1. Call get_matches_updates once (single API call for ALL competitions)
+ *   2. Group matches by competition_id
+ *   3. For each in-progress tournament with a DSG competition ID:
+ *      - Filter DSG matches for that competition
+ *      - Map DSG matches → bracket matches via player_id_map
+ *      - Auto-lock started matches in draws.locked_matches
  */
 
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getDSGClient, isDSGConfigured } from '@/lib/tennis/providers/dsg'
+import type { DSGMatch } from '@/lib/tennis/providers/dsg'
 import { getDsgToApiTennisMap } from '@/lib/tennis/player-mapping'
 import { findMatchesToLock } from '@/lib/tennis/live-status'
 import type { DSGLiveMatch } from '@/lib/tennis/live-status'
@@ -32,6 +35,21 @@ function isAuthorized(request: Request): boolean {
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret) return false  // Fail closed
   return request.headers.get('authorization') === `Bearer ${cronSecret}`
+}
+
+/**
+ * Normalize a raw DSGMatch from get_matches_updates to our DSGLiveMatch shape.
+ * Round comes from match_extra.round.round_name in the updates endpoint.
+ */
+function normalizeDsgMatch(m: DSGMatch): DSGLiveMatch {
+  return {
+    match_id: m.match_id ?? '',
+    status: m.status ?? '',
+    contestant_a_id: m.contestant_a_id ?? '',
+    contestant_b_id: m.contestant_b_id ?? '',
+    round_name: m.match_extra?.round?.round_name ?? '',
+    competition_id: m.match_extra?.competition?.competition_id,
+  }
 }
 
 export async function GET(request: Request) {
@@ -86,7 +104,26 @@ export async function GET(request: Request) {
       }
     }
 
-    // ── 3. Process each tournament ────────────────────────────────────────
+    // ── 3. Single DSG API call: fetch recent match updates ────────────────
+    let allDsgMatches: DSGMatch[]
+    try {
+      allDsgMatches = await dsg.getMatchUpdates(5)  // last 5 minutes
+    } catch (err) {
+      Sentry.captureException(err, { tags: { cron: 'sync-live-status', step: 'fetch-updates' } })
+      throw err
+    }
+
+    // Group by competition_id for efficient per-tournament processing
+    const byCompetition = new Map<string, DSGLiveMatch[]>()
+    for (const raw of allDsgMatches) {
+      const normalized = normalizeDsgMatch(raw)
+      const compId = normalized.competition_id
+      if (!compId) continue
+      if (!byCompetition.has(compId)) byCompetition.set(compId, [])
+      byCompetition.get(compId)!.push(normalized)
+    }
+
+    // ── 4. Process each tournament ────────────────────────────────────────
     const results: Array<{
       name: string
       checked: number
@@ -105,19 +142,14 @@ export async function GET(request: Request) {
       }
 
       try {
-        // Fetch DSG matches for this competition
-        const dsgMatches = await dsg.getMatchesByCompetition(tournament.dsg_competition_id!)
+        // Filter DSG matches for this competition
+        const dsgMatchesForTournament = byCompetition.get(tournament.dsg_competition_id!) ?? []
+        tournamentResult.checked = dsgMatchesForTournament.length
 
-        // Normalize DSG matches to our internal shape
-        const normalizedDsgMatches: DSGLiveMatch[] = dsgMatches.map(m => ({
-          match_id: m.match_id ?? '',
-          status: m.status ?? '',
-          home_contestant_id: m.home_contestant?.id ?? '',
-          away_contestant_id: m.away_contestant?.id ?? '',
-          round: m.round ?? '',
-        }))
-
-        tournamentResult.checked = normalizedDsgMatches.length
+        if (dsgMatchesForTournament.length === 0) {
+          results.push(tournamentResult)
+          continue
+        }
 
         // Fetch bracket data + current locks
         const { data: drawRow, error: drawErr } = await supabase
@@ -138,7 +170,7 @@ export async function GET(request: Request) {
 
         // Find matches to lock
         const toLock = findMatchesToLock(
-          normalizedDsgMatches,
+          dsgMatchesForTournament,
           bracketMatches,
           dsgToApiMap,
           currentLocks,
@@ -197,6 +229,7 @@ export async function GET(request: Request) {
         message: 'Live status sync complete',
         mode: 'realtime',
         player_mappings: mappingCount,
+        dsg_matches_fetched: allDsgMatches.length,
         tournaments_checked: tournaments.length,
         total_matches_locked: totalLocked,
         total_errors: totalErrors,

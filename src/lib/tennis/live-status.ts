@@ -12,13 +12,14 @@ import type { DrawMatch, Round } from './types'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-/** Simplified DSG match for mapping (pre-normalized by the cron) */
+/** Pre-normalized DSG match ready for matching against bracket data */
 export interface DSGLiveMatch {
   match_id: string
   status: string                // "Playing", "Played", "Suspended", etc.
-  home_contestant_id: string    // DSG player ID
-  away_contestant_id: string    // DSG player ID
-  round: string                 // DSG round name (e.g., "Quarter-finals")
+  contestant_a_id: string       // DSG player ID (flat field from API)
+  contestant_b_id: string       // DSG player ID (flat field from API)
+  round_name: string            // DSG round name (e.g., "Round of 32", "Quarter-finals")
+  competition_id?: string       // DSG competition ID (from match_extra)
 }
 
 /** Result: a bracket match that should be locked */
@@ -34,9 +35,9 @@ export interface MatchLockResult {
 const DSG_LIVE_STATUSES = new Set([
   'Playing',
   'Played',
+  'Retired',       // player retired mid-match
   'Suspended',
   'Interrupted',
-  // Add more as discovered from actual DSG responses
 ])
 
 // ── DSG round normalization ──────────────────────────────────────────────────
@@ -121,15 +122,15 @@ export function findMatchesToLock(
     if (!DSG_LIVE_STATUSES.has(dsgMatch.status)) continue
 
     // Map DSG player IDs → api-tennis IDs
-    const apiId1 = dsgToApiTennisMap[dsgMatch.home_contestant_id]
-    const apiId2 = dsgToApiTennisMap[dsgMatch.away_contestant_id]
+    const apiId1 = dsgToApiTennisMap[dsgMatch.contestant_a_id]
+    const apiId2 = dsgToApiTennisMap[dsgMatch.contestant_b_id]
     if (!apiId1 || !apiId2) {
       // Unmapped players — skip silently (admin needs to verify mapping)
       continue
     }
 
     // Normalize DSG round
-    const round = normalizeDsgRound(dsgMatch.round)
+    const round = normalizeDsgRound(dsgMatch.round_name)
     if (!round) continue  // unknown round, already logged
 
     // Look up in bracket index
