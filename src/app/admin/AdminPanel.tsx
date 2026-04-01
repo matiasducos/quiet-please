@@ -283,6 +283,16 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
               Manage Players
             </span>
           </Link>
+          <Link
+            href="/admin/player-mapping"
+            className="flex items-center gap-2 px-4 py-3 rounded-sm border transition-colors"
+            style={{ borderColor: 'var(--chalk-dim)', background: 'transparent', textDecoration: 'none' }}
+          >
+            <span style={{ fontSize: '1rem' }}>🔗</span>
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.85rem', color: 'var(--muted)' }}>
+              Player Mapping
+            </span>
+          </Link>
         </div>
 
         {/* ── Tournaments tab ── */}
