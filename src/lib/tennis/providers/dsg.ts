@@ -4,65 +4,97 @@
  * Supplementary data source layered on top of api-tennis.com.
  * Used for:
  *   - Live match status detection (auto-lock)
- *   - Head-to-head records (replacing mock data)
- *   - Player list (for bootstrapping player ID mapping)
+ *   - Player list extraction (for bootstrapping player ID mapping)
  *
  * NOT a TennisProvider subclass — DSG does not replace api-tennis for
  * tournaments/draws/results; it provides complementary capabilities.
  *
- * ⚠️ IMPORTANT: The exact response shapes from DSG may differ from what's
- * typed here. After activating the trial, hit the API and verify field names.
- * The types below are based on DSG documentation patterns for similar sports.
+ * Auth: DSG uses 3 layers:
+ *   Layer 1: `client` + `authkey` query params
+ *   Layer 2: HTTP Basic Auth (username + password)
+ *   Layer 3: Domain/IP whitelisting (managed by DSG)
+ *
+ * Available endpoints (trial subscription):
+ *   ✅ get_matches          — full tournament matches (deeply nested)
+ *   ✅ get_matches_updates  — recent match changes (flat, preferred for polling)
+ *   ✅ get_competitions     — tournament list
+ *   ❌ get_head2head        — unauthorized on current plan
+ *   ❌ get_contestants      — unauthorized on current plan
  */
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-/** Raw DSG contestant (player) object from get_contestants / get_peoples */
-export interface DSGContestant {
-  id: string
-  name: string
-  nationality?: string
-  gender?: string
-}
-
-/** Raw DSG match object from get_matches / get_matches_updates */
+/** Flat DSG match object (from get_matches and get_matches_updates) */
 export interface DSGMatch {
   match_id: string
-  competition_id?: string
-  season_id?: string
-  round?: string            // "Quarter-finals", "Semi-finals", "Final", etc.
-  status: string            // "Fixture", "Playing", "Played", "Cancelled", "Suspended", etc.
-  home_contestant?: {
-    id: string
-    name: string
-  }
-  away_contestant?: {
-    id: string
-    name: string
-  }
-  start_time?: string       // ISO datetime or DSG format
-  score?: string
+  date?: string               // "2026-03-31"
+  time?: string               // "21:00:00"  (CET)
+  date_utc?: string           // "2026-03-31"
+  time_utc?: string           // "19:00:00"
+  contestant_a_id: string
+  contestant_a_common_name?: string
+  contestant_a_short_name?: string
+  contestant_a_first_name?: string
+  contestant_a_last_name?: string
+  contestant_a_nationality_area_name?: string
+  contestant_a_nationality_area_code?: string
+  contestant_a_seeding?: string
+  contestant_b_id: string
+  contestant_b_common_name?: string
+  contestant_b_short_name?: string
+  contestant_b_first_name?: string
+  contestant_b_last_name?: string
+  contestant_b_nationality_area_name?: string
+  contestant_b_nationality_area_code?: string
+  contestant_b_seeding?: string
+  status: string              // "Fixture" | "Playing" | "Played" | "Cancelled" | "Suspended" etc.
+  winner?: string             // "contestant_a" | "contestant_b" | "yet unknown"
+  score_a?: string
+  score_b?: string
+  final_period?: string
+  last_updated?: string       // "2026-03-31 23:25:33"
+  match_extra?: DSGMatchExtra
 }
 
-/** Raw DSG H2H data from get_head2head */
-export interface DSGH2HResponse {
-  contestant1?: { id: string; name: string }
-  contestant2?: { id: string; name: string }
-  matches?: Array<{
-    date?: string
+/** Nested extra info on get_matches_updates responses */
+export interface DSGMatchExtra {
+  competition?: {
+    competition_id: string
     competition_name?: string
-    surface?: string
-    round?: string
-    winner_id?: string
-    score?: string
-  }>
+  }
+  season?: {
+    season_id: string
+    season_name?: string
+    season_title?: string
+  }
+  round?: {
+    round_id: string
+    round_name: string        // "Round of 32", "Quarter-finals", etc.
+  }
+  venue?: {
+    venue_id?: string
+    venue_name?: string
+    venue_city?: string
+  }
 }
 
-/** Raw DSG competition object from get_competitions */
+/** DSG competition from get_competitions */
 export interface DSGCompetition {
-  id: string
+  competition_id: string
   name: string
+  gender?: string
   type?: string
+  format?: string
+  area_id?: string
+  area_name?: string
+}
+
+/** Extracted player info from match data (used for bootstrap when get_contestants is unavailable) */
+export interface DSGPlayerFromMatch {
+  id: string
+  name: string                // common_name
+  nationality: string         // nationality_area_name
+  nationalityCode: string     // nationality_area_code (e.g., "USA")
 }
 
 // ── Client ───────────────────────────────────────────────────────────────────
@@ -72,15 +104,18 @@ const DSG_BASE = 'https://dsg-api.com/clients'
 export class DSGClient {
   private clientId: string
   private authKey: string
+  private password: string
 
-  constructor(clientId: string, authKey: string) {
+  constructor(clientId: string, authKey: string, password: string) {
     this.clientId = clientId
     this.authKey = authKey
+    this.password = password
   }
 
   /**
-   * Core fetcher. DSG auth uses query params (not headers).
-   * Default format is JSON (ftype=json).
+   * Core fetcher. DSG uses two auth layers:
+   *   Layer 1: client + authkey as query params
+   *   Layer 2: HTTP Basic Auth header
    */
   private async fetch<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
     const url = new URL(`${DSG_BASE}/${this.clientId}/tennis/${endpoint}`)
@@ -93,9 +128,14 @@ export class DSGClient {
       }
     }
 
+    const basicAuth = Buffer.from(`${this.clientId}:${this.password}`).toString('base64')
+
     const res = await fetch(url.toString(), {
       cache: 'no-store',
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(15_000),
+      headers: {
+        'Authorization': `Basic ${basicAuth}`,
+      },
     })
 
     if (!res.ok) {
@@ -103,89 +143,168 @@ export class DSGClient {
       throw new Error(`DSG HTTP ${res.status} ${res.statusText} — ${body.slice(0, 200)}`)
     }
 
-    return res.json() as Promise<T>
+    const json = await res.json() as any
+
+    // DSG returns errors as { "Error": "message" }
+    if (json?.Error) {
+      throw new Error(`DSG API error: ${json.Error}`)
+    }
+
+    return json as T
   }
 
-  // ── Match Status ─────────────────────────────────────────────────────────
+  // ── Match Updates (preferred for polling — flat response) ─────────────────
 
   /**
-   * Fetch all matches for a DSG competition.
-   * Used by the live-status cron to detect started matches.
-   */
-  async getMatchesByCompetition(competitionId: string): Promise<DSGMatch[]> {
-    const data = await this.fetch<any>('get_matches', {
-      competition_id: competitionId,
-    })
-    // DSG response envelopes vary — try common patterns
-    return extractArray<DSGMatch>(data, ['matches', 'match', 'data'])
-  }
-
-  /**
-   * Fetch recent match updates (delta since N minutes ago).
-   * More efficient than fetching all matches for frequent polling.
+   * Fetch recent match updates across all competitions (delta).
+   * Returns a flat array — much simpler than get_matches.
+   *
+   * Response path: datasportsgroup.match[]
    */
   async getMatchUpdates(sinceMinutes: number = 5): Promise<DSGMatch[]> {
     const data = await this.fetch<any>('get_matches_updates', {
       minutes: String(sinceMinutes),
     })
-    return extractArray<DSGMatch>(data, ['matches', 'match', 'data'])
+    const matches = data?.datasportsgroup?.match
+    if (Array.isArray(matches)) return matches
+    if (matches && typeof matches === 'object') return [matches]
+    return []
   }
 
-  // ── Head-to-Head ─────────────────────────────────────────────────────────
+  // ── Full Match List (deeply nested — use for bootstrap/full sync) ─────────
 
   /**
-   * Fetch H2H record between two players by their DSG IDs.
-   * Used to replace the mock H2H in h2h.ts.
+   * Fetch all matches for a season (tournament edition).
+   *
+   * NOTE: The response is deeply nested:
+   *   datasportsgroup.tour.tour_season.competition.season
+   *     .discipline[].gender.round[].list.match[]
+   *
+   * Use getMatchUpdates() for live polling instead — it's flatter and more efficient.
    */
-  async getH2H(player1DsgId: string, player2DsgId: string): Promise<DSGH2HResponse> {
-    const data = await this.fetch<any>('get_head2head', {
-      contestant1_id: player1DsgId,
-      contestant2_id: player2DsgId,
+  async getMatchesBySeason(seasonId: string): Promise<DSGMatch[]> {
+    const data = await this.fetch<any>('get_matches', {
+      type: 'season',
+      id: seasonId,
     })
-    return data as DSGH2HResponse
+    return extractMatchesFromSeasonResponse(data)
   }
 
-  // ── Contestants (Players) ────────────────────────────────────────────────
+  // ── Competitions ──────────────────────────────────────────────────────────
 
   /**
-   * Fetch the full player list from DSG.
-   * Used to bootstrap the player_id_map table.
-   */
-  async getContestants(opts?: { gender?: 'male' | 'female' }): Promise<DSGContestant[]> {
-    const params: Record<string, string> = {}
-    if (opts?.gender) params.gender = opts.gender
-    const data = await this.fetch<any>('get_contestants', params)
-    return extractArray<DSGContestant>(data, ['contestants', 'contestant', 'peoples', 'data'])
-  }
-
-  // ── Competitions (Tournaments) ───────────────────────────────────────────
-
-  /**
-   * Fetch the list of DSG competitions.
-   * Used for admin mapping of tournament → DSG competition ID.
+   * Fetch available DSG competitions (tournaments).
+   * Response path: datasportsgroup.competition[]
    */
   async getCompetitions(): Promise<DSGCompetition[]> {
     const data = await this.fetch<any>('get_competitions')
-    return extractArray<DSGCompetition>(data, ['competitions', 'competition', 'data'])
+    const comps = data?.datasportsgroup?.competition
+    if (Array.isArray(comps)) return comps
+    if (comps && typeof comps === 'object') return [comps]
+    return []
+  }
+
+  // ── Player extraction from match data ─────────────────────────────────────
+
+  /**
+   * Extract unique players from match update data.
+   * Workaround for get_contestants being unauthorized on current plan.
+   *
+   * Call with a large sinceMinutes (e.g., 10080 = 7 days) to get
+   * players from all recently active matches.
+   */
+  async getPlayersFromRecentMatches(sinceMinutes: number = 10080): Promise<DSGPlayerFromMatch[]> {
+    const matches = await this.getMatchUpdates(sinceMinutes)
+    return extractUniquePlayersFromMatches(matches)
   }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Response extractors ─────────────────────────────────────────────────────
 
 /**
- * DSG wraps data in different envelope keys depending on the endpoint.
- * Try multiple common keys and return the first array found.
+ * Extract matches from the deeply nested get_matches?type=season response.
+ *
+ * Path: datasportsgroup.tour.tour_season.competition.season
+ *         .discipline[].gender.round[].list.match[]
+ *
+ * We also inject round info from the parent round node into each match's
+ * match_extra (since the full-match response doesn't include it inline).
  */
-function extractArray<T>(data: any, keys: string[]): T[] {
-  if (Array.isArray(data)) return data
-  for (const key of keys) {
-    const val = data?.[key]
-    if (Array.isArray(val)) return val
-    // Sometimes DSG returns a single object instead of an array
-    if (val && typeof val === 'object' && !Array.isArray(val)) return [val] as T[]
+function extractMatchesFromSeasonResponse(data: any): DSGMatch[] {
+  const matches: DSGMatch[] = []
+
+  try {
+    const season = data?.datasportsgroup?.tour?.tour_season?.competition?.season
+    if (!season) return []
+
+    const disciplines = Array.isArray(season.discipline)
+      ? season.discipline
+      : season.discipline ? [season.discipline] : []
+
+    for (const disc of disciplines) {
+      // gender can be an object with round[] directly
+      const gender = disc?.gender
+      if (!gender) continue
+
+      const rounds = Array.isArray(gender.round)
+        ? gender.round
+        : gender.round ? [gender.round] : []
+
+      for (const round of rounds) {
+        const roundName = round?.name ?? ''
+        const roundId = round?.round_id ?? ''
+
+        // list.match contains the actual matches
+        const list = round?.list
+        const rawMatches = list?.match
+        if (!rawMatches) continue
+
+        const matchArray = Array.isArray(rawMatches) ? rawMatches : [rawMatches]
+
+        for (const m of matchArray) {
+          // Inject round info into match_extra if not already present
+          if (!m.match_extra) m.match_extra = {}
+          if (!m.match_extra.round) {
+            m.match_extra.round = { round_id: roundId, round_name: roundName }
+          }
+          matches.push(m as DSGMatch)
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[dsg] Failed to extract matches from season response:', err)
   }
-  // Last resort: if data itself is an object with numeric keys, try Object.values
-  return []
+
+  return matches
+}
+
+/**
+ * Extract unique players from a flat array of DSG matches.
+ * Deduplicates by contestant ID.
+ */
+export function extractUniquePlayersFromMatches(matches: DSGMatch[]): DSGPlayerFromMatch[] {
+  const seen = new Map<string, DSGPlayerFromMatch>()
+
+  for (const m of matches) {
+    if (m.contestant_a_id && !seen.has(m.contestant_a_id)) {
+      seen.set(m.contestant_a_id, {
+        id: m.contestant_a_id,
+        name: m.contestant_a_common_name ?? `${m.contestant_a_first_name ?? ''} ${m.contestant_a_last_name ?? ''}`.trim(),
+        nationality: m.contestant_a_nationality_area_name ?? '',
+        nationalityCode: m.contestant_a_nationality_area_code ?? '',
+      })
+    }
+    if (m.contestant_b_id && !seen.has(m.contestant_b_id)) {
+      seen.set(m.contestant_b_id, {
+        id: m.contestant_b_id,
+        name: m.contestant_b_common_name ?? `${m.contestant_b_first_name ?? ''} ${m.contestant_b_last_name ?? ''}`.trim(),
+        nationality: m.contestant_b_nationality_area_name ?? '',
+        nationalityCode: m.contestant_b_nationality_area_code ?? '',
+      })
+    }
+  }
+
+  return Array.from(seen.values())
 }
 
 // ── Singleton factory ────────────────────────────────────────────────────────
@@ -194,17 +313,18 @@ let _client: DSGClient | null = null
 
 /**
  * Get or create the DSG client singleton.
- * Reads DSG_CLIENT_ID and DSG_AUTH_KEY from environment.
+ * Reads DSG_CLIENT_ID, DSG_AUTH_KEY, and DSG_PASSWORD from environment.
  * Throws if credentials are missing.
  */
 export function getDSGClient(): DSGClient {
   if (_client) return _client
   const clientId = process.env.DSG_CLIENT_ID
   const authKey = process.env.DSG_AUTH_KEY
-  if (!clientId || !authKey) {
-    throw new Error('DSG_CLIENT_ID and DSG_AUTH_KEY environment variables are required')
+  const password = process.env.DSG_PASSWORD
+  if (!clientId || !authKey || !password) {
+    throw new Error('DSG_CLIENT_ID, DSG_AUTH_KEY, and DSG_PASSWORD environment variables are required')
   }
-  _client = new DSGClient(clientId, authKey)
+  _client = new DSGClient(clientId, authKey, password)
   return _client
 }
 
@@ -213,5 +333,5 @@ export function getDSGClient(): DSGClient {
  * Use this for graceful degradation (e.g., fall back to mock H2H).
  */
 export function isDSGConfigured(): boolean {
-  return !!(process.env.DSG_CLIENT_ID && process.env.DSG_AUTH_KEY)
+  return !!(process.env.DSG_CLIENT_ID && process.env.DSG_AUTH_KEY && process.env.DSG_PASSWORD)
 }
