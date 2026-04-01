@@ -1729,7 +1729,19 @@ export async function savePlayerMappings(
   if (!mappings.length) return { ok: false, error: 'No mappings to save' }
 
   const admin = createAdminClient()
-  const rows = mappings.map(m => ({
+
+  // Deduplicate by DSG player ID — keep the highest-scoring match when
+  // two api-tennis IDs map to the same DSG player (e.g., duplicate entries)
+  const byDsgId = new Map<string, typeof mappings[0]>()
+  for (const m of mappings) {
+    const existing = byDsgId.get(m.dsgPlayerId)
+    if (!existing || m.matchScore > existing.matchScore) {
+      byDsgId.set(m.dsgPlayerId, m)
+    }
+  }
+  const deduplicated = Array.from(byDsgId.values())
+
+  const rows = deduplicated.map(m => ({
     api_tennis_id: m.apiTennisId,
     dsg_player_id: m.dsgPlayerId,
     player_name: m.playerName,
