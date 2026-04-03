@@ -18,7 +18,7 @@ export function codeToFlag(code: string): string {
  * Common aliases used by API-Tennis and other external data sources.
  * Maps alternative names → ISO 3166-1 alpha-2 codes.
  */
-const ALIASES: Record<string, string> = {
+export const ALIASES: Record<string, string> = {
   'usa': 'US', 'u.s.a.': 'US', 'u.s.': 'US', 'america': 'US',
   'uk': 'GB', 'great britain': 'GB', 'england': 'GB',
   'czechia': 'CZ',

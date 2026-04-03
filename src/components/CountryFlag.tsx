@@ -1,8 +1,12 @@
-import { COUNTRIES } from '@/app/admin/countries'
+import { COUNTRIES, ALIASES } from '@/app/admin/countries'
 
 const NAME_TO_CODE: Record<string, string> = {}
 for (const c of COUNTRIES) {
   NAME_TO_CODE[c.name.toLowerCase()] = c.code.toLowerCase()
+}
+// Include aliases so api-tennis variants like "USA", "UK", "Czechia" resolve correctly
+for (const [alias, code] of Object.entries(ALIASES)) {
+  NAME_TO_CODE[alias.toLowerCase()] = code.toLowerCase()
 }
 
 /** Resolve a country name or ISO code to a lowercase 2-letter code */
