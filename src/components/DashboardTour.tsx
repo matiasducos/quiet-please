@@ -11,24 +11,24 @@ const STEPS = [
     body: 'Track your ranking points, prediction count, and global position. These update after every match result.',
   },
   {
-    target: 'live-now',
-    title: 'Tournaments in play',
-    body: 'When a tournament is live, your picks are scored in real time. Tap any card to see the bracket and results.',
-  },
-  {
-    target: 'upcoming',
-    title: 'Make your picks',
-    body: 'When a draw opens, pick who you think wins each match. Earlier rounds = more points. Consecutive correct picks on the same player multiply your score.',
+    target: 'nav-tournaments',
+    title: 'Tournaments',
+    body: 'Browse all ATP and WTA tournaments. When a draw opens, fill in your bracket — correct picks earn points that count toward the global leaderboard.',
   },
   {
     target: 'nav-leaderboard',
-    title: 'Climb the leaderboard',
-    body: 'Your points count toward the global ranking. Rankings use a rolling 52-week window — stay consistent to climb.',
+    title: 'Leaderboard',
+    body: 'See how you rank globally and per tournament. Rankings use a rolling 52-week window — stay consistent to climb.',
+  },
+  {
+    target: 'nav-leagues',
+    title: 'Leagues',
+    body: 'Create or join private leagues to compete with friends, colleagues, or communities. Each league has its own leaderboard and season.',
   },
   {
     target: 'nav-challenges',
-    title: 'Challenge your friends',
-    body: 'Go head-to-head on any tournament. Challenge points are separate — they don\'t affect your global ranking.',
+    title: 'Challenges',
+    body: 'Go head-to-head with a friend on any tournament. You each lock in your bracket — whoever scores more points wins. Challenge points are separate from your global ranking.',
   },
 ]
 
