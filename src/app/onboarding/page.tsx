@@ -4,13 +4,12 @@ import { getNavProfile } from '@/lib/supabase/profile'
 import { getPredictableStatuses } from '@/lib/app-settings'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
+import HowItWorksDemo from '@/components/HowItWorksDemo'
 
 export const metadata: Metadata = { title: 'Get Started | Quiet Please' }
 
 // ── Onboarding page — shown to new users after signup ───────────────────────
 // Also accessible any time via /onboarding (linked from the nav)
-// Update VIDEO_URL below once the screen recording is ready.
-const VIDEO_URL = '' // e.g. 'https://www.youtube.com/embed/XXXXXXXXXX'
 
 const modes = [
   {
@@ -97,48 +96,10 @@ export default async function OnboardingPage() {
           </p>
         </div>
 
-        {/* ── Video embed ─────────────────────────────────────────────────── */}
-        {VIDEO_URL ? (
-          <div className="mb-14 rounded-sm overflow-hidden border" style={{ borderColor: 'var(--chalk-dim)', aspectRatio: '16/9' }}>
-            <iframe
-              src={VIDEO_URL}
-              title="How Quiet Please works"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              style={{ width: '100%', height: '100%', border: 'none' }}
-            />
-          </div>
-        ) : (
-          // Placeholder shown until the screen recording is ready
-          <div
-            className="mb-14 rounded-sm border flex flex-col items-center justify-center gap-3 text-center"
-            style={{
-              borderColor: 'var(--chalk-dim)',
-              height: '280px',
-              background: 'white',
-            }}
-          >
-            <div style={{
-              width: '48px',
-              height: '48px',
-              borderRadius: '50%',
-              background: 'var(--court)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            </div>
-            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)' }}>
-              How Quiet Please works
-            </p>
-            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.04em' }}>
-              Video coming soon — 75 sec walkthrough
-            </p>
-          </div>
-        )}
+        {/* ── How it works demo ───────────────────────────────────────────── */}
+        <div className="mb-14">
+          <HowItWorksDemo />
+        </div>
 
         {/* ── Three modes ─────────────────────────────────────────────────── */}
         <div className="mb-14">
