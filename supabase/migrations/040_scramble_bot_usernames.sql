@@ -1,8 +1,7 @@
 -- 040: Scramble bot usernames to look more natural
--- The original seed used a uniform pattern: first_suffix00
--- This randomizes the format per bot: some drop underscores, some drop numbers,
--- some use different separators, some capitalize differently.
 -- Run in Supabase SQL editor.
+-- First: run the SELECT at the bottom to verify bots exist.
+-- Then: run the full DO block.
 
 DO $$
 DECLARE
@@ -13,6 +12,7 @@ DECLARE
   suffix_part TEXT;
   num_part   TEXT;
   attempts   INT;
+  bot_count  INT := 0;
 
   first_names TEXT[] := ARRAY[
     'alex', 'jordan', 'taylor', 'casey', 'riley',
@@ -41,53 +41,45 @@ DECLARE
 
 BEGIN
   FOR bot_rec IN
-    SELECT id, username FROM public.users
-    WHERE email LIKE '%@bot.quietplease.app'
-    ORDER BY random()
+    SELECT u.id, u.username
+    FROM public.users u
+    JOIN auth.users a ON a.id = u.id
+    WHERE a.email LIKE '%@bot.quietplease.app'
   LOOP
-    -- Pick random parts
-    first_part := first_names[1 + floor(random() * array_length(first_names, 1))::int];
-    suffix_part := suffixes[1 + floor(random() * array_length(suffixes, 1))::int];
-    num_part := (floor(random() * 99) + 1)::text;
+    bot_count := bot_count + 1;
 
-    -- Pick a random style (0-7) for variety
+    first_part := first_names[1 + floor(random() * 50)::int];
+    suffix_part := suffixes[1 + floor(random() * 45)::int];
+    num_part := (floor(random() * 99) + 1)::text;
     style := floor(random() * 8)::int;
 
     new_name := CASE style
-      -- No number, with underscore: "alex_rally"
       WHEN 0 THEN first_part || '_' || suffix_part
-      -- No number, no underscore: "alexrally"
       WHEN 1 THEN first_part || suffix_part
-      -- Number, no underscore: "alexrally7"
       WHEN 2 THEN first_part || suffix_part || num_part
-      -- Number with underscore: "alex_rally7"
       WHEN 3 THEN first_part || '_' || suffix_part || num_part
-      -- Just name + number: "alex42"
       WHEN 4 THEN first_part || num_part
-      -- Suffix first: "rallyalex"
       WHEN 5 THEN suffix_part || first_part
-      -- Suffix + number: "rally_alex9"
-      WHEN 6 THEN suffix_part || '_' || first_part || (CASE WHEN random() > 0.5 THEN num_part ELSE '' END)
-      -- Double name: "alexjordan"
-      WHEN 7 THEN first_part || first_names[1 + floor(random() * array_length(first_names, 1))::int]
+      WHEN 6 THEN suffix_part || '_' || first_part
+      WHEN 7 THEN first_part || first_names[1 + floor(random() * 50)::int]
       ELSE first_part || suffix_part
     END;
 
-    -- Ensure uniqueness with retry
+    -- Ensure uniqueness
     attempts := 0;
-    LOOP
-      EXIT WHEN NOT EXISTS (
-        SELECT 1 FROM public.users WHERE username = new_name AND id != bot_rec.id
-      );
-      -- Append a random digit to resolve collision
+    WHILE EXISTS (SELECT 1 FROM public.users WHERE username = new_name AND id != bot_rec.id) LOOP
       new_name := new_name || (floor(random() * 10))::text;
       attempts := attempts + 1;
       EXIT WHEN attempts > 5;
-    END LOOP;
+    END WHILE;
 
+    -- Update username in public.users
     UPDATE public.users SET username = new_name WHERE id = bot_rec.id;
-    UPDATE auth.users SET email = new_name || '@bot.quietplease.app' WHERE id = bot_rec.id;
+
   END LOOP;
 
-  RAISE NOTICE 'Scrambled all bot usernames';
+  RAISE NOTICE 'Updated % bot usernames', bot_count;
 END $$;
+
+-- Verify: run this separately to check results
+-- SELECT username FROM public.users u JOIN auth.users a ON a.id = u.id WHERE a.email LIKE '%@bot.quietplease.app' ORDER BY username LIMIT 20;

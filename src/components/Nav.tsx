@@ -61,6 +61,7 @@ export default function Nav({ username, points = 0, activePage, userId }: NavPro
               <Link
                 key={link.page}
                 href={link.href}
+                data-tour={`nav-${link.page}`}
                 className={`nav-link${activePage === link.page ? ' nav-link-active' : ''}`}
                 style={{
                   fontSize: '0.875rem',
