@@ -21,27 +21,52 @@ export async function GET(request: Request) {
   return withCronLogging('award-points', async () => {
     const supabase = createAdminClient()
 
-    // ── 1. Get all match results ──────────────────────────────────────────
+    // ── 1. Get all match results (paginated to avoid PostgREST row limit) ─
     // Exclude BYE auto-advances — they don't award points
-    const { data: allResults } = await supabase
-      .from('match_results')
-      .select('id, tournament_id, round, external_match_id, winner_external_id, tournaments(id, category, starts_at)')
-      .or('score.neq.BYE,score.is.null')
-      .order('played_at', { ascending: true })
+    const allResults: any[] = []
+    {
+      let from = 0
+      const RESULT_PAGE = 1000
+      while (true) {
+        const { data: page } = await supabase
+          .from('match_results')
+          .select('id, tournament_id, round, external_match_id, winner_external_id, tournaments(id, category, starts_at)')
+          .or('score.neq.BYE,score.is.null')
+          .order('played_at', { ascending: true })
+          .range(from, from + RESULT_PAGE - 1)
+        if (!page?.length) break
+        allResults.push(...page)
+        if (page.length < RESULT_PAGE) break
+        from += RESULT_PAGE
+      }
+    }
 
-    if (!allResults?.length) {
+    if (!allResults.length) {
       return { status: 200, body: { message: 'No match results found', awarded: 0 } }
     }
 
     // ── 2. Get already scored (match_result_id, prediction_id) pairs ──────
     // We now track per-prediction scoring, so the same match_result can be
     // scored for multiple predictions (global + challenge predictions).
-    const { data: alreadyScored } = await supabase
-      .from('point_ledger')
-      .select('match_result_id, prediction_id')
+    // Paginated to avoid PostgREST default row limit truncation.
+    const alreadyScored: any[] = []
+    {
+      let from = 0
+      const SCORED_PAGE = 1000
+      while (true) {
+        const { data: page } = await supabase
+          .from('point_ledger')
+          .select('match_result_id, prediction_id')
+          .range(from, from + SCORED_PAGE - 1)
+        if (!page?.length) break
+        alreadyScored.push(...page)
+        if (page.length < SCORED_PAGE) break
+        from += SCORED_PAGE
+      }
+    }
 
     const scoredPairs = new Set(
-      (alreadyScored ?? []).map(r => `${r.match_result_id}:${r.prediction_id}`)
+      alreadyScored.map(r => `${r.match_result_id}:${r.prediction_id}`)
     )
 
     // Get tournament IDs that have results
@@ -252,10 +277,28 @@ export async function GET(request: Request) {
 
       // ── 8. Update prediction points_earned + expires_at ──────────────────
       // Must run BEFORE ranking recalculation (which reads predictions.points_earned)
-      const predictionUpdates = Object.entries(predictionPointsDelta).map(([predId, pts]) => {
+      // Idempotent: recalculate points_earned from point_ledger SUM instead of
+      // incrementally adding deltas (prevents inflation from stale scoredPairs).
+      const affectedPredIds = Object.keys(predictionPointsDelta)
+      const predPointsTotals: Record<string, number> = {}
+
+      // Fetch actual ledger totals per prediction (avoids row limit issues)
+      for (let i = 0; i < affectedPredIds.length; i += 50) {
+        await Promise.all(
+          affectedPredIds.slice(i, i + 50).map(async predId => {
+            const { data } = await supabase
+              .from('point_ledger')
+              .select('points')
+              .eq('prediction_id', predId)
+            predPointsTotals[predId] = (data ?? []).reduce((acc, r) => acc + r.points, 0)
+          })
+        )
+      }
+
+      const predictionUpdates = affectedPredIds.map(predId => {
         const pred = predMap.get(predId)
         const updateRow: Record<string, any> = {
-          points_earned: (pred?.points_earned ?? 0) + pts,
+          points_earned: predPointsTotals[predId] ?? 0,
         }
         if (!pred?.expires_at && pred?.tournament_id) {
           const startsAt = tournamentStartsAt[pred.tournament_id]
