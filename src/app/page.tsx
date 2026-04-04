@@ -4,6 +4,7 @@ import { unstable_cache } from 'next/cache'
 import TournamentCard from '@/components/TournamentCard'
 import CountryFlag from '@/components/CountryFlag'
 import Footer from '@/components/Footer'
+import HowItWorksDemo from '@/components/HowItWorksDemo'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 
 // ── Cached homepage data: live tournaments + top players ──────────────────
@@ -39,7 +40,7 @@ const getHomepageData = unstable_cache(
   { revalidate: 300 }
 )
 
-// ── Static bracket mock (replace with /public/bracket-demo.gif when ready) ──
+// ── Static bracket mock ─────────────────────────────────────────────────────
 function MockBracketPreview() {
   const green = 'var(--court)'
   const dim = 'var(--chalk-dim)'
@@ -53,8 +54,8 @@ function MockBracketPreview() {
       <div style={{ width: '116px', border: `1px solid ${dim}`, borderRadius: '3px', overflow: 'hidden', background: 'white', fontSize: '11px', fontFamily: 'var(--font-body)' }}>
         {[p1, p2].map(name => {
           const isPicked = name === picked
-          const isWrongPick   = !!wrong && isPicked        // user's pick — turned out wrong
-          const isActualWinner = !!wrong && !isPicked      // who actually won
+          const isWrongPick   = !!wrong && isPicked
+          const isActualWinner = !!wrong && !isPicked
 
           const bg    = isWrongPick    ? '#fef2f2'
                       : isActualWinner ? '#edf7f0'
@@ -107,37 +108,28 @@ function MockBracketPreview() {
 
   return (
     <div style={{ background: 'var(--chalk)', padding: '20px 24px 20px', overflowX: 'auto' }}>
-      {/* Points badge */}
       <div className="flex justify-end mb-2">
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', background: '#eaf3de', color: green, padding: '2px 8px', borderRadius: '2px', letterSpacing: '0.04em' }}>
           +360 pts · ×1.5 streak
         </span>
       </div>
-
       <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start', minWidth: 'max-content' }}>
-        {/* R16 */}
         <div>
           <div style={colHeader}>R16</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {r16.map((m, i) => <MatchCard key={i} {...m} />)}
           </div>
         </div>
-
-        {/* QF */}
         <div style={{ marginTop: '30px' }}>
           <div style={colHeader}>QF</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '54px' }}>
             {qf.map((m, i) => <MatchCard key={i} {...m} />)}
           </div>
         </div>
-
-        {/* SF */}
         <div style={{ marginTop: '80px' }}>
           <div style={colHeader}>SF</div>
           {sf.map((m, i) => <MatchCard key={i} {...m} />)}
         </div>
-
-        {/* Champion marker */}
         <div style={{ marginTop: '136px', paddingLeft: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: muted, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '10px' }}>Final</div>
           <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#eaf3de', border: `1.5px solid ${green}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>
@@ -145,13 +137,6 @@ function MockBracketPreview() {
           </div>
         </div>
       </div>
-
-      {/* TODO: Replace MockBracketPreview with an actual screenshot or GIF once ready.
-          Store file at: /public/bracket-demo.gif
-          Recommended: 800×520px animated GIF or PNG, max 3 MB
-          Then replace <MockBracketPreview /> in this file with:
-          <img src="/bracket-demo.gif" alt="Bracket predictor" width={800} height={520} style={{ width: '100%', height: 'auto', display: 'block' }} />
-      */}
     </div>
   )
 }
@@ -249,7 +234,7 @@ export default async function HomePage() {
           <div className="grid md:grid-cols-2 gap-10 md:gap-16 items-center">
             <div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '12px' }}>
-                How it works
+                The bracket
               </div>
               <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.75rem, 4vw, 2.5rem)', letterSpacing: '-0.02em', lineHeight: 1.1, marginBottom: '16px' }}>
                 Fill out your bracket before the draw closes
@@ -262,13 +247,28 @@ export default async function HomePage() {
                 className="inline-block mt-6 px-6 py-3 text-sm font-medium text-white rounded-sm hover:opacity-90"
                 style={{ background: 'var(--court)' }}
               >
-                Start prediction →
+                Start predicting →
               </Link>
             </div>
             <div className="rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
               <MockBracketPreview />
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* ── How It Works ────────────────────────────────────────────── */}
+      <section className="py-12 md:py-20 border-t" style={{ borderColor: 'var(--chalk-dim)' }}>
+        <div className="max-w-5xl mx-auto px-4 md:px-8">
+          <div className="text-center mb-8">
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '12px' }}>
+              How it works
+            </div>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.75rem, 4vw, 2.5rem)', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+              Four steps to your first prediction
+            </h2>
+          </div>
+          <HowItWorksDemo />
         </div>
       </section>
 
