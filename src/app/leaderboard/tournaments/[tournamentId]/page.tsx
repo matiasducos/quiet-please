@@ -5,6 +5,7 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import TournamentResultsTable from '@/components/TournamentResultsTable'
 import type { TournamentInfo, PlayerResult } from '@/components/TournamentResultsTable'
+import LeaderboardSelector from '../../LeaderboardSelector'
 
 export default async function GlobalTournamentResultsPage({ params }: { params: Promise<{ tournamentId: string }> }) {
   const { user, profile } = await getNavProfile()
@@ -13,23 +14,28 @@ export default async function GlobalTournamentResultsPage({ params }: { params: 
   const { tournamentId } = await params
   const admin = createAdminClient()
 
-  const { data: tournament } = await admin
-    .from('tournaments')
-    .select('id, name, tour, category, surface, location, flag_emoji, starts_at, ends_at, status')
-    .eq('id', tournamentId)
-    .single()
+  // Fetch tournament + active tournaments for selector in parallel
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+  const [{ data: tournament }, { data: predictions }, { data: selectorTournaments }] = await Promise.all([
+    admin.from('tournaments')
+      .select('id, name, tour, category, surface, location, flag_emoji, starts_at, ends_at, status')
+      .eq('id', tournamentId)
+      .single(),
+    // Fetch all global predictions for this tournament (top 50 — include 0-point users)
+    admin.from('predictions')
+      .select('user_id, points_earned, picks, users(username)')
+      .eq('tournament_id', tournamentId)
+      .is('challenge_id', null)
+      .order('points_earned', { ascending: false })
+      .limit(50),
+    admin.from('tournaments')
+      .select('id, name, location, flag_emoji, tour, status, starts_at')
+      .or(`status.in.(accepting_predictions,in_progress),and(status.eq.completed,ends_at.gt.${fourteenDaysAgo})`)
+      .order('starts_at', { ascending: false })
+      .limit(20),
+  ])
 
   if (!tournament) notFound()
-
-  // Fetch all global predictions for this tournament (top 50 by points)
-  const { data: predictions } = await admin
-    .from('predictions')
-    .select('user_id, points_earned, picks, users(username)')
-    .eq('tournament_id', tournamentId)
-    .is('challenge_id', null)
-    .gt('points_earned', 0)
-    .order('points_earned', { ascending: false })
-    .limit(50)
 
   const userIds = (predictions ?? []).map((p: any) => p.user_id)
 
@@ -72,10 +78,15 @@ export default async function GlobalTournamentResultsPage({ params }: { params: 
       <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="leaderboard" userId={user.id} />
 
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
-        <div className="flex items-center gap-2 mb-6" style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-          <Link href="/leaderboard" style={{ color: 'var(--muted)' }}>Leaderboard</Link>
-          <span>/</span>
-          <span>{tournament.location ?? tournament.name}</span>
+        {/* Tournament selector dropdown */}
+        <div className="mb-4">
+          <LeaderboardSelector
+            tournaments={(selectorTournaments ?? []).map(t => ({
+              id: t.id, name: t.name, location: t.location ?? null,
+              flag_emoji: t.flag_emoji ?? null, tour: t.tour, status: t.status,
+            }))}
+            currentTournamentId={tournamentId}
+          />
         </div>
 
         <TournamentResultsTable tournament={tournamentInfo} players={players} />

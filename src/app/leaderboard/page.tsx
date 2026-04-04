@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import LeaderboardTable from './LeaderboardTable'
+import LeaderboardSelector from './LeaderboardSelector'
 
 type Scope   = 'worldwide' | 'country' | 'city'
 type Circuit = 'both' | 'atp' | 'wta'
@@ -171,6 +172,16 @@ export default async function LeaderboardPage({
   // ── Cached leaderboard data (shared across all users in same view) ─────
   const { users, breakdownByUser, statsByUser } = await getLeaderboardData(pointsField, scope, scopeCountry, scopeCity)
 
+  // ── Active tournaments for dropdown selector ─────────────────────────
+  const admin = createAdminClient()
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+  const { data: selectorTournaments } = await admin
+    .from('tournaments')
+    .select('id, name, location, flag_emoji, tour, status, starts_at')
+    .or(`status.in.(accepting_predictions,in_progress),and(status.eq.completed,ends_at.gt.${fourteenDaysAgo})`)
+    .order('starts_at', { ascending: false })
+    .limit(20)
+
   // ── My rank: position in the current scope/circuit view ─────────────────
   const myRankInList = users?.findIndex(u => u.id === user.id) ?? -1
   // If not in top 50, count how many in this scope have more points
@@ -241,6 +252,23 @@ export default async function LeaderboardPage({
             See how your prediction accuracy stacks up against every other player. Rankings update after each match result and roll over a 52-week window.
           </p>
         </div>
+
+        {/* ── Tournament selector ──────────────────────────────────────────── */}
+        {(selectorTournaments ?? []).length > 0 && (
+          <div className="mb-4">
+            <LeaderboardSelector
+              tournaments={(selectorTournaments ?? []).map(t => ({
+                id: t.id,
+                name: t.name,
+                location: t.location ?? null,
+                flag_emoji: t.flag_emoji ?? null,
+                tour: t.tour,
+                status: t.status,
+              }))}
+              currentTournamentId={null}
+            />
+          </div>
+        )}
 
         {/* ── Scope + Circuit controls ──────────────────────────────────────── */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
