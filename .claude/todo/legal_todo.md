@@ -7,7 +7,7 @@
 ## Phase 2 — High Priority
 - ⬜ Cookie consent banner (Vercel Analytics + `username_is_set` cookie)
 - ⬜ Age gate — confirm 16+ at signup
-- ⬜ Self-host Google Fonts (eliminate IP sharing with Google)
+- ✅ Self-host Google Fonts (2026-04-04) — switched to next/font/google
 - ⬜ Add gambling disclaimer to homepage/footer: "Free prediction game for entertainment only. No real money or prizes."
 
 ## Phase 3 — Account & Email
