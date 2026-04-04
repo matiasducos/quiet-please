@@ -23,6 +23,20 @@ export async function updateLocation(formData: FormData) {
   redirect(`/profile/${username}?msg=Location+updated&type=success`)
 }
 
+export async function toggleEmailNotifications(enabled: boolean): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'Not authenticated' }
+
+  const { error } = await supabase
+    .from('users')
+    .update({ email_notifications: enabled })
+    .eq('id', user.id)
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
 export async function updateUsername(formData: FormData): Promise<{ error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
