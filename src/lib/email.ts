@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 const FROM = process.env.EMAIL_FROM ?? 'Quiet Please <notifications@quietplease.app>'
+const REPLY_TO = 'support@quietplease.app'
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://quietplease.app'
 
 // No-op in dev / when key is missing
@@ -38,6 +39,7 @@ export async function sendDrawOpenEmail(opts: {
     : ''
   await resend!.emails.send({
     from: FROM,
+    replyTo: REPLY_TO,
     to: opts.to,
     subject: `Draw open: ${opts.tournamentName}`,
     html: `
@@ -68,6 +70,7 @@ export async function sendPointsAwardedEmail(opts: {
   if (!canSend()) return
   await resend!.emails.send({
     from: FROM,
+    replyTo: REPLY_TO,
     to: opts.to,
     subject: `+${opts.points} pts — ${opts.tournamentName}`,
     html: `
@@ -96,6 +99,7 @@ export async function sendChallengeReceivedEmail(opts: {
   if (!canSend()) return
   await resend!.emails.send({
     from: FROM,
+    replyTo: REPLY_TO,
     to: opts.to,
     subject: `New challenge from ${opts.challengerUsername}`,
     html: `
@@ -122,6 +126,7 @@ export async function sendFriendRequestEmail(opts: {
   if (!canSend()) return
   await resend!.emails.send({
     from: FROM,
+    replyTo: REPLY_TO,
     to: opts.to,
     subject: `Friend request from ${opts.fromUsername}`,
     html: `
@@ -148,6 +153,7 @@ export async function sendFriendAcceptedEmail(opts: {
   if (!canSend()) return
   await resend!.emails.send({
     from: FROM,
+    replyTo: REPLY_TO,
     to: opts.to,
     subject: `${opts.friendUsername} accepted your request`,
     html: `
@@ -176,6 +182,7 @@ export async function sendAutoPredsEmail(opts: {
   if (!canSend()) return
   await resend!.emails.send({
     from: FROM,
+    replyTo: REPLY_TO,
     to: opts.to,
     subject: `Auto-picks made — ${opts.tournamentName}`,
     html: `
