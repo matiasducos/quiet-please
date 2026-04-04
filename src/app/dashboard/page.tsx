@@ -8,6 +8,7 @@ import TournamentCard from '@/components/TournamentCard'
 import { getActivity, timeAgo } from '@/lib/friends/activity'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { getUpcomingTournaments, getLiveTournaments } from '@/lib/tournaments/cached'
+import DashboardTour from '@/components/DashboardTour'
 
 export const metadata: Metadata = { title: 'Dashboard | Quiet Please' }
 
@@ -67,7 +68,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-2 md:gap-4 mb-12">
+        <div data-tour="stats" className="grid grid-cols-3 gap-2 md:gap-4 mb-12">
           {stats.map((stat, i) => (
             <div key={i} className="bg-white rounded-sm border p-3 md:p-6 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>
@@ -133,7 +134,7 @@ export default async function DashboardPage() {
 
         {/* ─── Live Right Now ─────────────────────────────────────────────── */}
         {enrichedLive.length > 0 && (
-          <div className="mb-12">
+          <div data-tour="live-now" className="mb-12">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <span
@@ -155,7 +156,7 @@ export default async function DashboardPage() {
         )}
 
         {/* Upcoming tournaments */}
-        <div>
+        <div data-tour="upcoming">
           <div className="flex items-center justify-between mb-4">
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.01em' }}>Upcoming tournaments</h2>
             <Link href="/tournaments" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>View all →</Link>
@@ -214,6 +215,7 @@ export default async function DashboardPage() {
           )}
         </div>
       </div>
+      <DashboardTour />
     </main>
   )
 }

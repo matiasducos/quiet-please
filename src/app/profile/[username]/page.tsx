@@ -11,6 +11,7 @@ import { COUNTRIES } from '@/app/admin/countries'
 import CountryFlag from '@/components/CountryFlag'
 import TournamentCard from '@/components/TournamentCard'
 import EmailPrefsToggle from '@/app/profile/EmailPrefsToggle'
+import ReplayTourButton from '@/components/ReplayTourButton'
 import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
 
 export default async function ProfilePage({
@@ -271,6 +272,7 @@ export default async function ProfilePage({
                   Auto-Predictions →
                 </Link>
                 <EmailPrefsToggle initialEnabled={(profile as any).email_notifications !== false} />
+                <ReplayTourButton />
               </div>
             )}
 
