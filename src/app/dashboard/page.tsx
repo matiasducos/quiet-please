@@ -6,31 +6,26 @@ import Nav from '@/components/Nav'
 import TournamentCard from '@/components/TournamentCard'
 import { getActivity, timeAgo } from '@/lib/friends/activity'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
+import { getUpcomingTournaments, getLiveTournaments } from '@/lib/tournaments/cached'
 
 export default async function DashboardPage() {
   const { user, profile } = await getNavProfile()
   if (!user) redirect('/login')
 
   const supabase = await createClient()
-  const [{ data: upcomingTournaments }, { count: predictionCount }, { data: liveTournaments }] = await Promise.all([
-    supabase.from('tournaments')
-      .select('id, name, tour, surface, category, starts_at, ends_at, status, location, flag_emoji')
-      .in('status', ['accepting_predictions', 'upcoming'])
-      .order('starts_at', { ascending: true })
-      .limit(3),
+
+  // Shared tournament data is cached (60s TTL); user-specific data is not
+  const [upcomingTournaments, liveTournaments, { count: predictionCount }] = await Promise.all([
+    getUpcomingTournaments(3),
+    getLiveTournaments(4),
     supabase.from('predictions')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.id)
       .is('challenge_id', null),
-    supabase.from('tournaments')
-      .select('id, name, tour, surface, category, starts_at, ends_at, status, location, flag_emoji')
-      .eq('status', 'in_progress')
-      .order('starts_at', { ascending: true })
-      .limit(4),
   ])
 
   // Rank + engagement in parallel (both depend on prior data)
-  const liveIds = (liveTournaments ?? []).map(t => t.id)
+  const liveIds = liveTournaments.map(t => t.id)
   const [{ count: higherCount }, engagement] = await Promise.all([
     supabase
       .from('users')
@@ -42,7 +37,7 @@ export default async function DashboardPage() {
   const globalRank = (higherCount ?? 0) + 1
 
   // Enrich live tournaments with engagement counts
-  const enrichedLive = (liveTournaments ?? []).map(t => ({
+  const enrichedLive = liveTournaments.map(t => ({
     ...t,
     prediction_count: engagement[t.id]?.predictions ?? 0,
     challenge_count: engagement[t.id]?.challenges ?? 0,

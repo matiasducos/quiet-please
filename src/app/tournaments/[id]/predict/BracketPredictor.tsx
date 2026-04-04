@@ -2,11 +2,16 @@
 
 import { useState, useTransition, useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { savePrediction, importGlobalPicks } from './actions'
 import CountryFlag from '@/components/CountryFlag'
-import H2HDrawer from '@/components/H2HDrawer'
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation'
+
+const H2HDrawer = dynamic(() => import('@/components/H2HDrawer'), {
+  ssr: false,
+  loading: () => <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--muted)', fontSize: '0.85rem' }}>Loading H2H data…</div>,
+})
 
 interface Player {
   externalId: string

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { revalidateTag } from 'next/cache'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { createAdminClient, listAllUsers } from '@/lib/supabase/admin'
 import { tennisAdapter } from '@/lib/tennis'
 import { sendDrawOpenEmail } from '@/lib/email'
 import { withCronLogging } from '@/lib/cron-logger'
@@ -149,7 +149,7 @@ export async function GET(request: Request) {
         await supabase.from('tournaments').update({ status: 'accepting_predictions' }).eq('id', tournament.id)
 
         try {
-          const { data: { users: allUsers } } = await supabase.auth.admin.listUsers({ perPage: 1000 })
+          const allUsers = await listAllUsers(supabase)
           if (allUsers.length > 0) {
             const notificationRows = allUsers.map((u: any) => ({
               user_id:       u.id,

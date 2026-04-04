@@ -20,6 +20,9 @@ import { tennisAdapter } from '@/lib/tennis'
 import { withCronLogging } from '@/lib/cron-logger'
 import type { Json } from '@/types/database'
 
+// Allow up to 60 s — sequential API calls + DB writes per past tournament.
+export const maxDuration = 60
+
 function isAuthorized(request: Request): boolean {
   if (process.env.NODE_ENV === 'development') return true
   const cronSecret = process.env.CRON_SECRET
