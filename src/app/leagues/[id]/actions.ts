@@ -276,8 +276,16 @@ export async function updateLeagueSettings(leagueId: string, formData: FormData)
 
   if (error) return { error: error.message }
 
-  // Recalculate all members' points with new filters
-  await admin.rpc('recalculate_league_points')
+  // Recalculate points for all members of THIS league (not all leagues globally)
+  const { data: members } = await admin
+    .from('league_members')
+    .select('user_id')
+    .eq('league_id', leagueId)
+  if (members && members.length > 0) {
+    await Promise.all(
+      members.map(m => admin.rpc('recalculate_member_points', { p_league_id: leagueId, p_user_id: m.user_id }))
+    )
+  }
 
   revalidatePath(`/leagues/${leagueId}`)
   revalidatePath(`/leagues/${leagueId}/settings`)
@@ -313,9 +321,17 @@ export async function resetLeagueSeason(leagueId: string) {
 
   if (error) return { error: error.message }
 
-  // Recalculate — all members will drop to 0 since no tournaments
-  // have started after the new season_start_date yet
-  await admin.rpc('recalculate_league_points')
+  // Recalculate — all members of THIS league will drop to 0 since no
+  // tournaments have started after the new season_start_date yet
+  const { data: resetMembers } = await admin
+    .from('league_members')
+    .select('user_id')
+    .eq('league_id', leagueId)
+  if (resetMembers && resetMembers.length > 0) {
+    await Promise.all(
+      resetMembers.map(m => admin.rpc('recalculate_member_points', { p_league_id: leagueId, p_user_id: m.user_id }))
+    )
+  }
 
   revalidatePath(`/leagues/${leagueId}`)
   revalidatePath(`/leagues/${leagueId}/settings`)

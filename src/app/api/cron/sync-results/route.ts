@@ -4,6 +4,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { tennisAdapter } from '@/lib/tennis'
 import { withCronLogging } from '@/lib/cron-logger'
 
+// Allow up to 60 s — external API calls + DB writes per tournament.
+export const maxDuration = 60
+
 function isAuthorized(request: Request): boolean {
   if (process.env.NODE_ENV === 'development') return true
   const cronSecret = process.env.CRON_SECRET

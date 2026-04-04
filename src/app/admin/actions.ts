@@ -2,7 +2,7 @@
 
 import { revalidateTag } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { createAdminClient, listAllUsers } from '@/lib/supabase/admin'
 import { COUNTRIES, codeToFlag } from './countries'
 
 /** Look up a country name and return its flag emoji, or null if not found. */
@@ -44,7 +44,7 @@ export async function sendTestNotification(
   await assertAdmin()
   const admin = createAdminClient()
   try {
-    const { data: { users: allUsers } } = await admin.auth.admin.listUsers({ perPage: 1000 })
+    const allUsers = await listAllUsers(admin)
     if (!allUsers.length) return { ok: true, count: 0 }
 
     const meta: Record<string, unknown> = {
@@ -285,7 +285,7 @@ export async function saveManualDraw(
         .select('name, location, flag_emoji, draw_close_at')
         .eq('id', tournamentId)
         .single()
-      const { data: { users: allUsers } } = await admin.auth.admin.listUsers({ perPage: 1000 })
+      const allUsers = await listAllUsers(admin)
       if (allUsers.length > 0 && t) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const rows = allUsers.map((u: any) => ({
@@ -1321,7 +1321,7 @@ export async function buildDraw(
 
   // Notify users
   try {
-    const { data: { users: allUsers } } = await admin.auth.admin.listUsers({ perPage: 1000 })
+    const allUsers = await listAllUsers(admin)
     if (allUsers.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rows = allUsers.map((u: any) => ({

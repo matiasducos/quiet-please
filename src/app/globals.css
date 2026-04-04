@@ -9,9 +9,9 @@
   --chalk-dim: #e8e3d8;
   --ink: #0d0d0d;
   --muted: #6b6b6b;
-  --font-display: DM Serif Display, Georgia, serif;
-  --font-body: DM Sans, sans-serif;
-  --font-mono: DM Mono, monospace;
+  --font-display: var(--font-display-face, 'DM Serif Display'), Georgia, serif;
+  --font-body: var(--font-body-face, 'DM Sans'), sans-serif;
+  --font-mono: var(--font-mono-face, 'DM Mono'), monospace;
 }
 
 * { box-sizing: border-box; }

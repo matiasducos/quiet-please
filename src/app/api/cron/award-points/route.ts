@@ -6,6 +6,9 @@ import type { DrawMatch, Round, TournamentCategory } from '@/lib/tennis'
 import { sendPointsAwardedEmail } from '@/lib/email'
 import { withCronLogging } from '@/lib/cron-logger'
 
+// Allow up to 60 s — heavy scoring + ranking recalculation needs headroom.
+export const maxDuration = 60
+
 function isAuthorized(request: Request): boolean {
   if (process.env.NODE_ENV === 'development') return true
   const cronSecret = process.env.CRON_SECRET
@@ -28,12 +31,13 @@ export async function GET(request: Request) {
       let from = 0
       const RESULT_PAGE = 1000
       while (true) {
-        const { data: page } = await supabase
+        const { data: page, error: pageErr } = await supabase
           .from('match_results')
           .select('id, tournament_id, round, external_match_id, winner_external_id, tournaments(id, category, starts_at)')
           .or('score.neq.BYE,score.is.null')
           .order('played_at', { ascending: true })
           .range(from, from + RESULT_PAGE - 1)
+        if (pageErr) throw new Error(`match_results query failed: ${pageErr.message}`)
         if (!page?.length) break
         allResults.push(...page)
         if (page.length < RESULT_PAGE) break
@@ -54,10 +58,11 @@ export async function GET(request: Request) {
       let from = 0
       const SCORED_PAGE = 1000
       while (true) {
-        const { data: page } = await supabase
+        const { data: page, error: pageErr } = await supabase
           .from('point_ledger')
           .select('match_result_id, prediction_id')
           .range(from, from + SCORED_PAGE - 1)
+        if (pageErr) throw new Error(`point_ledger query failed: ${pageErr.message}`)
         if (!page?.length) break
         alreadyScored.push(...page)
         if (page.length < SCORED_PAGE) break
@@ -79,11 +84,12 @@ export async function GET(request: Request) {
     for (const tId of tournamentIds) {
       let from = 0
       while (true) {
-        const { data: page } = await supabase
+        const { data: page, error: pageErr } = await supabase
           .from('predictions')
           .select('id, user_id, tournament_id, challenge_id, picks, pick_locks, points_earned, expires_at')
           .eq('tournament_id', tId)
           .range(from, from + PAGE_SIZE - 1)
+        if (pageErr) throw new Error(`predictions query failed: ${pageErr.message}`)
         if (!page?.length) break
         predictions.push(...page)
         if (page.length < PAGE_SIZE) break
@@ -106,10 +112,11 @@ export async function GET(request: Request) {
     }
 
     // ── 4. Load bracket data for streak calculation ───────────────────────
-    const { data: draws } = await supabase
+    const { data: draws, error: drawsErr } = await supabase
       .from('draws')
       .select('tournament_id, bracket_data')
       .in('tournament_id', tournamentIds as string[])
+    if (drawsErr) throw new Error(`draws query failed: ${drawsErr.message}`)
 
     const bracketByTournament: Record<string, { matches: DrawMatch[]; feedMap: ReturnType<typeof buildFeedMap> }> = {}
     for (const d of draws ?? []) {
@@ -123,10 +130,11 @@ export async function GET(request: Request) {
     }
 
     // Fetch tournament names + location + starts_at + category for notifications, expires_at, and league filtering
-    const { data: tournamentData } = await supabase
+    const { data: tournamentData, error: tournamentDataErr } = await supabase
       .from('tournaments')
       .select('id, name, location, flag_emoji, starts_at, category')
       .in('id', tournamentIds as string[])
+    if (tournamentDataErr) throw new Error(`tournament data query failed: ${tournamentDataErr.message}`)
     const tournamentNames: Record<string, string> = {}
     const tournamentLocations: Record<string, string | null> = {}
     const tournamentFlags: Record<string, string | null> = {}
@@ -315,21 +323,34 @@ export async function GET(request: Request) {
     }
 
     // ── 9. Update global user totals + leagues + rankings ───────────────
-    // Always recalculate rankings (even when no new points) to fix any stale data
     const userIds = Object.keys(globalUserPointsDelta)
 
-    // 9a. Recalculate all league member points from scratch (idempotent)
-    // Uses a DB function that sums actual prediction data per league's allowed types
-    await supabase.rpc('recalculate_league_points')
+    // 9a. Targeted league recalculation — only for users who got new points
+    // Instead of the global recalculate_league_points() which scans ALL leagues,
+    // find which leagues the affected users belong to and recalculate only those.
+    if (userIds.length > 0) {
+      const { data: memberships, error: memberError } = await supabase
+        .from('league_members')
+        .select('league_id, user_id')
+        .in('user_id', userIds)
+      if (memberError) {
+        console.error('[award-points] league membership lookup error:', memberError)
+        Sentry.captureException(memberError)
+      } else if (memberships && memberships.length > 0) {
+        for (let i = 0; i < memberships.length; i += 50) {
+          await Promise.all(
+            memberships.slice(i, i + 50).map(m =>
+              supabase.rpc('recalculate_member_points', { p_league_id: m.league_id, p_user_id: m.user_id })
+            )
+          )
+        }
+        console.log(`[award-points] Recalculated league points for ${memberships.length} (user, league) pairs`)
+      }
+    }
 
-    // 9b. Recalculate rankings for all users who have scored predictions
-    // (not just users with new points this run — ensures stale rankings are fixed)
-    const { data: usersWithPoints } = await supabase
-      .from('predictions')
-      .select('user_id')
-      .gt('points_earned', 0)
-      .is('challenge_id', null)
-    const rankUserIds = Array.from(new Set((usersWithPoints ?? []).map(p => p.user_id)))
+    // 9b. Recalculate rankings only for users who got new points this run
+    // (targeted instead of scanning all users with points)
+    const rankUserIds = userIds
     for (let i = 0; i < rankUserIds.length; i += 50) {
       await Promise.all(
         rankUserIds.slice(i, i + 50).map(userId =>
@@ -398,8 +419,9 @@ export async function GET(request: Request) {
             )
           }
         }
-        // Don't await — let emails send in background
-        sendEmails().catch(e => { console.error('[award-points] email batch error:', e); Sentry.captureException(e) })
+        // Await emails — Vercel freezes the runtime after response, so fire-and-forget would drop them.
+        // Individual emails are already wrapped in try/catch so one failure won't kill the batch.
+        await sendEmails()
       }
     } catch (notifyErr) {
       console.error('[award-points] notification error:', notifyErr)

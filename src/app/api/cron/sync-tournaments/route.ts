@@ -3,6 +3,9 @@ import * as Sentry from '@sentry/nextjs'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { withCronLogging } from '@/lib/cron-logger'
 
+// Allow up to 60 s — external API fetch + bulk DB inserts.
+export const maxDuration = 60
+
 const BASE_URL = 'https://api.api-tennis.com/tennis/'
 
 function isAuthorized(request: Request): boolean {

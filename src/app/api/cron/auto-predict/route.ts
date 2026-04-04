@@ -445,7 +445,7 @@ export async function GET(request: Request) {
           )
         }
       }
-      sendEmails().catch(e => { console.error('[auto-predict] email batch error:', e); Sentry.captureException(e) })
+      await sendEmails()
     }
 
     const totalCreated = results.reduce((s, r) => s + r.created, 0)

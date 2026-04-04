@@ -11,10 +11,6 @@ import type { NotificationType } from './constants'
 // ── Cron jobs ─────────────────────────────────────────────────────────────────
 
 const ENDPOINTS = [
-  { key: 'sync-tournaments', label: 'Sync Tournaments', description: 'Fetch ATP/WTA calendar and upsert tournaments',      scheduleUtcHour: 6,    disabled: true  },
-  { key: 'sync-draws',       label: 'Sync Draws',       description: 'Fetch draws for upcoming tournaments, open predictions', scheduleUtcHour: 9,  disabled: true  },
-  { key: 'sync-results',     label: 'Sync Results',     description: 'Fetch match results for in-progress tournaments',    scheduleUtcHour: 12,   disabled: true  },
-  { key: 'sync-backfill',    label: 'Sync Backfill',    description: 'Process past tournaments (on-demand)',               scheduleUtcHour: null, disabled: true  },
   { key: 'auto-predict',     label: 'Auto-Predict',     description: 'Generate predictions for auto-predict users',        scheduleUtcHour: 9.5,  disabled: true  },
 ] as const
 
