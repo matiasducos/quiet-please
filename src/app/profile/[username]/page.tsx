@@ -205,7 +205,7 @@ export default async function ProfilePage({
           <Link href="/leaderboard" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.05em', textDecoration: 'none' }}>
             ← Leaderboard
           </Link>
-          <div className="flex items-end justify-between mt-4">
+          <div className="mt-4">
             <div>
               <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
                 {profile.username}
@@ -254,30 +254,31 @@ export default async function ProfilePage({
               ) : null}
             </div>
 
-            {/* Friends + Auto-Predictions + Email prefs */}
+            {/* Action buttons — own profile only */}
             {isOwnProfile && (
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <div className="flex items-center gap-2 flex-wrap mt-4">
                 <Link
                   href="/friends"
-                  className="px-4 py-2 text-sm rounded-sm border hover:opacity-80"
-                  style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white', textDecoration: 'none', fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}
+                  className="px-3 py-1.5 rounded-sm border hover:opacity-80"
+                  style={{ borderColor: 'var(--chalk-dim)', color: 'var(--ink)', background: 'white', textDecoration: 'none', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}
                 >
-                  Friends →
+                  Friends
                 </Link>
                 <Link
                   href="/profile/auto-predictions"
-                  className="px-4 py-2 text-sm rounded-sm border hover:opacity-80"
-                  style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white', textDecoration: 'none', fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}
+                  className="px-3 py-1.5 rounded-sm border hover:opacity-80"
+                  style={{ borderColor: 'var(--chalk-dim)', color: 'var(--ink)', background: 'white', textDecoration: 'none', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}
                 >
-                  Auto-Predictions →
+                  Auto-Predictions
                 </Link>
                 <EmailPrefsToggle initialEnabled={(profile as any).email_notifications !== false} />
+                <span style={{ width: '1px', height: '18px', background: 'var(--chalk-dim)', margin: '0 2px' }} />
                 <ReplayTourButton />
               </div>
             )}
 
             {!isOwnProfile && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div className="flex items-center gap-2 flex-wrap mt-4">
                 {friendStatus === 'none' && (
                   <form action={sendFriendRequest}>
                     <input type="hidden" name="username" value={profile.username} />
