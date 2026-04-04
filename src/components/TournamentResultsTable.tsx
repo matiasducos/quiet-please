@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import CountryFlag from '@/components/CountryFlag'
 
 const TIER: Record<string, { label: string; bg: string; text: string }> = {
   'ATP|grand_slam':   { label: 'Grand Slam',   bg: '#1a1a2e', text: '#fff' },
@@ -32,6 +33,7 @@ export type TournamentInfo = {
 export type PlayerResult = {
   user_id: string
   username: string
+  country?: string | null
   points: number
   correct_picks: number
   total_picks: number
@@ -131,6 +133,7 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
                 </div>
                 <div className="col-span-5 flex items-center gap-2">
                   <Link href={`/profile/${p.username}`} style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: p.isMe ? '#1e4e8c' : 'var(--ink)', textDecoration: 'none' }}>{p.username}</Link>
+                  {p.country && <CountryFlag country={p.country} size={14} />}
                   {p.isMe && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#1e4e8c', background: '#dbeafe', padding: '1px 6px', borderRadius: '2px' }}>you</span>}
                 </div>
                 <div className="col-span-2 flex items-center justify-end">

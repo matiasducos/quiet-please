@@ -23,7 +23,7 @@ export default async function GlobalTournamentResultsPage({ params }: { params: 
       .single(),
     // Fetch all global predictions for this tournament (top 50 — include 0-point users)
     admin.from('predictions')
-      .select('user_id, points_earned, picks, users(username)')
+      .select('user_id, points_earned, picks, users(username, country)')
       .eq('tournament_id', tournamentId)
       .is('challenge_id', null)
       .order('points_earned', { ascending: false })
@@ -55,6 +55,7 @@ export default async function GlobalTournamentResultsPage({ params }: { params: 
   const players: PlayerResult[] = (predictions ?? []).map((p: any) => ({
     user_id: p.user_id,
     username: p.users?.username ?? 'Unknown',
+    country: p.users?.country ?? null,
     points: p.points_earned ?? 0,
     correct_picks: correctPicksByUser[p.user_id] ?? 0,
     total_picks: Object.keys(p.picks ?? {}).length,
