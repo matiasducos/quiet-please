@@ -24,9 +24,25 @@ const dmSans = DM_Sans({
   variable: '--font-body-face',
 })
 
+import type { Viewport } from 'next'
+
 export const metadata: Metadata = {
   title: 'Quiet Please — Tennis Bracket Predictions',
   description: 'Predict ATP & WTA tournament brackets, earn real ranking points, and compete with friends.',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Quiet Please',
+  },
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: '#1a6b3c',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
