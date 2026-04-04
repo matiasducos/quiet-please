@@ -35,7 +35,7 @@ npm audit
 - Service role: server-only (`src/lib/supabase/admin.ts`).
 - No `dangerouslySetInnerHTML`, `eval`, or obvious raw SQL in app TS/TSX.
 - Development-only bypasses are intentional DX shortcuts — never expose dev server to internet.
-- Middleware protects `/dashboard`, `/profile`, `/predict`. All other routes use page-level or action-level auth.
+- Middleware protects `/dashboard`, `/profile`, `/predict`, `/friends`, `/notifications`, `/admin`, `/leagues/browse`, `/leagues/new`, `/leagues/join`, `/challenges/new`. Other routes use page-level or action-level auth.
 
 ---
 
@@ -53,9 +53,9 @@ npm audit
 
 ## Public launch risk summary (qualitative)
 
-- **Organic / soft launch:** ✅ Acceptable — production env, RLS, OAuth hardened, security headers + CSP (report-only), rate limiting in place, type checking enforced.
+- **Organic / soft launch:** ✅ Acceptable — production env, RLS, OAuth hardened, security headers + CSP (enforced), rate limiting in place, type checking enforced.
 - **Paid ads at scale:** Treat as **low risk** — remaining items are operational (Supabase Security Advisor, billing alerts, `pdf-parse` monitoring). All code-level security items are addressed.
 
 ---
 
-*Last updated: March 29, 2026*
+*Last updated: April 4, 2026*

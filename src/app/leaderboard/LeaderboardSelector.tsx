@@ -36,14 +36,16 @@ export default function LeaderboardSelector({
       style={{
         fontFamily: 'var(--font-mono)',
         fontSize: '0.8rem',
-        padding: '8px 12px',
+        padding: '8px 32px 8px 12px',
         border: '1px solid var(--chalk-dim)',
         borderRadius: '2px',
-        background: 'white',
+        background: `white url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236b6b6b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 10px center`,
+        WebkitAppearance: 'none',
+        appearance: 'none',
         color: 'var(--ink)',
         cursor: 'pointer',
-        width: '100%',
-        maxWidth: '400px',
+        width: 'fit-content',
+        maxWidth: '100%',
       }}
     >
       <option value="global">🏆 Global Leaderboard</option>
