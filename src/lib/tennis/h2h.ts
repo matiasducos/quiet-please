@@ -22,19 +22,14 @@ export interface H2HData {
     player2Wins: number
   }[]
   recentMatches: H2HMatchRecord[]  // Last 5, newest first
-  source: 'dsg' | 'mock'          // track where data came from
+  source: 'mock'
 }
 
 // ── Public API ───────────────────────────────────────────────
 
 /**
  * Fetch H2H data for two players.
- *
- * Currently returns mock data — the DSG get_head2head endpoint is
- * unauthorized on the current subscription plan.
- *
- * When/if DSG enables H2H access, add DSG integration here and
- * use mock as fallback (same pattern as before).
+ * Currently returns mock data.
  */
 export async function getH2HData(
   _player1ExternalId: string,

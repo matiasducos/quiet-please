@@ -169,13 +169,16 @@ export default async function HomePage() {
             <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', color: 'var(--ink)' }}>
               Quiet Please
             </span>
-            <Link href="/onboarding" style={{ fontSize: '0.875rem', color: 'var(--muted)', textDecoration: 'none' }}>
+            <Link href="/onboarding" className="hidden md:inline" style={{ fontSize: '0.875rem', color: 'var(--muted)', textDecoration: 'none' }}>
               How it works
             </Link>
           </div>
-          <div className="flex items-center gap-4">
-            <Link href="/login" style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>Sign in</Link>
-            <Link href="/signup" className="px-4 py-2 text-sm text-white rounded-sm hover:opacity-90" style={{ background: 'var(--court)' }}>
+          <div className="flex items-center gap-2 md:gap-4">
+            <Link href="/onboarding" className="md:hidden" style={{ fontSize: '0.75rem', color: 'var(--muted)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+              How it works
+            </Link>
+            <Link href="/login" style={{ color: 'var(--muted)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>Sign in</Link>
+            <Link href="/signup" className="px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm text-white rounded-sm hover:opacity-90 whitespace-nowrap" style={{ background: 'var(--court)' }}>
               Get started
             </Link>
           </div>

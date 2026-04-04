@@ -164,11 +164,10 @@ const canPredictNow = challengeId
 - Dashboard: sentry.io → quiet-please org → javascript-nextjs project
 - EU data region (`.de.sentry.io`)
 
-## H2H Feature (DSG API) — added March 26, 2026
+## H2H Feature — added March 26, 2026
 - H2H side drawer on bracket match cards, mock data for now
-- Data layer: `src/lib/tennis/h2h.ts` — swap `getH2HData()` body when DSG API arrives
+- Data layer: `src/lib/tennis/h2h.ts`
 - UI: `src/components/H2HDrawer.tsx` — side drawer with overall record, surface breakdown, last 5 meetings
-- DSG contact: Rajesh D'Souza (rajesh.dsouza@datasportsgroup.com) — Advanced Pack, 200 EUR/month, trial pending
 
 ## Prediction Mode Toggle (app_settings) — added March 28, 2026
 - **`app_settings` table** (key/value JSONB store) — migration `035_app_settings.sql`

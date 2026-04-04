@@ -10,6 +10,7 @@ import UsernameEditForm from '@/app/profile/UsernameEditForm'
 import { COUNTRIES } from '@/app/admin/countries'
 import CountryFlag from '@/components/CountryFlag'
 import TournamentCard from '@/components/TournamentCard'
+import EmailPrefsToggle from '@/app/profile/EmailPrefsToggle'
 import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
 
 export default async function ProfilePage({
@@ -27,7 +28,7 @@ export default async function ProfilePage({
   const supabase = await createClient()
   const { data: profile } = await supabase
     .from('users')
-    .select('id, username, total_points, ranking_points, atp_ranking_points, wta_ranking_points, country, city, created_at')
+    .select('id, username, total_points, ranking_points, atp_ranking_points, wta_ranking_points, country, city, created_at, email_notifications')
     .eq('username', username)
     .single()
 
@@ -252,9 +253,9 @@ export default async function ProfilePage({
               ) : null}
             </div>
 
-            {/* Friends + Auto-Predictions links */}
+            {/* Friends + Auto-Predictions + Email prefs */}
             {isOwnProfile && (
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <Link
                   href="/friends"
                   className="px-4 py-2 text-sm rounded-sm border hover:opacity-80"
@@ -269,6 +270,7 @@ export default async function ProfilePage({
                 >
                   Auto-Predictions →
                 </Link>
+                <EmailPrefsToggle initialEnabled={(profile as any).email_notifications !== false} />
               </div>
             )}
 

@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { insertNotifications } from '@/lib/notifications'
+import { sendNotificationEmail, sendFriendRequestEmail, sendFriendAcceptedEmail } from '@/lib/email'
 import { rateLimit } from '@/lib/rate-limit'
 
 export async function sendFriendRequest(formData: FormData) {
@@ -63,6 +64,9 @@ export async function sendFriendRequest(formData: FormData) {
         type:    'friend_accepted',
         meta:    { friend_username: acceptorProfile?.username ?? 'Someone' },
       }])
+      sendNotificationEmail(target.id, sendFriendAcceptedEmail, (email, token) => ({
+        to: email, friendUsername: acceptorProfile?.username ?? 'Someone', unsubscribeToken: token,
+      }))
       revalidatePath('/friends')
       redirect(`${returnTo}?msg=You+are+now+friends+with+${encodeURIComponent(target.username)}&type=success`)
     }
@@ -85,6 +89,9 @@ export async function sendFriendRequest(formData: FormData) {
     type:    'friend_request',
     meta:    { from_username: requesterProfile?.username ?? 'Someone' },
   }])
+  sendNotificationEmail(target.id, sendFriendRequestEmail, (email, token) => ({
+    to: email, fromUsername: requesterProfile?.username ?? 'Someone', unsubscribeToken: token,
+  }))
 
   revalidatePath('/friends')
   redirect(`${returnTo}?msg=Friend+request+sent+to+${encodeURIComponent(target.username)}&type=success`)
@@ -121,6 +128,9 @@ export async function acceptFriendRequest(formData: FormData) {
       type:    'friend_accepted',
       meta:    { friend_username: acceptorProfile?.username ?? 'Someone' },
     }])
+    sendNotificationEmail(friendship.requester_id, sendFriendAcceptedEmail, (email, token) => ({
+      to: email, friendUsername: acceptorProfile?.username ?? 'Someone', unsubscribeToken: token,
+    }))
   }
 
   revalidatePath('/friends')
