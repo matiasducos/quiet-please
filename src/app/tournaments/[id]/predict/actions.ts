@@ -261,7 +261,8 @@ export async function savePrediction({
           }
         }
 
-        // No conflict — upsert slot rows
+        // Insert slot rows — use regular insert to catch unique constraint violations
+        // from concurrent requests (the pre-check above is not atomic).
         const slotRows = weeks.map(w => ({
           user_id:       user.id,
           circuit,
@@ -271,8 +272,27 @@ export async function savePrediction({
         }))
         const { error: slotError } = await supabase
           .from('weekly_slots')
-          .upsert(slotRows, { onConflict: 'user_id,circuit,iso_year,iso_week', ignoreDuplicates: true })
-        if (slotError) return { success: false, error: 'unknown', message: slotError.message }
+          .upsert(slotRows, { onConflict: 'user_id,circuit,iso_year,iso_week', ignoreDuplicates: false })
+        if (slotError) {
+          // Unique constraint violation = a concurrent request took the slot
+          if (slotError.code === '23505') {
+            // Re-query to get the conflicting tournament name for a user-friendly message
+            const weekFilters = weeks.map(w =>
+              `and(iso_year.eq.${w.year},iso_week.eq.${w.week})`
+            ).join(',')
+            const { data: raceConflicts } = await supabase
+              .from('weekly_slots')
+              .select('tournament_id, tournaments(name)')
+              .eq('user_id', user.id)
+              .eq('circuit', circuit)
+              .neq('tournament_id', tournamentId)
+              .or(weekFilters)
+              .limit(1)
+            const conflictingName = (raceConflicts?.[0]?.tournaments as any)?.name ?? 'another tournament'
+            return { success: false, error: 'slot_taken', conflictingTournamentName: conflictingName }
+          }
+          return { success: false, error: 'unknown', message: slotError.message }
+        }
       }
     }
 

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { rateLimit } from '@/lib/rate-limit'
 
 const VALID_TYPES = ['grand_slam', 'masters_1000', '500', '250'] as const
 const VALID_SURFACES = ['hard', 'clay', 'grass'] as const
@@ -47,6 +48,9 @@ export async function joinPublicLeague(leagueId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+
+  const rl = rateLimit(`join-public-league:${user.id}`, { maxRequests: 10, windowMs: 60_000 })
+  if (rl.limited) return { error: `Too many attempts. Try again in ${rl.retryAfter}s.` }
 
   const admin = createAdminClient()
 

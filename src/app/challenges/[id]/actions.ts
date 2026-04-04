@@ -109,49 +109,48 @@ export async function respondToChallenge(formData: FormData) {
     }
   }
 
-  await admin
+  // Atomic update: WHERE status='pending' prevents double-accept race conditions
+  const { data: updated } = await admin
     .from('challenges')
     .update({ status: response, updated_at: new Date().toISOString() })
     .eq('id', challengeId)
+    .eq('status', 'pending')
+    .select('id')
+
+  if (!updated || updated.length === 0) {
+    return { error: 'Challenge was already responded to' }
+  }
 
   revalidatePath(`/challenges/${challengeId}`)
   revalidatePath('/challenges')
 
   if (response === 'accepted') {
-    // Create a challenge-specific prediction row for the accepting user
-    // (empty picks — they'll fill it in on the predict page)
-    await admin
-      .from('predictions')
-      .insert({
+    // Create challenge-specific prediction rows for both users.
+    // Use upsert with ignoreDuplicates to safely handle double-click / retries.
+    const predRows = [
+      {
         user_id:       user.id,
         tournament_id: challenge.tournament_id,
         challenge_id:  challengeId,
         picks:         {},
         pick_locks:    {},
         submitted_at:  new Date().toISOString(),
-      } as any)
-
-    // Also create one for the challenger if they don't have one yet
-    const { data: challengerPred } = await admin
+      },
+      {
+        user_id:       challenge.challenger_id,
+        tournament_id: challenge.tournament_id,
+        challenge_id:  challengeId,
+        picks:         {},
+        pick_locks:    {},
+        submitted_at:  new Date().toISOString(),
+      },
+    ]
+    await admin
       .from('predictions')
-      .select('id')
-      .eq('user_id', challenge.challenger_id)
-      .eq('tournament_id', challenge.tournament_id)
-      .eq('challenge_id', challengeId)
-      .maybeSingle()
-
-    if (!challengerPred) {
-      await admin
-        .from('predictions')
-        .insert({
-          user_id:       challenge.challenger_id,
-          tournament_id: challenge.tournament_id,
-          challenge_id:  challengeId,
-          picks:         {},
-          pick_locks:    {},
-          submitted_at:  new Date().toISOString(),
-        } as any)
-    }
+      .upsert(predRows as any[], {
+        onConflict: 'user_id,tournament_id,challenge_id',
+        ignoreDuplicates: true,
+      })
 
     // Redirect to make their picks for this challenge
     redirect(`/tournaments/${challenge.tournament_id}/predict?challenge=${challengeId}`)

@@ -1,8 +1,11 @@
+import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
+
+export const metadata: Metadata = { title: 'Leagues | Quiet Please' }
 
 export default async function LeaguesPage() {
   const { user, profile } = await getNavProfile()
