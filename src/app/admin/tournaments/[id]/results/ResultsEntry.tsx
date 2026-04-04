@@ -448,7 +448,7 @@ export default function ResultsEntry({
                           borderColor: isLocked && isManualLock
                             ? '#c7d2fe'
                             : result && !isEditing ? '#bbf7d0' : 'var(--chalk-dim)',
-                          opacity: isBye ? 0.5 : 1,
+                          opacity: isBye && !isEditing ? 0.6 : 1,
                         }}
                       >
                         <div className="flex items-center gap-2">
@@ -511,8 +511,8 @@ export default function ResultsEntry({
                             </span>
                           )}
 
-                          {/* Edit + Clear buttons — shown for matches with results (non-bye) that are not currently being edited */}
-                          {result && !isBye && !isEditing && (
+                          {/* Edit + Clear buttons — shown for matches with results that are not currently being edited */}
+                          {result && !isEditing && (
                             <div className="flex gap-1">
                               <button
                                 type="button"
