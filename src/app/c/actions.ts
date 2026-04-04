@@ -162,8 +162,10 @@ export async function submitOpponentPicks(data: {
 
   const opponentName = data.opponentName.trim().slice(0, 30) || 'Player 2'
 
-  // Update challenge
-  const { error } = await admin
+  // Atomic update: the WHERE status='waiting_opponent' guard ensures only the
+  // first concurrent opponent submission wins. If a race happens, the second
+  // request matches 0 rows and we detect it below.
+  const { data: updated, error } = await admin
     .from('challenges')
     .update({
       opponent_name: opponentName,
@@ -173,10 +175,15 @@ export async function submitOpponentPicks(data: {
       updated_at: new Date().toISOString(),
     })
     .eq('id', challenge.id)
+    .eq('status', 'waiting_opponent')
+    .select('id')
 
   if (error) {
     console.error('[submitOpponentPicks] update error:', error)
     return { ok: false, error: 'Failed to submit picks.' }
+  }
+  if (!updated || updated.length === 0) {
+    return { ok: false, error: 'This challenge already has an opponent.' }
   }
 
   return { ok: true }

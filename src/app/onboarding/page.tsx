@@ -1,8 +1,11 @@
+import type { Metadata } from 'next'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
 import { getPredictableStatuses } from '@/lib/app-settings'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
+
+export const metadata: Metadata = { title: 'Get Started | Quiet Please' }
 
 // ── Onboarding page — shown to new users after signup ───────────────────────
 // Also accessible any time via /onboarding (linked from the nav)

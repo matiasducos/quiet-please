@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { unstable_cache } from 'next/cache'
 import { getNavProfile } from '@/lib/supabase/profile'
@@ -5,6 +6,8 @@ import Nav from '@/components/Nav'
 import TournamentsClientList from '@/components/TournamentsClientList'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { getPredictableStatuses } from '@/lib/app-settings'
+
+export const metadata: Metadata = { title: 'Tournaments | Quiet Please' }
 
 const VALID_STATUSES = ['upcoming', 'draw_published', 'accepting_predictions', 'in_progress', 'completed'] as const
 

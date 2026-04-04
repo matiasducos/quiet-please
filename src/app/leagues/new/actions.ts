@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { rateLimit } from '@/lib/rate-limit'
 
 const VALID_TYPES = ['grand_slam', 'masters_1000', '500', '250'] as const
 const VALID_SURFACES = ['hard', 'clay', 'grass'] as const
@@ -12,6 +13,9 @@ export async function createLeague(formData: FormData) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+
+  const rl = rateLimit(`create-league:${user.id}`, { maxRequests: 5, windowMs: 60_000 })
+  if (rl.limited) return { error: `Too many requests. Try again in ${rl.retryAfter}s.` }
 
   const name = formData.get('name') as string
   const description = formData.get('description') as string

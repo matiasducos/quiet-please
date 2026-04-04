@@ -4,11 +4,16 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { rateLimit } from '@/lib/rate-limit'
 
 export async function joinLeague(formData: FormData) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+
+  // Rate limit invite code attempts to prevent brute-force
+  const rl = rateLimit(`join-league:${user.id}`, { maxRequests: 10, windowMs: 60_000 })
+  if (rl.limited) return { error: `Too many attempts. Try again in ${rl.retryAfter}s.` }
 
   const code = (formData.get('code') as string)?.toUpperCase().trim()
   if (!code) return { error: 'Please enter an invite code' }

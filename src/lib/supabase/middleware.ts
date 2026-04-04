@@ -30,8 +30,9 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
 
-  // Protect routes that require authentication
-  const protectedRoutes = ['/dashboard', '/profile', '/predict']
+  // Protect routes that require authentication — fast middleware redirect
+  // Note: /challenges and /leagues root pages handle anonymous visitors themselves
+  const protectedRoutes = ['/dashboard', '/profile', '/predict', '/friends', '/notifications', '/admin', '/leagues/browse', '/leagues/new', '/leagues/join', '/challenges/new']
   const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route))
 
   if (isProtectedRoute && !user) {

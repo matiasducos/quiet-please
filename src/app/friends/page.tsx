@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
@@ -5,6 +6,8 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { sendFriendRequest, acceptFriendRequest, declineFriendRequest, cancelFriendRequest } from './actions'
 import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
+
+export const metadata: Metadata = { title: 'Friends | Quiet Please' }
 
 export default async function FriendsPage({
   searchParams,

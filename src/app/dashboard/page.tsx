@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
@@ -7,6 +8,8 @@ import TournamentCard from '@/components/TournamentCard'
 import { getActivity, timeAgo } from '@/lib/friends/activity'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { getUpcomingTournaments, getLiveTournaments } from '@/lib/tournaments/cached'
+
+export const metadata: Metadata = { title: 'Dashboard | Quiet Please' }
 
 export default async function DashboardPage() {
   const { user, profile } = await getNavProfile()

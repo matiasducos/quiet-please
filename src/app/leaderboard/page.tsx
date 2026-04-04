@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { unstable_cache } from 'next/cache'
@@ -6,6 +7,8 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import LeaderboardTable from './LeaderboardTable'
 import LeaderboardSelector from './LeaderboardSelector'
+
+export const metadata: Metadata = { title: 'Leaderboard | Quiet Please' }
 
 type Scope   = 'worldwide' | 'country' | 'city'
 type Circuit = 'both' | 'atp' | 'wta'
