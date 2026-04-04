@@ -3,6 +3,7 @@ import * as Sentry from '@sentry/nextjs'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { withCronLogging } from '@/lib/cron-logger'
 import { insertNotifications } from '@/lib/notifications'
+import { sendAutoPredsEmail } from '@/lib/email'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
 import { generateAutoPicks } from '@/lib/tennis/auto-predict'
 import { getPredictableStatuses, isManualLockMode } from '@/lib/app-settings'
@@ -409,6 +410,42 @@ export async function GET(request: Request) {
     // Bulk insert notifications
     if (allNotifications.length > 0) {
       await insertNotifications(allNotifications)
+    }
+
+    // Fire-and-forget emails for auto-prediction notifications
+    if (allNotifications.length > 0) {
+      const emailUserIds = [...new Set(allNotifications.map(n => n.user_id))]
+      const { data: emailPrefs } = await supabase
+        .from('users')
+        .select('id, email_notifications, unsubscribe_token')
+        .in('id', emailUserIds)
+      const prefsMap = new Map((emailPrefs ?? []).map((p: { id: string; email_notifications: boolean | null; unsubscribe_token: string | null }) => [p.id, p]))
+
+      const sendEmails = async () => {
+        for (let i = 0; i < allNotifications.length; i += 10) {
+          await Promise.allSettled(
+            allNotifications.slice(i, i + 10).map(async (notif) => {
+              try {
+                const prefs = prefsMap.get(notif.user_id)
+                if (prefs?.email_notifications === false) return
+                const { data: { user: authUser } } = await supabase.auth.admin.getUserById(notif.user_id)
+                if (!authUser?.email) return
+                await sendAutoPredsEmail({
+                  to: authUser.email,
+                  tournamentName: (notif.meta?.tournament_name as string) ?? 'a tournament',
+                  tournamentId: notif.tournament_id,
+                  picksCount: (notif.meta?.picks_count as number) ?? 0,
+                  unsubscribeToken: prefs?.unsubscribe_token ?? '',
+                })
+              } catch (e) {
+                console.error(`[auto-predict] email error for ${notif.user_id}:`, e)
+                Sentry.captureException(e)
+              }
+            }),
+          )
+        }
+      }
+      sendEmails().catch(e => { console.error('[auto-predict] email batch error:', e); Sentry.captureException(e) })
     }
 
     const totalCreated = results.reduce((s, r) => s + r.created, 0)

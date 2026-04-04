@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { insertNotifications } from '@/lib/notifications'
+import { sendNotificationEmail, sendChallengeReceivedEmail } from '@/lib/email'
 import { rateLimit } from '@/lib/rate-limit'
 
 export async function createChallenge(formData: FormData) {
@@ -71,6 +72,13 @@ export async function createChallenge(formData: FormData) {
         tournament_flag_emoji: tournamentForNotif?.flag_emoji ?? null,
       },
     }])
+    // Fire-and-forget email
+    sendNotificationEmail(friendId, sendChallengeReceivedEmail, (email, token) => ({
+      to: email,
+      challengerUsername: challengerProfile?.username ?? 'Someone',
+      tournamentName: tournamentForNotif?.name ?? 'a tournament',
+      unsubscribeToken: token,
+    }))
   } catch (e) {
     console.error('[createChallenge] notification error', e)
   }
