@@ -38,6 +38,7 @@ export const metadata: Metadata = {
     title: 'Quiet Please',
   },
   icons: {
+    icon: '/icon.svg',
     apple: '/apple-touch-icon.png',
   },
 }
