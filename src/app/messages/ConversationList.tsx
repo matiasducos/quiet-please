@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
+import NewMessageButton from './NewMessageButton'
 
 type ConversationPreview = {
   id: string
@@ -71,48 +72,64 @@ export default function ConversationList({ userId }: { userId: string }) {
     )
   }
 
+  const existingFriendIds = conversations.map(c => c.friend.id)
+
   if (error && conversations.length === 0) {
     return (
-      <div
-        className="bg-white rounded-sm border py-16 px-8 text-center"
-        style={{ borderColor: 'var(--chalk-dim)' }}
-      >
-        <p style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
-          Could not load conversations. Please try again later.
-        </p>
+      <div>
+        <div className="flex justify-end mb-4">
+          <NewMessageButton existingFriendIds={[]} />
+        </div>
+        <div
+          className="bg-white rounded-sm border py-16 px-8 text-center"
+          style={{ borderColor: 'var(--chalk-dim)' }}
+        >
+          <p style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
+            Could not load conversations. Please try again later.
+          </p>
+        </div>
       </div>
     )
   }
 
   if (conversations.length === 0) {
     return (
-      <div
-        className="bg-white rounded-sm border py-16 px-8 text-center"
-        style={{ borderColor: 'var(--chalk-dim)' }}
-      >
-        <p
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: '1.25rem',
-            color: 'var(--ink)',
-            marginBottom: '0.5rem',
-          }}
+      <div>
+        <div className="flex justify-end mb-4">
+          <NewMessageButton existingFriendIds={[]} />
+        </div>
+        <div
+          className="bg-white rounded-sm border py-16 px-8 text-center"
+          style={{ borderColor: 'var(--chalk-dim)' }}
         >
-          No conversations yet
-        </p>
-        <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem' }}>
-          Start chatting by messaging a friend from your{' '}
-          <Link href="/friends" style={{ color: 'var(--court)', textDecoration: 'underline' }}>
-            friends list
-          </Link>
-          .
-        </p>
+          <p
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '1.25rem',
+              color: 'var(--ink)',
+              marginBottom: '0.5rem',
+            }}
+          >
+            No conversations yet
+          </p>
+          <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem' }}>
+            Pick a friend above or message one from your{' '}
+            <Link href="/friends" style={{ color: 'var(--court)', textDecoration: 'underline' }}>
+              friends list
+            </Link>
+            .
+          </p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div>
+      <div className="flex justify-end mb-4">
+        <NewMessageButton existingFriendIds={existingFriendIds} />
+      </div>
+      <div className="flex flex-col gap-2">
       {conversations.map(convo => {
         const isUnread = convo.unreadCount > 0
         const preview = convo.lastMessage
@@ -185,6 +202,7 @@ export default function ConversationList({ userId }: { userId: string }) {
           </Link>
         )
       })}
+      </div>
     </div>
   )
 }
