@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import posthog from 'posthog-js'
 import { initPostHog } from '@/lib/posthog/client'
@@ -14,19 +14,28 @@ import { initPostHog } from '@/lib/posthog/client'
 export default function PostHogProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const initialized = useRef(false)
 
-  // Initialize on mount
+  // Initialize on mount + capture first pageview
   useEffect(() => {
-    initPostHog()
+    if (!initialized.current) {
+      initPostHog()
+      initialized.current = true
+    }
   }, [])
 
-  // Track page views on route changes
+  // Track page views on route changes (including initial)
   useEffect(() => {
-    if (!pathname || !posthog.__loaded) return
-    const url = searchParams.toString()
-      ? `${pathname}?${searchParams.toString()}`
-      : pathname
-    posthog.capture('$pageview', { $current_url: url })
+    if (!pathname) return
+    // Wait a tick for PostHog to finish loading on first render
+    const timeout = setTimeout(() => {
+      if (!posthog.__loaded) return
+      const url = searchParams.toString()
+        ? `${pathname}?${searchParams.toString()}`
+        : pathname
+      posthog.capture('$pageview', { $current_url: url })
+    }, 100)
+    return () => clearTimeout(timeout)
   }, [pathname, searchParams])
 
   return <>{children}</>
