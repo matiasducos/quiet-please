@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache'
 import { insertNotifications } from '@/lib/notifications'
 import { sendNotificationEmail, sendFriendRequestEmail, sendFriendAcceptedEmail } from '@/lib/email'
 import { rateLimit } from '@/lib/rate-limit'
+import { trackServerEvent } from '@/lib/posthog/server'
 
 export async function sendFriendRequest(formData: FormData) {
   const supabase = await createClient()
@@ -92,6 +93,8 @@ export async function sendFriendRequest(formData: FormData) {
   await sendNotificationEmail(target.id, sendFriendRequestEmail, (email, token) => ({
     to: email, fromUsername: requesterProfile?.username ?? 'Someone', unsubscribeToken: token,
   }))
+
+  trackServerEvent(user.id, 'friend_request_sent', { to_username: target.username })
 
   revalidatePath('/friends')
   redirect(`${returnTo}?msg=Friend+request+sent+to+${encodeURIComponent(target.username)}&type=success`)

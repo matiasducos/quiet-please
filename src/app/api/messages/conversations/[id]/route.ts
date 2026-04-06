@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { rateLimit } from '@/lib/rate-limit'
+import { trackServerEvent } from '@/lib/posthog/server'
 
 /**
  * GET /api/messages/conversations/[id]?before=<ISO>&after=<ISO>&limit=50
@@ -147,6 +148,8 @@ export async function POST(
     .from('conversations')
     .update({ last_message_at: msg.created_at })
     .eq('id', conversationId)
+
+  trackServerEvent(user.id, 'message_sent', { conversation_id: conversationId })
 
   return NextResponse.json({
     message: {

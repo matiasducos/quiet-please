@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { insertNotifications } from '@/lib/notifications'
 import { sendNotificationEmail, sendChallengeReceivedEmail } from '@/lib/email'
 import { rateLimit } from '@/lib/rate-limit'
+import { trackServerEvent } from '@/lib/posthog/server'
 
 export async function createChallenge(formData: FormData) {
   const supabase = await createClient()
@@ -82,6 +83,8 @@ export async function createChallenge(formData: FormData) {
   } catch (e) {
     console.error('[createChallenge] notification error', e)
   }
+
+  trackServerEvent(user.id, 'challenge_created', { type: 'friend', tournament_id: tournamentId })
 
   redirect('/challenges')
 }

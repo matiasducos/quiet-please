@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { DM_Serif_Display, DM_Mono, DM_Sans } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { Suspense } from 'react'
+import PostHogProvider from '@/components/PostHogProvider'
 import './globals.css'
 
 const dmSerifDisplay = DM_Serif_Display({
@@ -52,7 +54,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${dmSerifDisplay.variable} ${dmMono.variable} ${dmSans.variable}`} suppressHydrationWarning>
       <body className="min-h-screen" style={{ background: 'var(--chalk)', color: 'var(--ink)' }}>
-        {children}
+        <Suspense fallback={null}>
+          <PostHogProvider>
+            {children}
+          </PostHogProvider>
+        </Suspense>
         <Analytics />
       </body>
     </html>

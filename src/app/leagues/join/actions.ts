@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { rateLimit } from '@/lib/rate-limit'
+import { trackServerEvent } from '@/lib/posthog/server'
 
 export async function joinLeague(formData: FormData) {
   const supabase = await createClient()
@@ -54,6 +55,8 @@ export async function joinLeague(formData: FormData) {
     type: 'league_member_joined',
     meta: { league_id: league.id, league_name: league.name, joiner_username: joinerProfile?.username ?? 'Someone' },
   })
+
+  trackServerEvent(user.id, 'league_joined', { league_id: league.id, method: 'invite_code' })
 
   revalidatePath(`/leagues/${league.id}`)
   revalidatePath('/leagues')

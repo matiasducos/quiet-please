@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Suspense } from 'react'
 import NotificationBell from './NotificationBell'
 import ChatBubbleIconServer from './ChatBubbleIconServer'
+import PostHogIdentify from './PostHogIdentify'
 
 interface NavProps {
   username?: string | null
@@ -89,6 +90,7 @@ export default function Nav({ username, points = 0, activePage, userId }: NavPro
             <>
               {userId && (
                 <>
+                  <PostHogIdentify userId={userId} username={username!} />
                   <Suspense fallback={null}>
                     <ChatBubbleIconServer userId={userId} />
                   </Suspense>

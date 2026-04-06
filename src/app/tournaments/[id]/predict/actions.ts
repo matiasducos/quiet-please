@@ -7,6 +7,7 @@ import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
 import { insertNotifications } from '@/lib/notifications'
 import { rateLimit } from '@/lib/rate-limit'
 import { canPredictForStatus, isManualLockMode } from '@/lib/app-settings'
+import { trackServerEvent } from '@/lib/posthog/server'
 
 export type SaveResult =
   | { success: true; predictionId?: string }
@@ -380,6 +381,13 @@ export async function savePrediction({
       console.error('[savePrediction] lock notification error', e)
     }
   }
+
+  trackServerEvent(user.id, 'prediction_submitted', {
+    tournament_id: tournamentId,
+    challenge_id: challengeId ?? undefined,
+    type: challengeId ? 'challenge' : 'global',
+    picks_count: Object.keys(picks).length,
+  })
 
   return { success: true, predictionId: insertedPredictionId }
 }
