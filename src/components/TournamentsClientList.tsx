@@ -157,7 +157,9 @@ export default function TournamentsClientList({ tournaments, liveTournaments, ac
           <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '0.5rem' }}>
             {hasQuery
               ? `No results for "${query}"`
-              : `No ${activeStatusMeta && activeStatus !== 'all' ? `"${activeStatusMeta.label}" ` : ''}${activeTour} tournaments`}
+              : activeTour === 'WTA'
+                ? 'WTA tournaments coming soon'
+                : `No ${activeStatusMeta && activeStatus !== 'all' ? `"${activeStatusMeta.label}" ` : ''}${activeTour} tournaments`}
           </p>
           {hasQuery ? (
             <button
@@ -166,6 +168,14 @@ export default function TournamentsClientList({ tournaments, liveTournaments, ac
             >
               Clear search
             </button>
+          ) : activeTour === 'WTA' ? (
+            <p style={{ fontSize: '0.875rem' }}>
+              WTA tournament support is on the way. For now, browse{' '}
+              <Link href="/tournaments?tour=ATP" style={{ color: 'var(--court)', textDecoration: 'underline' }}>
+                ATP tournaments
+              </Link>
+              .
+            </p>
           ) : activeStatus !== 'all' ? (
             <Link href={`/tournaments?tour=${activeTour}`} style={{ color: 'var(--court)', fontSize: '0.875rem' }}>
               View all {activeTour} tournaments →

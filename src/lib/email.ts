@@ -15,6 +15,11 @@ function canSend() {
   return true
 }
 
+/** Returns true if the email belongs to a bot account (never send emails to bots). */
+export function isBotEmail(email: string): boolean {
+  return email.endsWith('@bot.quietplease.app')
+}
+
 function unsubscribeFooter(unsubscribeToken: string) {
   const url = `${BASE_URL}/api/unsubscribe?token=${unsubscribeToken}`
   return `
@@ -221,6 +226,7 @@ export async function sendNotificationEmail<T extends { to: string; unsubscribeT
     if (prefs?.email_notifications === false) return
     const { data: { user } } = await supabase.auth.admin.getUserById(userId)
     if (!user?.email) return
+    if (isBotEmail(user.email)) return
     await emailFn(buildOpts(user.email, prefs?.unsubscribe_token ?? ''))
   } catch (e) {
     console.error('[email] notification email error:', e)

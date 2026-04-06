@@ -3,7 +3,7 @@ import * as Sentry from '@sentry/nextjs'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { withCronLogging } from '@/lib/cron-logger'
 import { insertNotifications } from '@/lib/notifications'
-import { sendAutoPredsEmail } from '@/lib/email'
+import { sendAutoPredsEmail, isBotEmail } from '@/lib/email'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
 import { generateAutoPicks } from '@/lib/tennis/auto-predict'
 import { getPredictableStatuses, isManualLockMode } from '@/lib/app-settings'
@@ -429,7 +429,7 @@ export async function GET(request: Request) {
                 const prefs = prefsMap.get(notif.user_id)
                 if (prefs?.email_notifications === false) return
                 const { data: { user: authUser } } = await supabase.auth.admin.getUserById(notif.user_id)
-                if (!authUser?.email) return
+                if (!authUser?.email || isBotEmail(authUser.email)) return
                 await sendAutoPredsEmail({
                   to: authUser.email,
                   tournamentName: (notif.meta?.tournament_name as string) ?? 'a tournament',

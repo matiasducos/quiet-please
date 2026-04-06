@@ -3,7 +3,7 @@ import * as Sentry from '@sentry/nextjs'
 import { revalidateTag } from 'next/cache'
 import { createAdminClient, listAllUsers } from '@/lib/supabase/admin'
 import { tennisAdapter } from '@/lib/tennis'
-import { sendDrawOpenEmail } from '@/lib/email'
+import { sendDrawOpenEmail, isBotEmail } from '@/lib/email'
 import { withCronLogging } from '@/lib/cron-logger'
 import type { Json } from '@/types/database'
 
@@ -169,7 +169,7 @@ export async function GET(request: Request) {
           const emailResults = await Promise.allSettled(
             allUsers
               .filter((u: any) => {
-                if (!u.email) return false
+                if (!u.email || isBotEmail(u.email)) return false
                 const prefs = prefsMap.get(u.id)
                 return prefs?.email_notifications !== false
               })

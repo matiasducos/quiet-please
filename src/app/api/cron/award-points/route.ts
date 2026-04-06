@@ -3,7 +3,7 @@ import * as Sentry from '@sentry/nextjs'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPointsForRound, calculateStreakMultiplier, buildFeedMap } from '@/lib/tennis'
 import type { DrawMatch, Round, TournamentCategory } from '@/lib/tennis'
-import { sendPointsAwardedEmail } from '@/lib/email'
+import { sendPointsAwardedEmail, isBotEmail } from '@/lib/email'
 import { withCronLogging } from '@/lib/cron-logger'
 
 // Allow up to 60 s — heavy scoring + ranking recalculation needs headroom.
@@ -401,7 +401,7 @@ export async function GET(request: Request) {
                   const prefs = prefsMap.get(job.userId)
                   if (prefs?.email_notifications === false) return // respect unsubscribe
                   const { data: { user: authUser } } = await supabase.auth.admin.getUserById(job.userId)
-                  if (authUser?.email) {
+                  if (authUser?.email && !isBotEmail(authUser.email)) {
                     await sendPointsAwardedEmail({
                       to: authUser.email,
                       tournamentName: job.tName,
