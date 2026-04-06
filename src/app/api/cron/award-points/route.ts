@@ -432,7 +432,9 @@ export async function GET(request: Request) {
     let challengesScored = 0
     let challengesExpired = 0
     try {
-      // 11a. Expire pending challenges for tournaments that have started
+      // 11a. Expire pending challenges for completed tournaments only.
+      // in_progress is intentionally excluded — friends challenges allow
+      // predictions during in_progress tournaments, so the invite stays open.
       const { data: pendingChallenges } = await supabase
         .from('challenges')
         .select('id, tournament_id')
@@ -444,7 +446,7 @@ export async function GET(request: Request) {
           .from('tournaments')
           .select('id')
           .in('id', pendingTournamentIds as string[])
-          .in('status', ['in_progress', 'completed'])
+          .in('status', ['completed'])
 
         const startedIds = new Set((startedTournaments ?? []).map(t => t.id))
         const toExpire = pendingChallenges.filter(c => startedIds.has(c.tournament_id))
