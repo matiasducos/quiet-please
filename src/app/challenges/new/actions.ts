@@ -72,8 +72,8 @@ export async function createChallenge(formData: FormData) {
         tournament_flag_emoji: tournamentForNotif?.flag_emoji ?? null,
       },
     }])
-    // Fire-and-forget email
-    sendNotificationEmail(friendId, sendChallengeReceivedEmail, (email, token) => ({
+    // Await email — Vercel freezes runtime after redirect(), so fire-and-forget drops emails
+    await sendNotificationEmail(friendId, sendChallengeReceivedEmail, (email, token) => ({
       to: email,
       challengerUsername: challengerProfile?.username ?? 'Someone',
       tournamentName: tournamentForNotif?.name ?? 'a tournament',
