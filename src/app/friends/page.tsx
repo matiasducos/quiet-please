@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { sendFriendRequest, acceptFriendRequest, declineFriendRequest, cancelFriendRequest } from './actions'
 import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
+import StartChatButton from './StartChatButton'
 
 export const metadata: Metadata = { title: 'Friends | Quiet Please' }
 
@@ -193,13 +194,16 @@ export default async function FriendsPage({
                   >
                     {f.username}
                   </Link>
-                  <Link
-                    href={`/challenges/new?friend_id=${f.other_id}`}
-                    className="px-3 py-1.5 text-xs font-medium text-white rounded-sm hover:opacity-90"
-                    style={{ background: 'var(--court)', textDecoration: 'none' }}
-                  >
-                    Challenge →
-                  </Link>
+                  <div className="flex gap-2">
+                    <StartChatButton friendId={f.other_id} />
+                    <Link
+                      href={`/challenges/new?friend_id=${f.other_id}`}
+                      className="px-3 py-1.5 text-xs font-medium text-white rounded-sm hover:opacity-90"
+                      style={{ background: 'var(--court)', textDecoration: 'none' }}
+                    >
+                      Challenge →
+                    </Link>
+                  </div>
                 </div>
               ))}
             </div>

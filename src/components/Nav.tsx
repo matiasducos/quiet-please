@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
 import NotificationBell from './NotificationBell'
+import ChatBubbleIconServer from './ChatBubbleIconServer'
 
 interface NavProps {
   username?: string | null
@@ -87,9 +88,14 @@ export default function Nav({ username, points = 0, activePage, userId }: NavPro
           ) : (
             <>
               {userId && (
-                <Suspense fallback={null}>
-                  <NotificationBell userId={userId} />
-                </Suspense>
+                <>
+                  <Suspense fallback={null}>
+                    <ChatBubbleIconServer userId={userId} />
+                  </Suspense>
+                  <Suspense fallback={null}>
+                    <NotificationBell userId={userId} />
+                  </Suspense>
+                </>
               )}
               <Link
                 href={`/profile/${username}`}
