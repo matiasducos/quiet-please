@@ -207,6 +207,37 @@ export async function sendAutoPredsEmail(opts: {
   })
 }
 
+export async function sendAchievementEarnedEmail(opts: {
+  to: string
+  achievementName: string
+  achievementEmoji: string
+  achievementDescription: string
+  username: string
+  unsubscribeToken: string
+}) {
+  if (!canSend()) return
+  await resend!.emails.send({
+    from: FROM,
+    replyTo: REPLY_TO,
+    to: opts.to,
+    subject: `${opts.achievementEmoji} Achievement unlocked — ${opts.achievementName}`,
+    html: `
+      <div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#f5f2eb;">
+        <p style="font-size:12px;letter-spacing:0.08em;color:#6b6b6b;text-transform:uppercase;margin-bottom:24px;">Quiet Please</p>
+        <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 12px;">${opts.achievementEmoji} Achievement unlocked.</h1>
+        <p style="color:#0d0d0d;font-size:18px;margin-bottom:4px;"><strong>${opts.achievementName}</strong></p>
+        <p style="color:#6b6b6b;font-size:14px;">${opts.achievementDescription}</p>
+        <div style="margin-top:28px;">
+          <a href="${BASE_URL}/profile/${opts.username}?tab=achievements"
+             style="display:inline-block;background:#1a6b3c;color:white;text-decoration:none;padding:12px 24px;font-size:14px;border-radius:2px;">
+            View your achievements →
+          </a>
+        </div>
+        ${unsubscribeFooter(opts.unsubscribeToken)}
+      </div>`,
+  })
+}
+
 // ── Shared helper: fetch user prefs + email, then send ──────────────────────
 // Use this in server actions to avoid duplicating the prefs-fetch boilerplate.
 // Fire-and-forget: errors are logged but never thrown.

@@ -7,6 +7,8 @@ import { insertNotifications } from '@/lib/notifications'
 import { sendNotificationEmail, sendChallengeReceivedEmail } from '@/lib/email'
 import { rateLimit } from '@/lib/rate-limit'
 import { trackServerEvent } from '@/lib/posthog/server'
+import { checkChallengeAchievements } from '@/lib/achievements/check'
+import { notifyAchievements } from '@/lib/achievements/notify'
 
 export async function createChallenge(formData: FormData) {
   const supabase = await createClient()
@@ -85,6 +87,11 @@ export async function createChallenge(formData: FormData) {
   }
 
   trackServerEvent(user.id, 'challenge_created', { type: 'friend', tournament_id: tournamentId })
+
+  // Achievement check (fire-and-forget)
+  checkChallengeAchievements(admin, user.id)
+    .then(results => notifyAchievements(admin, results))
+    .catch(err => console.error('[createChallenge] achievement check error', err))
 
   redirect('/challenges')
 }
