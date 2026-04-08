@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { sendFriendRequest, acceptFriendRequest, declineFriendRequest } from '@/app/friends/actions'
+import { AcceptRequestButton } from '@/app/friends/FriendActionButton'
 import LocationEditForm from '@/app/profile/LocationEditForm'
 import UsernameEditForm from '@/app/profile/UsernameEditForm'
 import { COUNTRIES } from '@/app/admin/countries'
@@ -298,9 +299,7 @@ export default async function ProfilePage({
                     <form action={acceptFriendRequest}>
                       <input type="hidden" name="friendship_id" value={friendshipId!} />
                       <input type="hidden" name="return_to" value={`/profile/${profile.username}`} />
-                      <button type="submit" className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90" style={{ background: 'var(--court)' }}>
-                        Accept request
-                      </button>
+                      <AcceptRequestButton />
                     </form>
                     <form action={declineFriendRequest}>
                       <input type="hidden" name="friendship_id" value={friendshipId!} />

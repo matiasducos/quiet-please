@@ -109,22 +109,29 @@ export async function acceptFriendRequest(formData: FormData) {
   const returnTo = (formData.get('return_to') as string) || '/friends'
   const admin = createAdminClient()
 
-  // Fetch friendship so we know who the requester is
+  // Fetch friendship so we know who the requester is — and guard against duplicate accepts
   const { data: friendship } = await admin
     .from('friendships')
-    .select('requester_id')
+    .select('requester_id, status')
     .eq('id', friendshipId)
     .eq('addressee_id', user.id)
     .single()
+
+  // Idempotency: if already accepted (double-click, stale tab), skip everything
+  if (!friendship || friendship.status === 'accepted') {
+    revalidatePath('/friends')
+    redirect(`${returnTo}?msg=Friend+request+accepted&type=success`)
+  }
 
   await admin
     .from('friendships')
     .update({ status: 'accepted', updated_at: new Date().toISOString() })
     .eq('id', friendshipId)
     .eq('addressee_id', user.id)
+    .eq('status', 'pending')  // only update if still pending (atomic guard)
 
   // Notify the original requester that their request was accepted
-  if (friendship?.requester_id) {
+  if (friendship.requester_id) {
     const { data: acceptorProfile } = await admin.from('users').select('username').eq('id', user.id).single()
     await insertNotifications([{
       user_id: friendship.requester_id,
