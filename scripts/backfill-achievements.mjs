@@ -93,7 +93,8 @@ async function backfillPredictionMilestones() {
 
   const thresholds = [
     { min: 1, key: 'first_pick' }, { min: 5, key: 'getting_started' },
-    { min: 10, key: 'committed' }, { min: 25, key: 'veteran' }, { min: 100, key: 'centurion' },
+    { min: 10, key: 'committed' }, { min: 25, key: 'veteran' },
+    { min: 50, key: 'dedicated' }, { min: 100, key: 'centurion' },
   ]
   for (const [userId, count] of Object.entries(counts)) {
     for (const t of thresholds) {
@@ -125,13 +126,13 @@ async function backfillAccuracyStreaks() {
 
   for (const [userId, count] of Object.entries(maxPicks)) {
     if (count >= 5) await award(userId, 'sharp_eye')
-    if (count >= 10) await award(userId, 'on_fire')
-    if (count >= 15) await award(userId, 'crystal_ball')
+    if (count >= 15) await award(userId, 'on_fire')
+    if (count >= 25) await award(userId, 'crystal_ball')
   }
 
   for (const [userId, streak] of Object.entries(maxStreak)) {
     if (streak >= 3) await award(userId, 'hot_streak')
-    if (streak >= 5) await award(userId, 'unstoppable')
+    if (streak >= 7) await award(userId, 'unstoppable')
   }
 }
 
@@ -151,9 +152,9 @@ async function backfillPointsMilestones() {
 
   for (const [userId, max] of Object.entries(maxByUser)) {
     if (max >= 1) await award(userId, 'first_points')
-    if (max >= 100) await award(userId, 'century_club')
-    if (max >= 500) await award(userId, 'high_roller')
-    if (max >= 1000) await award(userId, 'grand_master')
+    if (max >= 250) await award(userId, 'century_club')
+    if (max >= 1000) await award(userId, 'high_roller')
+    if (max >= 2500) await award(userId, 'grand_master')
   }
 }
 
@@ -168,7 +169,7 @@ async function backfillSocial() {
   }
   for (const [userId, count] of Object.entries(friendCounts)) {
     if (count >= 1) await award(userId, 'social_starter')
-    if (count >= 5) await award(userId, 'squad_up')
+    if (count >= 10) await award(userId, 'squad_up')
   }
 
   // Challenger
@@ -240,6 +241,28 @@ async function main() {
   await backfillPointsMilestones()
   await backfillSocial()
   await backfillEngagement()
+
+  // ── 7. Notify all users that achievements are live ──────────
+  console.log('\n📣 Sending "achievements are live" notification to all users...')
+  const { data: allUsers } = await admin.from('users').select('id')
+  const notifRows = (allUsers ?? []).map(u => ({
+    user_id: u.id,
+    type: 'achievement_earned',
+    meta: {
+      achievement_key: 'launch_announcement',
+      achievement_name: 'Achievements are live!',
+      achievement_emoji: '🏆',
+      achievement_description: 'Check out your profile to see your earned badges.',
+    },
+  }))
+
+  // Insert in batches of 500 to avoid PostgREST payload limits
+  for (let i = 0; i < notifRows.length; i += 500) {
+    const batch = notifRows.slice(i, i + 500)
+    const { error: nErr } = await admin.from('notifications').insert(batch)
+    if (nErr) console.error(`  Notification batch error:`, nErr.message)
+  }
+  console.log(`  Sent ${notifRows.length} notifications`)
 
   console.log('\n═══════════════════════════════════════════════')
   console.log(`  Done. Awarded: ${awarded}, Skipped (already earned): ${skipped}`)

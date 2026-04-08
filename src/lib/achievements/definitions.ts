@@ -90,10 +90,18 @@ const PREDICTION_MILESTONES: AchievementDefinition[] = [
     repeatable: false,
   },
   {
+    key: 'dedicated',
+    name: 'Dedicated',
+    description: 'Completed 50 tournament predictions',
+    emoji: '💯',
+    category: 'prediction_milestone',
+    repeatable: false,
+  },
+  {
     key: 'centurion',
     name: 'Centurion',
     description: 'Completed 100 tournament predictions',
-    emoji: '💯',
+    emoji: '🏛️',
     category: 'prediction_milestone',
     repeatable: false,
   },
@@ -112,7 +120,7 @@ const ACCURACY_STREAKS: AchievementDefinition[] = [
   {
     key: 'on_fire',
     name: 'On Fire',
-    description: '10 correct picks in a single tournament',
+    description: '15 correct picks in a single tournament',
     emoji: '🔥',
     category: 'accuracy_streak',
     repeatable: false,
@@ -120,7 +128,7 @@ const ACCURACY_STREAKS: AchievementDefinition[] = [
   {
     key: 'crystal_ball',
     name: 'Crystal Ball',
-    description: '15+ correct picks in a single tournament',
+    description: '25+ correct picks in a single tournament',
     emoji: '🔮',
     category: 'accuracy_streak',
     repeatable: false,
@@ -136,7 +144,7 @@ const ACCURACY_STREAKS: AchievementDefinition[] = [
   {
     key: 'unstoppable',
     name: 'Unstoppable',
-    description: 'Achieved a 5× streak multiplier',
+    description: 'Achieved a 7× streak multiplier',
     emoji: '🌊',
     category: 'accuracy_streak',
     repeatable: false,
@@ -156,7 +164,7 @@ const POINTS_MILESTONES: AchievementDefinition[] = [
   {
     key: 'century_club',
     name: 'Century Club',
-    description: '100+ points in a single tournament',
+    description: '250+ points in a single tournament',
     emoji: '💎',
     category: 'points_milestone',
     repeatable: false,
@@ -164,7 +172,7 @@ const POINTS_MILESTONES: AchievementDefinition[] = [
   {
     key: 'high_roller',
     name: 'High Roller',
-    description: '500+ points in a single tournament',
+    description: '1000+ points in a single tournament',
     emoji: '🚀',
     category: 'points_milestone',
     repeatable: false,
@@ -172,7 +180,7 @@ const POINTS_MILESTONES: AchievementDefinition[] = [
   {
     key: 'grand_master',
     name: 'Grand Master',
-    description: '1000+ points in a single tournament',
+    description: '2500+ points in a single tournament',
     emoji: '👑',
     category: 'points_milestone',
     repeatable: false,
@@ -192,7 +200,7 @@ const SOCIAL: AchievementDefinition[] = [
   {
     key: 'squad_up',
     name: 'Squad Up',
-    description: 'Have 5 friends',
+    description: 'Have 10 friends',
     emoji: '👥',
     category: 'social',
     repeatable: false,

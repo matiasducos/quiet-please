@@ -160,6 +160,7 @@ const PREDICTION_THRESHOLDS = [
   { min: 5, key: 'getting_started' },
   { min: 10, key: 'committed' },
   { min: 25, key: 'veteran' },
+  { min: 50, key: 'dedicated' },
   { min: 100, key: 'centurion' },
 ]
 
@@ -215,8 +216,8 @@ export async function checkCronAchievements(
     const correctPicks = count ?? 0
     const accuracyThresholds = [
       { min: 5, key: 'sharp_eye' },
-      { min: 10, key: 'on_fire' },
-      { min: 15, key: 'crystal_ball' },
+      { min: 15, key: 'on_fire' },
+      { min: 25, key: 'crystal_ball' },
     ]
     for (const t of accuracyThresholds) {
       if (correctPicks >= t.min && !existing.has(t.key)) {
@@ -244,7 +245,7 @@ export async function checkCronAchievements(
     if (maxStreak >= 3 && !existing.has('hot_streak')) {
       results.push(await awardAchievement(admin, userId, 'hot_streak'))
     }
-    if (maxStreak >= 5 && !existing.has('unstoppable')) {
+    if (maxStreak >= 7 && !existing.has('unstoppable')) {
       results.push(await awardAchievement(admin, userId, 'unstoppable'))
     }
   }
@@ -265,9 +266,9 @@ export async function checkCronAchievements(
     const pts = pred?.points_earned ?? 0
     const pointsThresholds = [
       { min: 1, key: 'first_points' },
-      { min: 100, key: 'century_club' },
-      { min: 500, key: 'high_roller' },
-      { min: 1000, key: 'grand_master' },
+      { min: 250, key: 'century_club' },
+      { min: 1000, key: 'high_roller' },
+      { min: 2500, key: 'grand_master' },
     ]
     for (const t of pointsThresholds) {
       if (pts >= t.min && !existing.has(t.key)) {
@@ -387,7 +388,7 @@ export async function checkSocialAchievements(
     if (friendCount >= 1 && !existing.has('social_starter')) {
       results.push(await awardAchievement(admin, userId, 'social_starter'))
     }
-    if (friendCount >= 5 && !existing.has('squad_up')) {
+    if (friendCount >= 10 && !existing.has('squad_up')) {
       results.push(await awardAchievement(admin, userId, 'squad_up'))
     }
   }
