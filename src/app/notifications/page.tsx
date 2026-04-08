@@ -31,6 +31,7 @@ const TYPE_META: Record<string, { label: string; color: string }> = {
   league_deleted:        { label: 'League deleted',      color: '#993C1D' },
   league_ownership_transferred: { label: 'League owner', color: '#185FA5' },
   auto_predictions_generated:  { label: 'Auto-prediction', color: '#7c2d7c' },
+  achievement_earned:          { label: 'Achievement',      color: '#D4A017' },
 }
 
 function getHref(n: { type: string; tournament_id: string | null; meta: Record<string, string | number> }): string {
@@ -45,6 +46,7 @@ function getHref(n: { type: string; tournament_id: string | null; meta: Record<s
   if (n.type === 'league_deleted') return '/leagues'
   if (n.type === 'league_ownership_transferred' && n.meta.league_id) return `/leagues/${n.meta.league_id}`
   if (n.type === 'auto_predictions_generated' && n.tournament_id) return `/tournaments/${n.tournament_id}/predict`
+  if (n.type === 'achievement_earned') return '/profile'
   if (n.tournament_id) return `/tournaments/${n.tournament_id}`
   return '/tournaments'
 }
@@ -172,6 +174,9 @@ export default async function NotificationsPage() {
                         )}
                         {n.type === 'auto_predictions_generated' && (
                           <>Your predictions for {meta.tournament_flag_emoji && <>{meta.tournament_flag_emoji} </>}<strong>{meta.tournament_location ?? meta.tournament_name ?? 'a tournament'}</strong> were automatically generated.{meta.picks_count ? <> ({meta.picks_count} picks)</> : null}</>
+                        )}
+                        {n.type === 'achievement_earned' && (
+                          <>{meta.achievement_emoji ?? '🏅'} Achievement unlocked: <strong>{meta.achievement_name ?? 'an achievement'}</strong>. {meta.achievement_description ?? ''}</>
                         )}
                       </p>
                     </div>

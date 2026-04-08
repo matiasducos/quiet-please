@@ -8,6 +8,8 @@ import { insertNotifications } from '@/lib/notifications'
 import { rateLimit } from '@/lib/rate-limit'
 import { canPredictForStatus, isManualLockMode } from '@/lib/app-settings'
 import { trackServerEvent } from '@/lib/posthog/server'
+import { checkPredictionMilestones, checkEngagementAchievements, checkChallengeAchievements } from '@/lib/achievements/check'
+import { notifyAchievements } from '@/lib/achievements/notify'
 
 export type SaveResult =
   | { success: true; predictionId?: string }
@@ -388,6 +390,24 @@ export async function savePrediction({
     type: challengeId ? 'challenge' : 'global',
     picks_count: Object.keys(picks).length,
   })
+
+  // ── 7. Achievement checks (fire-and-forget) ─────────────────────────────
+  if (!challengeId) {
+    // Global prediction: check prediction milestones + engagement
+    const achAdmin = createAdminClient()
+    Promise.all([
+      checkPredictionMilestones(achAdmin, user.id),
+      checkEngagementAchievements(achAdmin, user.id, tournamentId),
+    ]).then(([predResults, engResults]) => {
+      notifyAchievements(achAdmin, [...predResults, ...engResults])
+    }).catch(err => console.error('[savePrediction] achievement check error', err))
+  } else {
+    // Challenge prediction: check challenger achievement
+    const achAdmin = createAdminClient()
+    checkChallengeAchievements(achAdmin, user.id)
+      .then(results => notifyAchievements(achAdmin, results))
+      .catch(err => console.error('[savePrediction] challenge achievement check error', err))
+  }
 
   return { success: true, predictionId: insertedPredictionId }
 }

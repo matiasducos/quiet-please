@@ -8,6 +8,8 @@ import { insertNotifications } from '@/lib/notifications'
 import { sendNotificationEmail, sendFriendRequestEmail, sendFriendAcceptedEmail } from '@/lib/email'
 import { rateLimit } from '@/lib/rate-limit'
 import { trackServerEvent } from '@/lib/posthog/server'
+import { checkSocialAchievements } from '@/lib/achievements/check'
+import { notifyAchievements } from '@/lib/achievements/notify'
 
 export async function sendFriendRequest(formData: FormData) {
   const supabase = await createClient()
@@ -68,6 +70,10 @@ export async function sendFriendRequest(formData: FormData) {
       await sendNotificationEmail(target.id, sendFriendAcceptedEmail, (email, token) => ({
         to: email, friendUsername: acceptorProfile?.username ?? 'Someone', unsubscribeToken: token,
       }))
+      // Achievement checks (fire-and-forget) — both users
+      Promise.all([checkSocialAchievements(admin, user.id), checkSocialAchievements(admin, target.id)])
+        .then(([r1, r2]) => notifyAchievements(admin, [...r1, ...r2]))
+        .catch(err => console.error('[friends] achievement check error', err))
       revalidatePath('/friends')
       redirect(`${returnTo}?msg=You+are+now+friends+with+${encodeURIComponent(target.username)}&type=success`)
     }
@@ -141,6 +147,10 @@ export async function acceptFriendRequest(formData: FormData) {
     await sendNotificationEmail(friendship.requester_id, sendFriendAcceptedEmail, (email, token) => ({
       to: email, friendUsername: acceptorProfile?.username ?? 'Someone', unsubscribeToken: token,
     }))
+    // Achievement checks (fire-and-forget) — both users
+    Promise.all([checkSocialAchievements(admin, user.id), checkSocialAchievements(admin, friendship.requester_id)])
+      .then(([r1, r2]) => notifyAchievements(admin, [...r1, ...r2]))
+      .catch(err => console.error('[friends] achievement check error', err))
   }
 
   revalidatePath('/friends')

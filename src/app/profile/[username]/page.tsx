@@ -14,16 +14,18 @@ import TournamentCard from '@/components/TournamentCard'
 import EmailPrefsToggle from '@/app/profile/EmailPrefsToggle'
 import ReplayTourButton from '@/components/ReplayTourButton'
 import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
+import AchievementsTab from './AchievementsTab'
 
 export default async function ProfilePage({
   params,
   searchParams,
 }: {
   params: Promise<{ username: string }>
-  searchParams: Promise<{ msg?: string; type?: string; edit?: string }>
+  searchParams: Promise<{ msg?: string; type?: string; edit?: string; tab?: string }>
 }) {
   const { username } = await params
-  const { msg, type, edit } = await searchParams
+  const { msg, type, edit, tab } = await searchParams
+  const activeTab = tab === 'achievements' ? 'achievements' : 'overview'
   const { user, profile: currentProfile } = await getNavProfile()
   if (!user) redirect('/login')
 
@@ -96,6 +98,14 @@ export default async function ProfilePage({
 
   // Friend activity — only fetched when viewing your own profile
   const friendActivityItems = isOwnProfile ? await getFriendActivity(user.id, 5) : []
+
+  // Achievements — fetched for the achievements tab (lightweight count always fetched for tab badge)
+  const [{ data: achievementsData }, { count: achievementCount }] = await Promise.all([
+    activeTab === 'achievements'
+      ? admin.from('user_achievements').select('achievement_key, tournament_id, meta, earned_at').eq('user_id', profile.id).order('earned_at', { ascending: false })
+      : Promise.resolve({ data: [] as any[] }),
+    admin.from('user_achievements').select('id', { count: 'exact', head: true }).eq('user_id', profile.id),
+  ])
 
   type FriendStatus = 'none' | 'friends' | 'sent' | 'received'
   let friendStatus: FriendStatus = 'none'
@@ -355,6 +365,50 @@ export default async function ProfilePage({
             </span>
           </Link>
         )}
+
+        {/* ── Tabs ──────────────────────────────────────────────────────────── */}
+        <div className="flex border-b mb-8" style={{ borderColor: 'var(--chalk-dim)', gap: 0 }}>
+          <Link
+            href={`/profile/${profile.username}`}
+            className="hover:opacity-80"
+            style={{
+              fontFamily: 'var(--font-mono)', fontSize: '0.75rem', letterSpacing: '0.06em',
+              textTransform: 'uppercase', padding: '10px 16px', textDecoration: 'none',
+              color: activeTab === 'overview' ? 'var(--ink)' : 'var(--muted)',
+              borderBottom: activeTab === 'overview' ? '2px solid var(--court)' : '2px solid transparent',
+            }}
+          >
+            Overview
+          </Link>
+          <Link
+            href={`/profile/${profile.username}?tab=achievements`}
+            className="hover:opacity-80"
+            style={{
+              fontFamily: 'var(--font-mono)', fontSize: '0.75rem', letterSpacing: '0.06em',
+              textTransform: 'uppercase', padding: '10px 16px', textDecoration: 'none',
+              color: activeTab === 'achievements' ? 'var(--ink)' : 'var(--muted)',
+              borderBottom: activeTab === 'achievements' ? '2px solid var(--court)' : '2px solid transparent',
+            }}
+          >
+            Achievements{(achievementCount ?? 0) > 0 && (
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', marginLeft: '6px', color: 'var(--court)', background: '#eaf3de', padding: '1px 6px', borderRadius: '2px' }}>
+                {achievementCount}
+              </span>
+            )}
+          </Link>
+        </div>
+
+        {/* ── Achievements tab content ─────────────────────────────────────── */}
+        {activeTab === 'achievements' && (
+          <AchievementsTab
+            achievements={achievementsData ?? []}
+            isOwnProfile={isOwnProfile}
+            username={profile.username}
+          />
+        )}
+
+        {/* ── Overview tab content ─────────────────────────────────────────── */}
+        {activeTab === 'overview' && (<>
 
         {/* ── Stats grid ────────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
@@ -645,6 +699,8 @@ export default async function ProfilePage({
             </div>
           </div>
         )}
+
+        </>)}
       </div>
     </main>
   )

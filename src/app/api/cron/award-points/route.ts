@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getPointsForRound, calculateStreakMultiplier, buildFeedMap } from '@/lib/tennis'
 import type { DrawMatch, Round, TournamentCategory } from '@/lib/tennis'
 import { sendPointsAwardedEmail, isBotEmail } from '@/lib/email'
+import { checkTournamentTrophies, checkCronAchievements, checkChallengeAchievements } from '@/lib/achievements/check'
+import { notifyAchievements } from '@/lib/achievements/notify'
 import { withCronLogging } from '@/lib/cron-logger'
 
 // Allow up to 60 s — heavy scoring + ranking recalculation needs headroom.
@@ -605,6 +607,63 @@ export async function GET(request: Request) {
       Sentry.captureException(anonErr)
     }
 
+    // ── 13. Achievement checks ─────────────────────────────────────────
+    let achievementsAwarded = 0
+    try {
+      // 13a. Tournament trophies: check completed tournaments that had results this run
+      const completedTournamentIds = new Set<string>()
+      for (const r of allResults as any[]) {
+        const { data: t } = await supabase
+          .from('tournaments')
+          .select('status')
+          .eq('id', r.tournament_id)
+          .single()
+        if (t?.status === 'completed') completedTournamentIds.add(r.tournament_id)
+      }
+
+      for (const tId of completedTournamentIds) {
+        const trophyResults = await checkTournamentTrophies(supabase, tId)
+        await notifyAchievements(supabase, trophyResults)
+        achievementsAwarded += trophyResults.filter(r => r.isNew).length
+      }
+
+      // 13b. Per-user cron achievements (accuracy, streaks, points milestones)
+      for (const userId of Object.keys(globalUserPointsDelta)) {
+        const userTournaments = Object.keys(userTournamentPoints[userId] ?? {})
+        for (const tId of userTournaments) {
+          const cronResults = await checkCronAchievements(supabase, userId, tId)
+          await notifyAchievements(supabase, cronResults)
+          achievementsAwarded += cronResults.filter(r => r.isNew).length
+        }
+      }
+
+      // 13c. Challenge achievements: check rival for users whose challenges were completed
+      for (const tId of completedTournamentIds) {
+        const { data: justCompleted } = await supabase
+          .from('challenges')
+          .select('challenger_id, challenged_id')
+          .eq('tournament_id', tId)
+          .eq('status', 'completed')
+          .eq('is_anonymous', false)
+
+        if (justCompleted) {
+          const userIds = new Set<string>()
+          for (const c of justCompleted) {
+            userIds.add(c.challenger_id)
+            userIds.add(c.challenged_id)
+          }
+          for (const uid of userIds) {
+            const rivalResults = await checkChallengeAchievements(supabase, uid)
+            await notifyAchievements(supabase, rivalResults)
+            achievementsAwarded += rivalResults.filter(r => r.isNew).length
+          }
+        }
+      }
+    } catch (achErr) {
+      console.error('[award-points] achievement checking error:', achErr)
+      Sentry.captureException(achErr)
+    }
+
     return {
       status: 200,
       body: {
@@ -617,6 +676,7 @@ export async function GET(request: Request) {
         challenges_scored: challengesScored,
         challenges_expired: challengesExpired,
         anonymous_challenges_scored: anonChallengesScored,
+        achievements_awarded: achievementsAwarded,
       },
     }
   })
