@@ -422,6 +422,94 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {/* ── Achievements showcase ─────────────────────────────────── */}
+      <section className="py-12 md:py-20 border-t" style={{ borderColor: 'var(--chalk-dim)' }}>
+        <div className="max-w-5xl mx-auto px-4 md:px-8">
+          <div className="text-center mb-10 md:mb-14">
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#D4A017', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '12px' }}>
+              Earn badges
+            </div>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.75rem, 4vw, 2.5rem)', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+              Collect achievements as you play
+            </h2>
+            <p style={{ color: 'var(--muted)', maxWidth: '44ch', margin: '16px auto 0', lineHeight: 1.7, fontSize: '0.9rem' }}>
+              Win tournament trophies, unlock milestones, and build your badge collection throughout the season.
+            </p>
+          </div>
+
+          {/* Trophy showcase row */}
+          <div className="flex justify-center gap-4 md:gap-6 mb-10 flex-wrap">
+            {[
+              { emoji: '🏆', label: '1st place', bg: '#FFF8E7', border: '#F0D68A', ring: '#D4A017', glow: 'rgba(212,160,23,0.15)', name: 'Tournament Champion' },
+              { emoji: '🥈', label: '2nd place', bg: '#F5F5F5', border: '#D0D0D0', ring: '#8A8A8A', glow: 'rgba(138,138,138,0.12)', name: 'Runner-Up' },
+              { emoji: '🥉', label: '3rd place', bg: '#FDF5EE', border: '#E0C4A8', ring: '#B87333', glow: 'rgba(184,115,51,0.12)', name: 'On the Podium' },
+            ].map((t, i) => (
+              <div
+                key={i}
+                className="flex flex-col items-center tournament-card"
+                style={{ padding: '20px 18px 16px', borderRadius: '3px', border: `1px solid ${t.border}`, background: t.bg, minWidth: '120px' }}
+              >
+                <div style={{
+                  width: '64px', height: '64px', borderRadius: '50%',
+                  border: `2.5px solid ${t.ring}`, boxShadow: `0 0 0 3px ${t.glow}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  marginBottom: '10px', background: 'white',
+                }}>
+                  <span style={{ fontSize: '1.5rem' }}>{t.emoji}</span>
+                </div>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: t.ring, marginBottom: '6px' }}>
+                  {t.label}
+                </span>
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.85rem', textAlign: 'center', color: 'var(--ink)' }}>
+                  {t.name}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Achievement samples — horizontal scroll on mobile */}
+          <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+            <div className="flex gap-3 md:justify-center" style={{ minWidth: 'max-content' }}>
+              {[
+                { emoji: '🎾', name: 'First Pick', desc: '1 prediction', color: '#185FA5', bg: '#EEF4FF', border: '#B8D4F0' },
+                { emoji: '🔥', name: 'On Fire', desc: '15 correct picks', color: '#c8530a', bg: '#FFF5EE', border: '#F0C8A0' },
+                { emoji: '⚡', name: 'Hot Streak', desc: '3× multiplier', color: '#c8530a', bg: '#FFF5EE', border: '#F0C8A0' },
+                { emoji: '👑', name: 'Grand Master', desc: '2500+ pts', color: '#7c2d7c', bg: '#F9F0F9', border: '#DDB8DD' },
+                { emoji: '🤝', name: 'Social Starter', desc: '1st friend', color: '#1a6b3c', bg: '#EDF7F0', border: '#B8DABB' },
+                { emoji: '🌍', name: 'Globe Trotter', desc: 'ATP + WTA', color: '#993556', bg: '#FDF0F4', border: '#E0B0C0' },
+              ].map((a, i) => (
+                <div
+                  key={i}
+                  className="flex flex-col items-center flex-shrink-0 tournament-card"
+                  style={{ padding: '14px 10px 10px', borderRadius: '3px', border: `1px solid ${a.border}`, background: a.bg, width: '110px' }}
+                >
+                  <div style={{
+                    width: '44px', height: '44px', borderRadius: '50%',
+                    border: `2px solid ${a.color}`, boxShadow: `0 0 0 2px ${a.color}20`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    marginBottom: '6px', background: 'white',
+                  }}>
+                    <span style={{ fontSize: '1.1rem' }}>{a.emoji}</span>
+                  </div>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.75rem', textAlign: 'center', color: 'var(--ink)', lineHeight: 1.2, marginBottom: '2px' }}>
+                    {a.name}
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--muted)', textAlign: 'center' }}>
+                    {a.desc}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="text-center mt-8">
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>
+              26 achievements to unlock
+            </span>
+          </div>
+        </div>
+      </section>
+
       {/* ── Final CTA ──────────────────────────────────────────────── */}
       <section className="py-16 md:py-24 border-t text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="max-w-5xl mx-auto px-4 md:px-8">
