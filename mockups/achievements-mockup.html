@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Achievements — Quiet Please Mockup v3</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --court: #1a6b3c;
+    --court-light: #22883f;
+    --court-dark: #0f4a29;
+    --clay: #c8530a;
+    --chalk: #f5f2eb;
+    --chalk-dim: #e8e3d8;
+    --ink: #0d0d0d;
+    --muted: #6b6b6b;
+    --font-display: 'DM Serif Display', Georgia, serif;
+    --font-body: 'DM Sans', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+
+    /* Trophy tiers */
+    --gold: #D4A017;
+    --gold-bg: #FFF8E7;
+    --gold-border: #F0D68A;
+    --gold-glow: rgba(212, 160, 23, 0.15);
+    --silver: #8A8A8A;
+    --silver-bg: #F5F5F5;
+    --silver-border: #D0D0D0;
+    --silver-glow: rgba(138, 138, 138, 0.12);
+    --bronze: #B87333;
+    --bronze-bg: #FDF5EE;
+    --bronze-border: #E0C4A8;
+    --bronze-glow: rgba(184, 115, 51, 0.12);
+
+    /* Category colors */
+    --cat-prediction: #185FA5;
+    --cat-prediction-bg: #EEF4FF;
+    --cat-prediction-border: #B8D4F0;
+    --cat-prediction-glow: rgba(24, 95, 165, 0.12);
+
+    --cat-accuracy: #c8530a;
+    --cat-accuracy-bg: #FFF5EE;
+    --cat-accuracy-border: #F0C8A0;
+    --cat-accuracy-glow: rgba(200, 83, 10, 0.12);
+
+    --cat-points: #7c2d7c;
+    --cat-points-bg: #F9F0F9;
+    --cat-points-border: #DDB8DD;
+    --cat-points-glow: rgba(124, 45, 124, 0.12);
+
+    --cat-social: #1a6b3c;
+    --cat-social-bg: #EDF7F0;
+    --cat-social-border: #B8DABB;
+    --cat-social-glow: rgba(26, 107, 60, 0.12);
+
+    --cat-engagement: #993556;
+    --cat-engagement-bg: #FDF0F4;
+    --cat-engagement-border: #E0B0C0;
+    --cat-engagement-glow: rgba(153, 53, 86, 0.12);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { background: var(--chalk); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  body { font-family: var(--font-body); }
+
+  .nav { background: white; border-bottom: 1px solid var(--chalk-dim); padding: 12px 24px; font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); display: flex; align-items: center; gap: 12px; }
+  .nav-brand { font-family: var(--font-display); font-size: 1.1rem; color: var(--ink); letter-spacing: -0.02em; }
+
+  .container { max-width: 960px; margin: 0 auto; padding: 40px 16px; }
+  @media (min-width: 768px) { .container { padding: 40px 32px; } }
+
+  .profile-header { margin-bottom: 32px; }
+  .profile-header .back { font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); text-decoration: none; letter-spacing: 0.05em; }
+  .profile-header h1 { font-family: var(--font-display); font-size: 2.5rem; letter-spacing: -0.02em; line-height: 1.1; margin-top: 16px; }
+  .profile-header .you-badge { font-family: var(--font-mono); font-size: 0.75rem; color: #1e4e8c; background: #dbeafe; padding: 2px 8px; border-radius: 2px; margin-left: 12px; vertical-align: middle; }
+  .profile-header .meta { font-family: var(--font-mono); color: var(--muted); font-size: 0.85rem; margin-top: 6px; }
+
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--chalk-dim); margin-bottom: 32px; overflow-x: auto; }
+  .tab { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 10px 16px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; cursor: pointer; white-space: nowrap; }
+  .tab:hover { color: var(--ink); }
+  .tab.active { color: var(--ink); border-bottom-color: var(--court); }
+
+  .section-label { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 16px; }
+
+  .stats-row { display: flex; gap: 24px; margin-bottom: 32px; flex-wrap: wrap; }
+  .stat-box { padding: 16px 20px; border: 1px solid var(--chalk-dim); border-radius: 2px; background: white; min-width: 100px; }
+  .stat-value { font-family: var(--font-display); font-size: 1.5rem; letter-spacing: -0.02em; line-height: 1; margin-bottom: 4px; }
+  .stat-label { font-family: var(--font-mono); font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+  .divider { height: 1px; background: var(--chalk-dim); margin: 32px 0; }
+  .mockup-label { position: fixed; bottom: 16px; right: 16px; font-family: var(--font-mono); font-size: 0.65rem; color: white; background: var(--ink); padding: 4px 10px; border-radius: 2px; letter-spacing: 0.06em; text-transform: uppercase; z-index: 100; }
+
+  /* ══════════════════════════════════════════════════════════════ */
+  /* TOURNAMENT TROPHIES — large, premium, emoji-based             */
+  /* ══════════════════════════════════════════════════════════════ */
+
+  .trophy-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 16px;
+  }
+  @media (max-width: 480px) { .trophy-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; } }
+
+  .trophy {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 14px 18px;
+    border-radius: 3px;
+    border: 1px solid var(--chalk-dim);
+    background: white;
+    transition: transform 0.15s ease, box-shadow 0.2s ease;
+    cursor: default;
+  }
+  .trophy:hover { transform: translateY(-2px); }
+
+  .trophy.gold { border-color: var(--gold-border); background: var(--gold-bg); }
+  .trophy.gold:hover { box-shadow: 0 4px 20px var(--gold-glow); }
+  .trophy.gold .trophy-ring { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-glow); }
+  .trophy.gold .trophy-place { color: var(--gold); }
+
+  .trophy.silver { border-color: var(--silver-border); background: var(--silver-bg); }
+  .trophy.silver:hover { box-shadow: 0 4px 20px var(--silver-glow); }
+  .trophy.silver .trophy-ring { border-color: var(--silver); box-shadow: 0 0 0 3px var(--silver-glow); }
+  .trophy.silver .trophy-place { color: var(--silver); }
+
+  .trophy.bronze { border-color: var(--bronze-border); background: var(--bronze-bg); }
+  .trophy.bronze:hover { box-shadow: 0 4px 20px var(--bronze-glow); }
+  .trophy.bronze .trophy-ring { border-color: var(--bronze); box-shadow: 0 0 0 3px var(--bronze-glow); }
+  .trophy.bronze .trophy-place { color: var(--bronze); }
+
+  .trophy-ring {
+    width: 68px;
+    height: 68px;
+    border-radius: 50%;
+    border: 2.5px solid var(--chalk-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+    background: white;
+  }
+  .trophy-ring .emoji { font-size: 1.7rem; line-height: 1; }
+
+  .trophy-place { font-family: var(--font-mono); font-size: 0.6rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px; }
+  .trophy-name { font-family: var(--font-display); font-size: 0.95rem; letter-spacing: -0.01em; text-align: center; line-height: 1.25; margin-bottom: 4px; color: var(--ink); }
+  .trophy-year { font-family: var(--font-mono); font-size: 0.65rem; color: var(--muted); letter-spacing: 0.04em; }
+  .tour-badge { font-family: var(--font-mono); font-size: 0.55rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 5px; border-radius: 2px; display: inline-block; margin-top: 4px; }
+  .tour-badge.atp { background: #dbeafe; color: #1e4e8c; }
+  .tour-badge.wta { background: #f3e8ff; color: #6b21a8; }
+
+  /* ══════════════════════════════════════════════════════════════ */
+  /* ACHIEVEMENTS — smaller, compact, emoji-based, category color  */
+  /* ══════════════════════════════════════════════════════════════ */
+
+  .ach-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
+  }
+  @media (max-width: 480px) { .ach-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; } }
+
+  .ach {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 8px 12px;
+    border-radius: 3px;
+    border: 1px solid var(--chalk-dim);
+    background: white;
+    transition: transform 0.15s ease, box-shadow 0.2s ease;
+    cursor: default;
+  }
+  .ach:hover { transform: translateY(-1px); }
+
+  /* Category styles for achievements */
+  .ach.cat-prediction { border-color: var(--cat-prediction-border); background: var(--cat-prediction-bg); }
+  .ach.cat-prediction:hover { box-shadow: 0 3px 14px var(--cat-prediction-glow); }
+  .ach.cat-prediction .ach-ring { border-color: var(--cat-prediction); box-shadow: 0 0 0 2px var(--cat-prediction-glow); }
+
+  .ach.cat-accuracy { border-color: var(--cat-accuracy-border); background: var(--cat-accuracy-bg); }
+  .ach.cat-accuracy:hover { box-shadow: 0 3px 14px var(--cat-accuracy-glow); }
+  .ach.cat-accuracy .ach-ring { border-color: var(--cat-accuracy); box-shadow: 0 0 0 2px var(--cat-accuracy-glow); }
+
+  .ach.cat-points { border-color: var(--cat-points-border); background: var(--cat-points-bg); }
+  .ach.cat-points:hover { box-shadow: 0 3px 14px var(--cat-points-glow); }
+  .ach.cat-points .ach-ring { border-color: var(--cat-points); box-shadow: 0 0 0 2px var(--cat-points-glow); }
+
+  .ach.cat-social { border-color: var(--cat-social-border); background: var(--cat-social-bg); }
+  .ach.cat-social:hover { box-shadow: 0 3px 14px var(--cat-social-glow); }
+  .ach.cat-social .ach-ring { border-color: var(--cat-social); box-shadow: 0 0 0 2px var(--cat-social-glow); }
+
+  .ach.cat-engagement { border-color: var(--cat-engagement-border); background: var(--cat-engagement-bg); }
+  .ach.cat-engagement:hover { box-shadow: 0 3px 14px var(--cat-engagement-glow); }
+  .ach.cat-engagement .ach-ring { border-color: var(--cat-engagement); box-shadow: 0 0 0 2px var(--cat-engagement-glow); }
+
+  /* Locked */
+  .ach.locked { opacity: 0.35; border-style: dashed; background: white; }
+  .ach.locked .ach-ring { border-style: dashed; border-color: var(--chalk-dim); box-shadow: none; }
+
+  .ach-ring {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 2px solid var(--chalk-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    background: white;
+  }
+  .ach-ring .emoji { font-size: 1.2rem; line-height: 1; }
+
+  .ach-name {
+    font-family: var(--font-display);
+    font-size: 0.78rem;
+    letter-spacing: -0.01em;
+    text-align: center;
+    line-height: 1.2;
+    color: var(--ink);
+    margin-bottom: 2px;
+  }
+  .ach-desc {
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    color: var(--muted);
+    text-align: center;
+    letter-spacing: 0.02em;
+    line-height: 1.4;
+  }
+  .ach-progress {
+    font-family: var(--font-mono);
+    font-size: 0.5rem;
+    color: var(--muted);
+    margin-top: 3px;
+    letter-spacing: 0.02em;
+  }
+
+  /* ── Empty state ───────────────────────────────────────────── */
+  .empty-state { text-align: center; padding: 48px 24px; border: 1px dashed var(--chalk-dim); border-radius: 3px; background: white; }
+  .empty-state .icon { font-size: 2.5rem; margin-bottom: 16px; opacity: 0.4; }
+  .empty-state h3 { font-family: var(--font-display); font-size: 1.2rem; margin-bottom: 8px; }
+  .empty-state p { font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); max-width: 320px; margin: 0 auto; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <span class="nav-brand">Quiet Please</span>
+  <span>·</span>
+  <span>MOCKUP v3 — Trophies (premium) vs Achievements (compact)</span>
+</div>
+
+<div class="container">
+
+  <div class="profile-header">
+    <a href="#" class="back">← Leaderboard</a>
+    <h1>carlos_tennis <span class="you-badge">you</span></h1>
+    <p class="meta">Member since January 2026</p>
+  </div>
+
+  <div class="tabs">
+    <a class="tab" href="#">Overview</a>
+    <a class="tab active" href="#">Achievements</a>
+    <a class="tab" href="#">Challenges</a>
+    <a class="tab" href="#">Activity</a>
+  </div>
+
+  <!-- Stats summary -->
+  <div class="stats-row">
+    <div class="stat-box">
+      <div class="stat-value" style="color: var(--gold);">3</div>
+      <div class="stat-label">1st place</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-value" style="color: var(--silver);">2</div>
+      <div class="stat-label">2nd place</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-value" style="color: var(--bronze);">1</div>
+      <div class="stat-label">3rd place</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-value">15</div>
+      <div class="stat-label">Achievements</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════ -->
+  <!-- TOURNAMENT TROPHIES — big, premium, emoji-based              -->
+  <!-- ══════════════════════════════════════════════════════════════ -->
+
+  <p class="section-label">🏆 Tournament Trophies</p>
+
+  <div class="trophy-grid" style="margin-bottom: 32px;">
+
+    <div class="trophy gold">
+      <div class="trophy-ring"><span class="emoji">🏆</span></div>
+      <span class="trophy-place">1st place</span>
+      <span class="trophy-name">🇦🇺 Australian Open</span>
+      <span class="trophy-year">2026</span>
+      <span class="tour-badge atp">ATP</span>
+    </div>
+
+    <div class="trophy gold">
+      <div class="trophy-ring"><span class="emoji">🏆</span></div>
+      <span class="trophy-place">1st place</span>
+      <span class="trophy-name">🇺🇸 Miami</span>
+      <span class="trophy-year">2026</span>
+      <span class="tour-badge atp">ATP</span>
+    </div>
+
+    <div class="trophy gold">
+      <div class="trophy-ring"><span class="emoji">🏆</span></div>
+      <span class="trophy-place">1st place</span>
+      <span class="trophy-name">🇫🇷 Roland Garros</span>
+      <span class="trophy-year">2025</span>
+      <span class="tour-badge wta">WTA</span>
+    </div>
+
+    <div class="trophy silver">
+      <div class="trophy-ring"><span class="emoji">🥈</span></div>
+      <span class="trophy-place">2nd place</span>
+      <span class="trophy-name">🇺🇸 Indian Wells</span>
+      <span class="trophy-year">2026</span>
+      <span class="tour-badge atp">ATP</span>
+    </div>
+
+    <div class="trophy silver">
+      <div class="trophy-ring"><span class="emoji">🥈</span></div>
+      <span class="trophy-place">2nd place</span>
+      <span class="trophy-name">🇬🇧 Wimbledon</span>
+      <span class="trophy-year">2025</span>
+      <span class="tour-badge atp">ATP</span>
+    </div>
+
+    <div class="trophy bronze">
+      <div class="trophy-ring"><span class="emoji">🥉</span></div>
+      <span class="trophy-place">3rd place</span>
+      <span class="trophy-name">🇺🇸 US Open</span>
+      <span class="trophy-year">2025</span>
+      <span class="tour-badge wta">WTA</span>
+    </div>
+
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ══════════════════════════════════════════════════════════════ -->
+  <!-- ACHIEVEMENTS — compact, emoji, color-coded by category       -->
+  <!-- ══════════════════════════════════════════════════════════════ -->
+
+  <!-- Prediction Milestones (blue) -->
+  <p class="section-label">🎯 Prediction Milestones</p>
+  <div class="ach-grid" style="margin-bottom: 28px;">
+
+    <div class="ach cat-prediction">
+      <div class="ach-ring"><span class="emoji">🎾</span></div>
+      <span class="ach-name">First Pick</span>
+      <span class="ach-desc">1 prediction</span>
+    </div>
+
+    <div class="ach cat-prediction">
+      <div class="ach-ring"><span class="emoji">📋</span></div>
+      <span class="ach-name">Getting Started</span>
+      <span class="ach-desc">5 predictions</span>
+    </div>
+
+    <div class="ach cat-prediction">
+      <div class="ach-ring"><span class="emoji">💪</span></div>
+      <span class="ach-name">Committed</span>
+      <span class="ach-desc">10 predictions</span>
+    </div>
+
+    <div class="ach cat-prediction">
+      <div class="ach-ring"><span class="emoji">🎖️</span></div>
+      <span class="ach-name">Veteran</span>
+      <span class="ach-desc">25 predictions</span>
+    </div>
+
+    <div class="ach locked">
+      <div class="ach-ring"><span class="emoji">💯</span></div>
+      <span class="ach-name">Centurion</span>
+      <span class="ach-desc">100 predictions</span>
+      <span class="ach-progress">27 / 100</span>
+    </div>
+
+  </div>
+
+  <!-- Accuracy & Streaks (orange) -->
+  <p class="section-label">🔥 Accuracy & Streaks</p>
+  <div class="ach-grid" style="margin-bottom: 28px;">
+
+    <div class="ach cat-accuracy">
+      <div class="ach-ring"><span class="emoji">👁️</span></div>
+      <span class="ach-name">Sharp Eye</span>
+      <span class="ach-desc">5 correct in 1 event</span>
+    </div>
+
+    <div class="ach cat-accuracy">
+      <div class="ach-ring"><span class="emoji">🔥</span></div>
+      <span class="ach-name">On Fire</span>
+      <span class="ach-desc">10 correct in 1 event</span>
+    </div>
+
+    <div class="ach locked">
+      <div class="ach-ring"><span class="emoji">🔮</span></div>
+      <span class="ach-name">Crystal Ball</span>
+      <span class="ach-desc">15 correct in 1 event</span>
+    </div>
+
+    <div class="ach cat-accuracy">
+      <div class="ach-ring"><span class="emoji">⚡</span></div>
+      <span class="ach-name">Hot Streak</span>
+      <span class="ach-desc">3× multiplier</span>
+    </div>
+
+    <div class="ach locked">
+      <div class="ach-ring"><span class="emoji">🌊</span></div>
+      <span class="ach-name">Unstoppable</span>
+      <span class="ach-desc">5× multiplier</span>
+    </div>
+
+  </div>
+
+  <!-- Points Milestones (purple) -->
+  <p class="section-label">💎 Points Milestones</p>
+  <div class="ach-grid" style="margin-bottom: 28px;">
+
+    <div class="ach cat-points">
+      <div class="ach-ring"><span class="emoji">⭐</span></div>
+      <span class="ach-name">First Points</span>
+      <span class="ach-desc">Earned your first pts</span>
+    </div>
+
+    <div class="ach cat-points">
+      <div class="ach-ring"><span class="emoji">💎</span></div>
+      <span class="ach-name">Century Club</span>
+      <span class="ach-desc">100+ pts in 1 event</span>
+    </div>
+
+    <div class="ach cat-points">
+      <div class="ach-ring"><span class="emoji">🚀</span></div>
+      <span class="ach-name">High Roller</span>
+      <span class="ach-desc">500+ pts in 1 event</span>
+    </div>
+
+    <div class="ach locked">
+      <div class="ach-ring"><span class="emoji">👑</span></div>
+      <span class="ach-name">Grand Master</span>
+      <span class="ach-desc">1000+ pts in 1 event</span>
+    </div>
+
+  </div>
+
+  <!-- Social (green) -->
+  <p class="section-label">🤝 Social</p>
+  <div class="ach-grid" style="margin-bottom: 28px;">
+
+    <div class="ach cat-social">
+      <div class="ach-ring"><span class="emoji">🤝</span></div>
+      <span class="ach-name">Social Starter</span>
+      <span class="ach-desc">1st friend added</span>
+    </div>
+
+    <div class="ach cat-social">
+      <div class="ach-ring"><span class="emoji">👥</span></div>
+      <span class="ach-name">Squad Up</span>
+      <span class="ach-desc">5 friends</span>
+    </div>
+
+    <div class="ach cat-social">
+      <div class="ach-ring"><span class="emoji">⚔️</span></div>
+      <span class="ach-name">Challenger</span>
+      <span class="ach-desc">1st challenge created</span>
+    </div>
+
+    <div class="ach locked">
+      <div class="ach-ring"><span class="emoji">🏴</span></div>
+      <span class="ach-name">Rival</span>
+      <span class="ach-desc">5 vs same opponent</span>
+      <span class="ach-progress">2 / 5</span>
+    </div>
+
+  </div>
+
+  <!-- Engagement (rose) -->
+  <p class="section-label">🌍 Engagement</p>
+  <div class="ach-grid" style="margin-bottom: 28px;">
+
+    <div class="ach cat-engagement">
+      <div class="ach-ring"><span class="emoji">🌍</span></div>
+      <span class="ach-name">Globe Trotter</span>
+      <span class="ach-desc">ATP + WTA predicted</span>
+    </div>
+
+    <div class="ach cat-engagement">
+      <div class="ach-ring"><span class="emoji">🎾</span></div>
+      <span class="ach-name">Surface Master</span>
+      <span class="ach-desc">Clay, Grass & Hard</span>
+    </div>
+
+    <div class="ach cat-engagement">
+      <div class="ach-ring"><span class="emoji">📅</span></div>
+      <span class="ach-name">Season Pass</span>
+      <span class="ach-desc">4 calendar months</span>
+    </div>
+
+    <div class="ach cat-engagement">
+      <div class="ach-ring"><span class="emoji">🐦</span></div>
+      <span class="ach-name">Early Bird</span>
+      <span class="ach-desc">Picks within 1hr</span>
+    </div>
+
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- EMPTY STATE -->
+  <p class="section-label" style="margin-top: 16px;">Empty state (users with no achievements)</p>
+  <div class="empty-state">
+    <div class="icon">🏆</div>
+    <h3>No achievements yet</h3>
+    <p>Make predictions on upcoming tournaments to start earning badges. Your first achievement is just one pick away.</p>
+    <a href="#" style="display: inline-block; margin-top: 16px; font-family: var(--font-mono); font-size: 0.75rem; color: var(--court); text-decoration: none;">
+      Browse tournaments →
+    </a>
+  </div>
+
+</div>
+
+<div class="mockup-label">Mockup v3 — Trophies (premium) vs Achievements (compact)</div>
+
+</body>
+</html>
