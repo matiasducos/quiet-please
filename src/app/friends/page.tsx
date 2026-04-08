@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { sendFriendRequest, acceptFriendRequest, declineFriendRequest, cancelFriendRequest } from './actions'
+import { AcceptButton, DeclineButton } from './FriendActionButton'
 import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
 import StartChatButton from './StartChatButton'
 
@@ -145,24 +146,12 @@ export default async function FriendsPage({
                     <form action={acceptFriendRequest}>
                       <input type="hidden" name="friendship_id" value={req.id} />
                       <input type="hidden" name="return_to" value="/friends" />
-                      <button
-                        type="submit"
-                        className="px-3 py-1.5 text-xs font-medium text-white rounded-sm hover:opacity-90"
-                        style={{ background: 'var(--court)' }}
-                      >
-                        Accept
-                      </button>
+                      <AcceptButton />
                     </form>
                     <form action={declineFriendRequest}>
                       <input type="hidden" name="friendship_id" value={req.id} />
                       <input type="hidden" name="return_to" value="/friends" />
-                      <button
-                        type="submit"
-                        className="px-3 py-1.5 text-xs rounded-sm border"
-                        style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white' }}
-                      >
-                        Decline
-                      </button>
+                      <DeclineButton />
                     </form>
                   </div>
                 </div>
