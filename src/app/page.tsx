@@ -423,7 +423,7 @@ export default async function HomePage() {
       </section>
 
       {/* ── Achievements showcase ─────────────────────────────────── */}
-      <section className="py-12 md:py-20 border-t" style={{ borderColor: 'var(--chalk-dim)' }}>
+      <section className="py-12 md:py-20 border-t" style={{ borderColor: 'var(--chalk-dim)', background: 'white' }}>
         <div className="max-w-5xl mx-auto px-4 md:px-8">
           <div className="text-center mb-10 md:mb-14">
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#D4A017', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '12px' }}>
