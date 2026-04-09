@@ -144,7 +144,7 @@ const ACCURACY_STREAKS: AchievementDefinition[] = [
   {
     key: 'unstoppable',
     name: 'Unstoppable',
-    description: 'Achieved a 7× streak multiplier',
+    description: 'Achieved a 5× streak multiplier',
     emoji: '🌊',
     category: 'accuracy_streak',
     repeatable: false,

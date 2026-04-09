@@ -212,6 +212,7 @@ export async function checkCronAchievements(
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
       .eq('tournament_id', tournamentId)
+      .gt('points', 0)
 
     const correctPicks = count ?? 0
     const accuracyThresholds = [
@@ -245,7 +246,7 @@ export async function checkCronAchievements(
     if (maxStreak >= 3 && !existing.has('hot_streak')) {
       results.push(await awardAchievement(admin, userId, 'hot_streak'))
     }
-    if (maxStreak >= 7 && !existing.has('unstoppable')) {
+    if (maxStreak >= 5 && !existing.has('unstoppable')) {
       results.push(await awardAchievement(admin, userId, 'unstoppable'))
     }
   }
