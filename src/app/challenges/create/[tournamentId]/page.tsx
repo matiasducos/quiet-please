@@ -4,6 +4,8 @@ import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import AnonymousCreateFlow from './AnonymousCreateFlow'
+import { isManualLockMode } from '@/lib/app-settings'
+
 export default async function CreateChallengeForTournamentPage({
   params,
 }: {
@@ -16,7 +18,7 @@ export default async function CreateChallengeForTournamentPage({
   // Parallel fetch: tournament, draw, match results
   const [{ data: tournament }, { data: drawData }, { data: matchResults }] = await Promise.all([
     admin.from('tournaments').select('id, name, status, tour, category, surface, starts_at, ends_at, location, flag_emoji').eq('id', tournamentId).single(),
-    admin.from('draws').select('bracket_data').eq('tournament_id', tournamentId).single(),
+    admin.from('draws').select('bracket_data, locked_matches').eq('tournament_id', tournamentId).single(),
     admin.from('match_results').select('external_match_id, winner_external_id').eq('tournament_id', tournamentId),
   ])
 
@@ -50,6 +52,12 @@ export default async function CreateChallengeForTournamentPage({
     matchResultsMap[r.external_match_id] = r.winner_external_id
   }
 
+  // Admin locked matches (manual_lock mode)
+  const manualLock = await isManualLockMode()
+  const adminLockedMatches = manualLock
+    ? (drawData?.locked_matches as Record<string, string>) ?? {}
+    : undefined
+
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="challenges" />
@@ -68,6 +76,7 @@ export default async function CreateChallengeForTournamentPage({
           tournament={tournament}
           draw={draw}
           matchResults={matchResultsMap}
+          adminLockedMatches={adminLockedMatches}
         />
       </div>
     </main>

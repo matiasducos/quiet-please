@@ -125,6 +125,7 @@ export default function BracketPredictor({
   hideNav = false,
   drawResultsMode = false,
   adminLockedMatches,
+  lockedPicks = [],
 }: {
   tournament: any
   draw: Draw
@@ -151,6 +152,8 @@ export default function BracketPredictor({
   drawResultsMode?: boolean
   /** Admin-locked matches (manual_lock mode): matchId → ISO timestamp when locked */
   adminLockedMatches?: Record<string, string>
+  /** Match IDs that were admin-locked when the user made their pick (no points) */
+  lockedPicks?: string[]
 }) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -241,22 +244,21 @@ export default function BracketPredictor({
   })
 
   // ── Per-match lock state ─────────────────────────────────────────────────
-  /** Check if a match is locked (any reason: result, voluntary, full lock, admin lock) */
+  /** Check if a match is locked (result, voluntary, full lock — NOT admin lock, which is now pickable) */
   function isMatchLocked(matchId: string): boolean {
     if (readOnly || fullyLocked) return true
     if (matchResults?.[matchId]) return true           // Match has been played
-    if (adminLockedMatches?.[matchId]) return true     // Admin locked (manual_lock mode)
     if (currentPickLocks[matchId]) return true          // Voluntarily locked
     return false
   }
 
   /** Display state for the match header badge */
-  type LockDisplay = 'editable' | 'voluntary_locked' | 'auto_locked' | 'admin_locked' | 'fully_locked' | 'bye'
+  type LockDisplay = 'editable' | 'voluntary_locked' | 'auto_locked' | 'admin_locked_pickable' | 'fully_locked' | 'bye'
   function getMatchLockDisplay(matchId: string): LockDisplay {
     if (byeMatchIds.has(matchId)) return 'bye'
     if (readOnly || fullyLocked) return 'fully_locked'
     if (matchResults?.[matchId]) return 'auto_locked'
-    if (adminLockedMatches?.[matchId]) return 'admin_locked'
+    if (adminLockedMatches?.[matchId]) return 'admin_locked_pickable'
     if (currentPickLocks[matchId]) return 'voluntary_locked'
     return 'editable'
   }
@@ -947,9 +949,12 @@ export default function BracketPredictor({
                                 PLAYED
                               </span>
                             )}
-                            {!deadPick && lockDisplay === 'admin_locked' && (
-                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em', color: '#4338ca' }}>
-                                LOCKED
+                            {!deadPick && lockDisplay === 'admin_locked_pickable' && (
+                              <span style={{
+                                fontFamily: 'var(--font-mono)', fontSize: '0.55rem', letterSpacing: '0.04em',
+                                color: '#b45309', background: '#fef3c7', padding: '1px 6px', borderRadius: '2px',
+                              }}>
+                                NO POINTS
                               </span>
                             )}
                             {!deadPick && showLockBtn && (

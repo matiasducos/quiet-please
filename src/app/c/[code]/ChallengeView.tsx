@@ -112,12 +112,15 @@ export default function ChallengeView({
   }))
   const category = tournament?.category as TournamentCategory | undefined
 
+  const creatorLockedPicks = (challenge.creator_locked_picks as string[]) ?? []
+  const opponentLockedPicks = (challenge.opponent_locked_picks as string[]) ?? []
+
   const creatorScore = challenge.creator_picks && category
-    ? scoreAnonymousPicks(challenge.creator_picks, typedResults, category, matches)
+    ? scoreAnonymousPicks(challenge.creator_picks, typedResults, category, matches, creatorLockedPicks)
     : { totalPoints: 0, correctPicks: 0, totalResults: 0 }
 
   const opponentScore = (challenge.opponent_picks || submitted) && category
-    ? scoreAnonymousPicks(challenge.opponent_picks ?? opponentPicks, typedResults, category, matches)
+    ? scoreAnonymousPicks(challenge.opponent_picks ?? opponentPicks, typedResults, category, matches, opponentLockedPicks)
     : null
 
   // Use DB-stored points if available (cron-scored), otherwise use live client-side scoring
@@ -184,6 +187,7 @@ export default function ChallengeView({
           hideSaveButtons={true}
           hideBackLink={true}
           adminLockedMatches={adminLockedMatches}
+          lockedPicks={creatorLockedPicks}
         />
       </div>
     )
@@ -239,6 +243,7 @@ export default function ChallengeView({
           hideBackLink={true}
           onPicksChange={handlePicksChange}
           adminLockedMatches={adminLockedMatches}
+          lockedPicks={opponentLockedPicks}
         />
 
         {/* Submit button */}
@@ -409,6 +414,7 @@ export default function ChallengeView({
               hideBackLink={true}
               hideNav={true}
               adminLockedMatches={adminLockedMatches}
+              lockedPicks={bracketTab === 'creator' ? creatorLockedPicks : opponentLockedPicks}
             />
           </div>
         )}

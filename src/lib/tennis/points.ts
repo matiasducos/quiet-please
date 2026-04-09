@@ -84,6 +84,7 @@ export function calculateStreakMultiplier(
   picks: Record<string, string>,
   feedMap: FeedMap,
   matches: DrawMatch[],
+  lockedPicks?: Set<string>,
 ): number {
   const reverseFeedMap = buildReverseFeedMap(feedMap)
   const matchMap = new Map(matches.map(m => [m.matchId, m]))
@@ -131,6 +132,9 @@ export function calculateStreakMultiplier(
       currentSlot = byeSlot
       continue // Don't count BYE in streak, just pass through
     }
+
+    // A locked pick (made after match started) breaks the streak chain
+    if (lockedPicks?.has(feederMatchId)) break
 
     // Normal match: check if user picked the same winner here
     if (picks[feederMatchId] === winnerExternalId) {

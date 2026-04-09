@@ -100,6 +100,8 @@ export async function savePrediction({
   }
 
   // ── 1b. Admin match locks (manual_lock mode — applies to ALL prediction types) ─
+  // Locked picks are SAVED (not stripped) but tagged so the scoring engine skips them.
+  let adminLockedMatchIds: Set<string> = new Set()
   if (await isManualLockMode()) {
     const { data: drawRow } = await supabase
       .from('draws')
@@ -108,25 +110,7 @@ export async function savePrediction({
       .single()
 
     const adminLocked = (drawRow?.locked_matches as Record<string, string>) ?? {}
-    if (Object.keys(adminLocked).length > 0) {
-      // Strip picks for admin-locked matches (silently — UI should prevent these)
-      for (const matchId of Object.keys(adminLocked)) {
-        if (matchId in picks) {
-          // If this is an update and the pick existed before the lock, preserve it
-          if (predictionId) {
-            const { data: existingPred } = await supabase
-              .from('predictions')
-              .select('picks')
-              .eq('id', predictionId)
-              .single()
-            const oldPicks = (existingPred?.picks as Record<string, string>) ?? {}
-            // Only preserve if the pick hasn't changed
-            if (oldPicks[matchId] && picks[matchId] === oldPicks[matchId]) continue
-          }
-          delete picks[matchId]
-        }
-      }
-    }
+    adminLockedMatchIds = new Set(Object.keys(adminLocked))
   }
 
   // ── 2. Build lock state ────────────────────────────────────────────────
@@ -181,10 +165,10 @@ export async function savePrediction({
   let insertedPredictionId: string | undefined
 
   if (predictionId) {
-    // Merge lock state + pick sources: fetch existing, then merge
+    // Merge lock state + pick sources + locked_picks: fetch existing, then merge
     const { data: existingPred } = await supabase
       .from('predictions')
-      .select('pick_locks, pick_sources')
+      .select('picks, pick_locks, pick_sources, locked_picks')
       .eq('id', predictionId)
       .single()
 
@@ -197,6 +181,22 @@ export async function savePrediction({
     // override with "manual" for matches the user explicitly submitted
     const existingSources = (existingPred?.pick_sources as Record<string, string>) ?? {}
     row.pick_sources = { ...existingSources, ...newPickSources }
+
+    // Build locked_picks: tag picks made on admin-locked matches
+    const oldPicks = (existingPred?.picks as Record<string, string>) ?? {}
+    const existingLockedPicks = new Set((existingPred?.locked_picks as string[]) ?? [])
+    const newLockedPicks = new Set<string>()
+    for (const matchId of adminLockedMatchIds) {
+      if (!(matchId in picks)) continue
+      // If pick existed before lock and hasn't changed, preserve its non-locked status
+      if (oldPicks[matchId] && picks[matchId] === oldPicks[matchId] && !existingLockedPicks.has(matchId)) continue
+      newLockedPicks.add(matchId)
+    }
+    // Also keep existing locked_picks for matches still in picks
+    for (const matchId of existingLockedPicks) {
+      if (matchId in picks) newLockedPicks.add(matchId)
+    }
+    row.locked_picks = Array.from(newLockedPicks)
 
     const { error } = await supabase
       .from('predictions')
@@ -306,6 +306,14 @@ export async function savePrediction({
 
     // Set pick_sources for new predictions (all manual)
     row.pick_sources = newPickSources
+
+    // Tag picks made on admin-locked matches (new prediction — all locked picks are new)
+    const finalPicks = row.picks as Record<string, string>
+    const insertLockedPicks: string[] = []
+    for (const matchId of adminLockedMatchIds) {
+      if (matchId in finalPicks) insertLockedPicks.push(matchId)
+    }
+    row.locked_picks = insertLockedPicks
 
     const { data: newPred, error } = await supabase
       .from('predictions')

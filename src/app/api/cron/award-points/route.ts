@@ -88,7 +88,7 @@ export async function GET(request: Request) {
       while (true) {
         const { data: page, error: pageErr } = await supabase
           .from('predictions')
-          .select('id, user_id, tournament_id, challenge_id, picks, pick_locks, points_earned, expires_at')
+          .select('id, user_id, tournament_id, challenge_id, picks, pick_locks, locked_picks, points_earned, expires_at')
           .eq('tournament_id', tId)
           .range(from, from + PAGE_SIZE - 1)
         if (pageErr) throw new Error(`predictions query failed: ${pageErr.message}`)
@@ -185,6 +185,7 @@ export async function GET(request: Request) {
       for (const prediction of tournamentPredictions) {
 
         const picks = prediction.picks as Record<string, string>
+        const lockedPicksSet = new Set((prediction.locked_picks as string[]) ?? [])
 
         // Auto-lock: if this prediction has a pick for this match, mark it as auto-locked
         if (picks[result.external_match_id]) {
@@ -194,6 +195,9 @@ export async function GET(request: Request) {
 
         // Skip if this (match_result, prediction) pair is already scored
         if (scoredPairs.has(`${result.id}:${prediction.id}`)) continue
+
+        // Skip locked picks — made after match started, no points / no streak / no ledger
+        if (lockedPicksSet.has(result.external_match_id)) continue
 
         // Per-match check: the pick for THIS specific match must match the winner
         const didPickWinnerForThisMatch = picks[result.external_match_id] === result.winner_external_id
@@ -208,6 +212,7 @@ export async function GET(request: Request) {
             picks,
             bracket.feedMap,
             bracket.matches,
+            lockedPicksSet,
           )
         }
 
@@ -530,7 +535,7 @@ export async function GET(request: Request) {
     try {
       const { data: anonChallenges } = await supabase
         .from('challenges')
-        .select('id, tournament_id, creator_picks, opponent_picks, challenger_points, challenged_points, status')
+        .select('id, tournament_id, creator_picks, opponent_picks, creator_locked_picks, opponent_locked_picks, challenger_points, challenged_points, status')
         .eq('is_anonymous', true)
         .eq('status', 'active')
 
@@ -562,12 +567,14 @@ export async function GET(request: Request) {
             typedResults,
             category,
             bracket.matches,
+            (ac.creator_locked_picks as string[]) ?? [],
           )
           const opponentScore = scoreAnonymousPicks(
             (ac.opponent_picks as Record<string, string>) ?? {},
             typedResults,
             category,
             bracket.matches,
+            (ac.opponent_locked_picks as string[]) ?? [],
           )
 
           // Build auto-locks for played matches

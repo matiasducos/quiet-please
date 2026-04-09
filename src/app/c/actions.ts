@@ -46,7 +46,8 @@ export async function createAnonymousChallenge(data: {
     return { ok: false, error: 'You must make at least one pick.' }
   }
 
-  // Strip picks for admin-locked matches (manual_lock mode)
+  // Tag picks for admin-locked matches (manual_lock mode) — saved but scored as 0 pts
+  let creatorLockedPicks: string[] = []
   if (await isManualLockMode()) {
     const { data: drawRow } = await admin
       .from('draws')
@@ -55,10 +56,7 @@ export async function createAnonymousChallenge(data: {
       .single()
     const adminLocked = (drawRow?.locked_matches as Record<string, string>) ?? {}
     for (const matchId of Object.keys(adminLocked)) {
-      delete data.creatorPicks[matchId]
-    }
-    if (Object.keys(data.creatorPicks).length === 0) {
-      return { ok: false, error: 'All selected matches are locked. No picks to save.' }
+      if (matchId in data.creatorPicks) creatorLockedPicks.push(matchId)
     }
   }
 
@@ -88,6 +86,7 @@ export async function createAnonymousChallenge(data: {
     share_code: shareCode,
     creator_name: creatorName,
     creator_picks: data.creatorPicks,
+    creator_locked_picks: creatorLockedPicks,
     creator_token: data.creatorToken,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -144,7 +143,8 @@ export async function submitOpponentPicks(data: {
     return { ok: false, error: 'You must make at least one pick.' }
   }
 
-  // Strip picks for admin-locked matches (manual_lock mode)
+  // Tag picks for admin-locked matches (manual_lock mode) — saved but scored as 0 pts
+  let opponentLockedPicks: string[] = []
   if (await isManualLockMode()) {
     const { data: drawRow } = await admin
       .from('draws')
@@ -153,10 +153,7 @@ export async function submitOpponentPicks(data: {
       .single()
     const adminLocked = (drawRow?.locked_matches as Record<string, string>) ?? {}
     for (const matchId of Object.keys(adminLocked)) {
-      delete data.opponentPicks[matchId]
-    }
-    if (Object.keys(data.opponentPicks).length === 0) {
-      return { ok: false, error: 'All selected matches are locked. No picks to save.' }
+      if (matchId in data.opponentPicks) opponentLockedPicks.push(matchId)
     }
   }
 
@@ -170,6 +167,7 @@ export async function submitOpponentPicks(data: {
     .update({
       opponent_name: opponentName,
       opponent_picks: data.opponentPicks,
+      opponent_locked_picks: opponentLockedPicks,
       opponent_token: data.opponentToken,
       status: 'active',
       updated_at: new Date().toISOString(),

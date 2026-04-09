@@ -36,14 +36,19 @@ export function scoreAnonymousPicks(
   matchResults: MatchResultEntry[],
   category: TournamentCategory,
   matches: DrawMatch[],
+  lockedPicks?: string[],
 ): ScoringResult {
   const feedMap: FeedMap = buildFeedMap(matches)
+  const lockedPicksSet = new Set(lockedPicks ?? [])
 
   let totalPoints = 0
   let correctPicks = 0
   const nonByeResults = matchResults.filter(r => r.score !== 'BYE')
 
   for (const result of nonByeResults) {
+    // Skip locked picks — made after match started, no points
+    if (lockedPicksSet.has(result.external_match_id)) continue
+
     const userPick = picks[result.external_match_id]
     if (!userPick || userPick !== result.winner_external_id) continue
 
@@ -57,6 +62,7 @@ export function scoreAnonymousPicks(
       picks,
       feedMap,
       matches,
+      lockedPicksSet,
     )
     totalPoints += basePoints * streakMultiplier
   }

@@ -11,10 +11,12 @@ export default function AnonymousCreateFlow({
   tournament,
   draw,
   matchResults,
+  adminLockedMatches,
 }: {
   tournament: any
   draw: any
   matchResults: Record<string, string>
+  adminLockedMatches?: Record<string, string>
 }) {
   const router = useRouter()
   const [step, setStep] = useState<Step>('name')
@@ -153,6 +155,7 @@ export default function AnonymousCreateFlow({
           hideSaveButtons={true}
           hideBackLink={true}
           onPicksChange={handlePicksChange}
+          adminLockedMatches={adminLockedMatches}
         />
 
         {/* Custom submit area */}

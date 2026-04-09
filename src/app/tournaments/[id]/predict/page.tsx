@@ -23,7 +23,7 @@ export default async function PredictPage({
   // ── Parallel fetch: tournament, draw, prediction, profile, results ─────
   let predictionQuery = supabase
     .from('predictions')
-    .select('id, picks, pick_locks, is_fully_locked, points_earned, challenge_id')
+    .select('id, picks, pick_locks, is_fully_locked, points_earned, challenge_id, locked_picks')
     .eq('tournament_id', id)
     .eq('user_id', user.id)
 
@@ -197,6 +197,7 @@ export default async function PredictPage({
       challengeContext={challengeContext}
       shareUrl={!challengeId && profile?.username ? `/tournaments/${id}/picks/${profile.username}` : undefined}
       adminLockedMatches={adminLockedMatches}
+      lockedPicks={(prediction?.locked_picks as string[]) ?? []}
     />
   )
 }
