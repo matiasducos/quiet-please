@@ -7,7 +7,7 @@ import PostHogIdentify from './PostHogIdentify'
 interface NavProps {
   username?: string | null
   points?: number
-  activePage?: 'tournaments' | 'leaderboard' | 'leagues' | 'challenges' | 'onboarding'
+  activePage?: 'tournaments' | 'leaderboard' | 'leagues' | 'challenges' | 'achievements' | 'onboarding'
   userId?: string | null
 }
 
@@ -74,6 +74,20 @@ export default function Nav({ username, points = 0, activePage, userId }: NavPro
                 {link.label}
               </Link>
             ))}
+            {username && (
+              <Link
+                href={`/profile/${username}?tab=achievements`}
+                data-tour="nav-achievements"
+                className={`nav-link${activePage === 'achievements' ? ' nav-link-active' : ''}`}
+                style={{
+                  fontSize: '0.875rem',
+                  color: activePage === 'achievements' ? 'var(--ink)' : 'var(--muted)',
+                  fontWeight: activePage === 'achievements' ? 500 : 400,
+                }}
+              >
+                Achievements
+              </Link>
+            )}
           </div>
         </div>
 
@@ -151,6 +165,21 @@ export default function Nav({ username, points = 0, activePage, userId }: NavPro
             {link.label}
           </Link>
         ))}
+        {username && (
+          <Link
+            href={`/profile/${username}?tab=achievements`}
+            className="flex-shrink-0 px-5 py-2.5 text-xs border-b-2 transition-colors"
+            style={{
+              fontFamily: 'var(--font-mono)',
+              letterSpacing: '0.04em',
+              borderBottomColor: activePage === 'achievements' ? 'var(--court)' : 'transparent',
+              color: activePage === 'achievements' ? 'var(--court)' : 'var(--muted)',
+              fontWeight: activePage === 'achievements' ? 600 : 400,
+            }}
+          >
+            Achievements
+          </Link>
+        )}
         {/* Sign out — visible only on mobile, at end of scrollable row */}
         {!isGuest && (
           <form action="/auth/logout" method="post" className="flex-shrink-0">

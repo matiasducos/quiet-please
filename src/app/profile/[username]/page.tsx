@@ -193,7 +193,7 @@ export default async function ProfilePage({
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={currentProfile?.username} points={currentProfile?.ranking_points ?? 0} userId={user.id} />
+      <Nav username={currentProfile?.username} points={currentProfile?.ranking_points ?? 0} userId={user.id} activePage={activeTab === 'achievements' ? 'achievements' : undefined} />
 
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
 
