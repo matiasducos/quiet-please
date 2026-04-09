@@ -3,6 +3,7 @@ import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
+import { formatPoints } from '@/lib/utils/format'
 import { respondToChallenge as _respondToChallenge } from './actions'
 
 // Wrap to satisfy React's form action type (void | Promise<void>)
@@ -282,7 +283,7 @@ export default async function ChallengeDetailPage({
                     fontFamily: 'var(--font-mono)', fontSize: '1rem',
                     color: myPicksLocked && theirPicksLocked && myLivePoints > theirLivePoints ? 'var(--court)' : 'var(--ink)',
                   }}>
-                    {myLivePoints} pts
+                    {formatPoints(myLivePoints)} pts
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -292,7 +293,7 @@ export default async function ChallengeDetailPage({
                       fontFamily: 'var(--font-mono)', fontSize: '1rem',
                       color: theirLivePoints > myLivePoints ? '#c84b31' : 'var(--ink)',
                     }}>
-                      {theirLivePoints} pts
+                      {formatPoints(theirLivePoints)} pts
                     </span>
                   ) : (
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>

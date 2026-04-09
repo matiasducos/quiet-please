@@ -7,6 +7,7 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import LeaderboardTable from './LeaderboardTable'
 import LeaderboardSelector from './LeaderboardSelector'
+import { formatPoints } from '@/lib/utils/format'
 
 export const metadata: Metadata = { title: 'Leaderboard | Quiet Please' }
 
@@ -330,7 +331,7 @@ export default async function LeaderboardPage({
                 </span>
               </div>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: '#1e4e8c', fontWeight: 500 }}>
-                {myPoints} pts
+                {formatPoints(myPoints)} pts
               </span>
             </div>
             {myRankInList < 0 && (

@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { formatPoints } from '@/lib/utils/format'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type ActivityItem = {
@@ -97,7 +98,7 @@ async function fetchUserEvents(
     type: 'points' as const,
     user_id: p.user_id,
     username: p.username,
-    label: `earned ${p.points} ${p.source === 'challenge' ? 'challenge' : 'ranking'} pts at ${p.tournament_name}`,
+    label: `earned ${formatPoints(p.points)} ${p.source === 'challenge' ? 'challenge' : 'ranking'} pts at ${p.tournament_name}`,
     date: p.awarded_at,
     href: `/tournaments/${p.tournament_id}`,
   }))

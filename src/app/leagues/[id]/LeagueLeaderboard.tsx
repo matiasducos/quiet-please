@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { formatPoints } from '@/lib/utils/format'
 
 type BreakdownItem = { tournament_id: string; name: string; tour: string; points: number; flag: string | null }
 
@@ -52,7 +53,7 @@ export default function LeagueLeaderboard({ members, leagueId }: { members: Memb
                 )}
               </div>
               <div className="col-span-3 flex items-center justify-end">
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: m.total_points > 0 ? 'var(--ink)' : 'var(--muted)' }}>{m.total_points}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: m.total_points > 0 ? 'var(--ink)' : 'var(--muted)' }}>{formatPoints(m.total_points)}</span>
               </div>
             </div>
 
@@ -82,7 +83,7 @@ export default function LeagueLeaderboard({ members, leagueId }: { members: Memb
                       </span>
                     </div>
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--court)', fontWeight: 500 }}>
-                      +{b.points}
+                      +{formatPoints(b.points)}
                     </span>
                   </div>
                 ))}

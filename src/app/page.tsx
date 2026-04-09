@@ -6,6 +6,7 @@ import CountryFlag from '@/components/CountryFlag'
 import Footer from '@/components/Footer'
 import HowItWorksDemo from '@/components/HowItWorksDemo'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
+import { formatPoints } from '@/lib/utils/format'
 
 // ── Cached homepage data: live tournaments + top players ──────────────────
 const getHomepageData = unstable_cache(
@@ -317,8 +318,8 @@ export default async function HomePage() {
                     </div>
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--court)' }}>
                       {topPlayers.length > 0
-                        ? `${p.ranking_points.toLocaleString()} pts`
-                        : `${(4800 - i * 620).toLocaleString()} pts`
+                        ? `${formatPoints(p.ranking_points)} pts`
+                        : `${formatPoints(4800 - i * 620)} pts`
                       }
                     </span>
                   </div>

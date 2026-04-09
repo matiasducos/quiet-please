@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import CountryFlag from '@/components/CountryFlag'
+import { formatPoints } from '@/lib/utils/format'
 
 interface UserRow {
   id: string
@@ -155,7 +156,7 @@ export default function LeaderboardTable({
                 </div>
                 <div className="col-span-2 flex items-center justify-end">
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: u.points > 0 ? 'var(--ink)' : 'var(--muted)' }}>
-                    {u.points}
+                    {formatPoints(u.points)}
                   </span>
                 </div>
               </div>
@@ -184,7 +185,7 @@ export default function LeaderboardTable({
                         </span>
                       </div>
                       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--court)', fontWeight: 500 }}>
-                        +{b.points}
+                        +{formatPoints(b.points)}
                       </span>
                     </div>
                   ))}

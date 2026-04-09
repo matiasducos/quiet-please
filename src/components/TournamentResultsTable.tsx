@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import CountryFlag from '@/components/CountryFlag'
+import { formatPoints } from '@/lib/utils/format'
 
 const TIER: Record<string, { label: string; bg: string; text: string }> = {
   'ATP|grand_slam':   { label: 'Grand Slam',   bg: '#1a1a2e', text: '#fff' },
@@ -144,7 +145,7 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
                 </div>
                 <div className="col-span-2 flex items-center justify-end">
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: p.points > 0 ? 'var(--court)' : 'var(--muted)', fontWeight: 500 }}>
-                    {p.points > 0 ? `+${p.points}` : '0'}
+                    {p.points > 0 ? `+${formatPoints(p.points)}` : '0'}
                   </span>
                 </div>
               </div>

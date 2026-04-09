@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import CancelButton from './CancelButton'
+import { formatPoints } from '@/lib/utils/format'
 
 export const metadata: Metadata = { title: 'Challenges | Quiet Please' }
 
@@ -182,9 +183,9 @@ export default async function ChallengesPage() {
         <div className="flex items-center gap-4 ml-4 flex-shrink-0">
           {c.status === 'completed' && (
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', textAlign: 'right' }}>
-              <span style={{ color: 'var(--ink)' }}>{c.myPoints ?? 0}</span>
+              <span style={{ color: 'var(--ink)' }}>{formatPoints(c.myPoints ?? 0)}</span>
               <span style={{ color: 'var(--muted)' }}> vs </span>
-              <span style={{ color: 'var(--ink)' }}>{c.theirPoints ?? 0}</span>
+              <span style={{ color: 'var(--ink)' }}>{formatPoints(c.theirPoints ?? 0)}</span>
               <div style={{ fontSize: '0.65rem', color: c.isDraw ? 'var(--muted)' : c.isWinner ? 'var(--court)' : '#c84b31', letterSpacing: '0.06em' }}>
                 {c.isDraw ? 'DRAW' : c.isWinner ? 'YOU WIN' : 'YOU LOSE'}
               </div>
@@ -192,9 +193,9 @@ export default async function ChallengesPage() {
           )}
           {c.status === 'accepted' && (
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', textAlign: 'right' }}>
-              <span style={{ color: c.bothLocked && c.myLivePoints > c.theirLivePoints ? 'var(--court)' : 'var(--ink)' }}>{c.myLivePoints}</span>
+              <span style={{ color: c.bothLocked && c.myLivePoints > c.theirLivePoints ? 'var(--court)' : 'var(--ink)' }}>{formatPoints(c.myLivePoints)}</span>
               <span style={{ color: 'var(--muted)' }}> – </span>
-              <span style={{ color: c.bothLocked && c.theirLivePoints > c.myLivePoints ? '#c84b31' : 'var(--ink)' }}>{c.bothLocked ? c.theirLivePoints : '?'}</span>
+              <span style={{ color: c.bothLocked && c.theirLivePoints > c.myLivePoints ? '#c84b31' : 'var(--ink)' }}>{c.bothLocked ? formatPoints(c.theirLivePoints) : '?'}</span>
               <div style={{ fontSize: '0.65rem', letterSpacing: '0.06em', color: !c.bothLocked ? 'var(--muted)' : c.myLivePoints > c.theirLivePoints ? 'var(--court)' : c.theirLivePoints > c.myLivePoints ? '#c84b31' : 'var(--muted)' }}>
                 {!c.bothLocked ? 'LIVE' : c.myLivePoints > c.theirLivePoints ? 'WINNING' : c.theirLivePoints > c.myLivePoints ? 'LOSING' : 'TIED'}
               </div>

@@ -39,12 +39,13 @@ export default async function GlobalTournamentResultsPage({ params }: { params: 
 
   const userIds = (predictions ?? []).map((p: any) => p.user_id)
 
-  // Count correct picks per user from point_ledger
+  // Count correct picks per user from point_ledger (only rows where points > 0)
   const { data: ledgerRows } = userIds.length > 0
     ? await admin.from('point_ledger')
         .select('user_id')
         .eq('tournament_id', tournamentId)
         .in('user_id', userIds)
+        .gt('points', 0)
     : { data: [] as any[] }
 
   const correctPicksByUser: Record<string, number> = {}

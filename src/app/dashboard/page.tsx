@@ -9,6 +9,7 @@ import { getActivity, timeAgo } from '@/lib/friends/activity'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { getUpcomingTournaments, getLiveTournaments } from '@/lib/tournaments/cached'
 import DashboardTour from '@/components/DashboardTour'
+import { formatPoints } from '@/lib/utils/format'
 
 export const metadata: Metadata = { title: 'Dashboard | Quiet Please' }
 
@@ -48,7 +49,7 @@ export default async function DashboardPage() {
   }))
 
   const stats = [
-    { label: 'Ranking points', value: profile?.ranking_points ?? 0 },
+    { label: 'Ranking points', value: formatPoints(profile?.ranking_points ?? 0) },
     { label: 'Predictions',    value: predictionCount ?? 0 },
     { label: 'Global rank',    value: `#${globalRank}` },
   ]

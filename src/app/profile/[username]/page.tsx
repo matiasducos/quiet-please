@@ -8,6 +8,7 @@ import { sendFriendRequest, acceptFriendRequest, declineFriendRequest } from '@/
 import { AcceptRequestButton } from '@/app/friends/FriendActionButton'
 import LocationEditForm from '@/app/profile/LocationEditForm'
 import UsernameEditForm from '@/app/profile/UsernameEditForm'
+import { formatPoints } from '@/lib/utils/format'
 import { COUNTRIES } from '@/app/admin/countries'
 import CountryFlag from '@/components/CountryFlag'
 import TournamentCard from '@/components/TournamentCard'
@@ -413,7 +414,7 @@ export default async function ProfilePage({
         {/* ── Stats grid ────────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
           {[
-            { label: 'Ranking pts',          value: profile.ranking_points ?? 0,   sub: '52-week rolling' },
+            { label: 'Ranking pts',          value: formatPoints(profile.ranking_points ?? 0),   sub: '52-week rolling' },
             { label: 'Rank',                 value: `#${globalRank}`,              sub: null },
             { label: 'Completed',            value: completedPredCount,            sub: 'tournaments' },
             { label: 'Ongoing challenges',   value: ongoingChallengeCount,         sub: ongoingChallengeCount > 0 ? 'active' : null },
@@ -439,19 +440,19 @@ export default async function ProfilePage({
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-sm border" style={{ borderColor: '#bee3f8', background: '#ebf8ff' }}>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#185FA5' }}>ATP</span>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: '#185FA5', fontWeight: 600 }}>
-              {profile.atp_ranking_points ?? 0}
+              {formatPoints(profile.atp_ranking_points ?? 0)}
             </span>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.55rem', color: '#185FA5', opacity: 0.6 }}>52w</span>
           </div>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-sm border" style={{ borderColor: '#fbb6ce', background: '#fff5f7' }}>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#993556' }}>WTA</span>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: '#993556', fontWeight: 600 }}>
-              {profile.wta_ranking_points ?? 0}
+              {formatPoints(profile.wta_ranking_points ?? 0)}
             </span>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.55rem', color: '#993556', opacity: 0.6 }}>52w</span>
           </div>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', alignSelf: 'center' }}>
-            lifetime: {profile.total_points ?? 0} pts
+            lifetime: {formatPoints(profile.total_points ?? 0)} pts
           </span>
         </div>
 
@@ -523,7 +524,7 @@ export default async function ProfilePage({
                               color: pts > 0 ? 'var(--court)' : 'var(--muted)',
                               fontWeight: pts > 0 ? 500 : 400,
                             }}>
-                              {pts > 0 ? `+${pts}` : '0'}
+                              {pts > 0 ? `+${formatPoints(pts)}` : '0'}
                             </span>
                           </div>
                         </Link>
