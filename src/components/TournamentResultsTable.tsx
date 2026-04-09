@@ -20,6 +20,7 @@ const SURFACE_COLORS = {
 } as const
 
 export type TournamentInfo = {
+  id?: string
   name: string
   tour: string
   category: string
@@ -63,45 +64,61 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
   const dateRange = formatDateRange(tournament.starts_at, tournament.ends_at)
   const isLive = tournament.status === 'in_progress'
 
+  const headerContent = (
+    <>
+      <div style={{ background: tier.bg, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: tier.text, fontWeight: 600 }}>
+          {tier.label}
+        </span>
+        <div className="flex items-center gap-2">
+          {isLive && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', background: '#dc2626', color: '#fff', padding: '2px 8px', borderRadius: '2px', letterSpacing: '0.06em' }}>
+              LIVE
+            </span>
+          )}
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', background: 'rgba(255,255,255,0.18)', color: tier.text, padding: '2px 7px', borderRadius: '2px', letterSpacing: '0.06em' }}>
+            {tournament.status === 'completed' ? 'Completed' : tournament.status === 'in_progress' ? 'In progress' : 'Upcoming'}
+          </span>
+        </div>
+      </div>
+      <div style={{ padding: '16px 18px' }}>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.01em', color: 'var(--ink)', lineHeight: 1.2 }}>
+          {tournament.flag_emoji && <span style={{ marginRight: '8px' }}>{tournament.flag_emoji}</span>}
+          {tournament.location ?? tournament.name}
+        </h2>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <span>{tournament.location ? tournament.name : ''}</span>
+          {tournament.location && <span>·</span>}
+          <span>{dateRange}</span>
+          <span
+            style={{
+              display: 'inline-block', fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.08em', textTransform: 'uppercase',
+              background: surface.bg, color: surface.text, padding: '2px 8px', borderRadius: '2px',
+            }}
+          >
+            {surface.label}
+          </span>
+        </div>
+      </div>
+    </>
+  )
+
   return (
     <div>
       {/* Tournament header */}
-      <div className="bg-white rounded-sm border overflow-hidden mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
-        <div style={{ background: tier.bg, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: tier.text, fontWeight: 600 }}>
-            {tier.label}
-          </span>
-          <div className="flex items-center gap-2">
-            {isLive && (
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', background: '#dc2626', color: '#fff', padding: '2px 8px', borderRadius: '2px', letterSpacing: '0.06em' }}>
-                LIVE
-              </span>
-            )}
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', background: 'rgba(255,255,255,0.18)', color: tier.text, padding: '2px 7px', borderRadius: '2px', letterSpacing: '0.06em' }}>
-              {tournament.status === 'completed' ? 'Completed' : tournament.status === 'in_progress' ? 'In progress' : 'Upcoming'}
-            </span>
-          </div>
+      {tournament.id ? (
+        <Link
+          href={`/tournaments/${tournament.id}`}
+          className="block bg-white rounded-sm border overflow-hidden mb-6 tournament-card"
+          style={{ borderColor: 'var(--chalk-dim)', textDecoration: 'none' }}
+        >
+          {headerContent}
+        </Link>
+      ) : (
+        <div className="bg-white rounded-sm border overflow-hidden mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
+          {headerContent}
         </div>
-        <div style={{ padding: '16px 18px' }}>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.01em', color: 'var(--ink)', lineHeight: 1.2 }}>
-            {tournament.flag_emoji && <span style={{ marginRight: '8px' }}>{tournament.flag_emoji}</span>}
-            {tournament.location ?? tournament.name}
-          </h2>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>{tournament.location ? tournament.name : ''}</span>
-            {tournament.location && <span>·</span>}
-            <span>{dateRange}</span>
-            <span
-              style={{
-                display: 'inline-block', fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.08em', textTransform: 'uppercase',
-                background: surface.bg, color: surface.text, padding: '2px 8px', borderRadius: '2px',
-              }}
-            >
-              {surface.label}
-            </span>
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* Results table */}
       <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>

@@ -69,6 +69,7 @@ export default async function LeagueTournamentResultsPage({ params }: { params: 
     .sort((a: PlayerResult, b: PlayerResult) => b.points - a.points)
 
   const tournamentInfo: TournamentInfo = {
+    id: tournament.id,
     name: tournament.name,
     tour: tournament.tour,
     category: tournament.category,

@@ -64,6 +64,7 @@ export default async function GlobalTournamentResultsPage({ params }: { params: 
   }))
 
   const tournamentInfo: TournamentInfo = {
+    id: tournament.id,
     name: tournament.name,
     tour: tournament.tour,
     category: tournament.category,
