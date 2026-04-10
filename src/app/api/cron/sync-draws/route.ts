@@ -4,6 +4,7 @@ import { revalidateTag } from 'next/cache'
 import { createAdminClient, listAllUsers } from '@/lib/supabase/admin'
 import { tennisAdapter } from '@/lib/tennis'
 import { sendDrawOpenEmail, isBotEmail } from '@/lib/email'
+import { isEmailEnabled } from '@/lib/email-preferences'
 import { withCronLogging } from '@/lib/cron-logger'
 import type { Json } from '@/types/database'
 
@@ -162,7 +163,7 @@ export async function GET(request: Request) {
           // Fetch email preferences to respect unsubscribe
           const { data: userPrefs } = await supabase
             .from('users')
-            .select('id, email_notifications, unsubscribe_token')
+            .select('id, email_notifications, email_preferences, unsubscribe_token')
           const prefsMap = new Map((userPrefs ?? []).map((p: any) => [p.id, p]))
 
           // Send all emails in parallel — avoids O(n) sequential await per user.
@@ -171,7 +172,7 @@ export async function GET(request: Request) {
               .filter((u: any) => {
                 if (!u.email || isBotEmail(u.email)) return false
                 const prefs = prefsMap.get(u.id)
-                return prefs?.email_notifications !== false
+                return isEmailEnabled(prefs?.email_notifications, prefs?.email_preferences, 'draw_open')
               })
               .map((u: any) => sendDrawOpenEmail({
                 to:               u.email,

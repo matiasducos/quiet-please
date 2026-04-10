@@ -13,6 +13,7 @@ import { COUNTRIES } from '@/app/admin/countries'
 import CountryFlag from '@/components/CountryFlag'
 import TournamentCard from '@/components/TournamentCard'
 import EmailPrefsToggle from '@/app/profile/EmailPrefsToggle'
+import { resolvePreferences } from '@/lib/email-preferences'
 import ReplayTourButton from '@/components/ReplayTourButton'
 import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
 import AchievementsTab from './AchievementsTab'
@@ -33,7 +34,7 @@ export default async function ProfilePage({
   const supabase = await createClient()
   const { data: profile } = await supabase
     .from('users')
-    .select('id, username, total_points, ranking_points, atp_ranking_points, wta_ranking_points, country, city, created_at, email_notifications')
+    .select('id, username, total_points, ranking_points, atp_ranking_points, wta_ranking_points, country, city, created_at, email_notifications, email_preferences')
     .eq('username', username)
     .single()
 
@@ -283,8 +284,6 @@ export default async function ProfilePage({
                 >
                   Auto-Predictions
                 </Link>
-                <EmailPrefsToggle initialEnabled={(profile as any).email_notifications !== false} />
-                <span style={{ width: '1px', height: '18px', background: 'var(--chalk-dim)', margin: '0 2px' }} />
                 <ReplayTourButton />
               </div>
             )}
@@ -698,6 +697,16 @@ export default async function ProfilePage({
                 )
               })}
             </div>
+          </div>
+        )}
+
+        {/* ── Email preferences — own profile only ────────────────────────── */}
+        {isOwnProfile && (
+          <div className="mt-10">
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.01em', marginBottom: '1rem' }}>
+              Email preferences
+            </h2>
+            <EmailPrefsToggle initialPreferences={resolvePreferences((profile as any).email_preferences)} />
           </div>
         )}
 

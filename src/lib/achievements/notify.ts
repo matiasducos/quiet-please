@@ -63,6 +63,7 @@ export async function notifyAchievements(
 
       await sendNotificationEmail(
         r.userId,
+        'achievement_earned',
         sendAchievementEarnedEmail,
         (email, unsubscribeToken) => ({
           to: email,

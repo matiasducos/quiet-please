@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getPointsForRound, calculateStreakMultiplier, buildFeedMap } from '@/lib/tennis'
 import type { DrawMatch, Round, TournamentCategory } from '@/lib/tennis'
 import { sendPointsAwardedEmail, isBotEmail } from '@/lib/email'
+import { isEmailEnabled } from '@/lib/email-preferences'
 import { checkTournamentTrophies, checkCronAchievements, checkChallengeAchievements } from '@/lib/achievements/check'
 import { notifyAchievements } from '@/lib/achievements/notify'
 import { withCronLogging } from '@/lib/cron-logger'
@@ -396,7 +397,7 @@ export async function GET(request: Request) {
         const emailUserIds = [...new Set(emailJobs.map(j => j.userId))]
         const { data: emailPrefs } = await supabase
           .from('users')
-          .select('id, email_notifications, unsubscribe_token')
+          .select('id, email_notifications, email_preferences, unsubscribe_token')
           .in('id', emailUserIds)
         const prefsMap = new Map((emailPrefs ?? []).map((p: any) => [p.id, p]))
 
@@ -406,7 +407,7 @@ export async function GET(request: Request) {
               emailJobs.slice(i, i + 10).map(async (job) => {
                 try {
                   const prefs = prefsMap.get(job.userId)
-                  if (prefs?.email_notifications === false) return // respect unsubscribe
+                  if (!isEmailEnabled(prefs?.email_notifications, prefs?.email_preferences, 'points_awarded')) return
                   const { data: { user: authUser } } = await supabase.auth.admin.getUserById(job.userId)
                   if (authUser?.email && !isBotEmail(authUser.email)) {
                     await sendPointsAwardedEmail({

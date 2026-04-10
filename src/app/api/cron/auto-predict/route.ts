@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { withCronLogging } from '@/lib/cron-logger'
 import { insertNotifications } from '@/lib/notifications'
 import { sendAutoPredsEmail, isBotEmail } from '@/lib/email'
+import { isEmailEnabled } from '@/lib/email-preferences'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
 import { generateAutoPicks } from '@/lib/tennis/auto-predict'
 import { getPredictableStatuses, isManualLockMode } from '@/lib/app-settings'
@@ -417,9 +418,9 @@ export async function GET(request: Request) {
       const emailUserIds = [...new Set(allNotifications.map(n => n.user_id))]
       const { data: emailPrefs } = await supabase
         .from('users')
-        .select('id, email_notifications, unsubscribe_token')
+        .select('id, email_notifications, email_preferences, unsubscribe_token')
         .in('id', emailUserIds)
-      const prefsMap = new Map((emailPrefs ?? []).map((p: { id: string; email_notifications: boolean | null; unsubscribe_token: string | null }) => [p.id, p]))
+      const prefsMap = new Map((emailPrefs ?? []).map((p: { id: string; email_notifications: boolean | null; email_preferences: any; unsubscribe_token: string | null }) => [p.id, p]))
 
       const sendEmails = async () => {
         for (let i = 0; i < allNotifications.length; i += 10) {
@@ -427,7 +428,7 @@ export async function GET(request: Request) {
             allNotifications.slice(i, i + 10).map(async (notif) => {
               try {
                 const prefs = prefsMap.get(notif.user_id)
-                if (prefs?.email_notifications === false) return
+                if (!isEmailEnabled(prefs?.email_notifications, prefs?.email_preferences, 'auto_predictions')) return
                 const { data: { user: authUser } } = await supabase.auth.admin.getUserById(notif.user_id)
                 if (!authUser?.email || isBotEmail(authUser.email)) return
                 await sendAutoPredsEmail({

@@ -67,7 +67,7 @@ export async function sendFriendRequest(formData: FormData) {
         type:    'friend_accepted',
         meta:    { friend_username: acceptorProfile?.username ?? 'Someone' },
       }])
-      await sendNotificationEmail(target.id, sendFriendAcceptedEmail, (email, token) => ({
+      await sendNotificationEmail(target.id, 'friend_accepted', sendFriendAcceptedEmail, (email, token) => ({
         to: email, friendUsername: acceptorProfile?.username ?? 'Someone', unsubscribeToken: token,
       }))
       // Achievement checks (fire-and-forget) — both users
@@ -96,7 +96,7 @@ export async function sendFriendRequest(formData: FormData) {
     type:    'friend_request',
     meta:    { from_username: requesterProfile?.username ?? 'Someone' },
   }])
-  await sendNotificationEmail(target.id, sendFriendRequestEmail, (email, token) => ({
+  await sendNotificationEmail(target.id, 'friend_request', sendFriendRequestEmail, (email, token) => ({
     to: email, fromUsername: requesterProfile?.username ?? 'Someone', unsubscribeToken: token,
   }))
 
@@ -144,7 +144,7 @@ export async function acceptFriendRequest(formData: FormData) {
       type:    'friend_accepted',
       meta:    { friend_username: acceptorProfile?.username ?? 'Someone' },
     }])
-    await sendNotificationEmail(friendship.requester_id, sendFriendAcceptedEmail, (email, token) => ({
+    await sendNotificationEmail(friendship.requester_id, 'friend_accepted', sendFriendAcceptedEmail, (email, token) => ({
       to: email, friendUsername: acceptorProfile?.username ?? 'Someone', unsubscribeToken: token,
     }))
     // Achievement checks (fire-and-forget) — both users

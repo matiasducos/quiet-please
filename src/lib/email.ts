@@ -1,5 +1,6 @@
 import { Resend } from 'resend'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { type EmailPrefKey, isEmailEnabled } from '@/lib/email-preferences'
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 const FROM = process.env.EMAIL_FROM ?? 'Quiet Please <notifications@quietplease.app>'
@@ -243,6 +244,7 @@ export async function sendAchievementEarnedEmail(opts: {
 // Fire-and-forget: errors are logged but never thrown.
 export async function sendNotificationEmail<T extends { to: string; unsubscribeToken: string }>(
   userId: string,
+  emailType: EmailPrefKey,
   emailFn: (opts: T) => Promise<void>,
   buildOpts: (email: string, unsubscribeToken: string) => T,
 ) {
@@ -251,10 +253,10 @@ export async function sendNotificationEmail<T extends { to: string; unsubscribeT
     const supabase = createAdminClient()
     const { data: prefs } = await supabase
       .from('users')
-      .select('email_notifications, unsubscribe_token')
+      .select('email_notifications, email_preferences, unsubscribe_token')
       .eq('id', userId)
       .single()
-    if (prefs?.email_notifications === false) return
+    if (!isEmailEnabled(prefs?.email_notifications, prefs?.email_preferences, emailType)) return
     const { data: { user } } = await supabase.auth.admin.getUserById(userId)
     if (!user?.email) return
     if (isBotEmail(user.email)) return

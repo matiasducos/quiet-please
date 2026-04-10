@@ -18,7 +18,18 @@ export async function GET(req: NextRequest) {
 
   const { data: user, error } = await supabase
     .from('users')
-    .update({ email_notifications: false })
+    .update({
+      email_notifications: false,
+      email_preferences: {
+        draw_open: false,
+        points_awarded: false,
+        friend_request: false,
+        friend_accepted: false,
+        challenge_received: false,
+        auto_predictions: false,
+        achievement_earned: false,
+      },
+    })
     .eq('unsubscribe_token', token)
     .select('id')
     .single()

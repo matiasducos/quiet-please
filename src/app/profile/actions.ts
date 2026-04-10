@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { type EmailPreferences, EMAIL_PREF_KEYS } from '@/lib/email-preferences'
 
 export async function updateLocation(formData: FormData) {
   const supabase = await createClient()
@@ -23,14 +24,22 @@ export async function updateLocation(formData: FormData) {
   redirect(`/profile/${username}?msg=Location+updated&type=success`)
 }
 
-export async function toggleEmailNotifications(enabled: boolean): Promise<{ ok: boolean; error?: string }> {
+export async function updateEmailPreferences(
+  preferences: EmailPreferences,
+): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: 'Not authenticated' }
 
+  // Master toggle: false only when ALL individual prefs are disabled
+  const allDisabled = EMAIL_PREF_KEYS.every(k => !preferences[k])
+
   const { error } = await supabase
     .from('users')
-    .update({ email_notifications: enabled })
+    .update({
+      email_preferences: preferences,
+      email_notifications: !allDisabled,
+    })
     .eq('id', user.id)
 
   if (error) return { ok: false, error: error.message }

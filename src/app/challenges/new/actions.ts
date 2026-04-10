@@ -76,7 +76,7 @@ export async function createChallenge(formData: FormData) {
       },
     }])
     // Await email — Vercel freezes runtime after redirect(), so fire-and-forget drops emails
-    await sendNotificationEmail(friendId, sendChallengeReceivedEmail, (email, token) => ({
+    await sendNotificationEmail(friendId, 'challenge_received', sendChallengeReceivedEmail, (email, token) => ({
       to: email,
       challengerUsername: challengerProfile?.username ?? 'Someone',
       tournamentName: tournamentForNotif?.name ?? 'a tournament',
