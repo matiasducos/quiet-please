@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import InviteCodeCard from './InviteCodeCard'
 import LeagueLeaderboard from './LeagueLeaderboard'
+import LeagueTournamentSelector from './LeagueTournamentSelector'
 import TournamentCard from '@/components/TournamentCard'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -261,6 +262,9 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
               </Link>
             </div>
             {league.description && <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>{league.description}</p>}
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', marginTop: '0.4rem' }}>
+              Season started {new Date(league.season_start_date ?? league.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · Points roll off after 52 weeks
+            </p>
             {(league.allowed_tournament_types || league.allowed_surfaces) && (
               <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#1e4e8c', marginTop: '0.4rem' }}>
                 {league.allowed_tournament_types && (
@@ -290,6 +294,24 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
               </div>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: '#1e4e8c' }}>{myMembership.total_points} pts</span>
             </div>
+          </div>
+        )}
+
+        {/* Tournament selector + leaderboard */}
+        {leagueTournaments.length > 0 && (
+          <div className="mb-4">
+            <LeagueTournamentSelector
+              tournaments={leagueTournaments.map(t => ({
+                id: t.id,
+                name: t.name,
+                location: t.location,
+                flag_emoji: t.flag_emoji,
+                tour: t.tour,
+                status: t.status,
+              }))}
+              leagueId={id}
+              currentTournamentId={null}
+            />
           </div>
         )}
 

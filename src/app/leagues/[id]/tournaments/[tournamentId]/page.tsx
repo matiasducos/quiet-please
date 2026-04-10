@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import TournamentResultsTable from '@/components/TournamentResultsTable'
 import type { TournamentInfo, PlayerResult } from '@/components/TournamentResultsTable'
+import LeagueTournamentSelector from '../../LeagueTournamentSelector'
 
 export default async function LeagueTournamentResultsPage({ params }: { params: Promise<{ id: string; tournamentId: string }> }) {
   const { user, profile } = await getNavProfile()
@@ -17,7 +18,7 @@ export default async function LeagueTournamentResultsPage({ params }: { params: 
 
   // Verify membership + fetch league and tournament in parallel
   const [{ data: league }, { data: myMembership }, { data: tournament }] = await Promise.all([
-    supabase.from('leagues').select('id, name').eq('id', leagueId).single(),
+    supabase.from('leagues').select('id, name, season_start_date, created_at, allowed_tournament_types, allowed_surfaces').eq('id', leagueId).single(),
     supabase.from('league_members').select('league_id').eq('league_id', leagueId).eq('user_id', user.id).single(),
     admin.from('tournaments').select('id, name, tour, category, surface, location, flag_emoji, starts_at, ends_at, status').eq('id', tournamentId).single(),
   ])
@@ -25,7 +26,7 @@ export default async function LeagueTournamentResultsPage({ params }: { params: 
   if (!league || !myMembership) redirect('/leagues')
   if (!tournament) notFound()
 
-  // Get league member IDs
+  // Get league member IDs + their tournament predictions for the selector
   const { data: members } = await admin
     .from('league_members')
     .select('user_id')
@@ -53,6 +54,39 @@ export default async function LeagueTournamentResultsPage({ params }: { params: 
   const correctPicksByUser: Record<string, number> = {}
   for (const row of ledgerRows ?? []) {
     correctPicksByUser[row.user_id] = (correctPicksByUser[row.user_id] ?? 0) + 1
+  }
+
+  // Fetch all league tournament IDs for the selector dropdown
+  const { data: memberPreds } = memberIds.length > 0
+    ? await admin.from('predictions')
+        .select('tournament_id')
+        .in('user_id', memberIds)
+        .is('challenge_id', null)
+    : { data: [] as any[] }
+
+  const selectorTournamentIds = Array.from(new Set((memberPreds ?? []).map(p => p.tournament_id)))
+  let selectorTournaments: Array<{ id: string; name: string; tour: string; location: string | null; flag_emoji: string | null; status: string; starts_at: string | null }> = []
+  if (selectorTournamentIds.length > 0) {
+    const { data: allTournaments } = await admin
+      .from('tournaments')
+      .select('id, name, tour, category, surface, location, flag_emoji, starts_at, status')
+      .in('id', selectorTournamentIds)
+      .order('starts_at', { ascending: false })
+
+    // Apply season boundary + league filters
+    const seasonStart = league.season_start_date ? new Date(league.season_start_date as string) : new Date(league.created_at)
+    const weekAgo52 = new Date()
+    weekAgo52.setDate(weekAgo52.getDate() - 364)
+    const boundary = seasonStart > weekAgo52 ? seasonStart : weekAgo52
+    const allowedTypes = league.allowed_tournament_types as string[] | null
+    const allowedSurfaces = league.allowed_surfaces as string[] | null
+
+    selectorTournaments = (allTournaments ?? []).filter(t => {
+      if (!t.starts_at || new Date(t.starts_at) < boundary) return false
+      if (allowedTypes && !allowedTypes.includes(t.category)) return false
+      if (allowedSurfaces && (!t.surface || !allowedSurfaces.includes(t.surface))) return false
+      return true
+    })
   }
 
   // Build player results
@@ -93,6 +127,24 @@ export default async function LeagueTournamentResultsPage({ params }: { params: 
           <span>/</span>
           <span>{tournament.location ?? tournament.name}</span>
         </div>
+
+        {/* Tournament selector dropdown */}
+        {selectorTournaments.length > 0 && (
+          <div className="mb-4">
+            <LeagueTournamentSelector
+              tournaments={selectorTournaments.map(t => ({
+                id: t.id,
+                name: t.name,
+                location: t.location,
+                flag_emoji: t.flag_emoji,
+                tour: t.tour,
+                status: t.status,
+              }))}
+              leagueId={leagueId}
+              currentTournamentId={tournamentId}
+            />
+          </div>
+        )}
 
         <TournamentResultsTable tournament={tournamentInfo} players={players} />
       </div>
