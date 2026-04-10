@@ -4,7 +4,8 @@ import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
-import { sendFriendRequest, acceptFriendRequest, declineFriendRequest, cancelFriendRequest } from './actions'
+import { acceptFriendRequest, declineFriendRequest, cancelFriendRequest } from './actions'
+import AddFriendForm from './AddFriendForm'
 import { AcceptButton, DeclineButton } from './FriendActionButton'
 import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
 import StartChatButton from './StartChatButton'
@@ -101,27 +102,7 @@ export default async function FriendsPage({
         )}
 
         {/* ─── Add friend ─────────────────────────────────────────────────────── */}
-        <div className="bg-white rounded-sm border p-6 mb-8" style={{ borderColor: 'var(--chalk-dim)' }}>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '1rem' }}>Add a friend</h2>
-          <form action={sendFriendRequest} className="flex gap-3">
-            <input type="hidden" name="return_to" value="/friends" />
-            <input
-              name="username"
-              type="text"
-              placeholder="Enter username"
-              required
-              className="flex-1 px-3 py-2 rounded-sm border text-sm"
-              style={{ borderColor: 'var(--chalk-dim)', fontFamily: 'var(--font-mono)', outline: 'none' }}
-            />
-            <button
-              type="submit"
-              className="px-4 py-2 text-sm font-medium text-white rounded-sm hover:opacity-90"
-              style={{ background: 'var(--court)' }}
-            >
-              Send request
-            </button>
-          </form>
-        </div>
+        <AddFriendForm />
 
         {/* ─── Incoming requests ──────────────────────────────────────────────── */}
         {received.length > 0 && (
