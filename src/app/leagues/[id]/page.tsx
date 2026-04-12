@@ -8,6 +8,7 @@ import InviteCodeCard from './InviteCodeCard'
 import LeagueLeaderboard from './LeagueLeaderboard'
 import LeagueTournamentSelector from './LeagueTournamentSelector'
 import TournamentCard from '@/components/TournamentCard'
+import LeagueChat from './LeagueChat'
 
 const TYPE_LABELS: Record<string, string> = {
   grand_slam: 'Grand Slams',
@@ -35,11 +36,19 @@ function timeAgo(dateStr: string): string {
   return 'just now'
 }
 
-export default async function LeagueDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function LeagueDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ tab?: string }>
+}) {
   const { user, profile } = await getNavProfile()
   if (!user) redirect('/login')
 
   const { id } = await params
+  const { tab } = await searchParams
+  const activeTab = tab === 'chat' ? 'chat' : 'leaderboard'
   const supabase = await createClient()
 
   // ── Parallel fetch: league, membership, members ─────────────────────────
@@ -297,6 +306,42 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
           </div>
         )}
 
+        {/* ── Tab bar ──────────────────────────────────────────────────── */}
+        <div className="flex border-b mb-6" style={{ borderColor: 'var(--chalk-dim)', gap: 0 }}>
+          <Link
+            href={`/leagues/${id}`}
+            className="hover:opacity-80"
+            style={{
+              fontFamily: 'var(--font-mono)', fontSize: '0.75rem', letterSpacing: '0.06em',
+              textTransform: 'uppercase', padding: '10px 16px', textDecoration: 'none',
+              color: activeTab === 'leaderboard' ? 'var(--ink)' : 'var(--muted)',
+              borderBottom: activeTab === 'leaderboard' ? '2px solid var(--court)' : '2px solid transparent',
+            }}
+          >
+            Leaderboard
+          </Link>
+          <Link
+            href={`/leagues/${id}?tab=chat`}
+            className="hover:opacity-80"
+            style={{
+              fontFamily: 'var(--font-mono)', fontSize: '0.75rem', letterSpacing: '0.06em',
+              textTransform: 'uppercase', padding: '10px 16px', textDecoration: 'none',
+              color: activeTab === 'chat' ? 'var(--ink)' : 'var(--muted)',
+              borderBottom: activeTab === 'chat' ? '2px solid var(--court)' : '2px solid transparent',
+            }}
+          >
+            Chat
+          </Link>
+        </div>
+
+        {/* ── Chat tab ─────────────────────────────────────────────────── */}
+        {activeTab === 'chat' && (
+          <LeagueChat leagueId={id} userId={user.id} />
+        )}
+
+        {/* ── Leaderboard tab ──────────────────────────────────────────── */}
+        {activeTab === 'leaderboard' && (<>
+
         {/* Tournament selector + leaderboard */}
         {leagueTournaments.length > 0 && (
           <div className="mb-4">
@@ -389,6 +434,8 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
             </div>
           )}
         </div>
+
+        </>)}
 
       </div>
     </main>
