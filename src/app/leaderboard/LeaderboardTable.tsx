@@ -31,6 +31,7 @@ interface UserStats {
   tournaments: number
   totalPicks: number
   correctPicks: number
+  streakPower: number
 }
 
 export default function LeaderboardTable({
@@ -54,9 +55,10 @@ export default function LeaderboardTable({
       <div className="min-w-[500px]">
       <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
         <div className="col-span-1"  style={hStyle}>RANK</div>
-        <div className="col-span-5"  style={hStyle}>PLAYER</div>
-        <div className="col-span-2 text-right hidden sm:block" style={hStyle}>TOURNAMENTS</div>
+        <div className="col-span-4"  style={hStyle}>PLAYER</div>
+        <div className="col-span-1 text-right hidden sm:block" style={hStyle}>PLAYED</div>
         <div className="col-span-2 text-right hidden sm:block" style={hStyle}>ACCURACY</div>
+        <div className="col-span-2 text-right hidden sm:block" style={hStyle} title="How much your streak multipliers boost your points. 1.0x = no streak bonus, 2.0x = double from streaks.">STREAK POWER</div>
         <div className="col-span-2 text-right" style={hStyle}>POINTS</div>
       </div>
 
@@ -104,7 +106,7 @@ export default function LeaderboardTable({
                     </span>
                   )}
                 </div>
-                <div className="col-span-5 flex items-center gap-2 min-w-0">
+                <div className="col-span-4 flex items-center gap-2 min-w-0">
                   <Link
                     href={`/profile/${u.username}`}
                     onClick={e => e.stopPropagation()}
@@ -140,7 +142,7 @@ export default function LeaderboardTable({
                     </span>
                   )}
                 </div>
-                <div className="col-span-2 hidden sm:flex items-center justify-end">
+                <div className="col-span-1 hidden sm:flex items-center justify-end">
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>
                     {stats?.tournaments ?? 0}
                   </span>
@@ -149,6 +151,15 @@ export default function LeaderboardTable({
                   {accuracy !== null ? (
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: accuracy >= 50 ? '#166534' : 'var(--muted)' }}>
                       {accuracy}%
+                    </span>
+                  ) : (
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>—</span>
+                  )}
+                </div>
+                <div className="col-span-2 hidden sm:flex items-center justify-end" title="How much streak multipliers boost this player's points. 1.0x = no bonus, 2.0x = double from streaks.">
+                  {stats && stats.streakPower > 0 ? (
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: stats.streakPower >= 1.5 ? '#166534' : 'var(--muted)' }}>
+                      {stats.streakPower.toFixed(1)}x
                     </span>
                   ) : (
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>—</span>

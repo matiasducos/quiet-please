@@ -39,28 +39,38 @@ export default async function GlobalTournamentResultsPage({ params }: { params: 
 
   const userIds = (predictions ?? []).map((p: any) => p.user_id)
 
-  // Count correct picks per user from point_ledger (only rows for GLOBAL predictions)
+  // Count correct picks + streak power per user from point_ledger (GLOBAL predictions only)
   const globalPredIds = (predictions ?? []).map((p: any) => p.id).filter(Boolean)
   const correctPicksByUser: Record<string, number> = {}
+  const streakAccumByUser: Record<string, { totalPts: number; basePts: number }> = {}
   if (globalPredIds.length > 0) {
     const { data: ledgerRows } = await admin.from('point_ledger')
-      .select('user_id')
+      .select('user_id, points, streak_multiplier')
       .in('prediction_id', globalPredIds)
       .gt('points', 0)
     for (const row of ledgerRows ?? []) {
       correctPicksByUser[row.user_id] = (correctPicksByUser[row.user_id] ?? 0) + 1
+      const pts = row.points ?? 0
+      const mult = row.streak_multiplier ?? 1
+      if (!streakAccumByUser[row.user_id]) streakAccumByUser[row.user_id] = { totalPts: 0, basePts: 0 }
+      streakAccumByUser[row.user_id].totalPts += pts
+      streakAccumByUser[row.user_id].basePts += pts / mult
     }
   }
 
-  const players: PlayerResult[] = (predictions ?? []).map((p: any) => ({
-    user_id: p.user_id,
-    username: p.users?.username ?? 'Unknown',
-    country: p.users?.country ?? null,
-    points: p.points_earned ?? 0,
-    correct_picks: correctPicksByUser[p.user_id] ?? 0,
-    total_picks: Object.keys(p.picks ?? {}).length,
-    isMe: p.user_id === user.id,
-  }))
+  const players: PlayerResult[] = (predictions ?? []).map((p: any) => {
+    const acc = streakAccumByUser[p.user_id]
+    return {
+      user_id: p.user_id,
+      username: p.users?.username ?? 'Unknown',
+      country: p.users?.country ?? null,
+      points: p.points_earned ?? 0,
+      correct_picks: correctPicksByUser[p.user_id] ?? 0,
+      total_picks: Object.keys(p.picks ?? {}).length,
+      streak_power: acc && acc.basePts > 0 ? acc.totalPts / acc.basePts : 1,
+      isMe: p.user_id === user.id,
+    }
+  })
 
   const tournamentInfo: TournamentInfo = {
     id: tournament.id,
