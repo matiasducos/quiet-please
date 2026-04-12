@@ -23,7 +23,7 @@ export default async function GlobalTournamentResultsPage({ params }: { params: 
       .single(),
     // Fetch all global predictions for this tournament (top 50 — include 0-point users)
     admin.from('predictions')
-      .select('user_id, points_earned, picks, users(username, country)')
+      .select('id, user_id, points_earned, picks, users(username, country)')
       .eq('tournament_id', tournamentId)
       .is('challenge_id', null)
       .order('points_earned', { ascending: false })
@@ -39,18 +39,17 @@ export default async function GlobalTournamentResultsPage({ params }: { params: 
 
   const userIds = (predictions ?? []).map((p: any) => p.user_id)
 
-  // Count correct picks per user from point_ledger (only rows where points > 0)
-  const { data: ledgerRows } = userIds.length > 0
-    ? await admin.from('point_ledger')
-        .select('user_id')
-        .eq('tournament_id', tournamentId)
-        .in('user_id', userIds)
-        .gt('points', 0)
-    : { data: [] as any[] }
-
+  // Count correct picks per user from point_ledger (only rows for GLOBAL predictions)
+  const globalPredIds = (predictions ?? []).map((p: any) => p.id).filter(Boolean)
   const correctPicksByUser: Record<string, number> = {}
-  for (const row of ledgerRows ?? []) {
-    correctPicksByUser[row.user_id] = (correctPicksByUser[row.user_id] ?? 0) + 1
+  if (globalPredIds.length > 0) {
+    const { data: ledgerRows } = await admin.from('point_ledger')
+      .select('user_id')
+      .in('prediction_id', globalPredIds)
+      .gt('points', 0)
+    for (const row of ledgerRows ?? []) {
+      correctPicksByUser[row.user_id] = (correctPicksByUser[row.user_id] ?? 0) + 1
+    }
   }
 
   const players: PlayerResult[] = (predictions ?? []).map((p: any) => ({

@@ -53,7 +53,7 @@ function getLeaderboardData(pointsField: string, scope: Scope, scopeCountry: str
         // Fetch ALL predictions (including 0-point ones) to count total picks from JSONB
         const { data: allPreds } = await supabase
           .from('predictions')
-          .select('user_id, tournament_id, picks')
+          .select('id, user_id, tournament_id, picks')
           .in('user_id', userIds)
           .is('challenge_id', null)
 
@@ -65,14 +65,21 @@ function getLeaderboardData(pointsField: string, scope: Scope, scopeCountry: str
           if (picks) statsByUser[pred.user_id].totalPicks += Object.keys(picks).length
         }
 
-        // Correct picks = point_ledger rows with points > 0
-        const { data: ledgerData } = await supabase
-          .from('point_ledger')
-          .select('user_id, points')
-          .in('user_id', userIds)
-        for (const row of ledgerData ?? []) {
-          if (!statsByUser[row.user_id]) statsByUser[row.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0 }
-          if ((row.points ?? 0) > 0) statsByUser[row.user_id].correctPicks++
+        // Correct picks = point_ledger rows with points > 0 for GLOBAL predictions only
+        const globalPredIds = (allPreds ?? []).map((p: any) => p.id).filter(Boolean)
+        if (globalPredIds.length > 0) {
+          // Batch in chunks of 200 to stay within PostgREST limits
+          for (let i = 0; i < globalPredIds.length; i += 200) {
+            const chunk = globalPredIds.slice(i, i + 200)
+            const { data: ledgerData } = await supabase
+              .from('point_ledger')
+              .select('user_id, points')
+              .in('prediction_id', chunk)
+            for (const row of ledgerData ?? []) {
+              if (!statsByUser[row.user_id]) statsByUser[row.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0 }
+              if ((row.points ?? 0) > 0) statsByUser[row.user_id].correctPicks++
+            }
+          }
         }
       }
 
