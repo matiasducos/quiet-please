@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import CountryFlag from '@/components/CountryFlag'
 import { formatPoints } from '@/lib/utils/format'
+import Tooltip from '@/components/Tooltip'
 
 interface UserRow {
   id: string
@@ -58,7 +59,11 @@ export default function LeaderboardTable({
         <div className="col-span-4"  style={hStyle}>PLAYER</div>
         <div className="col-span-1 text-right hidden sm:block" style={hStyle}>PLAYED</div>
         <div className="col-span-2 text-right hidden sm:block" style={hStyle}>ACCURACY</div>
-        <div className="col-span-2 text-right hidden sm:block" style={hStyle} title="How much your streak multipliers boost your points. 1.0x = no streak bonus, 2.0x = double from streaks.">STREAK POWER</div>
+        <div className="col-span-2 text-right hidden sm:block" style={hStyle}>
+          <Tooltip text="How much streak multipliers boost your points. 1.0x = no streak bonus, 2.0x = double from streaks.">
+            <span style={{ cursor: 'help', borderBottom: '1px dotted var(--muted)' }}>STREAK POWER</span>
+          </Tooltip>
+        </div>
         <div className="col-span-2 text-right" style={hStyle}>POINTS</div>
       </div>
 
@@ -156,11 +161,13 @@ export default function LeaderboardTable({
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>—</span>
                   )}
                 </div>
-                <div className="col-span-2 hidden sm:flex items-center justify-end" title="How much streak multipliers boost this player's points. 1.0x = no bonus, 2.0x = double from streaks.">
+                <div className="col-span-2 hidden sm:flex items-center justify-end">
                   {stats && stats.streakPower > 0 ? (
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: stats.streakPower >= 1.5 ? '#166534' : 'var(--muted)' }}>
-                      {stats.streakPower.toFixed(1)}x
-                    </span>
+                    <Tooltip text="How much streak multipliers boost this player's points. 1.0x = no bonus, 2.0x = double from streaks.">
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: stats.streakPower >= 1.5 ? '#166534' : 'var(--muted)', cursor: 'help' }}>
+                        {stats.streakPower.toFixed(1)}x
+                      </span>
+                    </Tooltip>
                   ) : (
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>—</span>
                   )}
