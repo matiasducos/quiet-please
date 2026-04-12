@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import CountryFlag from '@/components/CountryFlag'
 import { formatPoints } from '@/lib/utils/format'
+import Tooltip from '@/components/Tooltip'
 
 const TIER: Record<string, { label: string; bg: string; text: string }> = {
   'ATP|grand_slam':   { label: 'Grand Slam',   bg: '#1a1a2e', text: '#fff' },
@@ -130,7 +131,11 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
           <div className="col-span-4" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>PLAYER</div>
           <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>ACCURACY</div>
           <div className="col-span-1 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>RATE</div>
-          <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }} title="How much streak multipliers boost this player's points. 1.0x = no bonus, 2.0x = double from streaks.">STREAK POWER</div>
+          <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>
+            <Tooltip text="How much streak multipliers boost this player's points. 1.0x = no bonus, 2.0x = double from streaks.">
+              <span style={{ cursor: 'help', borderBottom: '1px dotted var(--muted)' }}>STREAK POWER</span>
+            </Tooltip>
+          </div>
           <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>POINTS</div>
         </div>
 
@@ -162,10 +167,12 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
                 <div className="col-span-1 flex items-center justify-end">
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--ink)' }}>{rate}</span>
                 </div>
-                <div className="col-span-2 flex items-center justify-end" title="How much streak multipliers boost this player's points. 1.0x = no bonus, 2.0x = double from streaks.">
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: p.streak_power >= 1.5 ? '#166534' : 'var(--muted)' }}>
-                    {p.streak_power.toFixed(1)}x
-                  </span>
+                <div className="col-span-2 flex items-center justify-end">
+                  <Tooltip text="How much streak multipliers boost this player's points. 1.0x = no bonus, 2.0x = double from streaks.">
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: p.streak_power >= 1.5 ? '#166534' : 'var(--muted)', cursor: 'help' }}>
+                      {p.streak_power.toFixed(1)}x
+                    </span>
+                  </Tooltip>
                 </div>
                 <div className="col-span-2 flex items-center justify-end">
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: p.points > 0 ? 'var(--court)' : 'var(--muted)', fontWeight: 500 }}>
