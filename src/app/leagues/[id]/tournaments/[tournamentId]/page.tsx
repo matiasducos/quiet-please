@@ -37,23 +37,29 @@ export default async function LeagueTournamentResultsPage({ params }: { params: 
   // Fetch predictions for this tournament by league members
   const { data: predictions } = memberIds.length > 0
     ? await admin.from('predictions')
-        .select('user_id, points_earned, picks, users(username)')
+        .select('id, user_id, points_earned, picks, users(username)')
         .eq('tournament_id', tournamentId)
         .is('challenge_id', null)
         .in('user_id', memberIds)
     : { data: [] as any[] }
 
-  // Count correct picks per user from point_ledger
-  const { data: ledgerRows } = memberIds.length > 0
-    ? await admin.from('point_ledger')
-        .select('user_id')
-        .eq('tournament_id', tournamentId)
-        .in('user_id', memberIds)
-    : { data: [] as any[] }
-
+  // Count correct picks + streak power per user from point_ledger (GLOBAL predictions only)
+  const globalPredIds = (predictions ?? []).map((p: any) => p.id).filter(Boolean)
   const correctPicksByUser: Record<string, number> = {}
-  for (const row of ledgerRows ?? []) {
-    correctPicksByUser[row.user_id] = (correctPicksByUser[row.user_id] ?? 0) + 1
+  const streakAccumByUser: Record<string, { totalPts: number; basePts: number }> = {}
+  if (globalPredIds.length > 0) {
+    const { data: ledgerRows } = await admin.from('point_ledger')
+      .select('user_id, points, streak_multiplier')
+      .in('prediction_id', globalPredIds)
+      .gt('points', 0)
+    for (const row of ledgerRows ?? []) {
+      correctPicksByUser[row.user_id] = (correctPicksByUser[row.user_id] ?? 0) + 1
+      const pts = row.points ?? 0
+      const mult = row.streak_multiplier ?? 1
+      if (!streakAccumByUser[row.user_id]) streakAccumByUser[row.user_id] = { totalPts: 0, basePts: 0 }
+      streakAccumByUser[row.user_id].totalPts += pts
+      streakAccumByUser[row.user_id].basePts += pts / mult
+    }
   }
 
   // Fetch all league tournament IDs for the selector dropdown
@@ -92,14 +98,18 @@ export default async function LeagueTournamentResultsPage({ params }: { params: 
   // Build player results
   const players: PlayerResult[] = (predictions ?? [])
     .filter((p: any) => p.points_earned > 0 || Object.keys(p.picks ?? {}).length > 0)
-    .map((p: any) => ({
-      user_id: p.user_id,
-      username: p.users?.username ?? 'Unknown',
-      points: p.points_earned ?? 0,
-      correct_picks: correctPicksByUser[p.user_id] ?? 0,
-      total_picks: Object.keys(p.picks ?? {}).length,
-      isMe: p.user_id === user.id,
-    }))
+    .map((p: any) => {
+      const acc = streakAccumByUser[p.user_id]
+      return {
+        user_id: p.user_id,
+        username: p.users?.username ?? 'Unknown',
+        points: p.points_earned ?? 0,
+        correct_picks: correctPicksByUser[p.user_id] ?? 0,
+        total_picks: Object.keys(p.picks ?? {}).length,
+        streak_power: acc && acc.basePts > 0 ? acc.totalPts / acc.basePts : 1,
+        isMe: p.user_id === user.id,
+      }
+    })
     .sort((a: PlayerResult, b: PlayerResult) => b.points - a.points)
 
   const tournamentInfo: TournamentInfo = {

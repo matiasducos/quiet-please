@@ -39,6 +39,7 @@ export type PlayerResult = {
   points: number
   correct_picks: number
   total_picks: number
+  streak_power: number
   isMe: boolean
 }
 
@@ -126,9 +127,10 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
         <div className="min-w-[600px]">
         <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
           <div className="col-span-1" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>RANK</div>
-          <div className="col-span-5" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>PLAYER</div>
+          <div className="col-span-4" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>PLAYER</div>
           <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>ACCURACY</div>
-          <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>RATE</div>
+          <div className="col-span-1 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>RATE</div>
+          <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }} title="How much streak multipliers boost this player's points. 1.0x = no bonus, 2.0x = double from streaks.">STREAK POWER</div>
           <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>POINTS</div>
         </div>
 
@@ -149,7 +151,7 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
                   {medal ? <span style={{ fontSize: '1rem' }}>{medal}</span>
                     : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{i + 1}</span>}
                 </div>
-                <div className="col-span-5 flex items-center gap-2">
+                <div className="col-span-4 flex items-center gap-2">
                   <Link href={`/profile/${p.username}`} style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: p.isMe ? '#1e4e8c' : 'var(--ink)', textDecoration: 'none' }}>{p.username}</Link>
                   {p.country && <CountryFlag country={p.country} size={14} />}
                   {p.isMe && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#1e4e8c', background: '#dbeafe', padding: '1px 6px', borderRadius: '2px' }}>you</span>}
@@ -157,8 +159,13 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
                 <div className="col-span-2 flex items-center justify-end">
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{accuracy}</span>
                 </div>
-                <div className="col-span-2 flex items-center justify-end">
+                <div className="col-span-1 flex items-center justify-end">
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--ink)' }}>{rate}</span>
+                </div>
+                <div className="col-span-2 flex items-center justify-end" title="How much streak multipliers boost this player's points. 1.0x = no bonus, 2.0x = double from streaks.">
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: p.streak_power >= 1.5 ? '#166534' : 'var(--muted)' }}>
+                    {p.streak_power.toFixed(1)}x
+                  </span>
                 </div>
                 <div className="col-span-2 flex items-center justify-end">
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: p.points > 0 ? 'var(--court)' : 'var(--muted)', fontWeight: 500 }}>

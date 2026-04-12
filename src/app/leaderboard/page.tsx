@@ -48,7 +48,7 @@ function getLeaderboardData(pointsField: string, scope: Scope, scopeCountry: str
       }
 
       // Accuracy stats per user: tournament count + correct picks / total picks made
-      const statsByUser: Record<string, { tournaments: number; totalPicks: number; correctPicks: number }> = {}
+      const statsByUser: Record<string, { tournaments: number; totalPicks: number; correctPicks: number; streakPower: number }> = {}
       if (userIds.length > 0) {
         // Fetch ALL predictions (including 0-point ones) to count total picks from JSONB
         const { data: allPreds } = await supabase
@@ -59,25 +59,40 @@ function getLeaderboardData(pointsField: string, scope: Scope, scopeCountry: str
 
         // Count tournaments and total picks per user
         for (const pred of allPreds ?? []) {
-          if (!statsByUser[pred.user_id]) statsByUser[pred.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0 }
+          if (!statsByUser[pred.user_id]) statsByUser[pred.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0, streakPower: 1 }
           statsByUser[pred.user_id].tournaments++
           const picks = pred.picks as Record<string, string> | null
           if (picks) statsByUser[pred.user_id].totalPicks += Object.keys(picks).length
         }
 
-        // Correct picks = point_ledger rows with points > 0 for GLOBAL predictions only
+        // Correct picks + streak power from point_ledger for GLOBAL predictions only
         const globalPredIds = (allPreds ?? []).map((p: any) => p.id).filter(Boolean)
+        // Accumulators for streak power: sum(points) / sum(points / streak_multiplier)
+        const streakAccum: Record<string, { totalPts: number; basePts: number }> = {}
         if (globalPredIds.length > 0) {
           // Batch in chunks of 200 to stay within PostgREST limits
           for (let i = 0; i < globalPredIds.length; i += 200) {
             const chunk = globalPredIds.slice(i, i + 200)
             const { data: ledgerData } = await supabase
               .from('point_ledger')
-              .select('user_id, points')
+              .select('user_id, points, streak_multiplier')
               .in('prediction_id', chunk)
             for (const row of ledgerData ?? []) {
-              if (!statsByUser[row.user_id]) statsByUser[row.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0 }
-              if ((row.points ?? 0) > 0) statsByUser[row.user_id].correctPicks++
+              if (!statsByUser[row.user_id]) statsByUser[row.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0, streakPower: 1 }
+              const pts = row.points ?? 0
+              if (pts > 0) {
+                statsByUser[row.user_id].correctPicks++
+                const mult = row.streak_multiplier ?? 1
+                if (!streakAccum[row.user_id]) streakAccum[row.user_id] = { totalPts: 0, basePts: 0 }
+                streakAccum[row.user_id].totalPts += pts
+                streakAccum[row.user_id].basePts += pts / mult
+              }
+            }
+          }
+          // Compute streak power per user
+          for (const [userId, acc] of Object.entries(streakAccum)) {
+            if (acc.basePts > 0 && statsByUser[userId]) {
+              statsByUser[userId].streakPower = acc.totalPts / acc.basePts
             }
           }
         }

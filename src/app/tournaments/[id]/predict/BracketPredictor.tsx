@@ -950,10 +950,13 @@ export default function BracketPredictor({
                               </span>
                             )}
                             {!deadPick && lockDisplay === 'admin_locked_pickable' && (
-                              <span style={{
-                                fontFamily: 'var(--font-mono)', fontSize: '0.55rem', letterSpacing: '0.04em',
-                                color: '#b45309', background: '#fef3c7', padding: '1px 6px', borderRadius: '2px',
-                              }}>
+                              <span
+                                title="This match has already started or is about to start. You can still make your prediction but no points will be granted for this specific match."
+                                style={{
+                                  fontFamily: 'var(--font-mono)', fontSize: '0.55rem', letterSpacing: '0.04em',
+                                  color: '#b45309', background: '#fef3c7', padding: '1px 6px', borderRadius: '2px',
+                                  cursor: 'help',
+                                }}>
                                 NO POINTS
                               </span>
                             )}
