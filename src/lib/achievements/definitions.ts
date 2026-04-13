@@ -118,6 +118,14 @@ const ACCURACY_STREAKS: AchievementDefinition[] = [
     repeatable: false,
   },
   {
+    key: 'double_digits',
+    name: 'Double Digits',
+    description: '10 correct picks in a single tournament',
+    emoji: '🎯',
+    category: 'accuracy_streak',
+    repeatable: false,
+  },
+  {
     key: 'on_fire',
     name: 'On Fire',
     description: '15 correct picks in a single tournament',
@@ -130,6 +138,14 @@ const ACCURACY_STREAKS: AchievementDefinition[] = [
     name: 'Crystal Ball',
     description: '25+ correct picks in a single tournament',
     emoji: '🔮',
+    category: 'accuracy_streak',
+    repeatable: false,
+  },
+  {
+    key: 'sharpshooter',
+    name: 'Sharpshooter',
+    description: '5+ correct picks in 3 different tournaments',
+    emoji: '🏹',
     category: 'accuracy_streak',
     repeatable: false,
   },
@@ -148,6 +164,27 @@ const ACCURACY_STREAKS: AchievementDefinition[] = [
     emoji: '🌊',
     category: 'accuracy_streak',
     repeatable: false,
+  },
+  {
+    key: 'perfectionist',
+    name: 'Perfectionist',
+    description: 'Achieved a 7× streak multiplier',
+    emoji: '💫',
+    category: 'accuracy_streak',
+    repeatable: false,
+  },
+]
+
+// ── Special (ultra-rare, repeatable per tournament) ─────────────
+const SPECIAL: AchievementDefinition[] = [
+  {
+    key: 'perfect_prediction',
+    name: 'The Perfect Prediction',
+    description: 'Predicted every match correctly in a tournament',
+    emoji: '✨',
+    category: 'accuracy_streak',
+    tier: 'gold',
+    repeatable: true,
   },
 ]
 
@@ -185,6 +222,30 @@ const POINTS_MILESTONES: AchievementDefinition[] = [
     category: 'points_milestone',
     repeatable: false,
   },
+  {
+    key: 'points_vault',
+    name: 'Points Vault',
+    description: '10,000+ lifetime ranking points',
+    emoji: '🏦',
+    category: 'points_milestone',
+    repeatable: false,
+  },
+  {
+    key: 'legend',
+    name: 'Legend',
+    description: '25,000+ lifetime ranking points',
+    emoji: '🌟',
+    category: 'points_milestone',
+    repeatable: false,
+  },
+  {
+    key: 'hall_of_fame',
+    name: 'Hall of Fame',
+    description: '50,000+ lifetime ranking points',
+    emoji: '🏛️',
+    category: 'points_milestone',
+    repeatable: false,
+  },
 ]
 
 // ── Social ──────────────────────────────────────────────────────
@@ -198,6 +259,14 @@ const SOCIAL: AchievementDefinition[] = [
     repeatable: false,
   },
   {
+    key: 'friend_circle',
+    name: 'Friend Circle',
+    description: 'Have 5 friends',
+    emoji: '👫',
+    category: 'social',
+    repeatable: false,
+  },
+  {
     key: 'squad_up',
     name: 'Squad Up',
     description: 'Have 10 friends',
@@ -206,10 +275,34 @@ const SOCIAL: AchievementDefinition[] = [
     repeatable: false,
   },
   {
+    key: 'popular',
+    name: 'Popular',
+    description: 'Have 25 friends',
+    emoji: '🎉',
+    category: 'social',
+    repeatable: false,
+  },
+  {
     key: 'challenger',
     name: 'Challenger',
     description: 'Created your first challenge',
     emoji: '⚔️',
+    category: 'social',
+    repeatable: false,
+  },
+  {
+    key: 'challenge_master',
+    name: 'Challenge Master',
+    description: 'Created 10 challenges',
+    emoji: '🗡️',
+    category: 'social',
+    repeatable: false,
+  },
+  {
+    key: 'social_butterfly',
+    name: 'Social Butterfly',
+    description: 'Participated in 10 completed challenges',
+    emoji: '🦋',
     category: 'social',
     repeatable: false,
   },
@@ -242,10 +335,34 @@ const ENGAGEMENT: AchievementDefinition[] = [
     repeatable: false,
   },
   {
+    key: 'full_schedule',
+    name: 'Full Schedule',
+    description: 'Predicted on all tournament types (Grand Slam, 1000, 500, 250)',
+    emoji: '🗓️',
+    category: 'engagement',
+    repeatable: false,
+  },
+  {
+    key: 'tour_grand_slam',
+    name: 'Slam Collector',
+    description: 'Predicted in 3+ different Grand Slams',
+    emoji: '🏟️',
+    category: 'engagement',
+    repeatable: false,
+  },
+  {
     key: 'season_pass',
     name: 'Season Pass',
     description: 'Made predictions in 4 different calendar months',
     emoji: '📅',
+    category: 'engagement',
+    repeatable: false,
+  },
+  {
+    key: 'anniversary',
+    name: 'Anniversary',
+    description: 'Active across 365+ days of predictions',
+    emoji: '🎂',
     category: 'engagement',
     repeatable: false,
   },
@@ -257,19 +374,39 @@ const ENGAGEMENT: AchievementDefinition[] = [
     category: 'engagement',
     repeatable: false,
   },
+  {
+    key: 'league_starter',
+    name: 'League Starter',
+    description: 'Joined your first league',
+    emoji: '🏅',
+    category: 'engagement',
+    repeatable: false,
+  },
+  {
+    key: 'league_veteran',
+    name: 'League Veteran',
+    description: 'Member of 5 leagues',
+    emoji: '🎗️',
+    category: 'engagement',
+    repeatable: false,
+  },
 ]
 
 // ── Exports ─────────────────────────────────────────────────────
 
-/** All 25 achievements as an ordered array */
+/** All achievements as an ordered array */
 export const ALL_ACHIEVEMENTS: AchievementDefinition[] = [
   ...TOURNAMENT_TROPHIES,
+  ...SPECIAL,
   ...PREDICTION_MILESTONES,
   ...ACCURACY_STREAKS,
   ...POINTS_MILESTONES,
   ...SOCIAL,
   ...ENGAGEMENT,
 ]
+
+/** Repeatable special achievements (not trophies) — rendered like trophies in UI */
+export const SPECIAL_ACHIEVEMENTS: AchievementDefinition[] = SPECIAL
 
 /** Lookup by key */
 export const ACHIEVEMENTS: Record<string, AchievementDefinition> = Object.fromEntries(

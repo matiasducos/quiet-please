@@ -5,6 +5,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { rateLimit } from '@/lib/rate-limit'
+import { checkLeagueAchievements } from '@/lib/achievements/check'
+import { notifyAchievements } from '@/lib/achievements/notify'
 
 const VALID_TYPES = ['grand_slam', 'masters_1000', '500', '250'] as const
 const VALID_SURFACES = ['hard', 'clay', 'grass'] as const
@@ -66,6 +68,14 @@ export async function createLeague(formData: FormData) {
 
   // Recalculate this member's points for this league
   await admin.rpc('recalculate_member_points', { p_league_id: league.id, p_user_id: user.id })
+
+  // League achievements
+  try {
+    const achResults = await checkLeagueAchievements(admin, user.id)
+    await notifyAchievements(admin, achResults)
+  } catch (e) {
+    console.error('[league create] achievement check error:', e)
+  }
 
   revalidatePath('/leagues')
   redirect(`/leagues/${league.id}`)

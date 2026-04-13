@@ -5,7 +5,7 @@ import { getPointsForRound, calculateStreakMultiplier, buildFeedMap } from '@/li
 import type { DrawMatch, Round, TournamentCategory } from '@/lib/tennis'
 import { sendPointsAwardedEmail, isBotEmail } from '@/lib/email'
 import { isEmailEnabled } from '@/lib/email-preferences'
-import { checkTournamentTrophies, checkCronAchievements, checkChallengeAchievements } from '@/lib/achievements/check'
+import { checkTournamentTrophies, checkCronAchievements, checkChallengeAchievements, checkPerfectPrediction } from '@/lib/achievements/check'
 import { notifyAchievements } from '@/lib/achievements/notify'
 import { withCronLogging } from '@/lib/cron-logger'
 
@@ -642,6 +642,23 @@ export async function GET(request: Request) {
           const cronResults = await checkCronAchievements(supabase, userId, tId)
           await notifyAchievements(supabase, cronResults)
           achievementsAwarded += cronResults.filter(r => r.isNew).length
+        }
+      }
+
+      // 13b-bis. Perfect Prediction — only check for completed tournaments
+      // (a player can earn this only once the tournament is over)
+      for (const tId of completedTournamentIds) {
+        const { data: tournamentPickers } = await supabase
+          .from('predictions')
+          .select('user_id')
+          .eq('tournament_id', tId)
+          .is('challenge_id', null)
+
+        const pickerIds = new Set((tournamentPickers ?? []).map(p => p.user_id))
+        for (const uid of pickerIds) {
+          const perfectResults = await checkPerfectPrediction(supabase, uid, tId)
+          await notifyAchievements(supabase, perfectResults)
+          achievementsAwarded += perfectResults.filter(r => r.isNew).length
         }
       }
 
