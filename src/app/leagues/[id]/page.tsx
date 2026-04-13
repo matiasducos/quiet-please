@@ -9,6 +9,7 @@ import LeagueLeaderboard from './LeagueLeaderboard'
 import LeagueTournamentSelector from './LeagueTournamentSelector'
 import TournamentCard from '@/components/TournamentCard'
 import LeagueChat from './LeagueChat'
+import { formatPoints } from '@/lib/utils/format'
 
 const TYPE_LABELS: Record<string, string> = {
   grand_slam: 'Grand Slams',
@@ -301,7 +302,7 @@ export default async function LeagueDetailPage({
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: '#1e4e8c', minWidth: '32px' }}>#{myRank + 1}</span>
                 <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: '#1e4e8c' }}>{profile?.username} (you)</span>
               </div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: '#1e4e8c' }}>{myMembership.total_points} pts</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: '#1e4e8c' }}>{formatPoints(myMembership.total_points ?? 0)} pts</span>
             </div>
           </div>
         )}

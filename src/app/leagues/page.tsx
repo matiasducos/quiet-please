@@ -4,6 +4,7 @@ import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
+import { formatPoints } from '@/lib/utils/format'
 
 export const metadata: Metadata = { title: 'Leagues | Quiet Please' }
 
@@ -126,7 +127,7 @@ export default async function LeaguesPage() {
                     <span className="hidden md:inline" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>
                       {league.member_count} member{league.member_count !== 1 ? 's' : ''}
                     </span>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: 'var(--ink)' }}>{league.my_points} pts</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: 'var(--ink)' }}>{formatPoints(league.my_points ?? 0)} pts</span>
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>
                       #{league.my_rank}
                     </span>
