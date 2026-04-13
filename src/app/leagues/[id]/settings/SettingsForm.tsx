@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { updateLeagueSettings, kickMember, deleteLeague, leaveLeague, resetLeagueSeason } from '../actions'
+import { formatPoints } from '@/lib/utils/format'
 
 const TOURNAMENT_TYPES = [
   { value: 'grand_slam', label: 'Grand Slams' },
@@ -302,7 +303,7 @@ export default function SettingsForm({
                 )}
               </div>
               <div className="flex items-center gap-3">
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{m.total_points} pts</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{formatPoints(m.total_points ?? 0)} pts</span>
                 {isOwner && !m.isOwner && (
                   <button
                     onClick={() => handleKick(m.user_id, m.username)}
