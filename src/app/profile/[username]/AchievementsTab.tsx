@@ -53,36 +53,35 @@ export default function AchievementsTab({ achievements, isOwnProfile, username }
       items: g.items.filter(item => item.key !== 'perfect_prediction'),
     }))
 
-  if (totalCount === 0) {
-    return (
-      <div
-        className="text-center px-6 py-12 rounded-sm border bg-white"
-        style={{ borderColor: 'var(--chalk-dim)', borderStyle: 'dashed' }}
-      >
-        <div style={{ fontSize: '2.5rem', marginBottom: '16px', opacity: 0.4 }}>🏆</div>
-        <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', marginBottom: '8px' }}>
-          No achievements yet
-        </h3>
-        <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', maxWidth: '320px', margin: '0 auto', lineHeight: 1.6 }}>
-          {isOwnProfile
-            ? 'Make predictions on upcoming tournaments to start earning badges. Your first achievement is just one pick away.'
-            : `${username} hasn't earned any achievements yet.`
-          }
-        </p>
-        {isOwnProfile && (
-          <Link
-            href="/tournaments"
-            style={{ display: 'inline-block', marginTop: '16px', fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--court)', textDecoration: 'none' }}
-          >
-            Browse tournaments →
-          </Link>
-        )}
-      </div>
-    )
-  }
-
   return (
     <>
+      {/* Empty-state banner for fresh profiles — still render the full catalog below */}
+      {totalCount === 0 && (
+        <div
+          className="text-center px-6 py-8 rounded-sm border bg-white mb-8"
+          style={{ borderColor: 'var(--chalk-dim)', borderStyle: 'dashed' }}
+        >
+          <div style={{ fontSize: '2rem', marginBottom: '12px', opacity: 0.4 }}>🏆</div>
+          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '6px' }}>
+            No achievements yet
+          </h3>
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)', maxWidth: '380px', margin: '0 auto', lineHeight: 1.6 }}>
+            {isOwnProfile
+              ? 'Here are all the badges you can earn. Start predicting to fill them in.'
+              : `${username} hasn't earned any achievements yet.`
+            }
+          </p>
+          {isOwnProfile && (
+            <Link
+              href="/tournaments"
+              style={{ display: 'inline-block', marginTop: '12px', fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--court)', textDecoration: 'none' }}
+            >
+              Browse tournaments →
+            </Link>
+          )}
+        </div>
+      )}
+
       {/* Stats summary */}
       <div className="flex flex-wrap gap-4 md:gap-6 mb-8">
         {goldCount > 0 && (
@@ -100,55 +99,59 @@ export default function AchievementsTab({ achievements, isOwnProfile, username }
         <StatBox value={totalCount} label="Achievements" />
       </div>
 
-      {/* Perfect Prediction — ultra-rare special */}
-      {perfectPredictions.length > 0 && (
-        <>
-          <SectionLabel>✨ The Perfect Prediction</SectionLabel>
-          <div
-            className="grid gap-4 mb-8"
-            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}
-          >
-            {perfectPredictions.map((a, i) => {
-              const def = ACHIEVEMENTS['perfect_prediction']
-              if (!def) return null
-              return (
-                <PerfectPredictionBadge
-                  key={`perfect-${a.tournament_id}-${i}`}
-                  def={def}
-                  meta={a.meta}
-                />
-              )
-            })}
-          </div>
-          <div style={{ height: '1px', background: 'var(--chalk-dim)', margin: '32px 0' }} />
-        </>
-      )}
+      {/* Perfect Prediction — always visible so users know it exists */}
+      <SectionLabel>✨ The Perfect Prediction</SectionLabel>
+      <div
+        className="grid gap-4 mb-8"
+        style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}
+      >
+        {perfectPredictions.length > 0 ? (
+          perfectPredictions.map((a, i) => {
+            const def = ACHIEVEMENTS['perfect_prediction']
+            if (!def) return null
+            return (
+              <PerfectPredictionBadge
+                key={`perfect-${a.tournament_id}-${i}`}
+                def={def}
+                meta={a.meta}
+              />
+            )
+          })
+        ) : (
+          <LockedSpecialBadge def={ACHIEVEMENTS['perfect_prediction']} />
+        )}
+      </div>
+      <div style={{ height: '1px', background: 'var(--chalk-dim)', margin: '32px 0' }} />
 
-      {/* Tournament Trophies */}
-      {trophyAchievements.length > 0 && (
-        <>
-          <SectionLabel>🏆 Tournament Trophies</SectionLabel>
-          <div
-            className="grid gap-4 mb-8"
-            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}
-          >
-            {trophyAchievements.map((a, i) => {
-              const def = ACHIEVEMENTS[a.achievement_key]
-              if (!def) return null
-              const tierClass = def.tier ?? 'gold'
-              return (
-                <TrophyBadge
-                  key={`${a.achievement_key}-${a.tournament_id}-${i}`}
-                  def={def}
-                  tier={tierClass}
-                  meta={a.meta}
-                />
-              )
-            })}
-          </div>
-          <div style={{ height: '1px', background: 'var(--chalk-dim)', margin: '32px 0' }} />
-        </>
-      )}
+      {/* Tournament Trophies — always visible so users know they exist */}
+      <SectionLabel>🏆 Tournament Trophies</SectionLabel>
+      <div
+        className="grid gap-4 mb-8"
+        style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}
+      >
+        {trophyAchievements.length > 0 ? (
+          trophyAchievements.map((a, i) => {
+            const def = ACHIEVEMENTS[a.achievement_key]
+            if (!def) return null
+            const tierClass = def.tier ?? 'gold'
+            return (
+              <TrophyBadge
+                key={`${a.achievement_key}-${a.tournament_id}-${i}`}
+                def={def}
+                tier={tierClass}
+                meta={a.meta}
+              />
+            )
+          })
+        ) : (
+          <>
+            <LockedTrophyBadge def={ACHIEVEMENTS['tournament_champion']} tier="gold" />
+            <LockedTrophyBadge def={ACHIEVEMENTS['runner_up']} tier="silver" />
+            <LockedTrophyBadge def={ACHIEVEMENTS['on_the_podium']} tier="bronze" />
+          </>
+        )}
+      </div>
+      <div style={{ height: '1px', background: 'var(--chalk-dim)', margin: '32px 0' }} />
 
       {/* Non-trophy achievement groups */}
       {nonTrophyGroups.map(group => {
@@ -329,6 +332,83 @@ function PerfectPredictionBadge({ def, meta }: { def: AchievementDefinition; met
           {meta.tournament_tour}
         </span>
       )}
+    </div>
+  )
+}
+
+// Locked placeholder for a tournament trophy tier (shown when user has none of that tier)
+function LockedTrophyBadge({ def, tier }: { def: AchievementDefinition | undefined; tier: string }) {
+  if (!def) return null
+  const styles = TIER_STYLES[tier as keyof typeof TIER_STYLES] ?? TIER_STYLES.gold
+  const placeLabel = tier === 'gold' ? '1st place' : tier === 'silver' ? '2nd place' : '3rd place'
+
+  return (
+    <div
+      className="flex flex-col items-center"
+      style={{
+        padding: '24px 14px 18px',
+        borderRadius: '3px',
+        border: `1px dashed var(--chalk-dim)`,
+        background: 'white',
+        opacity: 0.45,
+      }}
+    >
+      <div
+        style={{
+          width: '68px', height: '68px', borderRadius: '50%',
+          border: `2px dashed var(--chalk-dim)`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          marginBottom: '12px', background: 'white',
+        }}
+      >
+        <span style={{ fontSize: '1.7rem', lineHeight: 1, filter: 'grayscale(0.6)' }}>{def.emoji}</span>
+      </div>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: styles.placeColor, marginBottom: '10px' }}>
+        {placeLabel}
+      </span>
+      <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.9rem', letterSpacing: '-0.01em', textAlign: 'center', lineHeight: 1.25, marginBottom: '4px', color: 'var(--ink)' }}>
+        {def.name}
+      </span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.02em', textAlign: 'center', lineHeight: 1.4, padding: '0 4px' }}>
+        {def.description}
+      </span>
+    </div>
+  )
+}
+
+// Locked placeholder for Perfect Prediction (shown when user hasn't earned one yet)
+function LockedSpecialBadge({ def }: { def: AchievementDefinition | undefined }) {
+  if (!def) return null
+  return (
+    <div
+      className="flex flex-col items-center"
+      style={{
+        padding: '24px 14px 18px',
+        borderRadius: '3px',
+        border: `1px dashed var(--chalk-dim)`,
+        background: 'white',
+        opacity: 0.5,
+      }}
+    >
+      <div
+        style={{
+          width: '68px', height: '68px', borderRadius: '50%',
+          border: `2px dashed var(--chalk-dim)`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          marginBottom: '12px', background: 'white',
+        }}
+      >
+        <span style={{ fontSize: '1.7rem', lineHeight: 1, filter: 'grayscale(0.6)' }}>{def.emoji}</span>
+      </div>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#7C4FE6', marginBottom: '10px' }}>
+        Perfect
+      </span>
+      <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.9rem', letterSpacing: '-0.01em', textAlign: 'center', lineHeight: 1.25, marginBottom: '4px', color: 'var(--ink)' }}>
+        {def.name}
+      </span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.02em', textAlign: 'center', lineHeight: 1.4, padding: '0 4px' }}>
+        {def.description}
+      </span>
     </div>
   )
 }
