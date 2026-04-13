@@ -17,6 +17,7 @@ import { resolvePreferences } from '@/lib/email-preferences'
 import ReplayTourButton from '@/components/ReplayTourButton'
 import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
 import AchievementsTab from './AchievementsTab'
+import Footer from '@/components/Footer'
 
 export default async function ProfilePage({
   params,
@@ -47,6 +48,7 @@ export default async function ProfilePage({
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', letterSpacing: '-0.02em', marginBottom: '1.5rem' }}>Player not found</h1>
           <Link href="/leaderboard" style={{ color: 'var(--court)', fontSize: '0.9rem' }}>← Back to leaderboard</Link>
         </div>
+        <Footer />
       </main>
     )
   }
@@ -710,8 +712,33 @@ export default async function ProfilePage({
           </div>
         )}
 
+        {/* ── Support — own profile only ───────────────────────────────────── */}
+        {isOwnProfile && (
+          <div className="mt-10">
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.01em', marginBottom: '1rem' }}>
+              Need help?
+            </h2>
+            <div
+              className="bg-white rounded-sm border px-5 py-4"
+              style={{ borderColor: 'var(--chalk-dim)' }}
+            >
+              <p style={{ fontSize: '0.875rem', color: 'var(--ink)', lineHeight: 1.55 }}>
+                Questions, feedback, or something not working? Email{' '}
+                <a
+                  href="mailto:support@quietplease.app"
+                  style={{ color: 'var(--court)', textDecoration: 'none', fontWeight: 500 }}
+                >
+                  support@quietplease.app
+                </a>
+                {' '}and we&rsquo;ll get back to you.
+              </p>
+            </div>
+          </div>
+        )}
+
         </>)}
       </div>
+      <Footer />
     </main>
   )
 }
