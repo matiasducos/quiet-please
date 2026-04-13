@@ -34,7 +34,10 @@ const TYPE_META: Record<string, { label: string; color: string }> = {
   achievement_earned:          { label: 'Achievement',      color: '#D4A017' },
 }
 
-function getHref(n: { type: string; tournament_id: string | null; meta: Record<string, string | number> }): string {
+function getHref(
+  n: { type: string; tournament_id: string | null; meta: Record<string, string | number> },
+  viewerUsername?: string,
+): string {
   if (n.type === 'friend_request' || n.type === 'friend_accepted') return '/friends'
   if (n.type === 'challenge_received' || n.type === 'challenge_cancelled') return '/challenges'
   if (n.type === 'challenge_picks_locked' && n.meta.challenge_id) return `/challenges/${n.meta.challenge_id}`
@@ -46,7 +49,9 @@ function getHref(n: { type: string; tournament_id: string | null; meta: Record<s
   if (n.type === 'league_deleted') return '/leagues'
   if (n.type === 'league_ownership_transferred' && n.meta.league_id) return `/leagues/${n.meta.league_id}`
   if (n.type === 'auto_predictions_generated' && n.tournament_id) return `/tournaments/${n.tournament_id}/predict`
-  if (n.type === 'achievement_earned') return '/profile'
+  if (n.type === 'achievement_earned') {
+    return viewerUsername ? `/profile/${viewerUsername}?tab=achievements` : '/leaderboard'
+  }
   if (n.tournament_id) return `/tournaments/${n.tournament_id}`
   return '/tournaments'
 }
@@ -104,7 +109,7 @@ export default async function NotificationsPage() {
               const meta = (n.meta ?? {}) as Record<string, string | number>
               const typeMeta = TYPE_META[n.type] ?? { label: n.type, color: 'var(--ink)' }
               const isUnread = !n.read_at
-              const href = getHref({ type: n.type, tournament_id: n.tournament_id, meta })
+              const href = getHref({ type: n.type, tournament_id: n.tournament_id, meta }, profile?.username)
 
               return (
                 <Link

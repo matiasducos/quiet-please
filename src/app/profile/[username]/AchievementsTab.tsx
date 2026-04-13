@@ -34,13 +34,24 @@ export default function AchievementsTab({ achievements, isOwnProfile, username }
       return new Date(b.earned_at).getTime() - new Date(a.earned_at).getTime()
     })
 
+  // Perfect Prediction — repeatable special achievement, rendered as its own section
+  const perfectPredictions = achievements
+    .filter(a => a.achievement_key === 'perfect_prediction')
+    .sort((a, b) => new Date(b.earned_at).getTime() - new Date(a.earned_at).getTime())
+
   const goldCount = trophyAchievements.filter(a => a.achievement_key === 'tournament_champion').length
   const silverCount = trophyAchievements.filter(a => a.achievement_key === 'runner_up').length
   const bronzeCount = trophyAchievements.filter(a => a.achievement_key === 'on_the_podium').length
+  const perfectCount = perfectPredictions.length
   const totalCount = achievements.length
 
-  // Non-trophy achievement groups
-  const nonTrophyGroups = ACHIEVEMENT_GROUPS.filter(g => g.category !== 'tournament_trophy')
+  // Non-trophy achievement groups — hide perfect_prediction from the accuracy grid
+  const nonTrophyGroups = ACHIEVEMENT_GROUPS
+    .filter(g => g.category !== 'tournament_trophy')
+    .map(g => ({
+      ...g,
+      items: g.items.filter(item => item.key !== 'perfect_prediction'),
+    }))
 
   if (totalCount === 0) {
     return (
@@ -83,8 +94,35 @@ export default function AchievementsTab({ achievements, isOwnProfile, username }
         {bronzeCount > 0 && (
           <StatBox value={bronzeCount} label="3rd place" color="#B87333" />
         )}
+        {perfectCount > 0 && (
+          <StatBox value={perfectCount} label="Perfect" color="#7C4FE6" />
+        )}
         <StatBox value={totalCount} label="Achievements" />
       </div>
+
+      {/* Perfect Prediction — ultra-rare special */}
+      {perfectPredictions.length > 0 && (
+        <>
+          <SectionLabel>✨ The Perfect Prediction</SectionLabel>
+          <div
+            className="grid gap-4 mb-8"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}
+          >
+            {perfectPredictions.map((a, i) => {
+              const def = ACHIEVEMENTS['perfect_prediction']
+              if (!def) return null
+              return (
+                <PerfectPredictionBadge
+                  key={`perfect-${a.tournament_id}-${i}`}
+                  def={def}
+                  meta={a.meta}
+                />
+              )
+            })}
+          </div>
+          <div style={{ height: '1px', background: 'var(--chalk-dim)', margin: '32px 0' }} />
+        </>
+      )}
 
       {/* Tournament Trophies */}
       {trophyAchievements.length > 0 && (
@@ -220,6 +258,63 @@ function TrophyBadge({ def, tier, meta }: { def: AchievementDefinition; tier: st
       </span>
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', letterSpacing: '0.04em' }}>
         {meta.tournament_year ?? ''}
+      </span>
+      {meta.tournament_tour && (
+        <span
+          style={{
+            fontFamily: 'var(--font-mono)', fontSize: '0.55rem', letterSpacing: '0.06em',
+            textTransform: 'uppercase', padding: '1px 5px', borderRadius: '2px',
+            display: 'inline-block', marginTop: '4px',
+            background: meta.tournament_tour === 'ATP' ? '#dbeafe' : '#f3e8ff',
+            color: meta.tournament_tour === 'ATP' ? '#1e4e8c' : '#6b21a8',
+          }}
+        >
+          {meta.tournament_tour}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function PerfectPredictionBadge({ def, meta }: { def: AchievementDefinition; meta: Record<string, any> }) {
+  // Distinctive purple/iridescent styling — this achievement is ultra-rare
+  const borderColor = '#C8B5F0'
+  const bg = 'linear-gradient(135deg, #F5EFFF 0%, #EDE5FF 50%, #F0E5FF 100%)'
+  const ringBorder = '#7C4FE6'
+  const ringGlow = 'rgba(124,79,230,0.18)'
+  const placeColor = '#7C4FE6'
+
+  return (
+    <div
+      className="flex flex-col items-center tournament-card"
+      style={{
+        padding: '24px 14px 18px',
+        borderRadius: '3px',
+        border: `1px solid ${borderColor}`,
+        background: bg,
+      }}
+    >
+      <div
+        style={{
+          width: '68px', height: '68px', borderRadius: '50%',
+          border: `2.5px solid ${ringBorder}`,
+          boxShadow: `0 0 0 3px ${ringGlow}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          marginBottom: '12px', background: 'white',
+        }}
+      >
+        <span style={{ fontSize: '1.7rem', lineHeight: 1 }}>{def.emoji}</span>
+      </div>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: placeColor, marginBottom: '10px' }}>
+        Perfect
+      </span>
+      <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', letterSpacing: '-0.01em', textAlign: 'center', lineHeight: 1.25, marginBottom: '4px', color: 'var(--ink)' }}>
+        {meta.tournament_flag_emoji && <>{meta.tournament_flag_emoji} </>}
+        {meta.tournament_name ?? 'Tournament'}
+      </span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', letterSpacing: '0.04em' }}>
+        {meta.tournament_year ?? ''}
+        {meta.total_matches ? ` · ${meta.total_matches} picks` : ''}
       </span>
       {meta.tournament_tour && (
         <span

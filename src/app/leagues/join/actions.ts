@@ -6,6 +6,8 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { rateLimit } from '@/lib/rate-limit'
 import { trackServerEvent } from '@/lib/posthog/server'
+import { checkLeagueAchievements } from '@/lib/achievements/check'
+import { notifyAchievements } from '@/lib/achievements/notify'
 
 export async function joinLeague(formData: FormData) {
   const supabase = await createClient()
@@ -57,6 +59,14 @@ export async function joinLeague(formData: FormData) {
   })
 
   trackServerEvent(user.id, 'league_joined', { league_id: league.id, method: 'invite_code' })
+
+  // League achievements (fire-and-forget — never blocks the redirect)
+  try {
+    const achResults = await checkLeagueAchievements(admin, user.id)
+    await notifyAchievements(admin, achResults)
+  } catch (e) {
+    console.error('[league join] achievement check error:', e)
+  }
 
   revalidatePath(`/leagues/${league.id}`)
   revalidatePath('/leagues')

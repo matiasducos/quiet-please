@@ -217,6 +217,7 @@ export async function checkCronAchievements(
     const correctPicks = count ?? 0
     const accuracyThresholds = [
       { min: 5, key: 'sharp_eye' },
+      { min: 10, key: 'double_digits' },
       { min: 15, key: 'on_fire' },
       { min: 25, key: 'crystal_ball' },
     ]
@@ -228,8 +229,28 @@ export async function checkCronAchievements(
     }
   }
 
+  // ── Sharpshooter: 5+ correct picks in 3 different tournaments ─
+  if (!existing.has('sharpshooter')) {
+    const { data: byTournament } = await admin
+      .from('point_ledger')
+      .select('tournament_id')
+      .eq('user_id', userId)
+      .gt('points', 0)
+
+    if (byTournament) {
+      const countsByTournament = new Map<string, number>()
+      for (const r of byTournament) {
+        countsByTournament.set(r.tournament_id, (countsByTournament.get(r.tournament_id) ?? 0) + 1)
+      }
+      const qualifyingTournaments = Array.from(countsByTournament.values()).filter(c => c >= 5).length
+      if (qualifyingTournaments >= 3) {
+        results.push(await awardAchievement(admin, userId, 'sharpshooter'))
+      }
+    }
+  }
+
   // ── Streaks: max streak multiplier in this tournament ─────────
-  const streakKeys = ['hot_streak', 'unstoppable']
+  const streakKeys = ['hot_streak', 'unstoppable', 'perfectionist']
   const needsStreak = streakKeys.some(k => !existing.has(k))
 
   if (needsStreak) {
@@ -243,11 +264,15 @@ export async function checkCronAchievements(
       .maybeSingle()
 
     const maxStreak = maxRow?.streak_multiplier ?? 1
-    if (maxStreak >= 3 && !existing.has('hot_streak')) {
-      results.push(await awardAchievement(admin, userId, 'hot_streak'))
-    }
-    if (maxStreak >= 5 && !existing.has('unstoppable')) {
-      results.push(await awardAchievement(admin, userId, 'unstoppable'))
+    const streakThresholds = [
+      { min: 3, key: 'hot_streak' },
+      { min: 5, key: 'unstoppable' },
+      { min: 7, key: 'perfectionist' },
+    ]
+    for (const t of streakThresholds) {
+      if (maxStreak >= t.min && !existing.has(t.key)) {
+        results.push(await awardAchievement(admin, userId, t.key))
+      }
     }
   }
 
@@ -278,7 +303,76 @@ export async function checkCronAchievements(
     }
   }
 
+  // ── Lifetime ranking points: points_vault, legend, hall_of_fame
+  const lifetimeKeys = ['points_vault', 'legend', 'hall_of_fame']
+  const needsLifetime = lifetimeKeys.some(k => !existing.has(k))
+  if (needsLifetime) {
+    const { data: u } = await admin
+      .from('users')
+      .select('ranking_points')
+      .eq('id', userId)
+      .maybeSingle()
+    const lifetime = u?.ranking_points ?? 0
+    const lifetimeThresholds = [
+      { min: 10000, key: 'points_vault' },
+      { min: 25000, key: 'legend' },
+      { min: 50000, key: 'hall_of_fame' },
+    ]
+    for (const t of lifetimeThresholds) {
+      if (lifetime >= t.min && !existing.has(t.key)) {
+        results.push(await awardAchievement(admin, userId, t.key))
+      }
+    }
+  }
+
   return results
+}
+
+// ── 3b. The Perfect Prediction (special, tournament-specific) ──
+// Awarded when a user's correct picks equal the total played matches
+// in the tournament. Repeatable per tournament (like trophies).
+export async function checkPerfectPrediction(
+  admin: AdminClient,
+  userId: string,
+  tournamentId: string,
+): Promise<AwardResult[]> {
+  // Total matches played in the tournament (non-BYE with a winner)
+  const { count: totalMatches } = await admin
+    .from('match_results')
+    .select('id', { count: 'exact', head: true })
+    .eq('tournament_id', tournamentId)
+    .not('winner_external_id', 'is', null)
+
+  if (!totalMatches || totalMatches === 0) return []
+
+  // User's correct picks in the tournament
+  const { count: correctPicks } = await admin
+    .from('point_ledger')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('tournament_id', tournamentId)
+    .gt('points', 0)
+
+  if ((correctPicks ?? 0) < totalMatches) return []
+
+  // Fetch tournament meta for the notification / display
+  const { data: tournament } = await admin
+    .from('tournaments')
+    .select('name, location, flag_emoji, tour, starts_at')
+    .eq('id', tournamentId)
+    .single()
+
+  const year = tournament?.starts_at ? new Date(tournament.starts_at).getFullYear() : null
+  const meta = {
+    tournament_name: tournament?.location || tournament?.name || 'Tournament',
+    tournament_flag_emoji: tournament?.flag_emoji ?? null,
+    tournament_tour: tournament?.tour ?? null,
+    tournament_year: year,
+    total_matches: totalMatches,
+  }
+
+  const res = await awardAchievement(admin, userId, 'perfect_prediction', tournamentId, meta)
+  return [res]
 }
 
 // ── 4. Engagement achievements (called from savePrediction) ─────
@@ -319,22 +413,61 @@ export async function checkEngagementAchievements(
     }
   }
 
-  // ── Season Pass: 4 different calendar months ──────────────────
-  if (!existing.has('season_pass')) {
+  // ── Season Pass / Anniversary: calendar-based ─────────────────
+  if (!existing.has('season_pass') || !existing.has('anniversary')) {
     const { data: preds } = await admin
       .from('predictions')
       .select('submitted_at')
       .eq('user_id', userId)
       .is('challenge_id', null)
 
+    const dates = (preds ?? []).map(p => new Date(p.submitted_at))
     const months = new Set(
-      (preds ?? []).map(p => {
-        const d = new Date(p.submitted_at)
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      })
+      dates.map(d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
     )
-    if (months.size >= 4) {
+    if (months.size >= 4 && !existing.has('season_pass')) {
       results.push(await awardAchievement(admin, userId, 'season_pass'))
+    }
+
+    if (dates.length >= 2 && !existing.has('anniversary')) {
+      const times = dates.map(d => d.getTime())
+      const span = Math.max(...times) - Math.min(...times)
+      if (span >= 365 * 24 * 3600 * 1000) {
+        results.push(await awardAchievement(admin, userId, 'anniversary'))
+      }
+    }
+  }
+
+  // ── Full Schedule: all 4 tournament types ─────────────────────
+  if (!existing.has('full_schedule')) {
+    const { data: cats } = await admin
+      .from('predictions')
+      .select('tournaments(category)')
+      .eq('user_id', userId)
+      .is('challenge_id', null)
+
+    const catSet = new Set((cats ?? []).map((p: any) => p.tournaments?.category).filter(Boolean))
+    if (['grand_slam', 'masters_1000', '500', '250'].every(c => catSet.has(c))) {
+      results.push(await awardAchievement(admin, userId, 'full_schedule'))
+    }
+  }
+
+  // ── Slam Collector: 3+ different Grand Slams ──────────────────
+  if (!existing.has('tour_grand_slam')) {
+    const { data: slams } = await admin
+      .from('predictions')
+      .select('tournaments(name, category)')
+      .eq('user_id', userId)
+      .is('challenge_id', null)
+
+    const slamNames = new Set(
+      (slams ?? [])
+        .filter((p: any) => p.tournaments?.category === 'grand_slam')
+        .map((p: any) => p.tournaments?.name)
+        .filter(Boolean)
+    )
+    if (slamNames.size >= 3) {
+      results.push(await awardAchievement(admin, userId, 'tour_grand_slam'))
     }
   }
 
@@ -378,7 +511,8 @@ export async function checkSocialAchievements(
   const existing = await getExistingKeys(admin, userId)
   const results: AwardResult[] = []
 
-  if (!existing.has('social_starter') || !existing.has('squad_up')) {
+  const friendKeys = ['social_starter', 'friend_circle', 'squad_up', 'popular']
+  if (friendKeys.some(k => !existing.has(k))) {
     const { count } = await admin
       .from('friendships')
       .select('id', { count: 'exact', head: true })
@@ -386,11 +520,16 @@ export async function checkSocialAchievements(
       .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
 
     const friendCount = count ?? 0
-    if (friendCount >= 1 && !existing.has('social_starter')) {
-      results.push(await awardAchievement(admin, userId, 'social_starter'))
-    }
-    if (friendCount >= 10 && !existing.has('squad_up')) {
-      results.push(await awardAchievement(admin, userId, 'squad_up'))
+    const friendThresholds = [
+      { min: 1, key: 'social_starter' },
+      { min: 5, key: 'friend_circle' },
+      { min: 10, key: 'squad_up' },
+      { min: 25, key: 'popular' },
+    ]
+    for (const t of friendThresholds) {
+      if (friendCount >= t.min && !existing.has(t.key)) {
+        results.push(await awardAchievement(admin, userId, t.key))
+      }
     }
   }
 
@@ -406,21 +545,25 @@ export async function checkChallengeAchievements(
   const existing = await getExistingKeys(admin, userId)
   const results: AwardResult[] = []
 
-  // Challenger: created at least 1 challenge
-  if (!existing.has('challenger')) {
+  // Challenger / Challenge Master: count challenges created
+  if (!existing.has('challenger') || !existing.has('challenge_master')) {
     const { count } = await admin
       .from('challenges')
       .select('id', { count: 'exact', head: true })
       .eq('challenger_id', userId)
       .eq('is_anonymous', false)
 
-    if ((count ?? 0) >= 1) {
+    const created = count ?? 0
+    if (created >= 1 && !existing.has('challenger')) {
       results.push(await awardAchievement(admin, userId, 'challenger'))
+    }
+    if (created >= 10 && !existing.has('challenge_master')) {
+      results.push(await awardAchievement(admin, userId, 'challenge_master'))
     }
   }
 
-  // Rival: 5 completed challenges vs same opponent
-  if (!existing.has('rival')) {
+  // Rival (5 vs same opp) + Social Butterfly (10 total participated)
+  if (!existing.has('rival') || !existing.has('social_butterfly')) {
     const { data: completed } = await admin
       .from('challenges')
       .select('challenger_id, challenged_id')
@@ -429,17 +572,48 @@ export async function checkChallengeAchievements(
       .or(`challenger_id.eq.${userId},challenged_id.eq.${userId}`)
 
     if (completed) {
+      const total = completed.length
+      if (total >= 10 && !existing.has('social_butterfly')) {
+        results.push(await awardAchievement(admin, userId, 'social_butterfly'))
+      }
+
       const opponentCounts: Record<string, number> = {}
       for (const c of completed) {
         const opponentId = c.challenger_id === userId ? c.challenged_id : c.challenger_id
         opponentCounts[opponentId] = (opponentCounts[opponentId] || 0) + 1
       }
       const maxVsSameOpponent = Math.max(0, ...Object.values(opponentCounts))
-      if (maxVsSameOpponent >= 5) {
+      if (maxVsSameOpponent >= 5 && !existing.has('rival')) {
         results.push(await awardAchievement(admin, userId, 'rival'))
       }
     }
   }
 
+  return results
+}
+
+// ── 7. League achievements ──────────────────────────────────────
+
+export async function checkLeagueAchievements(
+  admin: AdminClient,
+  userId: string,
+): Promise<AwardResult[]> {
+  const existing = await getExistingKeys(admin, userId)
+  const results: AwardResult[] = []
+
+  if (existing.has('league_starter') && existing.has('league_veteran')) return results
+
+  const { count } = await admin
+    .from('league_members')
+    .select('league_id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+
+  const leagueCount = count ?? 0
+  if (leagueCount >= 1 && !existing.has('league_starter')) {
+    results.push(await awardAchievement(admin, userId, 'league_starter'))
+  }
+  if (leagueCount >= 5 && !existing.has('league_veteran')) {
+    results.push(await awardAchievement(admin, userId, 'league_veteran'))
+  }
   return results
 }
