@@ -87,7 +87,7 @@ export default async function GlobalTournamentResultsPage({ params }: { params: 
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="leaderboard" userId={user.id} />
+      <Nav deletionRequestedAt={profile?.deletion_requested_at} username={profile?.username} points={profile?.ranking_points ?? 0} activePage="leaderboard" userId={user.id} />
 
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
         {/* Tournament selector dropdown */}

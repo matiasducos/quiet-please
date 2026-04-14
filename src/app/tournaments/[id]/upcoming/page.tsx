@@ -41,7 +41,7 @@ export default async function TournamentUpcomingPage({ params }: { params: Promi
   if (!bracketData?.rounds || !bracketData?.matches) {
     return (
       <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-        <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="tournaments" userId={user?.id} />
+        <Nav deletionRequestedAt={profile?.deletion_requested_at} username={profile?.username} points={profile?.ranking_points ?? 0} activePage="tournaments" userId={user?.id} />
         <div className="max-w-3xl mx-auto px-4 md:px-8 py-10">
           <Link href={`/tournaments/${id}`} style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>← Back to tournament</Link>
           <h1 className="mt-6" style={{ fontFamily: 'var(--font-display)', fontSize: '1.75rem', letterSpacing: '-0.02em' }}>Draw not yet available</h1>
@@ -52,7 +52,7 @@ export default async function TournamentUpcomingPage({ params }: { params: Promi
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="tournaments" userId={user?.id} />
+      <Nav deletionRequestedAt={profile?.deletion_requested_at} username={profile?.username} points={profile?.ranking_points ?? 0} activePage="tournaments" userId={user?.id} />
 
       <div className="max-w-3xl mx-auto px-4 md:px-8 py-10">
         {/* Breadcrumb */}

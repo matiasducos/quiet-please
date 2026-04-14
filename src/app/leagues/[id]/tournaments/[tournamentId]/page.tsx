@@ -127,7 +127,7 @@ export default async function LeagueTournamentResultsPage({ params }: { params: 
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="leagues" />
+      <Nav deletionRequestedAt={profile?.deletion_requested_at} username={profile?.username} points={profile?.ranking_points ?? 0} activePage="leagues" />
 
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
         <div className="flex items-center gap-2 mb-6" style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>

@@ -36,7 +36,7 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
 
   return (
     <main className="min-h-screen flex flex-col" style={{ background: 'var(--chalk)' }}>
-      <Nav username={profile?.username} points={profile?.ranking_points ?? 0} userId={user.id} />
+      <Nav deletionRequestedAt={profile?.deletion_requested_at} username={profile?.username} points={profile?.ranking_points ?? 0} userId={user.id} />
 
       <ChatView
         conversationId={conversationId}
