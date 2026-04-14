@@ -9,6 +9,7 @@ interface NavProps {
   points?: number
   activePage?: 'tournaments' | 'leaderboard' | 'leagues' | 'challenges' | 'achievements' | 'onboarding'
   userId?: string | null
+  deletionRequestedAt?: string | null
 }
 
 const NAV_LINKS = [
@@ -19,8 +20,11 @@ const NAV_LINKS = [
   { href: '/onboarding',       label: 'How it works', page: 'onboarding'   },
 ] as const
 
-export default function Nav({ username, points = 0, activePage, userId }: NavProps) {
+export default function Nav({ username, points = 0, activePage, userId, deletionRequestedAt }: NavProps) {
   const isGuest = !username
+  const deletionDate = deletionRequestedAt
+    ? new Date(new Date(deletionRequestedAt).getTime() + 7 * 24 * 60 * 60 * 1000)
+    : null
 
   return (
     <nav className="sticky top-0 z-50 bg-white border-b" style={{ borderColor: 'var(--chalk-dim)' }}>
@@ -203,6 +207,17 @@ export default function Nav({ username, points = 0, activePage, userId }: NavPro
         )}
       </div>
 
+      {/* Deletion warning banner */}
+      {deletionDate && (
+        <div className="px-4 md:px-8 py-2 text-center" style={{ background: '#FFF9E6', borderBottom: '1px solid #E8C47A' }}>
+          <p style={{ fontSize: '0.75rem', color: '#7A5C00', fontFamily: 'var(--font-mono)' }}>
+            Your account is scheduled for deletion on {deletionDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}.{' '}
+            <Link href={`/profile/${username}`} style={{ color: '#993C1D', textDecoration: 'underline' }}>
+              Cancel
+            </Link>
+          </p>
+        </div>
+      )}
     </nav>
   )
 }

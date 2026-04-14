@@ -4,6 +4,7 @@ import { createClient } from './server'
 export type NavProfile = {
   username: string
   ranking_points: number
+  deletion_requested_at: string | null
 }
 
 /**
@@ -23,7 +24,7 @@ export const getNavProfile = cache(async (): Promise<{
 
   const { data: profile } = await supabase
     .from('users')
-    .select('username, ranking_points')
+    .select('username, ranking_points, deletion_requested_at')
     .eq('id', user.id)
     .single()
 

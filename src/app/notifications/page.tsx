@@ -84,7 +84,7 @@ export default async function NotificationsPage() {
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={profile?.username} points={profile?.ranking_points ?? 0} userId={user.id} />
+      <Nav deletionRequestedAt={profile?.deletion_requested_at} username={profile?.username} points={profile?.ranking_points ?? 0} userId={user.id} />
 
       <div className="max-w-2xl mx-auto px-4 md:px-8 py-10">
 

@@ -32,7 +32,7 @@ export default async function CreateChallengeForTournamentPage({
   if (!draw?.matches?.length) {
     return (
       <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-        <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="challenges" />
+        <Nav deletionRequestedAt={profile?.deletion_requested_at} username={profile?.username} points={profile?.ranking_points ?? 0} activePage="challenges" />
         <div className="max-w-3xl mx-auto px-4 md:px-8 py-10 text-center">
           <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', marginBottom: '0.5rem' }}>Draw not available yet</p>
           <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem' }}>
@@ -60,7 +60,7 @@ export default async function CreateChallengeForTournamentPage({
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav username={profile?.username} points={profile?.ranking_points ?? 0} activePage="challenges" />
+      <Nav deletionRequestedAt={profile?.deletion_requested_at} username={profile?.username} points={profile?.ranking_points ?? 0} activePage="challenges" />
 
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
         {/* Breadcrumb */}
