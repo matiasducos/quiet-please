@@ -108,7 +108,7 @@ export default function DeleteAccountSection({ username, deletionRequestedAt }: 
           style={{ borderColor: 'var(--chalk-dim)' }}
         >
           <p style={{ fontSize: '0.875rem', color: 'var(--muted)', lineHeight: 1.55, marginBottom: '12px' }}>
-            Permanently delete your account, predictions, challenges, league memberships, and all associated data. This action has a 7-day cooling-off period.
+            Permanently delete your account, predictions, challenges, league and memberships. This action has a 7-day cooling-off period.
           </p>
           <button
             onClick={() => { setPhase('confirming'); setError(null) }}
