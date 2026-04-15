@@ -12,19 +12,25 @@ interface NavProps {
   deletionRequestedAt?: string | null
 }
 
+// Primary nav — the "what users come here to do" links.
+// "How it works" and "Achievements" live in the avatar dropdown now.
 const NAV_LINKS = [
-  { href: '/tournaments',      label: 'Tournaments',  page: 'tournaments'  },
-  { href: '/leaderboard',      label: 'Leaderboard',  page: 'leaderboard'  },
-  { href: '/leagues',          label: 'Leagues',      page: 'leagues'      },
-  { href: '/challenges',       label: 'Challenges',   page: 'challenges'   },
-  { href: '/onboarding',       label: 'How it works', page: 'onboarding'   },
+  { href: '/tournaments', label: 'Tournaments', page: 'tournaments' },
+  { href: '/leaderboard', label: 'Leaderboard', page: 'leaderboard' },
+  { href: '/leagues',     label: 'Leagues',     page: 'leagues'     },
+  { href: '/challenges',  label: 'Challenges',  page: 'challenges'  },
 ] as const
 
-export default function Nav({ username, points = 0, activePage, userId, deletionRequestedAt }: NavProps) {
+export default function Nav({ username, activePage, userId, deletionRequestedAt }: NavProps) {
   const isGuest = !username
   const deletionDate = deletionRequestedAt
     ? new Date(new Date(deletionRequestedAt).getTime() + 7 * 24 * 60 * 60 * 1000)
     : null
+
+  // Avatar dropdown is rendered as a <details> element so it works without JS
+  // and keeps Nav a server component. Trade-off: doesn't auto-close on outside
+  // click — acceptable because menu items are links that navigate away.
+  const userMenuOpen = false // placeholder for clarity; <details> is stateful itself
 
   return (
     <nav className="sticky top-0 z-50 bg-white border-b" style={{ borderColor: 'var(--chalk-dim)' }}>
@@ -40,16 +46,84 @@ export default function Nav({ username, points = 0, activePage, userId, deletion
         .nav-link-active {
           color: var(--ink) !important;
         }
-        .sign-out-btn {
-          transition: background 0.15s ease, border-color 0.15s ease;
+
+        /* Avatar dropdown trigger */
+        .user-menu {
+          position: relative;
         }
-        .sign-out-btn:hover {
-          background: var(--chalk) !important;
-          border-color: var(--muted) !important;
+        .user-menu > summary {
+          list-style: none;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 8px;
+          border-radius: 3px;
+          transition: background 0.15s ease;
+          user-select: none;
+        }
+        .user-menu > summary::-webkit-details-marker { display: none; }
+        .user-menu > summary:hover { background: var(--chalk); }
+        .user-menu[open] > summary { background: var(--chalk); }
+
+        .user-menu .chevron {
+          transition: transform 0.15s ease;
+          opacity: 0.6;
+        }
+        .user-menu[open] .chevron { transform: rotate(180deg); }
+
+        .user-menu-panel {
+          position: absolute;
+          top: calc(100% + 8px);
+          right: 0;
+          min-width: 180px;
+          background: white;
+          border: 1px solid var(--chalk-dim);
+          border-radius: 4px;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+          padding: 6px;
+          z-index: 60;
+        }
+        .user-menu-item {
+          display: block;
+          width: 100%;
+          padding: 8px 10px;
+          font-size: 0.825rem;
+          color: var(--ink);
+          text-align: left;
+          background: none;
+          border: none;
+          cursor: pointer;
+          border-radius: 2px;
+          font-family: inherit;
+          transition: background 0.12s ease;
+        }
+        .user-menu-item:hover { background: var(--chalk); }
+        .user-menu-divider {
+          height: 1px;
+          background: var(--chalk-dim);
+          margin: 6px 0;
+        }
+
+        /* Avatar circle */
+        .avatar-circle {
+          width: 26px;
+          height: 26px;
+          border-radius: 50%;
+          background: var(--chalk);
+          border: 1px solid var(--chalk-dim);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-family: var(--font-mono);
+          font-size: 0.72rem;
+          color: var(--ink);
+          text-transform: uppercase;
+          flex-shrink: 0;
         }
       `}</style>
 
-      {/* Main row: logo + (desktop links) + user area */}
+      {/* Main row */}
       <div className="max-w-5xl mx-auto flex items-center justify-between px-4 md:px-8 py-3 md:py-5">
 
         {/* Left: logo + desktop links */}
@@ -78,24 +152,10 @@ export default function Nav({ username, points = 0, activePage, userId, deletion
                 {link.label}
               </Link>
             ))}
-            {username && (
-              <Link
-                href={`/profile/${username}?tab=achievements`}
-                data-tour="nav-achievements"
-                className={`nav-link${activePage === 'achievements' ? ' nav-link-active' : ''}`}
-                style={{
-                  fontSize: '0.875rem',
-                  color: activePage === 'achievements' ? 'var(--ink)' : 'var(--muted)',
-                  fontWeight: activePage === 'achievements' ? 500 : 400,
-                }}
-              >
-                Achievements
-              </Link>
-            )}
           </div>
         </div>
 
-        {/* Right: user info or sign-in */}
+        {/* Right: icons + user menu (or sign-in) */}
         <div className="flex items-center gap-3 flex-shrink-0">
           {isGuest ? (
             <Link
@@ -117,32 +177,62 @@ export default function Nav({ username, points = 0, activePage, userId, deletion
                   </Suspense>
                 </>
               )}
-              <Link
-                href={`/profile/${username}`}
-                style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)', textDecoration: 'none' }}
-              >
-                {username}
-              </Link>
-              <form action="/auth/logout" method="post" className="hidden md:block">
-                <button
-                  type="submit"
-                  className="sign-out-btn"
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '0.72rem',
-                    letterSpacing: '0.03em',
-                    color: 'var(--ink)',
-                    background: 'white',
-                    border: '1px solid var(--chalk-dim)',
-                    borderRadius: '2px',
-                    cursor: 'pointer',
-                    padding: '4px 10px',
-                    lineHeight: 1,
-                  }}
-                >
-                  Sign out
-                </button>
-              </form>
+
+              {/* User menu — <details> dropdown, no JS */}
+              <details className="user-menu">
+                <summary aria-label="User menu">
+                  <span className="avatar-circle" aria-hidden="true">
+                    {username!.charAt(0)}
+                  </span>
+                  <span
+                    className="hidden sm:inline"
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.8rem',
+                      color: 'var(--muted)',
+                    }}
+                  >
+                    {username}
+                  </span>
+                  <svg
+                    className="chevron"
+                    width="10"
+                    height="10"
+                    viewBox="0 0 10 10"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </summary>
+                <div className="user-menu-panel" role="menu">
+                  <Link href={`/profile/${username}`} className="user-menu-item" role="menuitem">
+                    Profile
+                  </Link>
+                  <Link
+                    href={`/profile/${username}?tab=achievements`}
+                    className={`user-menu-item${activePage === 'achievements' ? ' nav-link-active' : ''}`}
+                    role="menuitem"
+                    style={activePage === 'achievements' ? { fontWeight: 500 } : undefined}
+                  >
+                    Achievements
+                  </Link>
+                  <Link
+                    href="/onboarding"
+                    className={`user-menu-item${activePage === 'onboarding' ? ' nav-link-active' : ''}`}
+                    role="menuitem"
+                    style={activePage === 'onboarding' ? { fontWeight: 500 } : undefined}
+                  >
+                    How it works
+                  </Link>
+                  <div className="user-menu-divider" />
+                  <form action="/auth/logout" method="post">
+                    <button type="submit" className="user-menu-item" role="menuitem">
+                      Sign out
+                    </button>
+                  </form>
+                </div>
+              </details>
             </>
           )}
         </div>
@@ -169,42 +259,6 @@ export default function Nav({ username, points = 0, activePage, userId, deletion
             {link.label}
           </Link>
         ))}
-        {username && (
-          <Link
-            href={`/profile/${username}?tab=achievements`}
-            className="flex-shrink-0 px-5 py-2.5 text-xs border-b-2 transition-colors"
-            style={{
-              fontFamily: 'var(--font-mono)',
-              letterSpacing: '0.04em',
-              borderBottomColor: activePage === 'achievements' ? 'var(--court)' : 'transparent',
-              color: activePage === 'achievements' ? 'var(--court)' : 'var(--muted)',
-              fontWeight: activePage === 'achievements' ? 600 : 400,
-            }}
-          >
-            Achievements
-          </Link>
-        )}
-        {/* Sign out — visible only on mobile, at end of scrollable row */}
-        {!isGuest && (
-          <form action="/auth/logout" method="post" className="flex-shrink-0">
-            <button
-              type="submit"
-              className="px-5 py-2.5 text-xs border-b-2 transition-colors"
-              style={{
-                fontFamily: 'var(--font-mono)',
-                letterSpacing: '0.04em',
-                borderBottomColor: 'transparent',
-                color: 'var(--muted)',
-                background: 'none',
-                border: 'none',
-                borderBottom: '2px solid transparent',
-                cursor: 'pointer',
-              }}
-            >
-              Sign out
-            </button>
-          </form>
-        )}
       </div>
 
       {/* Deletion warning banner */}

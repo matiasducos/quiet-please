@@ -6,6 +6,12 @@
 
 ## In Progress / Next Up
 
+### Mobile responsiveness audit — NO side-scrolling anywhere
+- Priority page: `/leaderboard` — user must NEVER have to side-scroll on mobile
+- Audit all pages at 375px for horizontal overflow. Currently the leaderboard table is wrapped in `overflow-x-auto` which permits side-scroll as an escape hatch — the real fix is to redesign the row layout so it fits natively at 375px
+- Candidate approach: stack rank+avatar+username on the primary line, push points/change to a secondary line below at mobile; revert to single-row grid at `md:` and up
+- Check other tables too: `/leagues/[id]`, tournament results, admin tables
+
 ### Facebook OAuth Setup (manual — Matias)
 - Code side done ✅ — button added to login & signup pages
 - **TODO:** Create Facebook App at developers.facebook.com (Consumer type)
