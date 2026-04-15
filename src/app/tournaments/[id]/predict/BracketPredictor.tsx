@@ -6,7 +6,27 @@ import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { savePrediction, importGlobalPicks } from './actions'
 import CountryFlag from '@/components/CountryFlag'
+import Tooltip from '@/components/Tooltip'
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation'
+
+// Small "i in a circle" affordance placed next to tooltip-bearing tags.
+// Inherits color from parent via currentColor so it adapts to each tag's palette.
+function InfoIcon() {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      style={{ flexShrink: 0, opacity: 0.65, marginLeft: 3 }}
+    >
+      <circle cx="8" cy="8" r="6.8" stroke="currentColor" strokeWidth="1.3" />
+      <line x1="8" y1="7.2" x2="8" y2="11.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="8" cy="4.6" r="0.95" fill="currentColor" />
+    </svg>
+  )
+}
 
 const H2HDrawer = dynamic(() => import('@/components/H2HDrawer'), {
   ssr: false,
@@ -564,14 +584,21 @@ export default function BracketPredictor({
                 >
                   {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save draft'}
                 </button>
-                <button
-                  onClick={handleLockAll}
-                  disabled={saving || pickedCount === 0}
-                  className="px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40 whitespace-nowrap"
-                  style={{ background: 'var(--court)', color: 'white' }}
-                >
-                  {saving ? 'Saving…' : 'Lock all picks'}
-                </button>
+                <Tooltip text="Lock every pick at once. Locked picks can't be changed — only do this when your bracket is final.">
+                  <button
+                    onClick={handleLockAll}
+                    disabled={saving || pickedCount === 0}
+                    className="px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40 whitespace-nowrap"
+                    style={{ background: 'var(--court)', color: 'white', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                  >
+                    {saving ? 'Saving…' : (
+                      <>
+                        Lock all picks
+                        <InfoIcon />
+                      </>
+                    )}
+                  </button>
+                </Tooltip>
               </>
             )}
           </div>
@@ -793,20 +820,23 @@ export default function BracketPredictor({
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       {player?.seed ? (
-                        <span style={{
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: '0.55rem',
-                          fontWeight: 600,
-                          color: 'white',
-                          background: '#5a5a4a',
-                          minWidth: '16px',
-                          height: '16px',
-                          borderRadius: '2px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}>{player.seed}</span>
+                        <Tooltip text="Tournament seed. Seeded players are the highest-ranked and placed in the draw to avoid early meetings.">
+                          <span style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: '0.55rem',
+                            fontWeight: 600,
+                            color: 'white',
+                            background: '#5a5a4a',
+                            minWidth: '16px',
+                            height: '16px',
+                            borderRadius: '2px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            cursor: 'help',
+                          }}>{player.seed}</span>
+                        </Tooltip>
                       ) : (
                         <span style={{ minWidth: '16px', flexShrink: 0 }} />
                       )}
@@ -817,28 +847,42 @@ export default function BracketPredictor({
                         <CountryFlag country={player.country} size={14} />
                       )}
                     </div>
-                    {state !== 'none' && (
-                      <span style={{
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '0.7rem',
-                        color: style.labelColor,
-                        background: style.labelBg,
-                        padding: '2px 8px',
-                        borderRadius: '2px',
-                        flexShrink: 0,
-                        marginLeft: '8px',
-                        border: state === 'winner' ? '1px solid #fcd34d' : undefined,
-                      }}>
-                        {state === 'correct' && matchPoints?.[match.matchId] != null
-                          ? (() => {
-                              const mp = matchPoints[match.matchId]
-                              const basePoints = mp.streakMultiplier > 1 ? Math.round(mp.points / mp.streakMultiplier) : mp.points
-                              const streakLabel = mp.streakMultiplier > 1 ? ` ×${mp.streakMultiplier}` : ''
-                              return `✓ +${basePoints} pts${streakLabel}`
-                            })()
-                          : style.label}
-                      </span>
-                    )}
+                    {state !== 'none' && (() => {
+                      const mp = state === 'correct' ? matchPoints?.[match.matchId] : undefined
+                      const hasStreak = !!mp && mp.streakMultiplier > 1
+                      const basePoints = mp ? (hasStreak ? Math.round(mp.points / mp.streakMultiplier) : mp.points) : 0
+                      const labelText = mp
+                        ? `✓ +${basePoints} pts${hasStreak ? ` ×${mp.streakMultiplier}` : ''}`
+                        : style.label
+                      const pill = (
+                        <span style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '0.7rem',
+                          color: style.labelColor,
+                          background: style.labelBg,
+                          padding: '2px 8px',
+                          borderRadius: '2px',
+                          flexShrink: 0,
+                          marginLeft: '8px',
+                          border: state === 'winner' ? '1px solid #fcd34d' : undefined,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          cursor: hasStreak ? 'help' : undefined,
+                        }}>
+                          {labelText}
+                          {hasStreak && <InfoIcon />}
+                        </span>
+                      )
+                      // Only wrap with tooltip when there's a streak multiplier — otherwise
+                      // the tag is self-evident (correct / wrong / picked / winner / bye).
+                      return hasStreak && mp ? (
+                        <Tooltip
+                          text={`Earned ${mp.points} pts: ${basePoints} base × ${mp.streakMultiplier}× streak bonus for picking this player through consecutive rounds.`}
+                        >
+                          {pill}
+                        </Tooltip>
+                      ) : pill
+                    })()}
                   </button>
                 )
               }
@@ -930,19 +974,41 @@ export default function BracketPredictor({
 
                             {/* Dead pick indicator */}
                             {deadPick && (
-                              <span style={{
-                                fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.04em',
-                                color: '#991b1b', background: '#fee2e2', padding: '1px 6px', borderRadius: '2px',
-                              }}>
-                                {deadPickPlayer?.name ?? 'Your pick'} eliminated
-                              </span>
+                              <Tooltip text="Your pick lost in an earlier round. You can still make picks for later rounds, but they won't score unless you change your upstream picks.">
+                                <span style={{
+                                  fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.04em',
+                                  color: '#991b1b', background: '#fee2e2', padding: '1px 6px', borderRadius: '2px',
+                                  display: 'inline-flex', alignItems: 'center', cursor: 'help',
+                                }}>
+                                  {deadPickPlayer?.name ?? 'Your pick'} eliminated
+                                  <InfoIcon />
+                                </span>
+                              </Tooltip>
                             )}
 
-                            {/* Lock status / hint */}
-                            {!deadPick && (lockDisplay === 'voluntary_locked' || lockDisplay === 'fully_locked') && (
-                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em', color: 'var(--court)' }}>
-                                LOCKED ✓
-                              </span>
+                            {/* Lock status / hint — voluntary (user chose to lock THIS pick) → green */}
+                            {!deadPick && lockDisplay === 'voluntary_locked' && (
+                              <Tooltip text="You locked this pick yourself. It can't be changed anymore.">
+                                <span style={{
+                                  fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em',
+                                  color: 'var(--court)', display: 'inline-flex', alignItems: 'center', cursor: 'help',
+                                }}>
+                                  LOCKED ✓
+                                  <InfoIcon />
+                                </span>
+                              </Tooltip>
+                            )}
+                            {/* Fully locked — whole bracket is final (read-only or "Lock all picks") → gray */}
+                            {!deadPick && lockDisplay === 'fully_locked' && (
+                              <Tooltip text="This bracket is locked. Predictions are final — no more changes possible.">
+                                <span style={{
+                                  fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em',
+                                  color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', cursor: 'help',
+                                }}>
+                                  LOCKED ✓
+                                  <InfoIcon />
+                                </span>
+                              </Tooltip>
                             )}
                             {!deadPick && lockDisplay === 'auto_locked' && (
                               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em', color: 'var(--muted)' }}>
@@ -950,15 +1016,16 @@ export default function BracketPredictor({
                               </span>
                             )}
                             {!deadPick && lockDisplay === 'admin_locked_pickable' && (
-                              <span
-                                title="This match has already started or is about to start. You can still make your prediction but no points will be granted for this specific match."
-                                style={{
+                              <Tooltip text="You can still make a pick, but no points will be awarded — the admin locked this match after it started.">
+                                <span style={{
                                   fontFamily: 'var(--font-mono)', fontSize: '0.55rem', letterSpacing: '0.04em',
                                   color: '#b45309', background: '#fef3c7', padding: '1px 6px', borderRadius: '2px',
-                                  cursor: 'help',
+                                  display: 'inline-flex', alignItems: 'center', cursor: 'help',
                                 }}>
-                                NO POINTS
-                              </span>
+                                  NO POINTS
+                                  <InfoIcon />
+                                </span>
+                              </Tooltip>
                             )}
                             {!deadPick && showLockBtn && (
                               <button
