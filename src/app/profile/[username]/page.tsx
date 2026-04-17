@@ -17,20 +17,22 @@ import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
 import AchievementsTab from './AchievementsTab'
 import Footer from '@/components/Footer'
 import DeleteAccountSection from '@/app/profile/DeleteAccountSection'
+import RecentFormDot from './RecentFormDot'
 
-// Internal ledger round → "form" letter + color class. "F" in the ledger is
-// the tournament winner (cron awards WINNER_POINTS on F), so a correct F pick
-// shows as a "W" — the user's predicted player became champion.
+// Internal ledger round → "form" letter + color class + human meaning. "F" in
+// the ledger is the tournament winner (cron awards WINNER_POINTS on F), so a
+// correct F pick shows as a "W" — the user's predicted player became champion.
 const ROUND_RANK: Record<string, number> = { R128: 1, R64: 2, R32: 3, R16: 4, QF: 5, SF: 6, F: 7 }
-const FORM_FROM_ROUND: Record<string, { letter: string; cls: string }> = {
-  F:    { letter: 'W',   cls: 'w' },
-  SF:   { letter: 'F',   cls: 'f' },
-  QF:   { letter: 'SF',  cls: 's' },
-  R16:  { letter: 'QF',  cls: 'q' },
-  R32:  { letter: 'R16', cls: 'q' },
-  R64:  { letter: 'R32', cls: 'x' },
-  R128: { letter: 'R64', cls: 'x' },
+const FORM_FROM_ROUND: Record<string, { letter: string; cls: string; meaning: string }> = {
+  F:    { letter: 'W',   cls: 'w', meaning: 'Your pick became champion — you correctly predicted the final winner.' },
+  SF:   { letter: 'F',   cls: 'f', meaning: 'Your pick reached the final — you correctly predicted a semifinal.' },
+  QF:   { letter: 'SF',  cls: 's', meaning: 'Your pick reached the semifinals — you correctly predicted a quarterfinal.' },
+  R16:  { letter: 'QF',  cls: 'q', meaning: 'Your pick reached the quarterfinals — you correctly predicted a round-of-16 match.' },
+  R32:  { letter: 'R16', cls: 'q', meaning: 'Your pick reached the round of 16 — you correctly predicted a round-of-32 match.' },
+  R64:  { letter: 'R32', cls: 'x', meaning: 'Early exit — your pick lost in the round of 32.' },
+  R128: { letter: 'R64', cls: 'x', meaning: 'Very early exit — your pick lost in the round of 64.' },
 }
+const FORM_NO_POINTS = { letter: '—', cls: 'x', meaning: 'No points earned — none of your picks survived past the opening round.' }
 
 export default async function ProfilePage({
   params,
@@ -194,13 +196,14 @@ export default async function ProfilePage({
   const recentForm = recentCompletedPreds.map(p => {
     const t = p.tournaments as any
     const round = maxRoundByPred[p.id]
-    const form = round ? FORM_FROM_ROUND[round] : { letter: '—', cls: 'x' }
+    const form = round ? FORM_FROM_ROUND[round] : FORM_NO_POINTS
     return {
-      predId: p.id,
-      tournamentId: t?.id,
+      predId:         p.id,
+      tournamentId:   t?.id,
       tournamentName: t?.location ?? t?.name ?? '—',
-      letter: form.letter,
-      cls: form.cls,
+      letter:         form.letter,
+      cls:            form.cls,
+      meaning:        form.meaning,
     }
   })
 
@@ -452,24 +455,6 @@ export default async function ProfilePage({
             </div>
           </div>
 
-          {/* Tour strip */}
-          <div
-            className="tour-strip"
-            style={{ position: 'relative', display: 'flex', flexDirection: 'column', background: 'rgba(0,0,0,0.3)', borderTop: '1px solid rgba(255,255,255,0.08)' }}
-          >
-            <div style={tourCellStyle}>
-              <div style={{ ...tourLblStyle, color: '#8fb8e0' }}>ATP circuit</div>
-              <div style={tourValStyle}>{formatPoints(atpPts)} pts</div>
-            </div>
-            <div style={tourCellStyle}>
-              <div style={{ ...tourLblStyle, color: '#e0b0d0' }}>WTA circuit</div>
-              <div style={tourValStyle}>{formatPoints(wtaPts)} pts</div>
-            </div>
-            <div style={tourCellStyle}>
-              <div style={tourLblStyle}>Lifetime</div>
-              <div style={tourValStyle}>{formatPoints(profile.total_points ?? 0)} pts</div>
-            </div>
-          </div>
         </div>
 
         {/* Edit forms */}
@@ -579,20 +564,14 @@ export default async function ProfilePage({
                   Recent form
                 </span>
                 {recentForm.map((f) => (
-                  <Link
+                  <RecentFormDot
                     key={f.predId}
-                    href={f.tournamentId ? `/tournaments/${f.tournamentId}` : '#'}
-                    title={f.tournamentName}
-                    style={{
-                      width: '34px', height: '34px', borderRadius: '50%',
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: '0.72rem', color: '#fff',
-                      background: FORM_COLORS[f.cls],
-                      textDecoration: 'none', position: 'relative',
-                    }}
-                  >
-                    {f.letter}
-                  </Link>
+                    letter={f.letter}
+                    color={FORM_COLORS[f.cls]}
+                    tournamentId={f.tournamentId}
+                    tournamentName={f.tournamentName}
+                    meaning={f.meaning}
+                  />
                 ))}
               </div>
             </div>
@@ -892,9 +871,6 @@ export default async function ProfilePage({
       <style>{`
         @media (min-width: 768px) {
           .hero-body { grid-template-columns: 1fr 1fr !important; padding: 32px 28px !important; gap: 32px !important; }
-          .tour-strip { flex-direction: row !important; }
-          .tour-strip > div { border-right: 1px solid rgba(255,255,255,0.08); border-bottom: 0 !important; }
-          .tour-strip > div:last-child { border-right: 0; }
         }
       `}</style>
     </main>
@@ -914,29 +890,6 @@ const heroBtnStyle: React.CSSProperties = {
   letterSpacing: '0.06em',
   textDecoration: 'none',
   display: 'inline-block',
-}
-
-const tourCellStyle: React.CSSProperties = {
-  flex: 1,
-  padding: '12px 16px',
-  textAlign: 'center',
-  borderBottom: '1px solid rgba(255,255,255,0.08)',
-}
-
-const tourLblStyle: React.CSSProperties = {
-  fontFamily: 'var(--font-mono)',
-  fontSize: '0.58rem',
-  letterSpacing: '0.14em',
-  textTransform: 'uppercase',
-  color: 'rgba(255,255,255,0.55)',
-  marginBottom: '4px',
-}
-
-const tourValStyle: React.CSSProperties = {
-  fontFamily: 'var(--font-display)',
-  fontSize: '1.2rem',
-  color: '#fff',
-  letterSpacing: '-0.01em',
 }
 
 // Recent-form dot colors keyed by class
