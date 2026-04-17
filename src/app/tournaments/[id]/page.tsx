@@ -86,16 +86,32 @@ export default async function TournamentDetailPage({ params }: { params: Promise
     getTournamentDetail(id),
   ])
 
-  const prediction = user
-    ? await supabase
-        .from('predictions')
-        .select('id, picks, is_fully_locked, points_earned')
-        .eq('tournament_id', id)
-        .eq('user_id', user.id)
-        .is('challenge_id', null)
-        .single()
-        .then(r => r.data)
-    : null
+  const [prediction, ledgerRows] = user
+    ? await Promise.all([
+        supabase
+          .from('predictions')
+          .select('id, picks, is_fully_locked, points_earned')
+          .eq('tournament_id', id)
+          .eq('user_id', user.id)
+          .is('challenge_id', null)
+          .single()
+          .then(r => r.data),
+        supabase
+          .from('point_ledger')
+          .select('round, points')
+          .eq('tournament_id', id)
+          .eq('user_id', user.id)
+          .then(r => r.data ?? []),
+      ])
+    : [null, [] as { round: string; points: number }[]]
+
+  // Sum awarded points per internal round code (R128, R64, R32, R16, QF, SF, F).
+  // 'F' rows are credited as WINNER_POINTS by the cron, so they show on the
+  // "Winner" UI row — the "Final" UI row has no matching ledger key.
+  const pointsByRound: Record<string, number> = {}
+  for (const row of ledgerRows ?? []) {
+    pointsByRound[row.round] = (pointsByRound[row.round] ?? 0) + row.points
+  }
 
   if (!tournament) notFound()
   const t = tournament as TournamentRow
@@ -407,25 +423,44 @@ export default async function TournamentDetailPage({ params }: { params: Promise
               <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.75rem' }}>
                 Points per round
               </h3>
-              {[
-                { round: 'Winner',      pts: t.category === 'grand_slam' ? 2000 : t.category === 'masters_1000' ? 1000 : t.category === '500' ? 500  : 250 },
-                { round: 'Final',       pts: t.category === 'grand_slam' ? 1200 : t.category === 'masters_1000' ? 600  : t.category === '500' ? 150  : 80  },
-                { round: 'Semifinal',   pts: t.category === 'grand_slam' ? 720  : t.category === 'masters_1000' ? 360  : t.category === '500' ? 90   : 45  },
-                { round: 'Quarterfinal',pts: t.category === 'grand_slam' ? 360  : t.category === 'masters_1000' ? 180  : t.category === '500' ? 60   : 29  },
-                { round: 'R16',         pts: t.category === 'grand_slam' ? 180  : t.category === 'masters_1000' ? 90   : t.category === '500' ? 30   : 13  },
-                { round: 'R32',         pts: t.category === 'grand_slam' ? 90   : t.category === 'masters_1000' ? 45   : t.category === '500' ? 20   : 6   },
-                ...(['grand_slam', 'masters_1000'].includes(t.category) ? [
-                  { round: 'R64',       pts: t.category === 'grand_slam' ? 45   : 25 },
-                ] : []),
-                ...(['grand_slam', 'masters_1000'].includes(t.category) ? [
-                  { round: 'R128',      pts: t.category === 'grand_slam' ? 10   : 10 },
-                ] : []),
-              ].map(({ round, pts }) => (
-                <div key={round} className="flex items-center justify-between py-1.5 border-b last:border-0" style={{ borderColor: 'var(--chalk-dim)' }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{round}</span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--ink)' }}>{pts} pts</span>
+              {user && (
+                <div className="flex items-center justify-between pb-1.5" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)' }}>
+                  <span />
+                  <span className="flex items-center" style={{ gap: '18px' }}>
+                    <span>Base</span>
+                    <span style={{ minWidth: '3.5rem', textAlign: 'right' }}>You</span>
+                  </span>
                 </div>
-              ))}
+              )}
+              {[
+                { round: 'Winner',      ledger: 'F',    pts: t.category === 'grand_slam' ? 2000 : t.category === 'masters_1000' ? 1000 : t.category === '500' ? 500  : 250 },
+                { round: 'Final',       ledger: null,   pts: t.category === 'grand_slam' ? 1200 : t.category === 'masters_1000' ? 600  : t.category === '500' ? 150  : 80  },
+                { round: 'Semifinal',   ledger: 'SF',   pts: t.category === 'grand_slam' ? 720  : t.category === 'masters_1000' ? 360  : t.category === '500' ? 90   : 45  },
+                { round: 'Quarterfinal',ledger: 'QF',   pts: t.category === 'grand_slam' ? 360  : t.category === 'masters_1000' ? 180  : t.category === '500' ? 60   : 29  },
+                { round: 'R16',         ledger: 'R16',  pts: t.category === 'grand_slam' ? 180  : t.category === 'masters_1000' ? 90   : t.category === '500' ? 30   : 13  },
+                { round: 'R32',         ledger: 'R32',  pts: t.category === 'grand_slam' ? 90   : t.category === 'masters_1000' ? 45   : t.category === '500' ? 20   : 6   },
+                ...(['grand_slam', 'masters_1000'].includes(t.category) ? [
+                  { round: 'R64',       ledger: 'R64',  pts: t.category === 'grand_slam' ? 45   : 25 },
+                ] : []),
+                ...(['grand_slam', 'masters_1000'].includes(t.category) ? [
+                  { round: 'R128',      ledger: 'R128', pts: t.category === 'grand_slam' ? 10   : 10 },
+                ] : []),
+              ].map(({ round, ledger, pts }) => {
+                const earned = ledger ? (pointsByRound[ledger] ?? 0) : null
+                return (
+                  <div key={round} className="flex items-center justify-between py-1.5 border-b last:border-0" style={{ borderColor: 'var(--chalk-dim)' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{round}</span>
+                    <span className="flex items-center" style={{ gap: '18px', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--ink)' }}>
+                      <span>{pts} pts</span>
+                      {user && (
+                        <span style={{ minWidth: '3.5rem', textAlign: 'right', color: earned && earned > 0 ? 'var(--court)' : 'var(--muted)' }}>
+                          {earned === null ? '—' : `${earned} pts`}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>
