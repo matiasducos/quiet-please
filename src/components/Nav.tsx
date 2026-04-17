@@ -27,6 +27,12 @@ export default function Nav({ username, activePage, userId, deletionRequestedAt 
     ? new Date(new Date(deletionRequestedAt).getTime() + 7 * 24 * 60 * 60 * 1000)
     : null
 
+  // Admin check — shown in the avatar dropdown only. Mirrors the rule used
+  // elsewhere (ADMIN_USER_IDS env list, plus any logged-in user in dev).
+  const adminIds = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean)
+  const isDev    = process.env.NODE_ENV === 'development'
+  const isAdmin  = !!userId && (isDev || adminIds.includes(userId))
+
   // Avatar dropdown is rendered as a <details> element so it works without JS
   // and keeps Nav a server component. Trade-off: doesn't auto-close on outside
   // click — acceptable because menu items are links that navigate away.
@@ -225,6 +231,18 @@ export default function Nav({ username, activePage, userId, deletionRequestedAt 
                   >
                     How it works
                   </Link>
+                  {isAdmin && (
+                    <>
+                      <div className="user-menu-divider" />
+                      <Link
+                        href="/admin"
+                        className="user-menu-item"
+                        role="menuitem"
+                      >
+                        Admin
+                      </Link>
+                    </>
+                  )}
                   <div className="user-menu-divider" />
                   <form action="/auth/logout" method="post">
                     <button type="submit" className="user-menu-item" role="menuitem">
