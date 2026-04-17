@@ -4,11 +4,12 @@ import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 
 interface RecentFormDotProps {
-  letter:         string
-  color:          string
-  tournamentId:   string
-  tournamentName: string
-  meaning:        string
+  letter:          string
+  color:           string
+  tournamentId:    string
+  tournamentName:  string
+  tournamentFlag?: string | null
+  meaning:         string
 }
 
 /**
@@ -24,7 +25,7 @@ interface RecentFormDotProps {
  * inside the popover.
  */
 export default function RecentFormDot({
-  letter, color, tournamentId, tournamentName, meaning,
+  letter, color, tournamentId, tournamentName, tournamentFlag, meaning,
 }: RecentFormDotProps) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLSpanElement>(null)
@@ -97,8 +98,13 @@ export default function RecentFormDot({
               borderTop: '1px solid var(--chalk-dim)', borderLeft: '1px solid var(--chalk-dim)',
             }}
           />
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.92rem', color: 'var(--ink)', lineHeight: 1.15, marginBottom: '3px' }}>
-            {tournamentName}
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.92rem', color: 'var(--ink)', lineHeight: 1.15, marginBottom: '3px', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+            {tournamentFlag && (
+              <span aria-hidden style={{ fontFamily: 'system-ui, sans-serif', fontSize: '0.95rem', flexShrink: 0 }}>
+                {tournamentFlag}
+              </span>
+            )}
+            <span>{tournamentName}</span>
           </div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', lineHeight: 1.4, marginBottom: '8px' }}>
             {meaning}

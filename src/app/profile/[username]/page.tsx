@@ -201,6 +201,7 @@ export default async function ProfilePage({
       predId:         p.id,
       tournamentId:   t?.id,
       tournamentName: t?.location ?? t?.name ?? '—',
+      tournamentFlag: t?.flag_emoji ?? null,
       letter:         form.letter,
       cls:            form.cls,
       meaning:        form.meaning,
@@ -570,6 +571,7 @@ export default async function ProfilePage({
                     color={FORM_COLORS[f.cls]}
                     tournamentId={f.tournamentId}
                     tournamentName={f.tournamentName}
+                    tournamentFlag={f.tournamentFlag}
                     meaning={f.meaning}
                   />
                 ))}
