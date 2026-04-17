@@ -23,7 +23,7 @@ npm audit
 
 ## Code & config risks
 
-- [ ] **`pdf-parse` (admin)** — Untrusted PDFs can be CPU/memory heavy; keep uploads size-limited and server-only; watch package advisories.
+_(none open)_
 
 ---
 
@@ -54,7 +54,7 @@ npm audit
 ## Public launch risk summary (qualitative)
 
 - **Organic / soft launch:** ✅ Acceptable — production env, RLS, OAuth hardened, security headers + CSP (enforced), rate limiting in place, type checking enforced.
-- **Paid ads at scale:** Treat as **low risk** — remaining items are operational (Supabase Security Advisor, billing alerts, `pdf-parse` monitoring). All code-level security items are addressed.
+- **Paid ads at scale:** Treat as **low risk** — remaining items are operational (Supabase Security Advisor, billing alerts). All code-level security items are addressed.
 
 ---
 

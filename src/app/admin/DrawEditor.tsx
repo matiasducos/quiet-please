@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { saveManualDraw, saveManualResults, parsePdfDraw, type ManualMatch, type ManualResult } from './actions'
+import { saveManualDraw, saveManualResults, type ManualMatch, type ManualResult } from './actions'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -166,11 +166,6 @@ export default function DrawEditor({ tournamentId, externalId, name, status, onC
   const [drawSaving, setDrawSaving]             = useState(false)
   const [drawResult, setDrawResult]             = useState<{ ok: boolean; msg: string } | null>(null)
 
-  // ── PDF upload state ──────────────────────────────────────────────────────
-  const [pdfFile, setPdfFile]                   = useState<File | null>(null)
-  const [pdfParsing, setPdfParsing]             = useState(false)
-  const [pdfResult, setPdfResult]               = useState<{ ok: boolean; msg: string } | null>(null)
-
   // ── Results state ─────────────────────────────────────────────────────────
   const [resRound, setResRound]                 = useState('QF')
   const [resText, setResText]                   = useState('')
@@ -178,31 +173,6 @@ export default function DrawEditor({ tournamentId, externalId, name, status, onC
   const [markInProgress, setMarkInProgress]     = useState(status === 'accepting_predictions')
   const [resSaving, setResSaving]               = useState(false)
   const [resResult, setResResult]               = useState<{ ok: boolean; msg: string } | null>(null)
-
-  // ── PDF handler ───────────────────────────────────────────────────────────
-  async function handlePdfParse() {
-    if (!pdfFile) return
-    setPdfParsing(true)
-    setPdfResult(null)
-    setDrawParsed(null)
-    setDrawResult(null)
-    try {
-      const formData = new FormData()
-      formData.append('pdf', pdfFile)
-      const res = await parsePdfDraw(formData)
-      if (res.ok && res.matches) {
-        setDrawParsed(res.matches)
-        setDrawRound((res.firstRound ?? 'R64') as Round)
-        setPdfResult({ ok: true, msg: `✓ Extracted ${res.matches.length} matches (${res.firstRound})` })
-      } else {
-        setPdfResult({ ok: false, msg: `✗ ${res.error ?? 'Unknown error'}` })
-      }
-    } catch (err) {
-      setPdfResult({ ok: false, msg: `✗ ${String(err)}` })
-    } finally {
-      setPdfParsing(false)
-    }
-  }
 
   // ── Draw handlers ─────────────────────────────────────────────────────────
   function handleDrawParse() {
@@ -300,47 +270,6 @@ export default function DrawEditor({ tournamentId, externalId, name, status, onC
       {/* ── DRAW TAB ── */}
       {tab === 'draw' && (
         <div>
-          {/* PDF Upload */}
-          <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '2px', padding: '0.65rem', marginBottom: '0.75rem' }}>
-            <p style={{ ...labelStyle, marginBottom: '0.4rem', color: '#0369a1' }}>Upload draw PDF</p>
-            <p style={{ fontSize: '0.75rem', color: '#0369a1', marginBottom: '0.5rem', lineHeight: 1.5 }}>
-              Upload the official ATP/WTA draw sheet PDF to auto-populate the bracket.
-              Supports 128-player draws (seeds + R128 byes).
-            </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <input
-                type="file"
-                accept=".pdf,application/pdf"
-                onChange={e => {
-                  const f = e.target.files?.[0] ?? null
-                  setPdfFile(f)
-                  setPdfResult(null)
-                  setDrawParsed(null)
-                }}
-                style={{ ...mono, fontSize: '0.75rem', color: 'var(--ink)', flex: '1 1 auto', minWidth: 0 }}
-              />
-              <button
-                onClick={handlePdfParse}
-                disabled={!pdfFile || pdfParsing}
-                style={{
-                  ...mono, fontSize: '0.75rem', padding: '5px 14px',
-                  background: '#0369a1', color: 'white', border: 'none',
-                  borderRadius: '2px', cursor: pdfFile && !pdfParsing ? 'pointer' : 'not-allowed',
-                  opacity: pdfFile && !pdfParsing ? 1 : 0.45, whiteSpace: 'nowrap',
-                }}
-              >
-                {pdfParsing ? 'Parsing…' : 'Parse PDF'}
-              </button>
-            </div>
-            {pdfResult && (
-              <p style={{ ...mono, fontSize: '0.7rem', marginTop: '0.4rem', color: pdfResult.ok ? '#166534' : '#991b1b' }}>
-                {pdfResult.msg}
-              </p>
-            )}
-          </div>
-
-          <p style={{ ...labelStyle, marginBottom: '0.4rem' }}>— or enter manually —</p>
-
           {/* Format help */}
           <div style={{ background: '#f8fafc', border: '1px solid var(--chalk-dim)', borderRadius: '2px', padding: '0.65rem', marginBottom: '0.75rem', fontSize: '0.78rem', color: 'var(--muted)', lineHeight: 1.6 }}>
             Paste player names <strong>one per line</strong> — consecutive pairs form matches (lines 1+2 = match 1, etc.).
