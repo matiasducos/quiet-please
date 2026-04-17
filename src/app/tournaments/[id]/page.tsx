@@ -98,19 +98,22 @@ export default async function TournamentDetailPage({ params }: { params: Promise
           .then(r => r.data),
         supabase
           .from('point_ledger')
-          .select('round, points')
+          .select('round, points, prediction_id')
           .eq('tournament_id', id)
           .eq('user_id', user.id)
           .then(r => r.data ?? []),
       ])
-    : [null, [] as { round: string; points: number }[]]
+    : [null, [] as { round: string; points: number; prediction_id: string | null }[]]
 
-  // Sum awarded points per internal round code (R128, R64, R32, R16, QF, SF, F).
-  // 'F' rows are credited as WINNER_POINTS by the cron, so they show on the
-  // "Winner" UI row — the "Final" UI row has no matching ledger key.
+  // Sum awarded points per internal round (R128, R64, R32, R16, QF, SF, F),
+  // scoped to the user's global prediction so challenge points don't leak in.
+  // This sum matches predictions.points_earned exactly (see award-points cron).
   const pointsByRound: Record<string, number> = {}
-  for (const row of ledgerRows ?? []) {
-    pointsByRound[row.round] = (pointsByRound[row.round] ?? 0) + row.points
+  if (prediction) {
+    for (const row of ledgerRows ?? []) {
+      if (row.prediction_id !== prediction.id) continue
+      pointsByRound[row.round] = (pointsByRound[row.round] ?? 0) + row.points
+    }
   }
 
   if (!tournament) notFound()
@@ -434,7 +437,6 @@ export default async function TournamentDetailPage({ params }: { params: Promise
               )}
               {[
                 { round: 'Winner',      ledger: 'F',    pts: t.category === 'grand_slam' ? 2000 : t.category === 'masters_1000' ? 1000 : t.category === '500' ? 500  : 250 },
-                { round: 'Final',       ledger: null,   pts: t.category === 'grand_slam' ? 1200 : t.category === 'masters_1000' ? 600  : t.category === '500' ? 150  : 80  },
                 { round: 'Semifinal',   ledger: 'SF',   pts: t.category === 'grand_slam' ? 720  : t.category === 'masters_1000' ? 360  : t.category === '500' ? 90   : 45  },
                 { round: 'Quarterfinal',ledger: 'QF',   pts: t.category === 'grand_slam' ? 360  : t.category === 'masters_1000' ? 180  : t.category === '500' ? 60   : 29  },
                 { round: 'R16',         ledger: 'R16',  pts: t.category === 'grand_slam' ? 180  : t.category === 'masters_1000' ? 90   : t.category === '500' ? 30   : 13  },
@@ -446,15 +448,15 @@ export default async function TournamentDetailPage({ params }: { params: Promise
                   { round: 'R128',      ledger: 'R128', pts: t.category === 'grand_slam' ? 10   : 10 },
                 ] : []),
               ].map(({ round, ledger, pts }) => {
-                const earned = ledger ? (pointsByRound[ledger] ?? 0) : null
+                const earned = pointsByRound[ledger] ?? 0
                 return (
                   <div key={round} className="flex items-center justify-between py-1.5 border-b last:border-0" style={{ borderColor: 'var(--chalk-dim)' }}>
                     <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{round}</span>
                     <span className="flex items-center" style={{ gap: '18px', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--ink)' }}>
                       <span>{pts} pts</span>
                       {user && (
-                        <span style={{ minWidth: '3.5rem', textAlign: 'right', color: earned && earned > 0 ? 'var(--court)' : 'var(--muted)' }}>
-                          {earned === null ? '—' : `${earned} pts`}
+                        <span style={{ minWidth: '3.5rem', textAlign: 'right', color: earned > 0 ? 'var(--court)' : 'var(--muted)' }}>
+                          {earned} pts
                         </span>
                       )}
                     </span>
