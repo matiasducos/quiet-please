@@ -32,6 +32,7 @@ const TYPE_META: Record<string, { label: string; color: string }> = {
   league_ownership_transferred: { label: 'League owner', color: '#185FA5' },
   auto_predictions_generated:  { label: 'Auto-prediction', color: '#7c2d7c' },
   achievement_earned:          { label: 'Achievement',      color: '#D4A017' },
+  referral_joined:             { label: 'Invite joined',    color: '#1a6b3c' },
 }
 
 function getHref(
@@ -51,6 +52,9 @@ function getHref(
   if (n.type === 'auto_predictions_generated' && n.tournament_id) return `/tournaments/${n.tournament_id}/predict`
   if (n.type === 'achievement_earned') {
     return viewerUsername ? `/profile/${viewerUsername}?tab=achievements` : '/leaderboard'
+  }
+  if (n.type === 'referral_joined') {
+    return n.meta.invitee_username ? `/profile/${n.meta.invitee_username}` : '/invite'
   }
   if (n.tournament_id) return `/tournaments/${n.tournament_id}`
   return '/tournaments'
@@ -182,6 +186,9 @@ export default async function NotificationsPage() {
                         )}
                         {n.type === 'achievement_earned' && (
                           <>{meta.achievement_emoji ?? '🏅'} Achievement unlocked: <strong>{meta.achievement_name ?? 'an achievement'}</strong>. {meta.achievement_description ?? ''}</>
+                        )}
+                        {n.type === 'referral_joined' && (
+                          <>🎾 <strong>{meta.invitee_username ?? 'Someone'}</strong> joined Quiet Please via your invite. You&apos;re now friends.</>
                         )}
                       </p>
                     </div>

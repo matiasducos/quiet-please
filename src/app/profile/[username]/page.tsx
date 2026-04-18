@@ -416,6 +416,12 @@ export default async function ProfilePage({
                 {isOwnProfile ? (
                   <>
                     <Link href="/friends" style={heroBtnStyle}>Friends</Link>
+                    <Link
+                      href="/invite"
+                      style={{ ...heroBtnStyle, background: 'rgba(234,243,222,0.2)', borderColor: 'rgba(195,221,168,0.5)' }}
+                    >
+                      + Invite
+                    </Link>
                     <Link href="/profile/auto-predictions" style={heroBtnStyle}>Auto-predictions</Link>
                     <ReplayTourButton />
                   </>

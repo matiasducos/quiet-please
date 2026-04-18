@@ -30,6 +30,25 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
 
+  // ── Referral attribution ────────────────────────────────────────────────
+  // When a visitor lands on /invite/<username>, stash a 30-day cookie so the
+  // referral survives the signup round-trip. Only set for guests — logged-in
+  // users don't need attribution (the landing page redirects them anyway).
+  if (!user && pathname.startsWith('/invite/')) {
+    const code = pathname.slice('/invite/'.length).split('/')[0]
+    if (code && code.length <= 40 && /^[a-zA-Z0-9_-]+$/.test(code)) {
+      if (request.cookies.get('qp_ref')?.value !== code) {
+        supabaseResponse.cookies.set('qp_ref', code, {
+          path: '/',
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 30 * 24 * 60 * 60,
+        })
+      }
+    }
+  }
+
   // Protect routes that require authentication — fast middleware redirect
   // Note: /challenges and /leagues root pages handle anonymous visitors themselves
   const protectedRoutes = ['/dashboard', '/profile', '/predict', '/friends', '/notifications', '/admin', '/leagues/browse', '/leagues/new', '/leagues/join', '/challenges/new', '/messages']

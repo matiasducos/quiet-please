@@ -10,6 +10,7 @@ import { canPredictForStatus, isManualLockMode } from '@/lib/app-settings'
 import { trackServerEvent } from '@/lib/posthog/server'
 import { checkPredictionMilestones, checkEngagementAchievements, checkChallengeAchievements } from '@/lib/achievements/check'
 import { notifyAchievements } from '@/lib/achievements/notify'
+import { markReferralFirstPrediction } from '@/lib/referrals'
 
 export type SaveResult =
   | { success: true; predictionId?: string }
@@ -409,6 +410,12 @@ export async function savePrediction({
     ]).then(([predResults, engResults]) => {
       notifyAchievements(achAdmin, [...predResults, ...engResults])
     }).catch(err => console.error('[savePrediction] achievement check error', err))
+
+    // Referral attribution: if this is the invitee's first global prediction,
+    // stamp the referrals row and award the inviter's next Recruiter tier.
+    // Idempotent — re-runs on subsequent predictions no-op after the stamp.
+    markReferralFirstPrediction(achAdmin, user.id)
+      .catch(err => console.error('[savePrediction] referral first-pred error', err))
   } else {
     // Challenge prediction: check challenger achievement
     const achAdmin = createAdminClient()
