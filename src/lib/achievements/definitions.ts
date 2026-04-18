@@ -316,6 +316,45 @@ const SOCIAL: AchievementDefinition[] = [
   },
 ]
 
+// ── Recruiter (invite-a-friend tiers) ───────────────────────────
+// Earned as invitees submit their first prediction. Capped at 25 rewarded
+// invites to prevent farming — above that, invites still count but no new
+// tier unlocks. Tiers sit in the social category alongside friend milestones.
+const RECRUITER: AchievementDefinition[] = [
+  {
+    key: 'recruiter_1',
+    name: 'Recruiter',
+    description: 'Invited a friend who made their first prediction',
+    emoji: '📣',
+    category: 'social',
+    repeatable: false,
+  },
+  {
+    key: 'recruiter_5',
+    name: 'Connector',
+    description: '5 invited friends made their first prediction',
+    emoji: '🔗',
+    category: 'social',
+    repeatable: false,
+  },
+  {
+    key: 'recruiter_10',
+    name: 'Ambassador',
+    description: '10 invited friends made their first prediction',
+    emoji: '🎤',
+    category: 'social',
+    repeatable: false,
+  },
+  {
+    key: 'recruiter_25',
+    name: 'Tournament Director',
+    description: '25 invited friends made their first prediction',
+    emoji: '🏟️',
+    category: 'social',
+    repeatable: false,
+  },
+]
+
 // ── Engagement ──────────────────────────────────────────────────
 const ENGAGEMENT: AchievementDefinition[] = [
   {
@@ -402,6 +441,7 @@ export const ALL_ACHIEVEMENTS: AchievementDefinition[] = [
   ...ACCURACY_STREAKS,
   ...POINTS_MILESTONES,
   ...SOCIAL,
+  ...RECRUITER,
   ...ENGAGEMENT,
 ]
 
@@ -419,7 +459,7 @@ export const ACHIEVEMENT_GROUPS: { label: string; emoji: string; category: Achie
   { label: 'Prediction Milestones', emoji: '🎯', category: 'prediction_milestone', items: PREDICTION_MILESTONES },
   { label: 'Accuracy & Streaks', emoji: '🔥', category: 'accuracy_streak', items: ACCURACY_STREAKS },
   { label: 'Points Milestones', emoji: '💎', category: 'points_milestone', items: POINTS_MILESTONES },
-  { label: 'Social', emoji: '🤝', category: 'social', items: SOCIAL },
+  { label: 'Social', emoji: '🤝', category: 'social', items: [...SOCIAL, ...RECRUITER] },
   { label: 'Engagement', emoji: '🌍', category: 'engagement', items: ENGAGEMENT },
 ]
 

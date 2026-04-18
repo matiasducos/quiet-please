@@ -224,6 +224,13 @@ export default function Nav({ username, activePage, userId, deletionRequestedAt 
                     Achievements
                   </Link>
                   <Link
+                    href="/invite"
+                    className="user-menu-item"
+                    role="menuitem"
+                  >
+                    Invite a friend
+                  </Link>
+                  <Link
                     href="/onboarding"
                     className={`user-menu-item${activePage === 'onboarding' ? ' nav-link-active' : ''}`}
                     role="menuitem"

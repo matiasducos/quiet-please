@@ -38,9 +38,26 @@ const modes = [
   },
 ]
 
-export default async function OnboardingPage() {
+export default async function OnboardingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ invited_by?: string }>
+}) {
   const { user, profile } = await getNavProfile()
   const admin = createAdminClient()
+  const { invited_by } = await searchParams
+
+  // Validate the invited_by param — only show the banner if it resolves to
+  // an actual user. Prevents arbitrary strings from being echoed back.
+  let inviterUsername: string | null = null
+  if (invited_by) {
+    const { data: inviter } = await admin
+      .from('users')
+      .select('username')
+      .ilike('username', invited_by)
+      .maybeSingle()
+    inviterUsername = inviter?.username ?? null
+  }
 
   // Find the first predictable tournament for the "Get started" CTA
   const predictableStatuses = await getPredictableStatuses()
@@ -63,6 +80,56 @@ export default async function OnboardingPage() {
       />
 
       <div className="max-w-4xl mx-auto px-4 md:px-8 py-12 md:py-20">
+
+        {/* ── Invited-by banner ───────────────────────────────────────────── */}
+        {inviterUsername && (
+          <div
+            className="rounded-sm border mb-8 flex items-center gap-3 md:gap-4"
+            style={{
+              background: '#eaf3de',
+              borderColor: '#B8D4F0',
+              padding: '14px 16px',
+            }}
+          >
+            <span style={{ fontSize: '1.4rem', flexShrink: 0 }}>🎾</span>
+            <div className="flex-1 min-w-0">
+              <p style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.62rem',
+                color: 'var(--court-dark)',
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                marginBottom: '2px',
+              }}>
+                You were invited
+              </p>
+              <p style={{ fontSize: '0.92rem', color: 'var(--ink)', lineHeight: 1.4 }}>
+                <Link href={`/profile/${inviterUsername}`} style={{ color: 'var(--court-dark)', fontWeight: 500, textDecoration: 'none' }}>
+                  {inviterUsername}
+                </Link>
+                {' '}is now your first friend. Start a challenge or just share picks.
+              </p>
+            </div>
+            <Link
+              href={`/challenges/create`}
+              className="flex-shrink-0"
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.7rem',
+                padding: '6px 10px',
+                borderRadius: '2px',
+                background: 'var(--court)',
+                color: '#fff',
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                textDecoration: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Challenge →
+            </Link>
+          </div>
+        )}
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="text-center mb-12 md:mb-16">

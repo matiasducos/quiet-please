@@ -16,7 +16,7 @@
 
 ### Supabase
 - Project is NOT linked locally — migrations must be run manually in the Supabase dashboard.
-- Latest migration: `035_app_settings.sql`
+- Latest migration: `052_invite_feature.sql` (remember to bump this file when you add a new migration)
 
 ### Notifications
 - When adding a new notification type, update 4 places:
