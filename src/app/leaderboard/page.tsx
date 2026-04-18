@@ -11,8 +11,107 @@ import { formatPoints } from '@/lib/utils/format'
 
 export const metadata: Metadata = { title: 'Leaderboard | Quiet Please' }
 
-type Scope   = 'worldwide' | 'country' | 'city'
+type Scope   = 'worldwide' | 'country' | 'city' | 'friends'
 type Circuit = 'both' | 'atp' | 'wta'
+
+// User-specific friends leaderboard: fetches the accepted-friend graph for
+// `userId`, includes self, then builds the same breakdown/stats as the global
+// view but limited to that set. Cache key includes userId so each user gets
+// their own slot — the friend set is small (typically ≤ 50) so this is cheap.
+function getFriendsLeaderboardData(userId: string, pointsField: string) {
+  return unstable_cache(
+    async () => {
+      const supabase = createAdminClient()
+
+      // 1. Fetch accepted friend IDs (either side of the friendship).
+      const { data: friendships } = await supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .eq('status', 'accepted')
+        .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
+
+      const friendIds = new Set<string>([userId])
+      for (const f of friendships ?? []) {
+        friendIds.add(f.requester_id === userId ? f.addressee_id : f.requester_id)
+      }
+
+      // 2. Fetch user rows, ordered by points.
+      const { data: users } = await supabase
+        .from('users')
+        .select('id, username, ranking_points, atp_ranking_points, wta_ranking_points, country, city')
+        .in('id', Array.from(friendIds))
+        .not('username', 'is', null)
+        .order(pointsField, { ascending: false })
+        .limit(50)
+
+      // 3. Build breakdown + stats — same logic as the global path.
+      const userIds = (users ?? []).map(u => u.id)
+      const { data: userPredictions } = userIds.length > 0
+        ? await supabase.from('predictions')
+            .select('user_id, tournament_id, points_earned, tournaments(name, tour, location, flag_emoji)')
+            .in('user_id', userIds).is('challenge_id', null)
+            .gt('points_earned', 0).order('points_earned', { ascending: false }).limit(500)
+        : { data: [] as any[] }
+
+      const breakdownByUser: Record<string, Array<{ tournament_id: string; name: string; tour: string; points: number; flag: string | null }>> = {}
+      for (const p of userPredictions ?? []) {
+        const t = p.tournaments as any
+        if (!t?.name) continue
+        if (!breakdownByUser[p.user_id]) breakdownByUser[p.user_id] = []
+        breakdownByUser[p.user_id].push({ tournament_id: p.tournament_id, name: t.location ?? t.name, tour: t.tour ?? '', points: p.points_earned ?? 0, flag: t.flag_emoji ?? null })
+      }
+
+      const statsByUser: Record<string, { tournaments: number; totalPicks: number; correctPicks: number; streakPower: number }> = {}
+      if (userIds.length > 0) {
+        const { data: allPreds } = await supabase
+          .from('predictions')
+          .select('id, user_id, tournament_id, picks')
+          .in('user_id', userIds)
+          .is('challenge_id', null)
+
+        for (const pred of allPreds ?? []) {
+          if (!statsByUser[pred.user_id]) statsByUser[pred.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0, streakPower: 1 }
+          statsByUser[pred.user_id].tournaments++
+          const picks = pred.picks as Record<string, string> | null
+          if (picks) statsByUser[pred.user_id].totalPicks += Object.keys(picks).length
+        }
+
+        const globalPredIds = (allPreds ?? []).map((p: any) => p.id).filter(Boolean)
+        const streakAccum: Record<string, { totalPts: number; basePts: number }> = {}
+        if (globalPredIds.length > 0) {
+          for (let i = 0; i < globalPredIds.length; i += 200) {
+            const chunk = globalPredIds.slice(i, i + 200)
+            const { data: ledgerData } = await supabase
+              .from('point_ledger')
+              .select('user_id, points, streak_multiplier')
+              .in('prediction_id', chunk)
+            for (const row of ledgerData ?? []) {
+              if (!statsByUser[row.user_id]) statsByUser[row.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0, streakPower: 1 }
+              const pts = row.points ?? 0
+              if (pts > 0) {
+                statsByUser[row.user_id].correctPicks++
+                const mult = row.streak_multiplier ?? 1
+                if (!streakAccum[row.user_id]) streakAccum[row.user_id] = { totalPts: 0, basePts: 0 }
+                streakAccum[row.user_id].totalPts += pts
+                streakAccum[row.user_id].basePts += pts / mult
+              }
+            }
+          }
+          for (const [uid, acc] of Object.entries(streakAccum)) {
+            if (acc.basePts > 0 && statsByUser[uid]) {
+              statsByUser[uid].streakPower = acc.totalPts / acc.basePts
+            }
+          }
+        }
+      }
+
+      const friendCount = friendIds.size - 1 // excluding self
+      return { users: users ?? [], breakdownByUser, statsByUser, friendCount }
+    },
+    ['leaderboard-friends', userId, pointsField],
+    { revalidate: 60 }
+  )()
+}
 
 // keyParts include all filter params so each combination gets its own cache slot
 function getLeaderboardData(pointsField: string, scope: Scope, scopeCountry: string | null, scopeCity: string | null) {
@@ -195,8 +294,25 @@ export default async function LeaderboardPage({
   const scopeCountry = sp.country ?? (scope !== 'worldwide' ? profile?.country ?? null : null)
   const scopeCity    = sp.city    ?? (scope === 'city'      ? profile?.city    ?? null : null)
 
-  // ── Cached leaderboard data (shared across all users in same view) ─────
-  const { users, breakdownByUser, statsByUser } = await getLeaderboardData(pointsField, scope, scopeCountry, scopeCity)
+  // ── Cached leaderboard data ────────────────────────────────────────────
+  // Friends scope: user-specific filter (self + accepted friends).
+  // Worldwide/country/city: shared cache across all users in same view.
+  let users: any[]
+  let breakdownByUser: Record<string, any>
+  let statsByUser: Record<string, any>
+  let friendCount = 0
+  if (scope === 'friends') {
+    const res = await getFriendsLeaderboardData(user.id, pointsField)
+    users = res.users
+    breakdownByUser = res.breakdownByUser
+    statsByUser = res.statsByUser
+    friendCount = res.friendCount
+  } else {
+    const res = await getLeaderboardData(pointsField, scope, scopeCountry, scopeCity)
+    users = res.users
+    breakdownByUser = res.breakdownByUser
+    statsByUser = res.statsByUser
+  }
 
   // ── Active tournaments for dropdown selector ─────────────────────────
   const admin = createAdminClient()
@@ -214,7 +330,9 @@ export default async function LeaderboardPage({
   let myRank = myRankInList >= 0 ? myRankInList + 1 : null
   const myPoints = (profile as any)?.[pointsField] ?? 0
 
-  if (myRankInList < 0) {
+  // Friends scope: self is always in the list, so we never fall into the
+  // global-count fallback path (which wouldn't know how to scope anyway).
+  if (myRankInList < 0 && scope !== 'friends') {
     let countQuery = supabase
       .from('users')
       .select('id', { count: 'exact', head: true })
@@ -318,6 +436,10 @@ export default async function LeaderboardPage({
             ) : (
               <ScopeBtnDisabled title="Set your city in profile to unlock">City</ScopeBtnDisabled>
             )}
+
+            <ScopeBtn href={scopeUrl('friends')} active={scopeActive('friends')}>
+              Friends
+            </ScopeBtn>
           </div>
 
           {/* Circuit pills */}
@@ -364,6 +486,42 @@ export default async function LeaderboardPage({
           </div>
         )}
 
+        {/* ── Friends empty-state nudge ─────────────────────────────────────── */}
+        {scope === 'friends' && friendCount === 0 && (
+          <div
+            className="mb-4 flex items-start gap-3 rounded-sm border px-4 py-3"
+            style={{ background: '#eef4ff', borderColor: '#B8D4F0' }}
+          >
+            <span style={{ fontSize: '1.15rem', flexShrink: 0, marginTop: '1px' }}>👥</span>
+            <div className="flex-1 min-w-0">
+              <p style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', color: 'var(--ink)', marginBottom: '2px' }}>
+                You haven&apos;t added any friends yet
+              </p>
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)', letterSpacing: '0.03em', lineHeight: 1.5 }}>
+                Invite friends to fill this board — you&apos;ll share a head-to-head record with every one of them.
+              </p>
+            </div>
+            <Link
+              href="/invite"
+              className="flex-shrink-0 self-center"
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.7rem',
+                padding: '6px 10px',
+                borderRadius: '2px',
+                background: 'var(--court)',
+                color: '#fff',
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                textDecoration: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Invite →
+            </Link>
+          </div>
+        )}
+
         {/* ── Table ─────────────────────────────────────────────────────────── */}
         <LeaderboardTable
           users={(users ?? []).map(u => ({
@@ -379,7 +537,9 @@ export default async function LeaderboardPage({
         />
 
         <p className="mt-4 text-center" style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-          Showing up to 50 players · Rolling 52-week window · Points update after each result
+          {scope === 'friends'
+            ? `You and ${friendCount} friend${friendCount === 1 ? '' : 's'} · Rolling 52-week window · Points update after each result`
+            : 'Showing up to 50 players · Rolling 52-week window · Points update after each result'}
         </p>
 
       </div>
