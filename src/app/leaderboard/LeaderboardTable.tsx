@@ -187,7 +187,7 @@ export default function LeaderboardTable({
 
               {/* Expanded per-tournament breakdown */}
               {isExpanded && breakdown.length > 0 && (
-                <div style={{ background: '#fafaf8', borderBottom: '1px solid var(--chalk-dim)', padding: '8px 16px 12px 32px' }}>
+                <div style={{ background: '#fafaf8', borderBottom: '1px solid var(--chalk-dim)' }}>
                   {breakdown.map((b, bi) => {
                     const tAcc = (b.totalPicks && b.totalPicks > 0 && b.correctPicks != null)
                       ? Math.round((b.correctPicks / b.totalPicks) * 100)
@@ -196,66 +196,91 @@ export default function LeaderboardTable({
                     return (
                       <div
                         key={bi}
-                        // flex row with wrap: tournament name + tour on the
-                        // left, points on the right. The accuracy/streak
-                        // caption wraps under the name on narrow screens,
-                        // sits inline on wider ones.
-                        className="flex items-start justify-between gap-3 py-1.5"
+                        className="grid grid-cols-12 px-5 py-1.5 items-center"
                       >
-                        <div className="flex flex-col min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Link
-                              href={`/leaderboard/tournaments/${b.tournament_id}`}
-                              onClick={e => e.stopPropagation()}
-                              style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--ink)', textDecoration: 'none' }}
-                              className="hover:underline"
-                            >
-                              {b.flag && <span style={{ marginRight: '4px' }}>{b.flag}</span>}
-                              {b.name}
-                            </Link>
-                            <span className="px-1.5 py-0.5 rounded-sm" style={{
-                              fontFamily: 'var(--font-mono)', fontSize: '0.55rem',
-                              background: b.tour === 'WTA' ? '#fbeaf0' : '#e6f1fb',
-                              color: b.tour === 'WTA' ? '#993556' : '#185FA5',
-                            }}>
-                              {b.tour}
+                        {/* Tournament name sits under PLAYER (col 2-5), indented via col-start */}
+                        <div className="col-span-12 sm:col-start-2 sm:col-span-4 flex items-center gap-2 flex-wrap min-w-0">
+                          <Link
+                            href={`/leaderboard/tournaments/${b.tournament_id}`}
+                            onClick={e => e.stopPropagation()}
+                            style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--ink)', textDecoration: 'none' }}
+                            className="hover:underline"
+                          >
+                            {b.flag && <span style={{ marginRight: '4px' }}>{b.flag}</span>}
+                            {b.name}
+                          </Link>
+                          <span className="px-1.5 py-0.5 rounded-sm" style={{
+                            fontFamily: 'var(--font-mono)', fontSize: '0.55rem',
+                            background: b.tour === 'WTA' ? '#fbeaf0' : '#e6f1fb',
+                            color: b.tour === 'WTA' ? '#993556' : '#185FA5',
+                          }}>
+                            {b.tour}
+                          </span>
+                        </div>
+                        {/* PLAYED: picks made */}
+                        <div className="col-span-1 hidden sm:flex items-center justify-end">
+                          {b.totalPicks != null && b.totalPicks > 0 ? (
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)' }}>
+                              {b.correctPicks}/{b.totalPicks}
                             </span>
-                          </div>
-                          {(tAcc != null || tStreak != null) && (
-                            <div style={{
-                              fontFamily: 'var(--font-mono)',
-                              fontSize: '0.62rem',
-                              color: 'var(--muted)',
-                              letterSpacing: '0.02em',
-                              marginTop: '2px',
-                              display: 'flex',
-                              flexWrap: 'wrap',
-                              gap: '6px',
-                            }}>
-                              {tAcc != null && (
-                                <span style={{ color: tAcc >= 50 ? '#166534' : 'var(--muted)' }}>
-                                  {b.correctPicks}/{b.totalPicks} · {tAcc}%
-                                </span>
-                              )}
-                              {tAcc != null && tStreak != null && <span>·</span>}
-                              {tStreak != null && (
-                                <span style={{ color: tStreak >= 1.5 ? '#166534' : 'var(--muted)' }}>
-                                  {tStreak.toFixed(1)}× streak
-                                </span>
-                              )}
-                            </div>
+                          ) : (
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)' }}>—</span>
                           )}
                         </div>
-                        <span style={{
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: '0.75rem',
-                          color: 'var(--court)',
-                          fontWeight: 500,
-                          flexShrink: 0,
-                          whiteSpace: 'nowrap',
-                        }}>
-                          +{formatPoints(b.points)}
-                        </span>
+                        {/* ACCURACY */}
+                        <div className="col-span-2 hidden sm:flex items-center justify-end">
+                          {tAcc != null ? (
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: tAcc >= 50 ? '#166534' : 'var(--muted)' }}>
+                              {tAcc}%
+                            </span>
+                          ) : (
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)' }}>—</span>
+                          )}
+                        </div>
+                        {/* STREAK POWER */}
+                        <div className="col-span-2 hidden sm:flex items-center justify-end">
+                          {tStreak != null ? (
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: tStreak >= 1.5 ? '#166534' : 'var(--muted)' }}>
+                              {tStreak.toFixed(1)}x
+                            </span>
+                          ) : (
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)' }}>—</span>
+                          )}
+                        </div>
+                        {/* POINTS */}
+                        <div className="col-span-12 sm:col-span-2 flex items-center justify-end">
+                          <span style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: '0.75rem',
+                            color: 'var(--court)',
+                            fontWeight: 500,
+                            whiteSpace: 'nowrap',
+                          }}>
+                            +{formatPoints(b.points)}
+                          </span>
+                        </div>
+                        {/* Mobile-only caption: shown below name when sm columns are hidden */}
+                        {(tAcc != null || tStreak != null) && (
+                          <div className="col-span-12 flex sm:hidden flex-wrap gap-1.5" style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: '0.62rem',
+                            color: 'var(--muted)',
+                            letterSpacing: '0.02em',
+                            marginTop: '2px',
+                          }}>
+                            {tAcc != null && (
+                              <span style={{ color: tAcc >= 50 ? '#166534' : 'var(--muted)' }}>
+                                {b.correctPicks}/{b.totalPicks} · {tAcc}%
+                              </span>
+                            )}
+                            {tAcc != null && tStreak != null && <span>·</span>}
+                            {tStreak != null && (
+                              <span style={{ color: tStreak >= 1.5 ? '#166534' : 'var(--muted)' }}>
+                                {tStreak.toFixed(1)}× streak
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )
                   })}
