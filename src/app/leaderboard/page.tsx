@@ -7,18 +7,19 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import LeaderboardTable from './LeaderboardTable'
 import LeaderboardSelector from './LeaderboardSelector'
+import ScopeSegmented from './ScopeSegmented'
 import { formatPoints } from '@/lib/utils/format'
 
 export const metadata: Metadata = { title: 'Leaderboard | Quiet Please' }
 
-type Scope   = 'worldwide' | 'country' | 'city' | 'friends'
+type Scope   = 'worldwide' | 'country' | 'city' | 'community'
 type Circuit = 'both' | 'atp' | 'wta'
 
-// User-specific friends leaderboard: fetches the accepted-friend graph for
+// User-specific community leaderboard: fetches the accepted-friend graph for
 // `userId`, includes self, then builds the same breakdown/stats as the global
 // view but limited to that set. Cache key includes userId so each user gets
 // their own slot — the friend set is small (typically ≤ 50) so this is cheap.
-function getFriendsLeaderboardData(userId: string, pointsField: string) {
+function getCommunityLeaderboardData(userId: string, pointsField: string) {
   return unstable_cache(
     async () => {
       const supabase = createAdminClient()
@@ -108,7 +109,7 @@ function getFriendsLeaderboardData(userId: string, pointsField: string) {
       const friendCount = friendIds.size - 1 // excluding self
       return { users: users ?? [], breakdownByUser, statsByUser, friendCount }
     },
-    ['leaderboard-friends', userId, pointsField],
+    ['leaderboard-community', userId, pointsField],
     { revalidate: 60 }
   )()
 }
@@ -295,18 +296,18 @@ export default async function LeaderboardPage({
   const scopeCity    = sp.city    ?? (scope === 'city'      ? profile?.city    ?? null : null)
 
   // ── Cached leaderboard data ────────────────────────────────────────────
-  // Friends scope: user-specific filter (self + accepted friends).
+  // Community scope: user-specific filter (self + accepted friends).
   // Worldwide/country/city: shared cache across all users in same view.
   let users: any[]
   let breakdownByUser: Record<string, any>
   let statsByUser: Record<string, any>
-  let friendCount = 0
-  if (scope === 'friends') {
-    const res = await getFriendsLeaderboardData(user.id, pointsField)
+  let communityCount = 0
+  if (scope === 'community') {
+    const res = await getCommunityLeaderboardData(user.id, pointsField)
     users = res.users
     breakdownByUser = res.breakdownByUser
     statsByUser = res.statsByUser
-    friendCount = res.friendCount
+    communityCount = res.friendCount
   } else {
     const res = await getLeaderboardData(pointsField, scope, scopeCountry, scopeCity)
     users = res.users
@@ -330,9 +331,9 @@ export default async function LeaderboardPage({
   let myRank = myRankInList >= 0 ? myRankInList + 1 : null
   const myPoints = (profile as any)?.[pointsField] ?? 0
 
-  // Friends scope: self is always in the list, so we never fall into the
+  // Community scope: self is always in the list, so we never fall into the
   // global-count fallback path (which wouldn't know how to scope anyway).
-  if (myRankInList < 0 && scope !== 'friends') {
+  if (myRankInList < 0 && scope !== 'community') {
     let countQuery = supabase
       .from('users')
       .select('id', { count: 'exact', head: true })
@@ -410,6 +411,7 @@ export default async function LeaderboardPage({
                 status: t.status,
               }))}
               currentTournamentId={null}
+              currentScope={scope}
             />
           </div>
         )}
@@ -417,30 +419,19 @@ export default async function LeaderboardPage({
         {/* ── Scope + Circuit controls ──────────────────────────────────────── */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
 
-          {/* Scope pills */}
-          <div className="flex items-center gap-1.5">
-            <ScopeBtn href={scopeUrl('worldwide')} active={scopeActive('worldwide')}>Worldwide</ScopeBtn>
-
-            {profile?.country ? (
-              <ScopeBtn href={scopeUrl('country')} active={scopeActive('country')}>
-                {profile.country}
-              </ScopeBtn>
-            ) : (
-              <ScopeBtnDisabled title="Set your country in profile to unlock">Country</ScopeBtnDisabled>
-            )}
-
-            {profile?.city ? (
-              <ScopeBtn href={scopeUrl('city')} active={scopeActive('city')}>
-                {profile.city}
-              </ScopeBtn>
-            ) : (
-              <ScopeBtnDisabled title="Set your city in profile to unlock">City</ScopeBtnDisabled>
-            )}
-
-            <ScopeBtn href={scopeUrl('friends')} active={scopeActive('friends')}>
-              Friends
-            </ScopeBtn>
-          </div>
+          {/* Scope — segmented control */}
+          <ScopeSegmented
+            items={[
+              { key: 'worldwide', label: 'Worldwide', href: scopeUrl('worldwide'), active: scopeActive('worldwide') },
+              profile?.country
+                ? { key: 'country', label: profile.country, href: scopeUrl('country'), active: scopeActive('country') }
+                : { key: 'country', label: 'Country',      active: false, disabledReason: 'Set your country in profile to unlock' },
+              profile?.city
+                ? { key: 'city',    label: profile.city,   href: scopeUrl('city'),    active: scopeActive('city') }
+                : { key: 'city',    label: 'City',         active: false, disabledReason: 'Set your city in profile to unlock' },
+              { key: 'community', label: 'My community',   href: scopeUrl('community'), active: scopeActive('community') },
+            ]}
+          />
 
           {/* Circuit pills */}
           <div className="flex items-center gap-1.5">
@@ -486,8 +477,8 @@ export default async function LeaderboardPage({
           </div>
         )}
 
-        {/* ── Friends empty-state nudge ─────────────────────────────────────── */}
-        {scope === 'friends' && friendCount === 0 && (
+        {/* ── Community empty-state nudge ───────────────────────────────────── */}
+        {scope === 'community' && communityCount === 0 && (
           <div
             className="mb-4 flex items-start gap-3 rounded-sm border px-4 py-3"
             style={{ background: '#eef4ff', borderColor: '#B8D4F0' }}
@@ -495,7 +486,7 @@ export default async function LeaderboardPage({
             <span style={{ fontSize: '1.15rem', flexShrink: 0, marginTop: '1px' }}>👥</span>
             <div className="flex-1 min-w-0">
               <p style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', color: 'var(--ink)', marginBottom: '2px' }}>
-                You haven&apos;t added any friends yet
+                Your community is just you for now
               </p>
               <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)', letterSpacing: '0.03em', lineHeight: 1.5 }}>
                 Invite friends to fill this board — you&apos;ll share a head-to-head record with every one of them.
@@ -537,8 +528,8 @@ export default async function LeaderboardPage({
         />
 
         <p className="mt-4 text-center" style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-          {scope === 'friends'
-            ? `You and ${friendCount} friend${friendCount === 1 ? '' : 's'} · Rolling 52-week window · Points update after each result`
+          {scope === 'community'
+            ? `You and ${communityCount} friend${communityCount === 1 ? '' : 's'} · Rolling 52-week window · Points update after each result`
             : 'Showing up to 50 players · Rolling 52-week window · Points update after each result'}
         </p>
 
@@ -554,45 +545,6 @@ const hStyle: React.CSSProperties = {
   fontSize: '0.7rem',
   color: 'var(--muted)',
   letterSpacing: '0.05em',
-}
-
-function ScopeBtn({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="px-3 py-1.5 text-xs rounded-sm border transition-colors whitespace-nowrap"
-      style={{
-        fontFamily: 'var(--font-mono)',
-        letterSpacing: '0.03em',
-        borderColor: active ? 'var(--court)' : 'var(--chalk-dim)',
-        color: active ? 'var(--court)' : 'var(--muted)',
-        background: active ? '#eaf3de' : 'white',
-        fontWeight: active ? 600 : 400,
-        textDecoration: 'none',
-      }}
-    >
-      {children}
-    </Link>
-  )
-}
-
-function ScopeBtnDisabled({ children, title }: { children: React.ReactNode; title: string }) {
-  return (
-    <span
-      title={title}
-      className="px-3 py-1.5 text-xs rounded-sm border"
-      style={{
-        fontFamily: 'var(--font-mono)',
-        letterSpacing: '0.03em',
-        borderColor: 'var(--chalk-dim)',
-        color: 'var(--chalk-dim)',
-        background: 'white',
-        cursor: 'not-allowed',
-      }}
-    >
-      {children}
-    </span>
-  )
 }
 
 function CircuitBtn({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
