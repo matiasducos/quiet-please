@@ -16,6 +16,149 @@ export const metadata: Metadata = { title: 'Leaderboard | Quiet Please' }
 type Scope   = 'worldwide' | 'country' | 'city' | 'community'
 type Circuit = 'both' | 'atp' | 'wta'
 
+type BreakdownEntry = {
+  tournament_id: string
+  name: string
+  tour: string
+  points: number
+  flag: string | null
+  totalPicks?: number
+  correctPicks?: number
+  streakPower?: number
+}
+type UserStats = {
+  tournaments: number
+  totalPicks: number
+  correctPicks: number
+  streakPower: number
+}
+
+/**
+ * Build per-user aggregates + per-(user, tournament) stats for the
+ * expanded breakdown. Shared between the global and community fetches so
+ * the math stays identical — the only difference between them is which
+ * users + predictions feed in.
+ */
+async function buildStats(
+  supabase: ReturnType<typeof createAdminClient>,
+  userIds: string[],
+  userPredictions: any[],
+): Promise<{
+  breakdownByUser: Record<string, BreakdownEntry[]>
+  statsByUser: Record<string, UserStats>
+}> {
+  // Seed the breakdown list from scoring predictions (points_earned > 0).
+  // Keep an indexed pointer so we can enrich each entry with per-tournament
+  // stats once we've scanned predictions + point_ledger.
+  const breakdownByUser: Record<string, BreakdownEntry[]> = {}
+  const breakdownIndex: Record<string, Record<string, BreakdownEntry>> = {}
+  for (const p of userPredictions) {
+    const t = p.tournaments as any
+    if (!t?.name) continue
+    const entry: BreakdownEntry = {
+      tournament_id: p.tournament_id,
+      name: t.location ?? t.name,
+      tour: t.tour ?? '',
+      points: p.points_earned ?? 0,
+      flag: t.flag_emoji ?? null,
+    }
+    if (!breakdownByUser[p.user_id]) breakdownByUser[p.user_id] = []
+    breakdownByUser[p.user_id].push(entry)
+    if (!breakdownIndex[p.user_id]) breakdownIndex[p.user_id] = {}
+    breakdownIndex[p.user_id][p.tournament_id] = entry
+  }
+
+  const statsByUser: Record<string, UserStats> = {}
+  // Per-(user, tournament) counters. Kept separate from statsByUser so the
+  // aggregate fields stay comparable to what the table header already shows.
+  const pickCountByUT: Record<string, Record<string, number>> = {}
+  const correctByUT:   Record<string, Record<string, number>> = {}
+  const streakByUT:    Record<string, Record<string, { totalPts: number; basePts: number }>> = {}
+
+  if (userIds.length === 0) return { breakdownByUser, statsByUser }
+
+  // Every prediction (including zero-pointers) so the accuracy denominator
+  // counts ALL picks the user made, not just the ones that won points.
+  const { data: allPreds } = await supabase
+    .from('predictions')
+    .select('id, user_id, tournament_id, picks')
+    .in('user_id', userIds)
+    .is('challenge_id', null)
+
+  for (const pred of allPreds ?? []) {
+    if (!statsByUser[pred.user_id]) {
+      statsByUser[pred.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0, streakPower: 1 }
+    }
+    statsByUser[pred.user_id].tournaments++
+
+    const picks = pred.picks as Record<string, string> | null
+    const count = picks ? Object.keys(picks).length : 0
+    statsByUser[pred.user_id].totalPicks += count
+
+    if (!pickCountByUT[pred.user_id]) pickCountByUT[pred.user_id] = {}
+    pickCountByUT[pred.user_id][pred.tournament_id] =
+      (pickCountByUT[pred.user_id][pred.tournament_id] ?? 0) + count
+  }
+
+  // Ledger rows → correct picks + streak power, both aggregate and per-
+  // tournament. tournament_id is included in the select so we can bucket
+  // per pair without a second join.
+  const globalPredIds = (allPreds ?? []).map((p: any) => p.id).filter(Boolean)
+  const streakAggregate: Record<string, { totalPts: number; basePts: number }> = {}
+
+  for (let i = 0; i < globalPredIds.length; i += 200) {
+    const chunk = globalPredIds.slice(i, i + 200)
+    const { data: ledgerData } = await supabase
+      .from('point_ledger')
+      .select('user_id, tournament_id, points, streak_multiplier')
+      .in('prediction_id', chunk)
+
+    for (const row of ledgerData ?? []) {
+      if (!statsByUser[row.user_id]) {
+        statsByUser[row.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0, streakPower: 1 }
+      }
+      const pts = row.points ?? 0
+      if (pts <= 0) continue
+
+      statsByUser[row.user_id].correctPicks++
+      const mult = row.streak_multiplier ?? 1
+      const base = pts / mult
+
+      if (!streakAggregate[row.user_id]) streakAggregate[row.user_id] = { totalPts: 0, basePts: 0 }
+      streakAggregate[row.user_id].totalPts += pts
+      streakAggregate[row.user_id].basePts += base
+
+      if (!correctByUT[row.user_id]) correctByUT[row.user_id] = {}
+      correctByUT[row.user_id][row.tournament_id] =
+        (correctByUT[row.user_id][row.tournament_id] ?? 0) + 1
+
+      if (!streakByUT[row.user_id]) streakByUT[row.user_id] = {}
+      const ut = streakByUT[row.user_id][row.tournament_id] ?? { totalPts: 0, basePts: 0 }
+      ut.totalPts += pts
+      ut.basePts  += base
+      streakByUT[row.user_id][row.tournament_id] = ut
+    }
+  }
+
+  for (const [uid, acc] of Object.entries(streakAggregate)) {
+    if (acc.basePts > 0 && statsByUser[uid]) {
+      statsByUser[uid].streakPower = acc.totalPts / acc.basePts
+    }
+  }
+
+  // Enrich each breakdown row with its per-tournament stats.
+  for (const [uid, entries] of Object.entries(breakdownByUser)) {
+    for (const entry of entries) {
+      entry.totalPicks   = pickCountByUT[uid]?.[entry.tournament_id] ?? 0
+      entry.correctPicks = correctByUT[uid]?.[entry.tournament_id] ?? 0
+      const ut = streakByUT[uid]?.[entry.tournament_id]
+      entry.streakPower  = ut && ut.basePts > 0 ? ut.totalPts / ut.basePts : 1
+    }
+  }
+
+  return { breakdownByUser, statsByUser }
+}
+
 // User-specific community leaderboard: fetches the accepted-friend graph for
 // `userId`, includes self, then builds the same breakdown/stats as the global
 // view but limited to that set. Cache key includes userId so each user gets
@@ -46,7 +189,8 @@ function getCommunityLeaderboardData(userId: string, pointsField: string) {
         .order(pointsField, { ascending: false })
         .limit(50)
 
-      // 3. Build breakdown + stats — same logic as the global path.
+      // 3. Build breakdown + stats — shared helper handles the per-user and
+      //    per-(user, tournament) math.
       const userIds = (users ?? []).map(u => u.id)
       const { data: userPredictions } = userIds.length > 0
         ? await supabase.from('predictions')
@@ -55,57 +199,7 @@ function getCommunityLeaderboardData(userId: string, pointsField: string) {
             .gt('points_earned', 0).order('points_earned', { ascending: false }).limit(500)
         : { data: [] as any[] }
 
-      const breakdownByUser: Record<string, Array<{ tournament_id: string; name: string; tour: string; points: number; flag: string | null }>> = {}
-      for (const p of userPredictions ?? []) {
-        const t = p.tournaments as any
-        if (!t?.name) continue
-        if (!breakdownByUser[p.user_id]) breakdownByUser[p.user_id] = []
-        breakdownByUser[p.user_id].push({ tournament_id: p.tournament_id, name: t.location ?? t.name, tour: t.tour ?? '', points: p.points_earned ?? 0, flag: t.flag_emoji ?? null })
-      }
-
-      const statsByUser: Record<string, { tournaments: number; totalPicks: number; correctPicks: number; streakPower: number }> = {}
-      if (userIds.length > 0) {
-        const { data: allPreds } = await supabase
-          .from('predictions')
-          .select('id, user_id, tournament_id, picks')
-          .in('user_id', userIds)
-          .is('challenge_id', null)
-
-        for (const pred of allPreds ?? []) {
-          if (!statsByUser[pred.user_id]) statsByUser[pred.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0, streakPower: 1 }
-          statsByUser[pred.user_id].tournaments++
-          const picks = pred.picks as Record<string, string> | null
-          if (picks) statsByUser[pred.user_id].totalPicks += Object.keys(picks).length
-        }
-
-        const globalPredIds = (allPreds ?? []).map((p: any) => p.id).filter(Boolean)
-        const streakAccum: Record<string, { totalPts: number; basePts: number }> = {}
-        if (globalPredIds.length > 0) {
-          for (let i = 0; i < globalPredIds.length; i += 200) {
-            const chunk = globalPredIds.slice(i, i + 200)
-            const { data: ledgerData } = await supabase
-              .from('point_ledger')
-              .select('user_id, points, streak_multiplier')
-              .in('prediction_id', chunk)
-            for (const row of ledgerData ?? []) {
-              if (!statsByUser[row.user_id]) statsByUser[row.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0, streakPower: 1 }
-              const pts = row.points ?? 0
-              if (pts > 0) {
-                statsByUser[row.user_id].correctPicks++
-                const mult = row.streak_multiplier ?? 1
-                if (!streakAccum[row.user_id]) streakAccum[row.user_id] = { totalPts: 0, basePts: 0 }
-                streakAccum[row.user_id].totalPts += pts
-                streakAccum[row.user_id].basePts += pts / mult
-              }
-            }
-          }
-          for (const [uid, acc] of Object.entries(streakAccum)) {
-            if (acc.basePts > 0 && statsByUser[uid]) {
-              statsByUser[uid].streakPower = acc.totalPts / acc.basePts
-            }
-          }
-        }
-      }
+      const { breakdownByUser, statsByUser } = await buildStats(supabase, userIds, userPredictions ?? [])
 
       const friendCount = friendIds.size - 1 // excluding self
       return { users: users ?? [], breakdownByUser, statsByUser, friendCount }
@@ -140,64 +234,7 @@ function getLeaderboardData(pointsField: string, scope: Scope, scopeCountry: str
             .gt('points_earned', 0).order('points_earned', { ascending: false }).limit(500)
         : { data: [] as any[] }
 
-      const breakdownByUser: Record<string, Array<{ tournament_id: string; name: string; tour: string; points: number; flag: string | null }>> = {}
-      for (const p of userPredictions ?? []) {
-        const t = p.tournaments as any
-        if (!t?.name) continue
-        if (!breakdownByUser[p.user_id]) breakdownByUser[p.user_id] = []
-        breakdownByUser[p.user_id].push({ tournament_id: p.tournament_id, name: t.location ?? t.name, tour: t.tour ?? '', points: p.points_earned ?? 0, flag: t.flag_emoji ?? null })
-      }
-
-      // Accuracy stats per user: tournament count + correct picks / total picks made
-      const statsByUser: Record<string, { tournaments: number; totalPicks: number; correctPicks: number; streakPower: number }> = {}
-      if (userIds.length > 0) {
-        // Fetch ALL predictions (including 0-point ones) to count total picks from JSONB
-        const { data: allPreds } = await supabase
-          .from('predictions')
-          .select('id, user_id, tournament_id, picks')
-          .in('user_id', userIds)
-          .is('challenge_id', null)
-
-        // Count tournaments and total picks per user
-        for (const pred of allPreds ?? []) {
-          if (!statsByUser[pred.user_id]) statsByUser[pred.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0, streakPower: 1 }
-          statsByUser[pred.user_id].tournaments++
-          const picks = pred.picks as Record<string, string> | null
-          if (picks) statsByUser[pred.user_id].totalPicks += Object.keys(picks).length
-        }
-
-        // Correct picks + streak power from point_ledger for GLOBAL predictions only
-        const globalPredIds = (allPreds ?? []).map((p: any) => p.id).filter(Boolean)
-        // Accumulators for streak power: sum(points) / sum(points / streak_multiplier)
-        const streakAccum: Record<string, { totalPts: number; basePts: number }> = {}
-        if (globalPredIds.length > 0) {
-          // Batch in chunks of 200 to stay within PostgREST limits
-          for (let i = 0; i < globalPredIds.length; i += 200) {
-            const chunk = globalPredIds.slice(i, i + 200)
-            const { data: ledgerData } = await supabase
-              .from('point_ledger')
-              .select('user_id, points, streak_multiplier')
-              .in('prediction_id', chunk)
-            for (const row of ledgerData ?? []) {
-              if (!statsByUser[row.user_id]) statsByUser[row.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0, streakPower: 1 }
-              const pts = row.points ?? 0
-              if (pts > 0) {
-                statsByUser[row.user_id].correctPicks++
-                const mult = row.streak_multiplier ?? 1
-                if (!streakAccum[row.user_id]) streakAccum[row.user_id] = { totalPts: 0, basePts: 0 }
-                streakAccum[row.user_id].totalPts += pts
-                streakAccum[row.user_id].basePts += pts / mult
-              }
-            }
-          }
-          // Compute streak power per user
-          for (const [userId, acc] of Object.entries(streakAccum)) {
-            if (acc.basePts > 0 && statsByUser[userId]) {
-              statsByUser[userId].streakPower = acc.totalPts / acc.basePts
-            }
-          }
-        }
-      }
+      const { breakdownByUser, statsByUser } = await buildStats(supabase, userIds, userPredictions ?? [])
 
       return { users: users ?? [], breakdownByUser, statsByUser }
     },
