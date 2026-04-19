@@ -35,7 +35,11 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
   if (!friendProfile) redirect('/messages')
 
   return (
-    <main className="min-h-screen flex flex-col" style={{ background: 'var(--chalk)' }}>
+    // h-[100dvh] pins the layout to the dynamic viewport height so the
+    // messages container becomes the only scrollable surface. Prevents the
+    // chat header from sliding off-screen on mobile when the browser chrome
+    // resizes or the page tries to grow past the viewport.
+    <main className="flex flex-col" style={{ height: '100dvh', background: 'var(--chalk)' }}>
       <Nav deletionRequestedAt={profile?.deletion_requested_at} username={profile?.username} points={profile?.ranking_points ?? 0} userId={user.id} />
 
       <ChatView
