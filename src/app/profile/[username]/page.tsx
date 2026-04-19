@@ -18,6 +18,7 @@ import AchievementsTab from './AchievementsTab'
 import Footer from '@/components/Footer'
 import DeleteAccountSection from '@/app/profile/DeleteAccountSection'
 import RecentFormDot from './RecentFormDot'
+import { ACHIEVEMENTS } from '@/lib/achievements/definitions'
 
 // Internal ledger round → "form" letter + color class + human meaning. "F" in
 // the ledger is the tournament winner (cron awards WINNER_POINTS on F), so a
@@ -597,9 +598,15 @@ export default async function ProfilePage({
               <div className="flex gap-2 flex-wrap">
                 {(preview ?? []).map((a: any, i: number) => {
                   const tier = ACHIEVEMENT_TIERS[i] ?? 'bronze'
-                  const icon = (a.meta?.icon as string) ?? '🏆'
-                  const name = (a.meta?.title as string) ?? a.achievement_key
-                  const desc = (a.meta?.description as string) ?? ''
+                  // Resolve name/emoji/description from the achievement catalog
+                  // (single source of truth). The `meta` JSONB is only set for
+                  // tournament-specific trophies — for generic achievements
+                  // like friend_circle/social_butterfly it's empty, so we'd
+                  // otherwise fall back to the raw snake_case key.
+                  const def = ACHIEVEMENTS[a.achievement_key]
+                  const icon = def?.emoji ?? (a.meta?.icon as string) ?? '🏆'
+                  const name = def?.name  ?? (a.meta?.title as string) ?? a.achievement_key
+                  const desc = def?.description ?? (a.meta?.description as string) ?? ''
                   return (
                     <div key={`${a.achievement_key}-${i}`} className="bg-white border rounded-sm flex items-center gap-3" style={{ borderColor: 'var(--chalk-dim)', padding: '12px 14px', minWidth: '180px', flex: '1 1 220px' }}>
                       <div
