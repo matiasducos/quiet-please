@@ -2,11 +2,39 @@ import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { unstable_cache } from 'next/cache'
 import Nav from '@/components/Nav'
 import Footer from '@/components/Footer'
+import HowItWorksDemo from '@/components/HowItWorksDemo'
+import TournamentCard from '@/components/TournamentCard'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
 import { getReferralStats } from '@/lib/referrals'
+import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import InviteShare from './InviteShare'
+
+// Cached "live right now" list — shared across every authed invite view.
+// 5-min TTL matches the homepage pattern.
+const getLiveTournaments = unstable_cache(
+  async () => {
+    const admin = createAdminClient()
+    const { data: live } = await admin
+      .from('tournaments')
+      .select('id, name, location, flag_emoji, category, tour, surface, starts_at, ends_at, status')
+      .eq('status', 'in_progress')
+      .order('starts_at', { ascending: true })
+      .limit(4)
+    const rows = live ?? []
+    const engagement = await getTournamentEngagement(rows.map(t => t.id))
+    return rows.map(t => ({
+      ...t,
+      prediction_count: engagement[t.id]?.predictions ?? 0,
+      challenge_count:  engagement[t.id]?.challenges  ?? 0,
+    }))
+  },
+  ['invite-live-tournaments'],
+  { revalidate: 300 },
+)
 
 export const metadata: Metadata = { title: 'Invite a friend | Quiet Please' }
 
@@ -21,7 +49,10 @@ export default async function InvitePage() {
   const proto = host.includes('localhost') || host.startsWith('127.') ? 'http' : 'https'
   const inviteUrl = `${proto}://${host}/invite/${profile.username}`
 
-  const stats = await getReferralStats(user.id)
+  const [stats, liveTournaments] = await Promise.all([
+    getReferralStats(user.id),
+    getLiveTournaments(),
+  ])
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
@@ -33,21 +64,6 @@ export default async function InvitePage() {
       />
 
       <div className="max-w-2xl mx-auto px-4 md:px-8 py-10 md:py-14">
-
-        <Link
-          href={`/profile/${profile.username}`}
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.75rem',
-            color: 'var(--muted)',
-            letterSpacing: '0.05em',
-            textDecoration: 'none',
-            display: 'inline-block',
-            marginBottom: '16px',
-          }}
-        >
-          ← Back to profile
-        </Link>
 
         {/* ── Header ─────────────────────────────────────────────────── */}
         <div className="mb-8">
@@ -127,13 +143,66 @@ export default async function InvitePage() {
           }}>
             Why invite?
           </p>
-          <p style={{ fontSize: '0.9rem', color: 'var(--ink)', lineHeight: 1.6, marginBottom: '0.5rem' }}>
+          <p style={{ fontSize: '0.9rem', color: 'var(--ink)', lineHeight: 1.6 }}>
             You&apos;ll share a head-to-head record on every challenge, see when friends lock their picks, and can start a private league together in seconds.
           </p>
-          <p style={{ fontSize: '0.85rem', color: 'var(--muted)', lineHeight: 1.6 }}>
-            Predictions are always free. Your friend doesn&apos;t need a credit card or app install — just the link.
-          </p>
         </div>
+
+        {/* ── How it works ──────────────────────────────────────────── */}
+        <section className="mt-12 mb-12">
+          <div className="text-center mb-6">
+            <div style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.7rem',
+              color: 'var(--court)',
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              marginBottom: '12px',
+            }}>
+              How it works
+            </div>
+            <h2 style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 'clamp(1.5rem, 4vw, 2rem)',
+              letterSpacing: '-0.02em',
+              lineHeight: 1.15,
+            }}>
+              Four steps to your first prediction
+            </h2>
+          </div>
+          <HowItWorksDemo />
+        </section>
+
+        {/* ── Live right now ────────────────────────────────────────── */}
+        {liveTournaments.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span
+                  className="inline-block w-2 h-2 rounded-full"
+                  style={{ background: '#c84b31', boxShadow: '0 0 0 3px rgba(200,75,49,0.2)', flexShrink: 0 }}
+                />
+                <span style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.7rem',
+                  color: 'var(--muted)',
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                }}>
+                  Live right now
+                </span>
+              </div>
+              <Link href="/tournaments" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>
+                See all tournaments →
+              </Link>
+            </div>
+            <div className={`grid gap-3 ${liveTournaments.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+              {liveTournaments.map(t => (
+                <TournamentCard key={t.id} t={t} />
+              ))}
+            </div>
+          </section>
+        )}
 
       </div>
       <Footer />
