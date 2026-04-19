@@ -43,6 +43,7 @@ const CITY_MAP: Record<string, string[]> = {
   'Netherlands':    ['Amsterdam', 'Eindhoven', 'Groningen', 'Rotterdam', 'The Hague', 'Tilburg', 'Utrecht'],
   'New Zealand':    ['Auckland', 'Christchurch', 'Dunedin', 'Hamilton', 'Tauranga', 'Wellington'],
   'Norway':         ['Bergen', 'Oslo', 'Stavanger', 'Tromsø', 'Trondheim'],
+  'Philippines':    ['Cebu', 'Davao', 'Makati', 'Manila', 'Pasig', 'Quezon City', 'Taguig'],
   'Poland':         ['Gdańsk', 'Kraków', 'Łódź', 'Poznań', 'Szczecin', 'Warsaw', 'Wrocław'],
   'Portugal':       ['Aveiro', 'Braga', 'Coimbra', 'Funchal', 'Lisbon', 'Porto', 'Setúbal'],
   'Romania':        ['Brașov', 'Bucharest', 'Cluj-Napoca', 'Constanța', 'Iași', 'Timișoara'],
