@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 
 export interface ScopeItem {
   key: string
@@ -6,6 +7,8 @@ export interface ScopeItem {
   href?: string              // omit for disabled items
   active: boolean
   disabledReason?: string    // tooltip when no href
+  /** Optional leading icon — emoji string or <CountryFlag/> etc. */
+  icon?: ReactNode
 }
 
 /**
@@ -36,7 +39,27 @@ export default function ScopeSegmented({ items }: { items: ScopeItem[] }) {
             borderRight: isLast ? 'none' : '1px solid var(--chalk-dim)',
             transition: 'background 0.12s ease, color 0.12s ease',
             userSelect: 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            lineHeight: 1,
           }
+
+          // Icon gets a tiny dim when the cell is disabled so it doesn't
+          // visually dominate a muted label.
+          const iconWrap = (icon: ReactNode, dim: boolean) => (
+            <span
+              aria-hidden
+              style={{
+                fontSize: '0.95em',
+                display: 'inline-flex',
+                alignItems: 'center',
+                opacity: dim ? 0.45 : 1,
+              }}
+            >
+              {icon}
+            </span>
+          )
 
           if (item.active) {
             return (
@@ -49,6 +72,7 @@ export default function ScopeSegmented({ items }: { items: ScopeItem[] }) {
                   fontWeight: 600,
                 }}
               >
+                {item.icon && iconWrap(item.icon, false)}
                 {item.label}
               </span>
             )
@@ -66,6 +90,7 @@ export default function ScopeSegmented({ items }: { items: ScopeItem[] }) {
                   cursor: 'not-allowed',
                 }}
               >
+                {item.icon && iconWrap(item.icon, true)}
                 {item.label}
               </span>
             )
@@ -81,6 +106,7 @@ export default function ScopeSegmented({ items }: { items: ScopeItem[] }) {
                 background: 'transparent',
               }}
             >
+              {item.icon && iconWrap(item.icon, false)}
               {item.label}
             </Link>
           )
