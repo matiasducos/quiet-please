@@ -8,6 +8,7 @@ import Nav from '@/components/Nav'
 import LeaderboardTable from './LeaderboardTable'
 import LeaderboardSelector from './LeaderboardSelector'
 import ScopeSegmented from './ScopeSegmented'
+import CountryFlag from '@/components/CountryFlag'
 import { formatPoints } from '@/lib/utils/format'
 
 export const metadata: Metadata = { title: 'Leaderboard | Quiet Please' }
@@ -422,14 +423,14 @@ export default async function LeaderboardPage({
           {/* Scope — segmented control */}
           <ScopeSegmented
             items={[
-              { key: 'worldwide', label: 'Worldwide', href: scopeUrl('worldwide'), active: scopeActive('worldwide') },
+              { key: 'worldwide', label: 'Worldwide', href: scopeUrl('worldwide'), active: scopeActive('worldwide'), icon: '🌍' },
               profile?.country
-                ? { key: 'country', label: profile.country, href: scopeUrl('country'), active: scopeActive('country') }
-                : { key: 'country', label: 'Country',      active: false, disabledReason: 'Set your country in profile to unlock' },
+                ? { key: 'country', label: profile.country, href: scopeUrl('country'), active: scopeActive('country'), icon: <CountryFlag country={profile.country} size={14} /> }
+                : { key: 'country', label: 'Country',      active: false, disabledReason: 'Set your country in profile to unlock', icon: '🏳️' },
               profile?.city
-                ? { key: 'city',    label: profile.city,   href: scopeUrl('city'),    active: scopeActive('city') }
-                : { key: 'city',    label: 'City',         active: false, disabledReason: 'Set your city in profile to unlock' },
-              { key: 'community', label: 'My community',   href: scopeUrl('community'), active: scopeActive('community') },
+                ? { key: 'city',    label: profile.city,   href: scopeUrl('city'),    active: scopeActive('city'),    icon: '🏙️' }
+                : { key: 'city',    label: 'City',         active: false, disabledReason: 'Set your city in profile to unlock', icon: '🏙️' },
+              { key: 'community', label: 'My community',   href: scopeUrl('community'), active: scopeActive('community'), icon: '👥' },
             ]}
           />
 
