@@ -14,18 +14,25 @@ interface Tournament {
 export default function LeaderboardSelector({
   tournaments,
   currentTournamentId,
+  currentScope,
 }: {
   tournaments: Tournament[]
   currentTournamentId: string | null
+  /** Preserved when switching tournaments so users stay on "My community" etc. */
+  currentScope?: 'worldwide' | 'country' | 'city' | 'community'
 }) {
   const router = useRouter()
 
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const value = e.target.value
+    // Preserve scope as a query param across tournament switches. Country/city
+    // args are intentionally dropped — the destination page will re-resolve
+    // them from the viewer's profile.
+    const qs = currentScope && currentScope !== 'worldwide' ? `?scope=${currentScope}` : ''
     if (value === 'global') {
-      router.push('/leaderboard')
+      router.push(`/leaderboard${qs}`)
     } else {
-      router.push(`/leaderboard/tournaments/${value}`)
+      router.push(`/leaderboard/tournaments/${value}${qs}`)
     }
   }
 
