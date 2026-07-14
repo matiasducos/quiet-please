@@ -38,17 +38,22 @@ export async function withCronLogging(
   const STALE_TIMEOUT_MS = 10 * 60 * 1000
   const staleThreshold = new Date(Date.now() - STALE_TIMEOUT_MS).toISOString()
 
-  const { data: alreadyRunning } = await supabase
+  // NOTE: the column is started_at, not created_at. This query previously
+  // selected created_at and its error was swallowed (no error destructuring),
+  // so the guard silently never ran — overlapping runs were never skipped and
+  // stale 'running' rows were never marked as errors.
+  const { data: alreadyRunning, error: guardError } = await supabase
     .from('cron_runs')
-    .select('id, created_at')
+    .select('id, started_at')
     .eq('job_name', jobName)
     .eq('status', 'running')
-    .order('created_at', { ascending: false })
+    .order('started_at', { ascending: false })
     .limit(1)
+  if (guardError) console.error(`[${jobName}] concurrency guard query failed:`, guardError.message)
 
   if (alreadyRunning && alreadyRunning.length > 0) {
     const staleRun = alreadyRunning[0]
-    if (staleRun.created_at > staleThreshold) {
+    if (staleRun.started_at > staleThreshold) {
       // A recent run is still active — skip this invocation
       console.log(`[${jobName}] Skipped: another instance is still running (id=${staleRun.id})`)
       return NextResponse.json(

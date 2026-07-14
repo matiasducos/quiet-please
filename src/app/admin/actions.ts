@@ -866,7 +866,7 @@ export async function rerunTournamentPoints(
     .select('id')
     .eq('job_name', 'award-points')
     .eq('status', 'running')
-    .gte('created_at', staleThreshold)
+    .gte('started_at', staleThreshold)
     .limit(1)
   if (runningErr) return { ok: false, error: runningErr.message }
   if (runningRows && runningRows.length > 0) {
