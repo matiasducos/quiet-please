@@ -819,6 +819,190 @@ export async function getScoringStatus(): Promise<ScoringTournament[]> {
   })
 }
 
+// ── Re-run tournament points ──────────────────────────────────────────────────
+// Erases every awarded point for one tournament, then re-triggers the
+// award-points cron so the (now unscored) results are scored from scratch.
+// Used to recover from a mis-entered winner or stale qualifier picks.
+//
+// Why this works: the cron is convergent — it scores any (match_result,
+// prediction) pair missing from point_ledger and recomputes points_earned as
+// SUM(ledger). Deleting the tournament's ledger rows makes all its pairs
+// unscored again; one cron run rebuilds them from current results/picks.
+//
+// Erase phase:
+//   1. point_ledger rows for the tournament
+//   2. predictions.points_earned → 0 (global + challenge predictions)
+//   3. stale points_awarded notifications (cron re-inserts corrected ones)
+//   4. tournament-scoped user_achievements (cron re-awards, incl. trophies)
+//   5. finalized challenges → back to scoreable status (accepted / active)
+//   6. targeted ranking + league recalcs for every previously-affected user.
+//      The cron only recalcs users who GAIN points this run — a user whose
+//      points drop to zero after a winner correction would otherwise keep
+//      stale ranking_points / league totals.
+
+export interface RerunSummary {
+  ledgerRowsDeleted: number
+  predictionsReset: number
+  usersRecalculated: number
+  challengesReopened: number
+}
+
+export async function rerunTournamentPoints(
+  tournamentId: string,
+): Promise<{ ok: boolean; error?: string; erased?: RerunSummary; rerun?: unknown }> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  // Refuse while an award-points run is in flight — erasing mid-run could let
+  // the cron insert ledger rows computed from pre-erase state. Same 10-minute
+  // staleness window as the withCronLogging guard.
+  const staleThreshold = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+  const { data: runningRows, error: runningErr } = await admin
+    .from('cron_runs')
+    .select('id')
+    .eq('job_name', 'award-points')
+    .eq('status', 'running')
+    .gte('created_at', staleThreshold)
+    .limit(1)
+  if (runningErr) return { ok: false, error: runningErr.message }
+  if (runningRows && runningRows.length > 0) {
+    return { ok: false, error: 'award-points is currently running — try again in a minute.' }
+  }
+
+  // ── 1. Snapshot affected users BEFORE the wipe (paginated) ────────────────
+  // Only global predictions (challenge_id IS NULL) drive rankings/leagues.
+  const affectedUsers = new Set<string>()
+  {
+    const PAGE = 1000
+    let from = 0
+    while (true) {
+      const { data: page, error } = await admin
+        .from('predictions')
+        .select('user_id, challenge_id')
+        .eq('tournament_id', tournamentId)
+        .range(from, from + PAGE - 1)
+      if (error) return { ok: false, error: `predictions read: ${error.message}` }
+      if (!page?.length) break
+      for (const p of page) {
+        if (!p.challenge_id) affectedUsers.add(p.user_id)
+      }
+      if (page.length < PAGE) break
+      from += PAGE
+    }
+  }
+
+  // ── 2. Delete the ledger — every (result, prediction) pair becomes unscored ──
+  const { count: ledgerCount, error: countErr } = await admin
+    .from('point_ledger')
+    .select('id', { count: 'exact', head: true })
+    .eq('tournament_id', tournamentId)
+  if (countErr) return { ok: false, error: `ledger count: ${countErr.message}` }
+
+  const { error: ledgerErr } = await admin
+    .from('point_ledger')
+    .delete()
+    .eq('tournament_id', tournamentId)
+  if (ledgerErr) return { ok: false, error: `ledger delete: ${ledgerErr.message}` }
+
+  // ── 3. Reset prediction totals ─────────────────────────────────────────────
+  const { data: resetRows, error: resetErr } = await admin
+    .from('predictions')
+    .update({ points_earned: 0 })
+    .eq('tournament_id', tournamentId)
+    .gt('points_earned', 0)
+    .select('id')
+  if (resetErr) return { ok: false, error: `predictions reset: ${resetErr.message}` }
+
+  // ── 4. Remove stale points_awarded notifications (cron re-inserts) ────────
+  const { error: notifErr } = await admin
+    .from('notifications')
+    .delete()
+    .eq('tournament_id', tournamentId)
+    .eq('type', 'points_awarded')
+  if (notifErr) return { ok: false, error: `notifications delete: ${notifErr.message}` }
+
+  // ── 5. Remove tournament-scoped achievements (trophies) — cron re-awards ──
+  // Global milestones (tournament_id IS NULL) are one-way and stay untouched.
+  const { error: achErr } = await admin
+    .from('user_achievements')
+    .delete()
+    .eq('tournament_id', tournamentId)
+  if (achErr) return { ok: false, error: `achievements delete: ${achErr.message}` }
+
+  // ── 6. Reopen finalized challenges so the cron re-scores them ─────────────
+  // Friends: cron finalizes status='accepted'; anonymous: cron scores status='active'.
+  const { data: friendsReopened, error: friendsErr } = await admin
+    .from('challenges')
+    .update({
+      status: 'accepted',
+      winner_id: null,
+      challenger_points: 0,
+      challenged_points: 0,
+      challenger_predictions_count: 0,
+      challenged_predictions_count: 0,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('tournament_id', tournamentId)
+    .eq('status', 'completed')
+    .eq('is_anonymous', false)
+    .select('id')
+  if (friendsErr) return { ok: false, error: `friends challenges reopen: ${friendsErr.message}` }
+
+  const { data: anonReopened, error: anonErr } = await admin
+    .from('challenges')
+    .update({
+      status: 'active',
+      challenger_points: 0,
+      challenged_points: 0,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('tournament_id', tournamentId)
+    .eq('status', 'completed')
+    .eq('is_anonymous', true)
+    .select('id')
+  if (anonErr) return { ok: false, error: `anonymous challenges reopen: ${anonErr.message}` }
+
+  // ── 7. Targeted ranking recalc for every previously-affected user ─────────
+  const userIds = Array.from(affectedUsers)
+  for (let i = 0; i < userIds.length; i += 50) {
+    await Promise.all(
+      userIds.slice(i, i + 50).map(uid =>
+        admin.rpc('recalculate_ranking_points', { p_user_id: uid })
+      )
+    )
+  }
+
+  // ── 8. Targeted league recalc for those users' memberships ────────────────
+  // Chunk the .in() filter to keep each query bounded.
+  const memberships: Array<{ league_id: string; user_id: string }> = []
+  for (let i = 0; i < userIds.length; i += 200) {
+    const { data: page, error } = await admin
+      .from('league_members')
+      .select('league_id, user_id')
+      .in('user_id', userIds.slice(i, i + 200))
+    if (error) return { ok: false, error: `league memberships read: ${error.message}` }
+    memberships.push(...(page ?? []))
+  }
+  for (let i = 0; i < memberships.length; i += 50) {
+    await Promise.all(
+      memberships.slice(i, i + 50).map(m =>
+        admin.rpc('recalculate_member_points', { p_league_id: m.league_id, p_user_id: m.user_id })
+      )
+    )
+  }
+
+  const erased: RerunSummary = {
+    ledgerRowsDeleted: ledgerCount ?? 0,
+    predictionsReset: resetRows?.length ?? 0,
+    usersRecalculated: userIds.length,
+    challengesReopened: (friendsReopened?.length ?? 0) + (anonReopened?.length ?? 0),
+  }
+
+  // ── 9. Re-score everything via the existing cron ──────────────────────────
+  const { ok, data } = await triggerCron('award-points')
+  return { ok, erased, rerun: data, ...(ok ? {} : { error: 'Erase succeeded but award-points re-run failed — run it manually from this tab.' }) }
+}
+
 export async function getTournament(tournamentId: string): Promise<{
   ok: boolean
   tournament?: {
