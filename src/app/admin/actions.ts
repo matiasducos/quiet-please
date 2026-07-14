@@ -767,12 +767,16 @@ export async function getScoringStatus(): Promise<ScoringTournament[]> {
 
   const ids = tournaments.map(t => t.id)
 
-  // Count non-BYE match results per tournament
+  // Count non-BYE match results per tournament.
+  // NULL scores must be included (API-synced results often have no score
+  // string) — a bare .neq('score','BYE') silently drops them, which showed
+  // "0 results" for live tournaments and disabled the Re-run button. Same
+  // filter the award-points cron uses.
   const { data: results } = await admin
     .from('match_results')
     .select('id, tournament_id')
     .in('tournament_id', ids)
-    .neq('score', 'BYE')
+    .or('score.neq.BYE,score.is.null')
 
   const resultCountByTournament: Record<string, number> = {}
   const resultIdsByTournament: Record<string, Set<string>> = {}
