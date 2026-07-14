@@ -53,3 +53,13 @@
 ### Email Capture for Anonymous Users
 - On anonymous challenge completion: "Save your score — enter your email"
 - Re-engagement path for users who play without signing up
+
+---
+
+## Shipped
+
+### ✅ Qualifier pick resolution + admin points re-run (2026-07-14, PR #37)
+- User-reported bug: picking a QUALIFIER placeholder showed "Your pick eliminated" after the draw resolved, and no points were awarded
+- sync-draws now remaps picks (incl. downstream rounds) when a qualifier slot resolves to a real player
+- Admin → Award Points: per-tournament "Re-run points" (erase ledger/rankings/leagues/trophies, reopen challenges, re-score) — always silent (`?silent=1` on award-points cron, no notifications/emails)
+- One-off repair for pre-fix broken picks: `scripts/backfill-qualifier-picks.mjs` (dry-run default) — **still to run for the affected tournament, then silent re-run from admin**

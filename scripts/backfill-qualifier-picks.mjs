@@ -37,10 +37,33 @@ import { readFileSync } from 'fs'
 import { resolve } from 'path'
 
 // ── Manual overrides for matches the inference can't settle ──────────────────
-// matchId → externalId of the player who came through qualifying.
-// Fill from the ATP/WTA qualifying results if the dry-run reports ambiguity.
+// matchId → the player who came through qualifying, as externalId OR the exact
+// player name as it appears in the draw. Fill from the ATP/WTA qualifying
+// results if the dry-run reports ambiguity.
+//
+// Entries below verified against the 2026 Wikipedia qualifying draws
+// (July 14, 2026 repair — see PR #37 follow-up).
 const MANUAL_MAPPING = {
-  // 'evt-12345-R32-002': 'f-cina',
+  'efg-swiss-open-gstaad-R32-006':          'C. Tabur',
+  'nordea-open-R32-006':                    'L. Midon',
+  'nordea-open-R32-011':                    'M. Krumich',
+  'plava-laguna-croatia-open-umag-R32-011': 'F. A. Gomez',        // N. McDonald was a wildcard
+  'internazionali-bnl-ditalia-R128-011':    'C. Garin',
+  'internazionali-bnl-ditalia-R128-015':    'N. Basilashvili',
+  'internazionali-bnl-ditalia-R128-034':    'J. Fearnley',
+  'mutua-madrid-open-R128-003':             'E. Mollerr',         // Cina was a wildcard ('Mollerr' = draw's spelling)
+  'mutua-madrid-open-R128-035':             'D. Merida Aguilar',  // official Q; Trungelliti entered as lucky loser
+  'terra-wortmann-open-R32-003':            'R. Collignon',
+  'terra-wortmann-open-R32-004':            'M. Bellucci',
+  'terra-wortmann-open-R32-010':            'N. Basilashvili',
+  'terra-wortmann-open-R32-011':            'M. Landaluce',
+  'libema-open-R32-014':                    'B. Bonzi',
+  '1970-R64-023':                           'C. Garin',           // Monte-Carlo; Arnaldi entered as lucky loser
+  // Intentionally unmapped — BOTH players came through qualifying, so a
+  // placeholder pick is genuinely ambiguous and stays as-is:
+  //   mutua-madrid-open-R128-002 (Bonzi vs Droguet)
+  //   lexus-eastbourne-open-R32-015 (Arnaldi vs Hussey)
+  //   2270-R32-007 Marrakech (Rocha vs Trungelliti)
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
@@ -163,7 +186,14 @@ for (const m of byRound[firstRound]) {
     continue
   }
   if (MANUAL_MAPPING[m.matchId]) {
-    mapping[m.matchId] = MANUAL_MAPPING[m.matchId]
+    const v = MANUAL_MAPPING[m.matchId]
+    const manual = [m.player1, m.player2].find(p => p?.externalId === v || p?.name === v)
+    if (manual) {
+      mapping[m.matchId] = manual.externalId
+    } else {
+      console.log(`  ⚠ MANUAL_MAPPING for ${m.matchId}: '${v}' matches neither player — check spelling`)
+      ambiguous.push({ matchId: m.matchId, players: [m.player1?.name, m.player2?.name] })
+    }
     continue
   }
   // Real-id picks for this match among PRE-resolution sets identify the named slot.
