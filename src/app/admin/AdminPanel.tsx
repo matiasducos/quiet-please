@@ -532,7 +532,7 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
                         <p className="mt-2" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#991b1b', lineHeight: 1.5 }}>
                           Erases ALL points for this tournament (ledger, rankings, leagues, trophies),
                           reopens finalized challenges, then re-scores from the current results.
-                          Users with points here will be re-notified and re-emailed.
+                          Silent: no notifications or emails are sent.
                         </p>
                       )}
 
