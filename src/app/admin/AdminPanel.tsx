@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { triggerCron, sendTestNotification, searchUsersForAutoPredict, toggleAutoPredict, updatePredictionMode } from './actions'
+import { triggerCron, sendTestNotification, searchUsersForAutoPredict, toggleAutoPredict, updatePredictionMode, rerunTournamentPoints } from './actions'
 import type { ScoringTournament, CronRun, AutoPredictStats, AppSettings } from './actions'
 import type { PredictionMode } from '@/lib/app-settings'
 import { NOTIFICATION_TYPES } from './constants'
@@ -89,6 +89,30 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
       setAwardStatus({ type: ok ? 'success' : 'error', message: JSON.stringify(data, null, 2) })
     } catch (err) {
       setAwardStatus({ type: 'error', message: String(err) })
+    }
+  }
+
+  // ── Per-tournament re-run state ─────────────────────────────────────────────
+  const [rerunTarget, setRerunTarget] = useState<string | null>(null)  // awaiting confirm
+  const [rerunStatuses, setRerunStatuses] = useState<Record<string, AsyncStatus>>({})
+
+  async function handleRerunTournament(id: string) {
+    setRerunTarget(null)
+    setRerunStatuses(s => ({ ...s, [id]: { type: 'loading' } }))
+    try {
+      const res = await rerunTournamentPoints(id)
+      setRerunStatuses(s => ({
+        ...s,
+        [id]: {
+          type: res.ok ? 'success' : 'error',
+          message: JSON.stringify(
+            res.ok ? { erased: res.erased, rerun: res.rerun } : { error: res.error, erased: res.erased },
+            null, 2,
+          ),
+        },
+      }))
+    } catch (err) {
+      setRerunStatuses(s => ({ ...s, [id]: { type: 'error', message: String(err) } }))
     }
   }
 
@@ -435,10 +459,13 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
                 {scoringStatus.map(t => {
                   const allScored = t.pendingResults === 0 && t.totalResults > 0
                   const hasPending = t.pendingResults > 0
+                  const rerunStatus = rerunStatuses[t.id]
+                  const isRerunning = rerunStatus?.type === 'loading'
+                  const isConfirming = rerunTarget === t.id
                   return (
                     <div key={t.id} className="bg-white rounded-sm border p-4" style={{ borderColor: hasPending ? '#fde68a' : 'var(--chalk-dim)' }}>
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex-1 min-w-0">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
+                        <div className="sm:flex-1 min-w-0">
                           <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)', marginBottom: '2px' }}>
                             {t.flag_emoji && <span style={{ marginRight: '5px' }}>{t.flag_emoji}</span>}
                             {t.location ?? t.name}
@@ -457,7 +484,7 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
                             </span>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3 flex-shrink-0">
+                        <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
                           {allScored ? (
                             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#166534', background: '#dcfce7', padding: '4px 10px', borderRadius: '9999px' }}>
                               All scored
@@ -471,8 +498,57 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
                               No results yet
                             </span>
                           )}
+                          {isConfirming ? (
+                            <>
+                              <button
+                                onClick={() => handleRerunTournament(t.id)}
+                                className="px-3 py-1 text-xs font-medium rounded-sm transition-opacity hover:opacity-90"
+                                style={{ background: '#dc2626', color: 'white' }}
+                              >
+                                Erase & re-run
+                              </button>
+                              <button
+                                onClick={() => setRerunTarget(null)}
+                                className="px-3 py-1 text-xs rounded-sm border transition-opacity hover:opacity-70"
+                                style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => setRerunTarget(t.id)}
+                              disabled={isRerunning || t.totalResults === 0 || awardStatus.type === 'loading'}
+                              className="px-3 py-1 text-xs rounded-sm border transition-opacity hover:opacity-70 disabled:opacity-40"
+                              style={{ borderColor: 'var(--chalk-dim)', color: 'var(--ink)' }}
+                            >
+                              {isRerunning ? 'Re-running…' : '↻ Re-run points'}
+                            </button>
+                          )}
                         </div>
                       </div>
+
+                      {isConfirming && (
+                        <p className="mt-2" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#991b1b', lineHeight: 1.5 }}>
+                          Erases ALL points for this tournament (ledger, rankings, leagues, trophies),
+                          reopens finalized challenges, then re-scores from the current results.
+                          Silent: no notifications or emails are sent.
+                        </p>
+                      )}
+
+                      {rerunStatus?.message && (
+                        <div
+                          className="mt-3 p-3 rounded-sm overflow-x-auto"
+                          style={{
+                            background: rerunStatus.type === 'error' ? '#fee2e2' : '#f0fdf4',
+                            borderLeft: `3px solid ${rerunStatus.type === 'error' ? '#ef4444' : '#22c55e'}`,
+                          }}
+                        >
+                          <pre style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: rerunStatus.type === 'error' ? '#991b1b' : '#166534', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                            {rerunStatus.message}
+                          </pre>
+                        </div>
+                      )}
                     </div>
                   )
                 })}

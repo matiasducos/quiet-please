@@ -24,6 +24,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Silent mode (?silent=1): score everything as usual but send NO
+  // notifications or emails — used by the admin "re-run tournament points"
+  // repair flow, where re-notifying users about corrected points is noise.
+  const silent = new URL(request.url).searchParams.get('silent') === '1'
+
   return withCronLogging('award-points', async () => {
     const supabase = createAdminClient()
 
@@ -368,7 +373,9 @@ export async function GET(request: Request) {
     }
 
     // ── 10. Notifications (blocking) + emails (fire-and-forget) ──────────
-    try {
+    if (silent) {
+      console.log('[award-points] silent mode — skipping points notifications and emails')
+    } else try {
       const notifRows: Array<{ user_id: string; type: string; tournament_id: string; meta: any }> = []
       const emailJobs: Array<{ userId: string; tId: string; tName: string; pts: number }> = []
 
@@ -617,6 +624,11 @@ export async function GET(request: Request) {
 
     // ── 13. Achievement checks ─────────────────────────────────────────
     let achievementsAwarded = 0
+    // Silent mode still AWARDS achievements (data correctness) but skips the
+    // notification + email for each.
+    const maybeNotifyAchievements = async (results: Parameters<typeof notifyAchievements>[1]) => {
+      if (!silent) await notifyAchievements(supabase, results)
+    }
     try {
       // 13a. Tournament trophies: check completed tournaments that had results this run
       const completedTournamentIds = new Set<string>()
@@ -631,7 +643,7 @@ export async function GET(request: Request) {
 
       for (const tId of completedTournamentIds) {
         const trophyResults = await checkTournamentTrophies(supabase, tId)
-        await notifyAchievements(supabase, trophyResults)
+        await maybeNotifyAchievements(trophyResults)
         achievementsAwarded += trophyResults.filter(r => r.isNew).length
       }
 
@@ -640,7 +652,7 @@ export async function GET(request: Request) {
         const userTournaments = Object.keys(userTournamentPoints[userId] ?? {})
         for (const tId of userTournaments) {
           const cronResults = await checkCronAchievements(supabase, userId, tId)
-          await notifyAchievements(supabase, cronResults)
+          await maybeNotifyAchievements(cronResults)
           achievementsAwarded += cronResults.filter(r => r.isNew).length
         }
       }
@@ -657,7 +669,7 @@ export async function GET(request: Request) {
         const pickerIds = new Set((tournamentPickers ?? []).map(p => p.user_id))
         for (const uid of pickerIds) {
           const perfectResults = await checkPerfectPrediction(supabase, uid, tId)
-          await notifyAchievements(supabase, perfectResults)
+          await maybeNotifyAchievements(perfectResults)
           achievementsAwarded += perfectResults.filter(r => r.isNew).length
         }
       }
@@ -679,7 +691,7 @@ export async function GET(request: Request) {
           }
           for (const uid of userIds) {
             const rivalResults = await checkChallengeAchievements(supabase, uid)
-            await notifyAchievements(supabase, rivalResults)
+            await maybeNotifyAchievements(rivalResults)
             achievementsAwarded += rivalResults.filter(r => r.isNew).length
           }
         }

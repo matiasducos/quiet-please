@@ -3,6 +3,7 @@ import * as Sentry from '@sentry/nextjs'
 import { revalidateTag } from 'next/cache'
 import { createAdminClient, listAllUsers } from '@/lib/supabase/admin'
 import { tennisAdapter } from '@/lib/tennis'
+import { buildQualifierRemaps, type QualifierRemap, type DrawLike } from '@/lib/tennis/qualifier-remap'
 import { sendDrawOpenEmail, isBotEmail } from '@/lib/email'
 import { isEmailEnabled } from '@/lib/email-preferences'
 import { withCronLogging } from '@/lib/cron-logger'
@@ -91,6 +92,29 @@ export async function GET(request: Request) {
         continue
       }
 
+      // ── Qualifier resolution: remap stale picks BEFORE overwriting the draw ──
+      // Once predictions are open, a slot can flip from a "Qualifier" placeholder
+      // to a real player. The pick still points at the old placeholder id, so we
+      // diff the stored draw against the incoming one and rewrite affected picks
+      // (see qualifier-remap.ts). Only tournaments that already accept picks can
+      // have any — 'upcoming'/'draw_published' have none, so skip the read.
+      let qualifierRemaps: QualifierRemap[] = []
+      if (tournament.status === 'accepting_predictions' || tournament.status === 'in_progress') {
+        const { data: oldDrawRow, error: oldDrawError } = await supabase
+          .from('draws')
+          .select('bracket_data')
+          .eq('tournament_id', tournament.id)
+          .maybeSingle()
+        if (oldDrawError) {
+          console.error(`[sync-draws] failed to read prior draw for "${tournament.name}":`, oldDrawError.message)
+        } else {
+          qualifierRemaps = buildQualifierRemaps(
+            oldDrawRow?.bracket_data as unknown as DrawLike | null,
+            draw as unknown as DrawLike,
+          )
+        }
+      }
+
       const { error: drawError } = await supabase
         .from('draws')
         .upsert(
@@ -100,6 +124,20 @@ export async function GET(request: Request) {
       if (drawError) {
         results.push({ name: tournament.name, status: 'error', error: drawError.message })
         continue
+      }
+
+      // Apply the remaps now that the resolved draw is committed.
+      if (qualifierRemaps.length > 0) {
+        try {
+          const remapped = await applyQualifierRemaps(supabase, tournament.id, qualifierRemaps)
+          console.log(
+            `[sync-draws] "${tournament.name}": ${qualifierRemaps.length} qualifier(s) resolved, ` +
+            `remapped ${remapped.predictions} prediction(s) + ${remapped.challenges} anonymous challenge(s)`,
+          )
+        } catch (remapErr) {
+          console.error(`[sync-draws] qualifier remap failed for "${tournament.name}":`, remapErr)
+          Sentry.captureException(remapErr)
+        }
       }
 
       // Bust the ISR cache for this tournament's detail page so users see
@@ -198,4 +236,97 @@ export async function GET(request: Request) {
     }
     return { status: 200, body: { message: 'Draw sync complete', results } }
   })
+}
+
+/**
+ * Rewrite stale qualifier picks to the resolved player id for one tournament.
+ *
+ * Covers both pick-storage models:
+ *   • `predictions.picks`  — global predictions AND friends challenges
+ *   • `challenges.creator_picks` / `opponent_picks` — anonymous challenges
+ *
+ * Scalability: `.contains()` pushes the filter to Postgres so we only fetch the
+ * rows that actually reference a resolved qualifier — not every prediction in
+ * the tournament. This whole path only runs the one sync where a qualifier
+ * flips to a real player (afterwards the stored draw already holds the real
+ * player, so no remap is produced).
+ */
+async function applyQualifierRemaps(
+  supabase: ReturnType<typeof createAdminClient>,
+  tournamentId: string,
+  remaps: QualifierRemap[],
+): Promise<{ predictions: number; challenges: number }> {
+  // A user who advanced their Qualifier deeper into the bracket stored the
+  // SAME placeholder id as the pick VALUE under later-round matchIds. Those
+  // must be remapped too, or the downstream picks stay dangling. Safe only
+  // when the placeholder id maps to a single resolved player: manual draws
+  // mint unique qualifier-1/-2/… ids, but the API name-fallback can mint the
+  // same literal 'Qualifier' id for several slots — those get key-level
+  // remapping only (the first-round matchId is still unambiguous).
+  const newIdsByOldId = new Map<string, Set<string>>()
+  for (const r of remaps) {
+    if (!newIdsByOldId.has(r.oldId)) newIdsByOldId.set(r.oldId, new Set())
+    newIdsByOldId.get(r.oldId)!.add(r.newId)
+  }
+  const remapPicks = (picks: Record<string, string>, r: QualifierRemap): Record<string, string> => {
+    const out = { ...picks }
+    if (out[r.matchId] === r.oldId) out[r.matchId] = r.newId
+    if (newIdsByOldId.get(r.oldId)!.size === 1) {
+      for (const [mid, v] of Object.entries(out)) {
+        if (v === r.oldId) out[mid] = r.newId
+      }
+    }
+    return out
+  }
+
+  // ── predictions (global + friends) ──────────────────────────────────────
+  // id → the picks object being mutated (so a prediction touching two resolved
+  // qualifiers is fetched once and updated once). Any prediction with a
+  // downstream placeholder pick necessarily has the first-round pick too
+  // (the bracket UI requires the feeder pick), so the key-level .contains()
+  // filter finds every affected row.
+  const predPicks = new Map<string, Record<string, string>>()
+  for (const r of remaps) {
+    const { data, error } = await supabase
+      .from('predictions')
+      .select('id, picks')
+      .eq('tournament_id', tournamentId)
+      .contains('picks', { [r.matchId]: r.oldId })
+    if (error) throw new Error(`predictions read: ${error.message}`)
+    for (const row of data ?? []) {
+      const picks = predPicks.get(row.id) ?? { ...(row.picks as Record<string, string>) }
+      predPicks.set(row.id, remapPicks(picks, r))
+    }
+  }
+  const predResults = await Promise.allSettled(
+    [...predPicks].map(([id, picks]) => supabase.from('predictions').update({ picks }).eq('id', id)),
+  )
+
+  // ── anonymous challenges ────────────────────────────────────────────────
+  // id → column patch (creator/opponent picks are independent jsonb columns).
+  const challPatches = new Map<string, { creator_picks?: Record<string, string>; opponent_picks?: Record<string, string> }>()
+  const collectChallenge = (col: 'creator_picks' | 'opponent_picks', id: string, current: Record<string, string> | null, r: QualifierRemap) => {
+    const patch = challPatches.get(id) ?? {}
+    const picks = patch[col] ?? { ...(current ?? {}) }
+    patch[col] = remapPicks(picks, r)
+    challPatches.set(id, patch)
+  }
+  for (const r of remaps) {
+    const [creatorRes, opponentRes] = await Promise.all([
+      supabase.from('challenges').select('id, creator_picks').eq('tournament_id', tournamentId).contains('creator_picks', { [r.matchId]: r.oldId }),
+      supabase.from('challenges').select('id, opponent_picks').eq('tournament_id', tournamentId).contains('opponent_picks', { [r.matchId]: r.oldId }),
+    ])
+    if (creatorRes.error) throw new Error(`challenges read (creator_picks): ${creatorRes.error.message}`)
+    if (opponentRes.error) throw new Error(`challenges read (opponent_picks): ${opponentRes.error.message}`)
+    for (const row of creatorRes.data ?? []) collectChallenge('creator_picks', row.id, row.creator_picks as Record<string, string> | null, r)
+    for (const row of opponentRes.data ?? []) collectChallenge('opponent_picks', row.id, row.opponent_picks as Record<string, string> | null, r)
+  }
+  const challResults = await Promise.allSettled(
+    [...challPatches].map(([id, patch]) => supabase.from('challenges').update(patch).eq('id', id)),
+  )
+
+  const failed = [...predResults, ...challResults].filter(r => r.status === 'rejected').length
+  if (failed > 0) console.error(`[sync-draws] ${failed} qualifier-remap update(s) failed for tournament ${tournamentId}`)
+
+  return { predictions: predPicks.size, challenges: challPatches.size }
 }
