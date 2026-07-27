@@ -11,7 +11,7 @@ import type { NotificationType } from './constants'
 // ── Cron jobs ─────────────────────────────────────────────────────────────────
 
 const ENDPOINTS = [
-  { key: 'auto-predict',     label: 'Auto-Predict',     description: 'Generate predictions for auto-predict users',        scheduleUtcHour: 9.5,  disabled: true  },
+  { key: 'auto-predict',     label: 'Auto-Predict',     description: 'Generate predictions for auto-predict users + bot gap-fill', scheduleUtcHour: 9.5,  disabled: true  },
 ] as const
 
 function formatCronSchedule(utcHour: number | null): string {
@@ -675,6 +675,8 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.3rem', marginBottom: '0.5rem' }}>Auto-Predict</h2>
             <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', marginBottom: '1.5rem' }}>
               Toggle auto-predictions per user. Enabled users can configure their priority players on their profile.
+              Running also makes every bot fill picks for open matches where both players are known
+              (priority player first, otherwise random).
             </p>
 
             {/* Run button */}
