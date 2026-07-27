@@ -6,7 +6,7 @@ import { insertNotifications } from '@/lib/notifications'
 import { sendAutoPredsEmail, isBotEmail } from '@/lib/email'
 import { isEmailEnabled } from '@/lib/email-preferences'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
-import { generateAutoPicks } from '@/lib/tennis/auto-predict'
+import { generateAutoPicks, generateGapFillPicks } from '@/lib/tennis/auto-predict'
 import { getPredictableStatuses, isManualLockMode } from '@/lib/app-settings'
 import type { DrawMatch } from '@/lib/tennis/types'
 
@@ -125,27 +125,35 @@ export async function GET(request: Request) {
       return false
     })
 
-    if (!eligibleTournaments.length) {
-      return { status: 200, body: { message: 'All tournaments already processed', processed: 0 } }
+    // NOTE: no early return when eligibleTournaments is empty — the bot
+    // gap-fill pass below runs over ALL predictable tournaments every time,
+    // since new matches form as results come in.
+
+    // ── 2. Fetch auto-predict users + bot users + player configs ────────────
+    const [
+      { data: enabledUsers, error: euErr },
+      { data: botUsers, error: buErr },
+    ] = await Promise.all([
+      supabase.from('users').select('id').eq('auto_predict_enabled', true),
+      supabase.from('users').select('id').like('email', '%@bot.quietplease.app'),
+    ])
+
+    if (euErr) throw new Error(`Enabled users query failed: ${euErr.message}`)
+    if (buErr) throw new Error(`Bot users query failed: ${buErr.message}`)
+
+    const userIds = (enabledUsers ?? []).map(u => u.id)
+    const botIds = (botUsers ?? []).map(u => u.id)
+    const configUserIds = [...new Set([...userIds, ...botIds])]
+
+    if (configUserIds.length === 0) {
+      return { status: 200, body: { message: 'No auto-predict users and no bot users', processed: 0 } }
     }
 
-    // ── 2. Fetch auto-predict users + their player configs ──────────────────
-    const { data: enabledUsers } = await supabase
-      .from('users')
-      .select('id')
-      .eq('auto_predict_enabled', true)
-
-    if (!enabledUsers?.length) {
-      return { status: 200, body: { message: 'No users with auto-predict enabled', processed: 0 } }
-    }
-
-    const userIds = enabledUsers.map(u => u.id)
-
-    // Batch fetch all player configs for these users
+    // Batch fetch player configs for enabled users (main pass) + bots (gap-fill)
     const { data: allPlayerConfigs } = await supabase
       .from('auto_predict_players')
       .select('user_id, tour, surface, player_external_id, priority')
-      .in('user_id', userIds)
+      .in('user_id', configUserIds)
       .order('priority', { ascending: true })
 
     // Group configs by user → tour → surface
@@ -408,6 +416,125 @@ export async function GET(request: Request) {
       results.push({ ...tournamentResult, skipped })
     }
 
+    // ── 5. Bot gap-fill pass ─────────────────────────────────────────────────
+    // Every bot fills picks for open matches where BOTH players are known,
+    // across ALL predictable tournaments (new matches form as results arrive).
+    // Existing picks are never overwritten. Bots bypass the weekly slot rule
+    // and get no notifications/emails. Runs after the main pass so it sees
+    // freshly created full-bracket predictions.
+    const botFill = {
+      tournaments_touched: 0,
+      predictions_created: 0,
+      predictions_updated: 0,
+      picks_added: 0,
+      errors: [] as string[],
+    }
+
+    if (botIds.length > 0) {
+      const { data: botPreds, error: bpErr } = await supabase
+        .from('predictions')
+        .select('id, user_id, tournament_id, picks, pick_sources, pick_locks')
+        .in('user_id', botIds)
+        .in('tournament_id', tournamentIds)
+        .is('challenge_id', null)
+
+      if (bpErr) {
+        botFill.errors.push(`Bot predictions query failed: ${bpErr.message}`)
+      } else {
+        const botPredMap = new Map(
+          (botPreds ?? []).map(p => [`${p.user_id}:${p.tournament_id}`, p]),
+        )
+        const manualLock = await isManualLockMode()
+
+        for (const tournament of tournaments) {
+          const draw = drawMap.get(tournament.id)
+          if (!draw) continue
+          const matches = ((draw.bracket_data as any)?.matches ?? []) as DrawMatch[]
+          if (matches.length === 0) continue
+
+          // Per-match admin locks apply to all prediction types in manual_lock mode
+          const adminLocked = manualLock
+            ? new Set(Object.keys((draw.locked_matches as Record<string, string>) ?? {}))
+            : new Set<string>()
+          const tournamentResults = resultsMap.get(tournament.id) ?? {}
+          let tournamentTouched = false
+
+          // Chunks of 10 keep concurrent DB writes bounded
+          for (let i = 0; i < botIds.length; i += 10) {
+            await Promise.allSettled(botIds.slice(i, i + 10).map(async (botId) => {
+              try {
+                const existing = botPredMap.get(`${botId}:${tournament.id}`)
+                const existingPicks = (existing?.picks as Record<string, string>) ?? {}
+
+                // Priority list: surface override → default. May be empty — random picks only.
+                const tourConfigs = userConfigs.get(botId)?.get(tournament.tour)
+                const surfacePlayers = tourConfigs
+                  ? (tourConfigs as any)[tournament.surface as string] as PlayerConfig[] | undefined
+                  : undefined
+                const priorityPlayers = ((surfacePlayers?.length ? surfacePlayers : tourConfigs?.default) ?? [])
+                  .map(p => ({ externalId: p.player_external_id, priority: p.priority }))
+
+                const gap = generateGapFillPicks(matches, existingPicks, priorityPlayers, tournamentResults, adminLocked)
+                if (!gap) return
+
+                const now = new Date().toISOString()
+                const mergedPicks = { ...existingPicks, ...gap.picks }
+                const mergedSources = { ...((existing?.pick_sources as Record<string, string>) ?? {}), ...gap.pickSources }
+                const mergedLocks = { ...((existing?.pick_locks as Record<string, string>) ?? {}) }
+                for (const matchId of Object.keys(gap.picks)) {
+                  mergedLocks[matchId] = 'auto_lock_all'
+                }
+
+                if (existing) {
+                  const { error } = await supabase
+                    .from('predictions')
+                    .update({
+                      picks: mergedPicks,
+                      pick_sources: mergedSources,
+                      pick_locks: mergedLocks,
+                      updated_at: now,
+                    })
+                    .eq('id', existing.id)
+                  if (error) {
+                    botFill.errors.push(`Update bot ${botId} @ ${tournament.name}: ${error.message}`)
+                    return
+                  }
+                  botFill.predictions_updated++
+                } else {
+                  const { error } = await supabase
+                    .from('predictions')
+                    .insert({
+                      user_id: botId,
+                      tournament_id: tournament.id,
+                      picks: mergedPicks,
+                      pick_sources: mergedSources,
+                      pick_locks: mergedLocks,
+                      is_fully_locked: true,
+                      fully_locked_at: now,
+                      submitted_at: now,
+                      updated_at: now,
+                    })
+                  if (error) {
+                    botFill.errors.push(`Insert bot ${botId} @ ${tournament.name}: ${error.message}`)
+                    return
+                  }
+                  botFill.predictions_created++
+                }
+
+                botFill.picks_added += Object.keys(gap.picks).length
+                tournamentTouched = true
+              } catch (err) {
+                Sentry.captureException(err)
+                botFill.errors.push(`Bot ${botId} @ ${tournament.name}: ${err instanceof Error ? err.message : String(err)}`)
+              }
+            }))
+          }
+
+          if (tournamentTouched) botFill.tournaments_touched++
+        }
+      }
+    }
+
     // Bulk insert notifications
     if (allNotifications.length > 0) {
       await insertNotifications(allNotifications)
@@ -459,6 +586,7 @@ export async function GET(request: Request) {
         tournaments: results.length,
         predictions_created: totalCreated,
         predictions_updated: totalUpdated,
+        bot_fill: botFill,
         details: results,
       },
     }

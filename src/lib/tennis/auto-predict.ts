@@ -140,6 +140,88 @@ export function generateAutoPicks(
 }
 
 /**
+ * Generate gap-fill picks for open matches where BOTH players are known facts.
+ *
+ * Used by the bot gap-fill pass: unlike generateAutoPicks, this does NOT
+ * speculatively cascade picks into future rounds. A slot only counts as
+ * "known" if the player is directly in the draw or resolved from a BYE /
+ * actual match result. Matches form round-by-round as real results arrive,
+ * and each run picks up the newly-formed ones.
+ *
+ * Rules per match:
+ *  - Skip BYEs, already-played matches, admin-locked matches, and matches
+ *    the user already has a pick for.
+ *  - If one player is in the priority list → pick them (both → lower number).
+ *  - Otherwise → random 50/50.
+ *
+ * Returns picks + pickSources ('bot_fill'), or null if nothing to fill.
+ */
+export function generateGapFillPicks(
+  matches: DrawMatch[],
+  existingPicks: Record<string, string>,
+  priorityPlayers: PriorityPlayer[],
+  matchResults: Record<string, string> = {},
+  adminLockedMatchIds: Set<string> = new Set(),
+  random: () => number = Math.random,
+): AutoPicksResult | null {
+  if (matches.length === 0) return null
+
+  const priorityMap = new Map<string, number>()
+  for (const p of priorityPlayers) {
+    priorityMap.set(p.externalId, p.priority)
+  }
+
+  const feedMap = buildFeedMap(matches)
+  const reverseFeedMap = buildReverseFeedMap(feedMap)
+
+  // Facts only: BYE auto-advances + actual results. No speculative picks.
+  const matchWinners: Record<string, string> = {}
+  for (const m of matches) {
+    if (isByeMatch(m)) {
+      const winner = m.player1 ?? m.player2
+      if (winner) matchWinners[m.matchId] = winner.externalId
+    }
+  }
+  for (const [matchId, winnerId] of Object.entries(matchResults)) {
+    matchWinners[matchId] = winnerId
+  }
+
+  const picks: Record<string, string> = {}
+  const pickSources: Record<string, string> = {}
+
+  for (const match of matches) {
+    if (isByeMatch(match)) continue
+    if (matchResults[match.matchId]) continue
+    if (adminLockedMatchIds.has(match.matchId)) continue
+    if (existingPicks[match.matchId]) continue
+
+    const p1Id = resolveSlotPlayer(match, 'player1', reverseFeedMap, matchWinners)
+    const p2Id = resolveSlotPlayer(match, 'player2', reverseFeedMap, matchWinners)
+    if (!p1Id || !p2Id) continue
+
+    const p1Priority = priorityMap.get(p1Id)
+    const p2Priority = priorityMap.get(p2Id)
+
+    let winnerId: string
+    if (p1Priority !== undefined && p2Priority !== undefined) {
+      winnerId = p1Priority <= p2Priority ? p1Id : p2Id
+    } else if (p1Priority !== undefined) {
+      winnerId = p1Id
+    } else if (p2Priority !== undefined) {
+      winnerId = p2Id
+    } else {
+      winnerId = random() < 0.5 ? p1Id : p2Id
+    }
+
+    picks[match.matchId] = winnerId
+    pickSources[match.matchId] = 'bot_fill'
+  }
+
+  if (Object.keys(picks).length === 0) return null
+  return { picks, pickSources }
+}
+
+/**
  * Resolve which player occupies a slot in a match.
  *
  * Checks in order:
