@@ -7,8 +7,28 @@ import Link from 'next/link'
 import type { Database } from '@/types/database'
 import Nav from '@/components/Nav'
 import { canPredictForStatus } from '@/lib/app-settings'
+import { buildMyTournament } from '@/lib/tennis/my-tournament'
+import type { MyTournament, DrawMatch } from '@/lib/tennis/my-tournament'
+import MyTournamentPanel from './MyTournamentPanel'
 
 type TournamentRow = Database['public']['Tables']['tournaments']['Row']
+
+type EmbeddedMatch = { external_match_id: string }
+
+type LedgerRow = {
+  round: string
+  points: number
+  prediction_id: string | null
+  // point_ledger.match_result_id is many-to-one, so PostgREST returns an object
+  // here, but the generated types widen it to an array. Accept both.
+  match_results?: EmbeddedMatch | EmbeddedMatch[] | null
+}
+
+function embeddedMatchId(row: LedgerRow): string | null {
+  const m = row.match_results
+  if (!m) return null
+  return (Array.isArray(m) ? m[0]?.external_match_id : m.external_match_id) ?? null
+}
 
 // ── ISR cache — same for all users, refreshes every hour ──────────────────
 // Tags allow sync-draws to call revalidateTag(`tournament:${id}`) the moment
@@ -98,21 +118,65 @@ export default async function TournamentDetailPage({ params }: { params: Promise
           .then(r => r.data),
         supabase
           .from('point_ledger')
-          .select('round, points, prediction_id')
+          // match_results is embedded so points can be attributed to the player
+          // who won that match — the basis of the per-player breakdown below.
+          .select('round, points, prediction_id, match_results(external_match_id)')
           .eq('tournament_id', id)
           .eq('user_id', user.id)
           .then(r => r.data ?? []),
       ])
-    : [null, [] as { round: string; points: number; prediction_id: string | null }[]]
+    : [null, [] as LedgerRow[]]
 
   // Sum awarded points per internal round (R128, R64, R32, R16, QF, SF, F),
   // scoped to the user's global prediction so challenge points don't leak in.
   // This sum matches predictions.points_earned exactly (see award-points cron).
   const pointsByRound: Record<string, number> = {}
+  const pointsByMatch: Record<string, number> = {}
   if (prediction) {
-    for (const row of ledgerRows ?? []) {
+    for (const row of (ledgerRows ?? []) as LedgerRow[]) {
       if (row.prediction_id !== prediction.id) continue
       pointsByRound[row.round] = (pointsByRound[row.round] ?? 0) + row.points
+      const ext = embeddedMatchId(row)
+      if (ext) pointsByMatch[ext] = (pointsByMatch[ext] ?? 0) + row.points
+    }
+  }
+
+  // ── "Your tournament" summary ─────────────────────────────────────────────
+  // Results are read per-request rather than from the hour-long tournament cache:
+  // this panel is the live view of a tournament in progress, so a stale bracket
+  // would show players as alive after they had already lost.
+  let myTournament: MyTournament | null = null
+  if (prediction && Object.keys((prediction.picks as Record<string, string>) ?? {}).length > 0) {
+    const { data: results, error: resultsErr } = await supabase
+      .from('match_results')
+      .select('external_match_id, winner_external_id, loser_external_id, round')
+      .eq('tournament_id', id)
+      .or('score.neq.BYE,score.is.null')
+
+    if (resultsErr) {
+      console.error('[tournament] match_results failed:', resultsErr.message)
+    } else if (results && results.length > 0) {
+      const matches = ((draw?.bracket_data as { matches?: DrawMatch[] })?.matches ?? [])
+      const picks = (prediction.picks as Record<string, string>) ?? {}
+
+      // Qualifiers were placeholders when the draw was built, so the snapshot has
+      // no name for them. Fall back to the registry for just those ids.
+      const named = new Set(
+        matches.flatMap(m => [m?.player1, m?.player2])
+          .filter(p => p?.externalId && p.name)
+          .map(p => p!.externalId as string),
+      )
+      const missing = [...new Set(Object.values(picks))].filter(pid => pid && !named.has(pid))
+      let nameOverrides: Record<string, string> = {}
+      if (missing.length > 0) {
+        const { data: registry } = await supabase
+          .from('players')
+          .select('external_id, name')
+          .in('external_id', missing.slice(0, 200))
+        nameOverrides = Object.fromEntries((registry ?? []).map(p => [p.external_id, p.name]))
+      }
+
+      myTournament = buildMyTournament({ picks, results, matches, pointsByMatch, nameOverrides })
     }
   }
 
@@ -252,6 +316,11 @@ export default async function TournamentDetailPage({ params }: { params: Promise
             </div>
           </div>
         </div>
+
+        {/* ── Your tournament ───────────────────────────────────────────── */}
+        {myTournament && (
+          <MyTournamentPanel data={myTournament} isComplete={t.status === 'completed'} />
+        )}
 
         {/* ── Main content grid ─────────────────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
