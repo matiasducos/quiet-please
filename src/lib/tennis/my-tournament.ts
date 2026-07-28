@@ -13,9 +13,9 @@
  *    rate and still dominate the total. Reporting one accuracy figure would
  *    misrepresent the tournament, which is why `rounds` carries both.
  *
- *  - Player names live on the draw as a snapshot, not a foreign key. Players who
- *    were placeholders when the draw was built (qualifiers) have no name there,
- *    so callers can pass `nameOverrides` from the players registry.
+ *  - Player names and countries live on the draw as a snapshot, not a foreign
+ *    key. Players who were placeholders when the draw was built (qualifiers)
+ *    have neither, so callers can pass `overrides` from the players registry.
  */
 
 export const ROUND_ORDER = ['R128', 'R64', 'R32', 'R16', 'QF', 'SF', 'F'] as const
@@ -42,8 +42,8 @@ export interface MyTournamentInput {
   matches: DrawMatch[]
   /** point_ledger rows for this user's global prediction, keyed by match */
   pointsByMatch: Record<string, number>
-  /** external_id → name, for players the draw snapshot has no name for */
-  nameOverrides?: Record<string, string>
+  /** external_id → registry values, for players the draw snapshot is missing */
+  overrides?: Record<string, { name?: string | null; country?: string | null }>
 }
 
 export interface RoundSummary {
@@ -61,6 +61,8 @@ export interface RoundSummary {
 export interface PlayerSummary {
   externalId: string
   name: string
+  /** full country name, e.g. "Italy" — null when unknown. Flag is derived at render. */
+  country: string | null
   picks: number
   points: number
   alive: boolean
@@ -96,21 +98,24 @@ export interface MyTournament {
 function displayName(
   externalId: string,
   fromDraw: Record<string, string>,
-  overrides: Record<string, string>,
+  overrides: Record<string, { name?: string | null }>,
 ): string {
-  return fromDraw[externalId] || overrides[externalId] || 'Qualifier'
+  return fromDraw[externalId] || overrides[externalId]?.name || 'Qualifier'
 }
 
 export function buildMyTournament(input: MyTournamentInput): MyTournament {
-  const { picks, results, matches, pointsByMatch, nameOverrides = {} } = input
+  const { picks, results, matches, pointsByMatch, overrides = {} } = input
 
   // ── Lookups from the draw ─────────────────────────────────────────────────
   const nameByExternalId: Record<string, string> = {}
+  const countryByExternalId: Record<string, string> = {}
   const roundByMatchId: Record<string, string> = {}
   for (const m of matches) {
     if (m?.matchId && m.round) roundByMatchId[m.matchId] = m.round
     for (const p of [m?.player1, m?.player2]) {
-      if (p?.externalId && p.name) nameByExternalId[p.externalId] = p.name
+      if (!p?.externalId) continue
+      if (p.name) nameByExternalId[p.externalId] = p.name
+      if (p.country) countryByExternalId[p.externalId] = p.country
     }
   }
 
@@ -183,7 +188,8 @@ export function buildMyTournament(input: MyTournamentInput): MyTournament {
     const alive = outRound === null
     return {
       externalId,
-      name: displayName(externalId, nameByExternalId, nameOverrides),
+      name: displayName(externalId, nameByExternalId, overrides),
+      country: countryByExternalId[externalId] || overrides[externalId]?.country || null,
       picks: pickCount[externalId],
       points: pointsByPlayer[externalId] ?? 0,
       alive,
