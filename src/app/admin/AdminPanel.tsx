@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { triggerCron, sendTestNotification, searchUsersForAutoPredict, toggleAutoPredict, updatePredictionMode, rerunTournamentPoints, getPastTournaments } from './actions'
+import { triggerCron, sendTestNotification, searchUsersForAutoPredict, toggleAutoPredict, updatePredictionMode, rerunTournamentPoints, getPastTournaments, getScoringStatus } from './actions'
 import type { ScoringTournament, CronRun, AutoPredictStats, AppSettings, AdminTournament } from './actions'
 import type { PredictionMode } from '@/lib/app-settings'
 import { NOTIFICATION_TYPES } from './constants'
@@ -119,9 +119,25 @@ function TournamentCard({ t }: { t: AdminTournament }) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoPredictStats, appSettings }: { tournaments: AdminTournament[]; scoringStatus: ScoringTournament[]; cronRuns: CronRun[]; autoPredictStats: AutoPredictStats; appSettings: AppSettings }) {
+export default function AdminPanel({ tournaments, cronRuns, autoPredictStats, appSettings }: { tournaments: AdminTournament[]; cronRuns: CronRun[]; autoPredictStats: AutoPredictStats; appSettings: AppSettings }) {
   const [activeTab, setActiveTab] = useState<Tab>('tournaments')
   const [tournamentSearch, setTournamentSearch] = useState('')
+
+  // ── Scoring status — fetched after paint, not with the page ─────────────────
+  // Its cost grows with user count, so it must not sit on the critical path.
+  // Loading on mount (rather than on tab open) keeps the pending-work banner
+  // visible without the admin having to go looking for it.
+  const [scoringStatus, setScoringStatus] = useState<ScoringTournament[]>([])
+  const [scoringLoading, setScoringLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    getScoringStatus()
+      .then(rows => { if (!cancelled) setScoringStatus(rows) })
+      .catch(err => console.error('[admin] scoring status failed:', err))
+      .finally(() => { if (!cancelled) setScoringLoading(false) })
+    return () => { cancelled = true }
+  }, [])
 
   // ── Past tournaments (archive) — fetched on demand, never on initial load ────
   const [pastTournaments, setPastTournaments] = useState<AdminTournament[]>([])
@@ -227,7 +243,10 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
   }
 
   // ── Derived data ────────────────────────────────────────────────────────────
-  const pendingCount = scoringStatus.filter(t => t.pendingResults > 0).reduce((sum, t) => sum + t.pendingResults, 0)
+  // Pending work = correct picks the cron hasn't turned into ledger rows, plus
+  // predictions whose stored total disagrees with the ledger. Matches nobody
+  // predicted are not admin work and deliberately do not appear here.
+  const pendingCount = scoringStatus.reduce((sum, t) => sum + t.unscoredPicks + t.driftPredictions, 0)
 
   const filteredTournaments = tournamentSearch.trim()
     ? tournaments.filter(t => {
@@ -325,16 +344,16 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
         </div>
       </nav>
 
-      {/* ── Unscored results banner ── */}
+      {/* ── Unawarded points banner ── */}
       {(() => {
-        const pending = scoringStatus.filter(t => t.pendingResults > 0)
+        const pending = scoringStatus.filter(t => t.unscoredPicks + t.driftPredictions > 0)
         if (pending.length === 0) return null
-        const totalPending = pending.reduce((sum, t) => sum + t.pendingResults, 0)
+        const totalPending = pending.reduce((sum, t) => sum + t.unscoredPicks + t.driftPredictions, 0)
         return (
           <div style={{ background: '#fef3c7', borderBottom: '1px solid #fde68a', padding: '12px 24px' }}>
             <div className="max-w-5xl mx-auto flex items-center justify-between">
               <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: '#92400e', margin: 0 }}>
-                {totalPending} unscored result{totalPending !== 1 ? 's' : ''} across {pending.map(t => t.location ?? t.name).join(', ')}
+                {totalPending} correct pick{totalPending !== 1 ? 's' : ''} not awarded across {pending.map(t => t.location ?? t.name).join(', ')}
               </p>
               <button
                 onClick={() => { setActiveTab('award-points'); handleRunAwardPoints() }}
@@ -521,7 +540,13 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
               </div>
             )}
 
-            {scoringStatus.length === 0 ? (
+            {scoringLoading ? (
+              <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
+                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>
+                  Checking award status…
+                </p>
+              </div>
+            ) : scoringStatus.length === 0 ? (
               <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
                 <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>
                   No active tournaments with results to score.
@@ -530,8 +555,9 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
             ) : (
               <div className="flex flex-col gap-2">
                 {scoringStatus.map(t => {
-                  const allScored = t.pendingResults === 0 && t.totalResults > 0
-                  const hasPending = t.pendingResults > 0
+                  const pendingWork = t.unscoredPicks + t.driftPredictions
+                  const hasPending = pendingWork > 0
+                  const allScored = !hasPending && t.totalResults > 0
                   const rerunStatus = rerunStatuses[t.id]
                   const isRerunning = rerunStatus?.type === 'loading'
                   const isConfirming = rerunTarget === t.id
@@ -555,16 +581,21 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
                             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
                               {t.totalResults} results
                             </span>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
+                              {t.correctPicks} correct picks
+                            </span>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
                           {allScored ? (
                             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#166534', background: '#dcfce7', padding: '4px 10px', borderRadius: '9999px' }}>
-                              All scored
+                              ✓ All awarded
                             </span>
                           ) : hasPending ? (
                             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#92400e', background: '#fef3c7', padding: '4px 10px', borderRadius: '9999px' }}>
-                              {t.pendingResults} unscored
+                              {t.unscoredPicks > 0 && `${t.unscoredPicks} not awarded`}
+                              {t.unscoredPicks > 0 && t.driftPredictions > 0 && ' · '}
+                              {t.driftPredictions > 0 && `${t.driftPredictions} total${t.driftPredictions !== 1 ? 's' : ''} drifted`}
                             </span>
                           ) : (
                             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>

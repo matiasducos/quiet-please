@@ -16,7 +16,7 @@
 
 ### Supabase
 - Project is NOT linked locally — migrations must be run manually in the Supabase dashboard.
-- Latest migration: `053_scoring_status_rpc.sql` (remember to bump this file when you add a new migration)
+- Latest migration: `055_scoring_status_gin_index.sql` (remember to bump this file when you add a new migration)
 
 ### Notifications
 - When adding a new notification type, update 4 places:
