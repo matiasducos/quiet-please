@@ -408,16 +408,106 @@ export async function createPlayer(data: {
   return { ok: true, player: player as { id: string; external_id: string; name: string; country: string; tour: string } }
 }
 
-export async function updatePlayerCountry(
-  playerId: string,
-  country: string,
-): Promise<{ ok: boolean; error?: string }> {
+export interface AdminPlayer {
+  id: string
+  external_id: string
+  name: string
+  country: string
+  tour: string
+}
+
+const PLAYERS_PAGE_SIZE = 50
+
+const PLAYER_COLUMNS = 'id, external_id, name, country, tour'
+
+/**
+ * Paginated player registry. The table holds thousands of rows, so the list is
+ * always a page — never the whole set — and search/filter run in the database.
+ */
+export async function listPlayers(opts: {
+  search?: string
+  tour?: 'ATP' | 'WTA'
+  page?: number
+} = {}): Promise<{ ok: boolean; players: AdminPlayer[]; total: number; page: number; pageSize: number }> {
   await assertAdmin()
   const admin = createAdminClient()
+
+  const page = Math.max(0, opts.page ?? 0)
+  const from = page * PLAYERS_PAGE_SIZE
+
+  let q = admin
+    .from('players')
+    .select(PLAYER_COLUMNS, { count: 'exact' })
+    .order('name')
+    .range(from, from + PLAYERS_PAGE_SIZE - 1)
+
+  // Strip characters that are syntax in a PostgREST `or` filter, mapping them to
+  // wildcards so a query like "Del Potro, J." still matches.
+  const term = (opts.search ?? '').trim().replace(/[,()*\\"%]/g, '%')
+  if (term) q = q.or(`name.ilike.%${term}%,external_id.ilike.%${term}%`)
+  if (opts.tour) q = q.eq('tour', opts.tour)
+
+  const { data, error, count } = await q
+
+  if (error) {
+    console.error('listPlayers error:', error.message)
+    return { ok: false, players: [], total: 0, page, pageSize: PLAYERS_PAGE_SIZE }
+  }
+
+  return {
+    ok: true,
+    players: (data ?? []) as AdminPlayer[],
+    total: count ?? 0,
+    page,
+    pageSize: PLAYERS_PAGE_SIZE,
+  }
+}
+
+export async function updatePlayer(
+  playerId: string,
+  fields: { name: string; country: string; tour: 'ATP' | 'WTA' },
+): Promise<{ ok: boolean; error?: string }> {
+  await assertAdmin()
+
+  const name = fields.name.trim()
+  if (!name) return { ok: false, error: 'Name cannot be empty' }
+
+  const admin = createAdminClient()
+  // external_id is deliberately left alone: draws and match_results reference it
+  // as plain text, so renaming it would orphan them.
   const { error } = await admin
     .from('players')
-    .update({ country: country.trim() })
+    .update({ name, country: fields.country.trim(), tour: fields.tour })
     .eq('id', playerId)
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
+/** Where a player is referenced — see 056_player_usage.sql. */
+export async function getPlayerUsage(
+  externalId: string,
+): Promise<{ ok: boolean; drawCount: number; resultCount: number }> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  const { data, error } = await admin.rpc('player_usage', { p_external_id: externalId })
+
+  if (error) {
+    console.error('getPlayerUsage error:', error.message)
+    return { ok: false, drawCount: 0, resultCount: 0 }
+  }
+
+  const row = (data ?? [])[0] as { draw_count: number; result_count: number } | undefined
+  return { ok: true, drawCount: Number(row?.draw_count ?? 0), resultCount: Number(row?.result_count ?? 0) }
+}
+
+export async function deletePlayer(playerId: string): Promise<{ ok: boolean; error?: string }> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  const { error } = await admin.from('players').delete().eq('id', playerId)
+
   if (error) return { ok: false, error: error.message }
   return { ok: true }
 }
@@ -425,214 +515,25 @@ export async function updatePlayerCountry(
 export async function searchPlayers(
   query: string,
   tour?: 'ATP' | 'WTA',
-): Promise<{ ok: boolean; players: Array<{ id: string; external_id: string; name: string; country: string; tour: string }> }> {
+): Promise<{ ok: boolean; players: AdminPlayer[] }> {
   await assertAdmin()
   const admin = createAdminClient()
   let q = admin
     .from('players')
-    .select('id, external_id, name, country, tour')
+    .select(PLAYER_COLUMNS)
     .ilike('name', `%${query}%`)
     .order('name')
     .limit(20)
 
   if (tour) q = q.eq('tour', tour)
 
-  const { data } = await q
-  return { ok: true, players: (data ?? []) as Array<{ id: string; external_id: string; name: string; country: string; tour: string }> }
+  const { data, error } = await q
+  if (error) {
+    console.error('searchPlayers error:', error.message)
+    return { ok: false, players: [] }
+  }
+  return { ok: true, players: (data ?? []) as AdminPlayer[] }
 }
-
-// ── Bulk-seed players from existing synced draws ──────────────────────────────
-
-export async function seedPlayersFromDraws(): Promise<{ ok: boolean; imported: number; error?: string }> {
-  await assertAdmin()
-  const admin = createAdminClient()
-
-  // Fetch all draws + tournament tour info
-  const { data: draws, error: drawErr } = await admin
-    .from('draws')
-    .select('bracket_data, tournaments!inner(tour)')
-
-  if (drawErr) return { ok: false, imported: 0, error: drawErr.message }
-  if (!draws?.length) return { ok: true, imported: 0 }
-
-  // Extract unique players from all bracket_data
-  const seen = new Map<string, { name: string; country: string; tour: string }>()
-  for (const draw of draws) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const bracket = draw.bracket_data as any
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tour = (draw as any).tournaments?.tour ?? 'ATP'
-    const matches = bracket?.matches ?? []
-    for (const m of matches) {
-      if (m.player1?.externalId && m.player1.name) {
-        seen.set(m.player1.externalId, { name: m.player1.name, country: m.player1.country ?? '', tour })
-      }
-      if (m.player2?.externalId && m.player2.name) {
-        seen.set(m.player2.externalId, { name: m.player2.name, country: m.player2.country ?? '', tour })
-      }
-    }
-  }
-
-  if (seen.size === 0) return { ok: true, imported: 0 }
-
-  // Batch upsert — skip conflicts on external_id
-  const rows = [...seen.entries()].map(([externalId, p]) => ({
-    external_id: externalId,
-    name: p.name,
-    country: p.country,
-    tour: p.tour,
-  }))
-
-  // Supabase upsert in chunks of 500
-  let imported = 0
-  for (let i = 0; i < rows.length; i += 500) {
-    const chunk = rows.slice(i, i + 500)
-    const { data: upserted, error } = await admin
-      .from('players')
-      .upsert(chunk, { onConflict: 'external_id', ignoreDuplicates: true })
-      .select('id')
-    if (error) return { ok: false, imported, error: error.message }
-    imported += upserted?.length ?? 0
-  }
-
-  return { ok: true, imported }
-}
-
-export async function seedPlayersFromApi(): Promise<{ ok: boolean; imported: number; tournamentsScanned: number; error?: string }> {
-  await assertAdmin()
-
-  const apiKey = process.env.TENNIS_API_KEY
-  if (!apiKey) return { ok: false, imported: 0, tournamentsScanned: 0, error: 'TENNIS_API_KEY not configured' }
-
-  const BASE_URL = 'https://api.api-tennis.com/tennis/'
-
-  // Helper to call the API
-  async function fetchApi(params: Record<string, string>) {
-    const url = new URL(BASE_URL)
-    url.searchParams.set('APIkey', apiKey!)
-    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
-    const res = await fetch(url.toString(), { cache: 'no-store', signal: AbortSignal.timeout(30000) })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = await res.json()
-    if (Number(json.success) !== 1) throw new Error(json.error ?? 'API error')
-    return json.result ?? []
-  }
-
-  // 1. Fetch all tournaments
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const allTournaments: any[] = await fetchApi({ method: 'get_tournaments' })
-
-  // 2. Filter to ATP/WTA singles only
-  const validTours: Record<string, 'ATP' | 'WTA'> = {}
-  for (const t of allTournaments) {
-    const type = ((t.event_type_type ?? '') as string).toUpperCase()
-    if (type.includes('ATP') && !type.includes('CHALLENGER') && !type.includes('DOUBLES')) {
-      validTours[String(t.tournament_key)] = 'ATP'
-    } else if (type.includes('WTA') && !type.includes('DOUBLES')) {
-      validTours[String(t.tournament_key)] = 'WTA'
-    }
-  }
-
-  const tournamentKeys = Object.keys(validTours)
-  if (tournamentKeys.length === 0) {
-    return { ok: false, imported: 0, tournamentsScanned: 0, error: `Found ${allTournaments.length} tournaments but none matched ATP/WTA singles filter` }
-  }
-
-  const seen = new Map<string, { name: string; country: string; tour: 'ATP' | 'WTA' }>()
-
-  // 3. Fetch fixtures one at a time with delay to avoid rate limits
-  const today = new Date().toISOString().slice(0, 10)
-  const yearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-  let scanned = 0
-  let errors = 0
-  let emptyResults = 0
-  let firstError = ''
-
-  for (const key of tournamentKeys) {
-    scanned++
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const fixtures: any[] = await fetchApi({
-        method: 'get_fixtures',
-        tournament_key: key,
-        date_start: yearAgo,
-        date_stop: today,
-      })
-
-      if (!Array.isArray(fixtures) || fixtures.length === 0) {
-        emptyResults++
-        continue
-      }
-
-      const tour = validTours[key]
-      for (const f of fixtures) {
-        // Use player key if available, otherwise use normalised name
-        const homeName = f.event_home_team
-        const homeKey = f.event_home_team_key
-        if (homeName && String(homeName).trim()) {
-          const eid = homeKey ? String(homeKey) : normalizePlayerId(String(homeName))
-          if (eid && !seen.has(eid)) {
-            seen.set(eid, { name: String(homeName), country: f.event_home_team_country ?? '', tour })
-          }
-        }
-        const awayName = f.event_away_team
-        const awayKey = f.event_away_team_key
-        if (awayName && String(awayName).trim()) {
-          const eid = awayKey ? String(awayKey) : normalizePlayerId(String(awayName))
-          if (eid && !seen.has(eid)) {
-            seen.set(eid, { name: String(awayName), country: f.event_away_team_country ?? '', tour })
-          }
-        }
-      }
-    } catch (err) {
-      errors++
-      if (!firstError) firstError = String(err)
-      // If too many consecutive errors, stop early
-      if (errors >= 10 && seen.size === 0) {
-        return { ok: false, imported: 0, tournamentsScanned: scanned, error: `API failing (${errors} errors). First: ${firstError}` }
-      }
-    }
-
-    // Stop early if we have enough
-    if (seen.size >= 500) break
-
-    // Small delay between requests to be kind to the API
-    await new Promise(r => setTimeout(r, 200))
-  }
-
-  if (seen.size === 0) {
-    return {
-      ok: false, imported: 0, tournamentsScanned: scanned,
-      error: `No players found. ${errors} errors, ${emptyResults} empty.${firstError ? ` First error: ${firstError}` : ''}`,
-    }
-  }
-
-  // 4. Bulk upsert
-  const admin = createAdminClient()
-  const rows = [...seen.entries()].map(([externalId, p]) => ({
-    external_id: externalId,
-    name: p.name,
-    country: p.country,
-    tour: p.tour,
-  }))
-
-  let imported = 0
-  for (let i = 0; i < rows.length; i += 500) {
-    const chunk = rows.slice(i, i + 500)
-    const { data: upserted, error } = await admin
-      .from('players')
-      .upsert(chunk, { onConflict: 'external_id', ignoreDuplicates: true })
-      .select('id')
-    if (error) return { ok: false, imported, tournamentsScanned: scanned, error: error.message }
-    imported += upserted?.length ?? 0
-  }
-
-  return { ok: true, imported, tournamentsScanned: scanned }
-}
-
-// resetAndImportPlayers — moved to /api/admin/import-players route.ts
-// (Server actions time out on Vercel; the API route has maxDuration = 120s
-//  and uses parallel fetching.) The client calls the route directly.
 
 // ── Manual tournament creation ────────────────────────────────────────────────
 
