@@ -65,7 +65,7 @@ export interface TournamentCardData {
   challenge_count?: number
 }
 
-export default function TournamentCard({ t, disableLink, action, predictableStatuses }: { t: TournamentCardData; disableLink?: boolean; action?: React.ReactNode; predictableStatuses?: string[] }) {
+export default function TournamentCard({ t, disableLink, action, footer, predictableStatuses }: { t: TournamentCardData; disableLink?: boolean; action?: React.ReactNode; footer?: React.ReactNode; predictableStatuses?: string[] }) {
   const tierKey = `${t.tour}|${t.category}`
   const tier    = TIER[tierKey] ?? { label: t.tour, bg: '#4a5568', text: '#fff' }
   const surface = SURFACE_COLORS[(t.surface as keyof typeof SURFACE_COLORS) ?? 'hard']
@@ -220,6 +220,19 @@ export default function TournamentCard({ t, disableLink, action, predictableStat
             <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--court)' }}>
               Make your predictions →
             </span>
+          </div>
+        )}
+
+        {/* Full-width footer slot (e.g. the viewer's own standing in this tournament) */}
+        {footer && (
+          <div
+            style={{
+              marginTop: '12px',
+              paddingTop: '12px',
+              borderTop: '1px solid var(--chalk-dim)',
+            }}
+          >
+            {footer}
           </div>
         )}
 
