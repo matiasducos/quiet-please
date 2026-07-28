@@ -15,6 +15,8 @@ import { resolvePreferences } from '@/lib/email-preferences'
 import ReplayTourButton from '@/components/ReplayTourButton'
 import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
 import AchievementsTab from './AchievementsTab'
+import StatsTab from './StatsTab'
+import type { RoundStat, PlayerStat } from './StatsTab'
 import Footer from '@/components/Footer'
 import DeleteAccountSection from '@/app/profile/DeleteAccountSection'
 import RecentFormDot from './RecentFormDot'
@@ -44,7 +46,7 @@ export default async function ProfilePage({
 }) {
   const { username } = await params
   const { msg, type, edit, tab, sub } = await searchParams
-  const activeTab = tab === 'achievements' ? 'achievements' : 'overview'
+  const activeTab = tab === 'achievements' ? 'achievements' : tab === 'stats' ? 'stats' : 'overview'
   const activeSubTab: 'tournaments' | 'challenges' | 'rivals' =
     sub === 'challenges' ? 'challenges' : sub === 'rivals' ? 'rivals' : 'tournaments'
   const { user, profile: currentProfile } = await getNavProfile()
@@ -144,6 +146,26 @@ export default async function ProfilePage({
       ? admin.from('user_achievements').select('achievement_key, meta, earned_at').eq('user_id', profile.id).order('earned_at', { ascending: false }).limit(3)
       : Promise.resolve({ data: [] as any[] }),
   ])
+
+  // ── All-time stats — aggregated in Postgres, see 057_user_all_time_stats.sql.
+  // Only runs when the tab is requested: the joins scan every prediction this
+  // user has ever made, which is far more than a profile view should carry.
+  let roundStats: RoundStat[] = []
+  let playerStats: PlayerStat[] = []
+  let tournamentsEntered = 0
+  if (activeTab === 'stats') {
+    const [rs, ps, te] = await Promise.all([
+      admin.rpc('user_round_stats', { p_user_id: profile.id }),
+      admin.rpc('user_player_stats', { p_user_id: profile.id, p_limit: 14 }),
+      admin.from('predictions').select('id', { count: 'exact', head: true })
+        .eq('user_id', profile.id).is('challenge_id', null),
+    ])
+    if (rs.error) console.error('[profile] user_round_stats failed:', rs.error.message)
+    if (ps.error) console.error('[profile] user_player_stats failed:', ps.error.message)
+    roundStats  = (rs.data ?? []) as RoundStat[]
+    playerStats = (ps.data ?? []) as PlayerStat[]
+    tournamentsEntered = te.count ?? 0
+  }
 
   type FriendStatus = 'none' | 'friends' | 'sent' | 'received'
   let friendStatus: FriendStatus = 'none'
@@ -497,7 +519,7 @@ export default async function ProfilePage({
           </Link>
         )}
 
-        {/* Tabs: Overview / Achievements */}
+        {/* Tabs: Overview / Achievements / Stats */}
         <div className="flex border-b mb-6" style={{ borderColor: 'var(--chalk-dim)', gap: 0 }}>
           <Link
             href={`/profile/${profile.username}`}
@@ -525,7 +547,29 @@ export default async function ProfilePage({
               </span>
             )}
           </Link>
+          <Link
+            href={`/profile/${profile.username}?tab=stats`}
+            style={{
+              fontFamily: 'var(--font-mono)', fontSize: '0.75rem', letterSpacing: '0.06em',
+              textTransform: 'uppercase', padding: '10px 16px', textDecoration: 'none',
+              color: activeTab === 'stats' ? 'var(--ink)' : 'var(--muted)',
+              borderBottom: activeTab === 'stats' ? '2px solid var(--court)' : '2px solid transparent',
+            }}
+          >
+            Stats
+          </Link>
         </div>
+
+        {/* Stats tab */}
+        {activeTab === 'stats' && (
+          <StatsTab
+            rounds={roundStats}
+            players={playerStats}
+            tournamentsEntered={tournamentsEntered}
+            isOwnProfile={isOwnProfile}
+            username={profile.username}
+          />
+        )}
 
         {/* Achievements tab */}
         {activeTab === 'achievements' && (
