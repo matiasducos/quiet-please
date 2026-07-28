@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { triggerCron, sendTestNotification, searchUsersForAutoPredict, toggleAutoPredict, updatePredictionMode, rerunTournamentPoints } from './actions'
-import type { ScoringTournament, CronRun, AutoPredictStats, AppSettings } from './actions'
+import { triggerCron, sendTestNotification, searchUsersForAutoPredict, toggleAutoPredict, updatePredictionMode, rerunTournamentPoints, getPastTournaments } from './actions'
+import type { ScoringTournament, CronRun, AutoPredictStats, AppSettings, AdminTournament } from './actions'
 import type { PredictionMode } from '@/lib/app-settings'
 import { NOTIFICATION_TYPES } from './constants'
 import type { NotificationType } from './constants'
@@ -39,17 +39,11 @@ function timeAgo(dateStr: string): string {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'tournaments' | 'award-points' | 'auto-predict' | 'cron-jobs' | 'test-notifications' | 'settings'
-
-interface ManualTournament {
-  id: string; name: string; tour: string; category: string; status: string
-  starts_at: string | null; surface: string | null
-  has_draw: boolean
-  flag_emoji: string | null; location: string | null
-}
+type Tab = 'tournaments' | 'past-tournaments' | 'award-points' | 'auto-predict' | 'cron-jobs' | 'test-notifications' | 'settings'
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'tournaments',        label: 'Tournaments',       icon: '🎾' },
+  { key: 'past-tournaments',   label: 'Past Tournaments',  icon: '📦' },
   { key: 'award-points',       label: 'Award Points',      icon: '⭐' },
   { key: 'auto-predict',       label: 'Auto-Predict',      icon: '🤖' },
   { key: 'cron-jobs',          label: 'Cron Jobs',         icon: '⚙️' },
@@ -57,11 +51,110 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'settings',           label: 'Settings',          icon: '🔧' },
 ]
 
+// ── Tournament card ───────────────────────────────────────────────────────────
+
+const pill = {
+  fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)',
+  background: 'var(--chalk)', padding: '1px 6px', borderRadius: '2px',
+} as const
+
+function TournamentCard({ t }: { t: AdminTournament }) {
+  return (
+    <div className="bg-white rounded-sm border p-4" style={{ borderColor: 'var(--chalk-dim)' }}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <div className="flex-1 min-w-0">
+          <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)', marginBottom: '2px' }}>
+            {t.flag_emoji && <span style={{ marginRight: '5px' }}>{t.flag_emoji}</span>}
+            {t.location ?? t.name}
+          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            {t.location && <span style={pill}>{t.name}</span>}
+            <span style={pill}>{t.tour}</span>
+            <span style={pill}>{t.category}</span>
+            {t.surface && <span style={pill}>{t.surface}</span>}
+            {t.starts_at && (
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
+                {new Date(t.starts_at).toLocaleDateString()}
+              </span>
+            )}
+            <span style={{
+              fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.04em', textTransform: 'uppercase',
+              color: t.status === 'completed' ? '#166534' : t.status === 'in_progress' ? '#92400e' : 'var(--muted)',
+              background: t.status === 'completed' ? '#dcfce7' : t.status === 'in_progress' ? '#fef3c7' : 'var(--chalk)',
+              padding: '1px 6px', borderRadius: '2px',
+            }}>
+              {t.status.replace(/_/g, ' ')}
+            </span>
+          </div>
+        </div>
+        <div className="flex gap-2 flex-wrap sm:flex-nowrap sm:flex-shrink-0">
+          <Link
+            href={`/admin/tournaments/${t.id}/edit`}
+            className="px-3 py-1.5 rounded-sm transition-opacity hover:opacity-90"
+            style={{ border: '1px solid var(--chalk-dim)', color: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
+          >
+            Edit
+          </Link>
+          <Link
+            href={`/admin/tournaments/${t.id}/draw`}
+            className="px-3 py-1.5 rounded-sm transition-opacity hover:opacity-90"
+            style={{ background: t.has_draw ? '#111' : 'var(--court)', color: 'white', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
+          >
+            {t.has_draw ? 'Edit Draw' : 'Build Draw'}
+          </Link>
+          {t.has_draw && (
+            <Link
+              href={`/admin/tournaments/${t.id}/results`}
+              className="px-3 py-1.5 rounded-sm transition-opacity hover:opacity-90"
+              style={{ border: '1px solid var(--chalk-dim)', color: 'var(--ink)', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
+            >
+              {t.status === 'completed' ? 'View Results' : 'Enter Results'}
+            </Link>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoPredictStats, appSettings }: { tournaments: ManualTournament[]; scoringStatus: ScoringTournament[]; cronRuns: CronRun[]; autoPredictStats: AutoPredictStats; appSettings: AppSettings }) {
+export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoPredictStats, appSettings }: { tournaments: AdminTournament[]; scoringStatus: ScoringTournament[]; cronRuns: CronRun[]; autoPredictStats: AutoPredictStats; appSettings: AppSettings }) {
   const [activeTab, setActiveTab] = useState<Tab>('tournaments')
   const [tournamentSearch, setTournamentSearch] = useState('')
+
+  // ── Past tournaments (archive) — fetched on demand, never on initial load ────
+  const [pastTournaments, setPastTournaments] = useState<AdminTournament[]>([])
+  const [pastLoaded,  setPastLoaded]  = useState(false)
+  const [pastLoading, setPastLoading] = useState(false)
+  const [pastHasMore, setPastHasMore] = useState(false)
+  const [pastSearch,  setPastSearch]  = useState('')
+  const [pastSearchTimer, setPastSearchTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
+
+  async function loadPastTournaments(search: string) {
+    setPastLoading(true)
+    try {
+      const { tournaments: rows, hasMore } = await getPastTournaments(search)
+      setPastTournaments(rows)
+      setPastHasMore(hasMore)
+      setPastLoaded(true)
+    } finally {
+      setPastLoading(false)
+    }
+  }
+
+  function handleTabChange(tab: Tab) {
+    setActiveTab(tab)
+    // First visit to the archive triggers the only fetch it ever needs.
+    if (tab === 'past-tournaments' && !pastLoaded && !pastLoading) loadPastTournaments('')
+  }
+
+  function handlePastSearch(q: string) {
+    setPastSearch(q)
+    if (pastSearchTimer) clearTimeout(pastSearchTimer)
+    // Search runs against the DB, so the archive is reachable past the page limit.
+    setPastSearchTimer(setTimeout(() => loadPastTournaments(q), 300))
+  }
 
   // ── Cron state ──────────────────────────────────────────────────────────────
   const [cronStatuses, setCronStatuses] = useState<Record<EndpointKey, AsyncStatus>>(
@@ -266,7 +359,7 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
             return (
               <button
                 key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => handleTabChange(tab.key)}
                 className="flex items-center gap-2 px-4 py-3 rounded-sm border transition-colors text-left"
                 style={{
                   background: isActive ? 'white' : 'transparent',
@@ -344,75 +437,55 @@ export default function AdminPanel({ tournaments, scoringStatus, cronRuns, autoP
               </div>
             ) : (
               <div className="flex flex-col gap-2">
-                {filteredTournaments.map(t => (
-                  <div key={t.id} className="bg-white rounded-sm border p-4" style={{ borderColor: 'var(--chalk-dim)' }}>
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)', marginBottom: '2px' }}>
-                          {t.flag_emoji && <span style={{ marginRight: '5px' }}>{t.flag_emoji}</span>}
-                          {t.location ?? t.name}
-                        </p>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {t.location && (
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'var(--chalk)', padding: '1px 6px', borderRadius: '2px' }}>
-                              {t.name}
-                            </span>
-                          )}
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'var(--chalk)', padding: '1px 6px', borderRadius: '2px' }}>
-                            {t.tour}
-                          </span>
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'var(--chalk)', padding: '1px 6px', borderRadius: '2px' }}>
-                            {t.category}
-                          </span>
-                          {t.surface && (
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'var(--chalk)', padding: '1px 6px', borderRadius: '2px' }}>
-                              {t.surface}
-                            </span>
-                          )}
-                          {t.starts_at && (
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
-                              {new Date(t.starts_at).toLocaleDateString()}
-                            </span>
-                          )}
-                          <span style={{
-                            fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.04em', textTransform: 'uppercase',
-                            color: t.status === 'completed' ? '#166534' : t.status === 'in_progress' ? '#92400e' : 'var(--muted)',
-                            background: t.status === 'completed' ? '#dcfce7' : t.status === 'in_progress' ? '#fef3c7' : 'var(--chalk)',
-                            padding: '1px 6px', borderRadius: '2px',
-                          }}>
-                            {t.status.replace(/_/g, ' ')}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 flex-shrink-0">
-                        <Link
-                          href={`/admin/tournaments/${t.id}/edit`}
-                          className="px-3 py-1.5 rounded-sm transition-opacity hover:opacity-90"
-                          style={{ border: '1px solid var(--chalk-dim)', color: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
-                        >
-                          Edit
-                        </Link>
-                        <Link
-                          href={`/admin/tournaments/${t.id}/draw`}
-                          className="px-3 py-1.5 rounded-sm transition-opacity hover:opacity-90"
-                          style={{ background: t.has_draw ? '#111' : 'var(--court)', color: 'white', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
-                        >
-                          {t.has_draw ? 'Edit Draw' : 'Build Draw'}
-                        </Link>
-                        {t.has_draw && (
-                          <Link
-                            href={`/admin/tournaments/${t.id}/results`}
-                            className="px-3 py-1.5 rounded-sm transition-opacity hover:opacity-90"
-                            style={{ border: '1px solid var(--chalk-dim)', color: 'var(--ink)', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
-                          >
-                            {t.status === 'completed' ? 'View Results' : 'Enter Results'}
-                          </Link>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                {filteredTournaments.map(t => <TournamentCard key={t.id} t={t} />)}
               </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Past Tournaments tab ── */}
+        {activeTab === 'past-tournaments' && (
+          <div>
+            <h2 className="mb-1" style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em' }}>
+              Past Tournaments
+            </h2>
+            <p className="mb-3" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
+              Completed more than a week ago. Loaded only when you open this tab.
+            </p>
+
+            {/* Search bar — queries the database, so it reaches beyond the 50 shown */}
+            <div className="mb-3">
+              <input
+                type="text"
+                placeholder="Search past tournaments…"
+                value={pastSearch}
+                onChange={e => handlePastSearch(e.target.value)}
+                className="w-full px-3 py-2 rounded-sm border"
+                style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', borderColor: 'var(--chalk-dim)', background: 'white', color: 'var(--ink)' }}
+              />
+            </div>
+
+            {pastLoading ? (
+              <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
+                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>Loading…</p>
+              </div>
+            ) : pastTournaments.length === 0 ? (
+              <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
+                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>
+                  {pastSearch ? 'No past tournaments match your search.' : 'No past tournaments yet.'}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col gap-2">
+                  {pastTournaments.map(t => <TournamentCard key={t.id} t={t} />)}
+                </div>
+                {pastHasMore && (
+                  <p className="mt-3" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
+                    Showing the 50 most recent. Use search to find older ones.
+                  </p>
+                )}
+              </>
             )}
           </div>
         )}
