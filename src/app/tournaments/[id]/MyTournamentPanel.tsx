@@ -5,6 +5,9 @@ import { nameToFlag } from '@/app/admin/countries'
 
 const mono = { fontFamily: 'var(--font-mono)' } as const
 
+/** Accuracy bar colour — matches the profile Stats tab. */
+const ACCURACY_BLUE = '#378ADD'
+
 function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-sm p-3 md:p-4" style={{ background: 'var(--chalk)' }}>
@@ -176,7 +179,7 @@ export default function MyTournamentPanel({
           </h3>
           <div className="flex items-center gap-4 mb-3" style={{ ...mono, fontSize: '0.62rem', color: 'var(--muted)' }}>
             <span className="flex items-center gap-1.5">
-              <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: 'var(--chalk-dim)', display: 'inline-block' }} />
+              <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: ACCURACY_BLUE, display: 'inline-block' }} />
               Accuracy
             </span>
             <span className="flex items-center gap-1.5">
@@ -191,10 +194,14 @@ export default function MyTournamentPanel({
                   {r.round}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <div style={{ height: '6px', width: `${r.accuracy}%`, background: 'var(--chalk-dim)', borderRadius: '2px', marginBottom: '3px' }} />
+                  <div style={{ height: '6px', width: `${r.accuracy}%`, background: ACCURACY_BLUE, borderRadius: '2px', marginBottom: '4px' }} />
                   <div style={{ height: '6px', width: `${r.pointsShare}%`, background: 'var(--court)', borderRadius: '2px' }} />
                 </div>
-                <span style={{ ...mono, fontSize: '0.68rem', color: 'var(--muted)', width: '46px', textAlign: 'right', flexShrink: 0 }}>
+                <span style={{ ...mono, fontSize: '0.65rem', width: '34px', textAlign: 'right', flexShrink: 0, lineHeight: '10px' }}>
+                  <span style={{ display: 'block', color: ACCURACY_BLUE, marginBottom: '4px' }}>{r.accuracy}%</span>
+                  <span style={{ display: 'block', color: 'var(--court)' }}>{r.pointsShare}%</span>
+                </span>
+                <span className="hidden sm:inline" style={{ ...mono, fontSize: '0.68rem', color: 'var(--muted)', width: '46px', textAlign: 'right', flexShrink: 0 }}>
                   {r.correct}/{r.decided}
                 </span>
                 <span style={{ ...mono, fontSize: '0.72rem', color: 'var(--ink)', width: '52px', textAlign: 'right', flexShrink: 0 }}>

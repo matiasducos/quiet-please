@@ -13,6 +13,9 @@ export interface PlayerStat {
 
 const mono = { fontFamily: 'var(--font-mono)' } as const
 
+/** Accuracy bar colour — the app's blue, distinct from the green used for points. */
+const ACCURACY_BLUE = '#378ADD'
+
 function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-sm p-3 md:p-4" style={{ background: 'var(--chalk)' }}>
@@ -52,8 +55,17 @@ export default function StatsTab({
   const earners = players.filter(p => p.points > 0).slice(0, 8)
   // Most-backed players who returned nothing — the same inverse that makes the
   // per-tournament panel readable, but across a whole career it is more damning.
-  const busts = [...players]
-    .filter(p => p.points === 0 && p.picks >= 2)
+  const earnerIds = new Set(earners.map(p => p.external_id))
+  // Worst picks = backed a lot, returned little. Two steps on purpose: take the
+  // poorest returners by points-per-pick, then rank *those* by how often they
+  // were picked. Sorting by average alone would put someone backed 9 times for
+  // nothing above someone backed 22 times for scraps, which is the opposite of
+  // what "picked the most for the least" means.
+  const MIN_PICKS_FOR_WORST = 4
+  const worst = [...players]
+    .filter(p => p.picks >= MIN_PICKS_FOR_WORST && !earnerIds.has(p.external_id))
+    .sort((a, b) => (a.points / a.picks) - (b.points / b.picks))
+    .slice(0, 6)
     .sort((a, b) => b.picks - a.picks)
     .slice(0, 3)
 
@@ -93,7 +105,7 @@ export default function StatsTab({
         </h3>
         <div className="flex items-center gap-4 mb-3" style={{ ...mono, fontSize: '0.62rem', color: 'var(--muted)' }}>
           <span className="flex items-center gap-1.5">
-            <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: 'var(--chalk-dim)', display: 'inline-block' }} />
+            <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: ACCURACY_BLUE, display: 'inline-block' }} />
             Accuracy
           </span>
           <span className="flex items-center gap-1.5">
@@ -111,10 +123,15 @@ export default function StatsTab({
                   {r.round}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <div style={{ height: '6px', width: `${accuracy}%`, background: 'var(--chalk-dim)', borderRadius: '2px', marginBottom: '3px' }} />
+                  <div style={{ height: '6px', width: `${accuracy}%`, background: ACCURACY_BLUE, borderRadius: '2px', marginBottom: '4px' }} />
                   <div style={{ height: '6px', width: `${pointsShare}%`, background: 'var(--court)', borderRadius: '2px' }} />
                 </div>
-                <span style={{ ...mono, fontSize: '0.68rem', color: 'var(--muted)', width: '58px', textAlign: 'right', flexShrink: 0 }}>
+                {/* Percentages sit on their own lines so each reads against its bar. */}
+                <span style={{ ...mono, fontSize: '0.65rem', width: '34px', textAlign: 'right', flexShrink: 0, lineHeight: '10px' }}>
+                  <span style={{ display: 'block', color: ACCURACY_BLUE, marginBottom: '4px' }}>{accuracy}%</span>
+                  <span style={{ display: 'block', color: 'var(--court)' }}>{pointsShare}%</span>
+                </span>
+                <span className="hidden sm:inline" style={{ ...mono, fontSize: '0.68rem', color: 'var(--muted)', width: '58px', textAlign: 'right', flexShrink: 0 }}>
                   {r.correct}/{r.decided}
                 </span>
                 <span style={{ ...mono, fontSize: '0.72rem', color: 'var(--ink)', width: '56px', textAlign: 'right', flexShrink: 0 }}>
@@ -134,20 +151,28 @@ export default function StatsTab({
             <InfoBubble label="players">
               Who {who} {isOwnProfile ? 'have' : 'has'} backed across every tournament, and what they
               returned. <strong>pk</strong> counts each match a player was picked to win, so backing
-              someone deep counts once per round.
+              someone deep counts once per round — including rounds they never reached, because a
+              bracket is filled in before anyone plays. <strong>avg</strong> is points divided by
+              those picks, so a player who went out early drags their own average down.
             </InfoBubble>
           </h3>
           <p style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)', marginBottom: '10px' }}>
             All time, best earners first
           </p>
           <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2 px-2 md:px-3" style={{ ...mono, fontSize: '0.58rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>
+              <span style={{ flex: 1, minWidth: 0 }} />
+              <span style={{ width: '34px', textAlign: 'right', flexShrink: 0 }}>pk</span>
+              <span style={{ width: '48px', textAlign: 'right', flexShrink: 0 }}>avg</span>
+              <span style={{ width: '58px', textAlign: 'right', flexShrink: 0 }}>pts</span>
+            </div>
             {earners.map(p => <PlayerRow key={p.external_id} p={p} bust={false} />)}
-            {busts.length > 0 && (
+            {worst.length > 0 && (
               <>
                 <p style={{ ...mono, fontSize: '0.62rem', color: 'var(--muted)', marginTop: '8px', marginBottom: '2px' }}>
-                  Backed but never paid off
+                  Backed most, returned least
                 </p>
-                {busts.map(p => <PlayerRow key={p.external_id} p={p} bust />)}
+                {worst.map(p => <PlayerRow key={p.external_id} p={p} bust />)}
               </>
             )}
           </div>
@@ -169,10 +194,16 @@ function PlayerRow({ p, bust }: { p: PlayerStat; bust: boolean }) {
           {p.name ?? 'Unknown player'}
         </span>
       </span>
-      <span style={{ ...mono, fontSize: '0.68rem', color: 'var(--muted)', width: '48px', textAlign: 'right', flexShrink: 0 }}>
-        {p.picks}<span style={{ opacity: 0.7 }}>&nbsp;pk</span>
+      <span style={{ ...mono, fontSize: '0.7rem', color: 'var(--muted)', width: '34px', textAlign: 'right', flexShrink: 0 }}>
+        {p.picks}
       </span>
-      <span style={{ ...mono, fontSize: '0.75rem', color: p.points > 0 ? 'var(--ink)' : 'var(--muted)', width: '64px', textAlign: 'right', flexShrink: 0 }}>
+      {/* Average over every pick, including ones made for rounds the player never
+          reached — the cost of backing someone who went out early is part of
+          what a pick returned. */}
+      <span style={{ ...mono, fontSize: '0.7rem', color: 'var(--muted)', width: '48px', textAlign: 'right', flexShrink: 0 }}>
+        {p.picks > 0 ? Math.round(p.points / p.picks).toLocaleString() : 0}
+      </span>
+      <span style={{ ...mono, fontSize: '0.75rem', color: p.points > 0 ? 'var(--ink)' : 'var(--muted)', width: '58px', textAlign: 'right', flexShrink: 0 }}>
         {p.points.toLocaleString()}
       </span>
     </div>
