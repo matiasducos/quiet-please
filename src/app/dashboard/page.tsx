@@ -10,6 +10,8 @@ import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { getUpcomingTournaments, getLiveTournaments } from '@/lib/tournaments/cached'
 import DashboardTour from '@/components/DashboardTour'
 import { formatPoints } from '@/lib/utils/format'
+import { getLiveStatuses } from '@/lib/tennis/live-status'
+import { ROUND_LABEL } from '@/lib/tennis/my-tournament'
 
 export const metadata: Metadata = { title: 'Dashboard | Quiet Please' }
 
@@ -47,6 +49,10 @@ export default async function DashboardPage() {
     prediction_count: engagement[t.id]?.predictions ?? 0,
     challenge_count: engagement[t.id]?.challenges ?? 0,
   }))
+
+  // The viewer's own standing in each live tournament. Not cached alongside
+  // getLiveTournaments(), which is shared across all users.
+  const liveStatuses = await getLiveStatuses(user.id, liveIds)
 
   const stats = [
     { label: 'Ranking points', value: formatPoints(profile?.ranking_points ?? 0) },
@@ -149,9 +155,38 @@ export default async function DashboardPage() {
               <Link href="/tournaments" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>See all tournaments →</Link>
             </div>
             <div className={`grid gap-3 ${enrichedLive.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
-              {enrichedLive.map(t => (
-                <TournamentCard key={t.id} t={t} />
-              ))}
+              {enrichedLive.map(t => {
+                const s = liveStatuses[t.id]
+                return (
+                  <TournamentCard
+                    key={t.id}
+                    t={t}
+                    footer={s ? (
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', lineHeight: 1.6 }}>
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span style={{ color: 'var(--ink)' }}>
+                            {s.pointsSoFar.toLocaleString()} pts
+                            <span style={{ color: 'var(--muted)' }}> · {s.correct} of {s.decided} correct</span>
+                          </span>
+                          {s.currentRound && (
+                            <span style={{ color: 'var(--muted)' }}>
+                              {ROUND_LABEL[s.currentRound] ?? s.currentRound} done
+                            </span>
+                          )}
+                        </div>
+                        {s.topRiding.length > 0 && (
+                          <div style={{ color: '#1a6b3c', marginTop: '2px' }}>
+                            {s.topRiding.map(p => `${p.name} ${p.riding} to come`).join(' · ')}
+                            {s.ridingCount > s.topRiding.length && (
+                              <span style={{ color: 'var(--muted)' }}> +{s.ridingCount - s.topRiding.length} more</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ) : undefined}
+                  />
+                )
+              })}
             </div>
           </div>
         )}
