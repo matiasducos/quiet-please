@@ -1,6 +1,7 @@
 import type { MyTournament, PlayerSummary } from '@/lib/tennis/my-tournament'
 import { ROUND_LABEL } from '@/lib/tennis/my-tournament'
 import InfoBubble from '@/components/InfoBubble'
+import { nameToFlag } from '@/app/admin/countries'
 
 const mono = { fontFamily: 'var(--font-mono)' } as const
 
@@ -18,6 +19,21 @@ function Metric({ label, value, sub }: { label: string; value: string; sub?: str
   )
 }
 
+/** Flag emoji plus name. Country comes from the draw snapshot, so it can be absent. */
+function PlayerName({ p, color }: { p: PlayerSummary; color: string }) {
+  const flag = nameToFlag(p.country)
+  return (
+    <span style={{ ...mono, fontSize: '0.78rem', color, flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+      <span aria-hidden="true" style={{ fontSize: '0.85rem', lineHeight: 1, width: '1.1em', flexShrink: 0, textAlign: 'center' }}>
+        {flag ?? ''}
+      </span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {p.name}
+      </span>
+    </span>
+  )
+}
+
 function PlayerLine({ p, tone, isChampion }: { p: PlayerSummary; tone: 'alive' | 'neutral' | 'bust'; isChampion: boolean }) {
   const bg = tone === 'alive' ? '#edf7f0' : tone === 'bust' ? '#fdf2ed' : 'var(--chalk)'
   const nameColor = tone === 'bust' ? '#993C1D' : 'var(--ink)'
@@ -26,9 +42,7 @@ function PlayerLine({ p, tone, isChampion }: { p: PlayerSummary; tone: 'alive' |
   const statusLabel = isChampion ? 'champion' : p.alive ? 'alive' : `out ${p.outRound ?? ''}`
   return (
     <div className="flex items-center gap-2 px-2 md:px-3 py-2 rounded-sm" style={{ background: bg }}>
-      <span style={{ ...mono, fontSize: '0.78rem', color: nameColor, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {p.name}
-      </span>
+      <PlayerName p={p} color={nameColor} />
       <span style={{ ...mono, fontSize: '0.68rem', color: 'var(--muted)', width: '44px', textAlign: 'right', flexShrink: 0 }}>
         {p.picks}<span style={{ opacity: 0.7 }}>&nbsp;pk</span>
       </span>
@@ -111,9 +125,7 @@ export default function MyTournamentPanel({
           <div className="flex flex-col gap-1.5">
             {ridingShown.map(p => (
               <div key={p.externalId} className="flex items-center gap-2 md:gap-3 px-3 py-2 rounded-sm" style={{ background: '#edf7f0' }}>
-                <span style={{ ...mono, fontSize: '0.78rem', color: 'var(--ink)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {p.name}
-                </span>
+                <PlayerName p={p} color="var(--ink)" />
                 <span style={{ ...mono, fontSize: '0.7rem', color: 'var(--muted)' }}>
                   {p.points.toLocaleString()} pts
                 </span>

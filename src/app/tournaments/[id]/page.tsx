@@ -160,23 +160,33 @@ export default async function TournamentDetailPage({ params }: { params: Promise
       const picks = (prediction.picks as Record<string, string>) ?? {}
 
       // Qualifiers were placeholders when the draw was built, so the snapshot has
-      // no name for them. Fall back to the registry for just those ids.
-      const named = new Set(
-        matches.flatMap(m => [m?.player1, m?.player2])
-          .filter(p => p?.externalId && p.name)
-          .map(p => p!.externalId as string),
-      )
-      const missing = [...new Set(Object.values(picks))].filter(pid => pid && !named.has(pid))
-      let nameOverrides: Record<string, string> = {}
+      // neither a name nor a country for them. Fall back to the registry for the
+      // ids missing either one.
+      const fromDraw = new Map<string, { name?: string | null; country?: string | null }>()
+      for (const p of matches.flatMap(m => [m?.player1, m?.player2])) {
+        if (!p?.externalId) continue
+        const prev = fromDraw.get(p.externalId) ?? {}
+        fromDraw.set(p.externalId, { name: prev.name ?? p.name, country: prev.country ?? p.country })
+      }
+      const missing = [...new Set(Object.values(picks))].filter(pid => {
+        if (!pid) return false
+        const entry = fromDraw.get(pid)
+        return !entry?.name || !entry?.country
+      })
+
+      let overrides: Record<string, { name?: string | null; country?: string | null }> = {}
       if (missing.length > 0) {
-        const { data: registry } = await supabase
+        const { data: registry, error: regErr } = await supabase
           .from('players')
-          .select('external_id, name')
+          .select('external_id, name, country')
           .in('external_id', missing.slice(0, 200))
-        nameOverrides = Object.fromEntries((registry ?? []).map(p => [p.external_id, p.name]))
+        if (regErr) console.error('[tournament] player registry lookup failed:', regErr.message)
+        overrides = Object.fromEntries(
+          (registry ?? []).map(p => [p.external_id, { name: p.name, country: p.country }]),
+        )
       }
 
-      myTournament = buildMyTournament({ picks, results, matches, pointsByMatch, nameOverrides })
+      myTournament = buildMyTournament({ picks, results, matches, pointsByMatch, overrides })
     }
   }
 
