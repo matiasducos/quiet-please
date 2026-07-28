@@ -689,57 +689,129 @@ export async function createTournament(data: {
   return { ok: true, tournamentId: tournament.id }
 }
 
-export async function getManualTournaments(): Promise<{
-  ok: boolean
-  tournaments: Array<{
-    id: string; name: string; tour: string; category: string; status: string
-    starts_at: string | null; surface: string | null
-    location: string | null; flag_emoji: string | null
-    has_draw: boolean
-  }>
-}> {
+export interface AdminTournament {
+  id: string; name: string; tour: string; category: string; status: string
+  starts_at: string | null; ends_at: string | null; surface: string | null
+  location: string | null; flag_emoji: string | null
+  has_draw: boolean
+}
+
+const TOURNAMENT_COLUMNS = 'id, name, tour, category, status, starts_at, ends_at, surface, location, flag_emoji'
+
+/** Completed tournaments that ended more than this long ago move to the "Past" tab. */
+const PAST_TOURNAMENT_CUTOFF_DAYS = 7
+const PAST_TOURNAMENTS_PAGE_SIZE  = 50
+
+function pastCutoffISO(): string {
+  return new Date(Date.now() - PAST_TOURNAMENT_CUTOFF_DAYS * 86_400_000).toISOString()
+}
+
+/** Attach `has_draw` to tournament rows with a single lookup query. */
+async function withDrawFlags(
+  admin: ReturnType<typeof createAdminClient>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  rows: any[],
+): Promise<AdminTournament[]> {
+  if (rows.length === 0) return []
+
+  const { data: draws, error } = await admin
+    .from('draws')
+    .select('tournament_id')
+    .in('tournament_id', rows.map(r => r.id))
+
+  if (error) console.error('withDrawFlags error:', error.message)
+  const drawSet = new Set((draws ?? []).map((d: { tournament_id: string }) => d.tournament_id))
+
+  return rows.map(t => ({
+    id: t.id,
+    name: t.name,
+    tour: t.tour,
+    category: t.category,
+    status: t.status,
+    starts_at: t.starts_at,
+    ends_at: t.ends_at ?? null,
+    surface: t.surface,
+    location: t.location ?? null,
+    flag_emoji: t.flag_emoji ?? null,
+    has_draw: drawSet.has(t.id),
+  }))
+}
+
+/**
+ * Current tournaments: everything admin-created except those completed over a week ago.
+ * Sorted oldest first so in-progress tournaments (which started before anything upcoming)
+ * sit at the top, where results get entered.
+ */
+export async function getManualTournaments(): Promise<{ ok: boolean; tournaments: AdminTournament[] }> {
   await assertAdmin()
   const admin = createAdminClient()
 
-  // Only show admin-created tournaments (is_manual = true)
+  // NOT (completed AND ended long ago) → not completed OR ended recently.
+  // `ends_at is null` is kept here so a row without an end date stays visible
+  // rather than falling through the gap between the two tabs.
   const { data: tournaments, error } = await admin
     .from('tournaments')
-    .select('id, name, tour, category, status, starts_at, surface, location, flag_emoji')
+    .select(TOURNAMENT_COLUMNS)
     .eq('is_manual', true)
-    .order('starts_at', { ascending: false })
-    .limit(50)
+    .or(`status.neq.completed,ends_at.gte.${pastCutoffISO()},ends_at.is.null`)
+    .order('starts_at', { ascending: true, nullsFirst: false })
+    .limit(100)
 
   if (error) {
     console.error('getManualTournaments error:', error.message)
     return { ok: false, tournaments: [] }
   }
 
-  // Check which tournaments have draws (separate query)
-  const ids = (tournaments ?? []).map(t => t.id)
-  const { data: draws } = ids.length > 0
-    ? await admin.from('draws').select('tournament_id').in('tournament_id', ids)
-    : { data: [] }
-  const drawSet = new Set((draws ?? []).map((d: { tournament_id: string }) => d.tournament_id))
+  return { ok: true, tournaments: await withDrawFlags(admin, tournaments ?? []) }
+}
+
+/**
+ * Archive tab: tournaments completed more than a week ago, most recent first.
+ * Loaded on demand only — never part of the initial admin page payload.
+ */
+export async function getPastTournaments(search?: string): Promise<{
+  ok: boolean; tournaments: AdminTournament[]; hasMore: boolean
+}> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  let query = admin
+    .from('tournaments')
+    .select(TOURNAMENT_COLUMNS)
+    .eq('is_manual', true)
+    .eq('status', 'completed')
+    .lt('ends_at', pastCutoffISO())
+
+  // Characters that are syntax in a PostgREST `or` filter become wildcards rather
+  // than being dropped: an unescaped comma would split the term into two bogus
+  // conditions, but deleting it makes "Madrid, Spain" fail to match "Madrid, Spain".
+  const term = (search ?? '').trim().replace(/[,()*\\"%]/g, '%')
+  if (term) query = query.or(`name.ilike.%${term}%,location.ilike.%${term}%`)
+
+  // Fetch one extra row to detect whether more exist beyond the page.
+  const { data: tournaments, error } = await query
+    .order('ends_at', { ascending: false })
+    .limit(PAST_TOURNAMENTS_PAGE_SIZE + 1)
+
+  if (error) {
+    console.error('getPastTournaments error:', error.message)
+    return { ok: false, tournaments: [], hasMore: false }
+  }
+
+  const rows    = tournaments ?? []
+  const hasMore = rows.length > PAST_TOURNAMENTS_PAGE_SIZE
 
   return {
     ok: true,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tournaments: (tournaments ?? []).map((t: any) => ({
-      id: t.id,
-      name: t.name,
-      tour: t.tour,
-      category: t.category,
-      status: t.status,
-      starts_at: t.starts_at,
-      surface: t.surface,
-      location: t.location ?? null,
-      flag_emoji: t.flag_emoji ?? null,
-      has_draw: drawSet.has(t.id),
-    })),
+    tournaments: await withDrawFlags(admin, rows.slice(0, PAST_TOURNAMENTS_PAGE_SIZE)),
+    hasMore,
   }
 }
 
 // ── Scoring status (for Award Points section in admin panel) ─────────────────
+
+/** Award Points is a work queue — cap it so the page payload stays flat as seasons accumulate. */
+const SCORING_STATUS_LIMIT = 30
 
 export interface ScoringTournament {
   id: string
@@ -756,61 +828,41 @@ export async function getScoringStatus(): Promise<ScoringTournament[]> {
   await assertAdmin()
   const admin = createAdminClient()
 
-  // Get in_progress and completed tournaments
-  const { data: tournaments } = await admin
+  // Bounded: the tab is a work queue, not an archive. Older tournaments stay
+  // reachable through the Past Tournaments tab.
+  const { data: tournaments, error: tErr } = await admin
     .from('tournaments')
     .select('id, name, status, location, flag_emoji')
     .in('status', ['in_progress', 'completed'])
     .order('starts_at', { ascending: false })
+    .limit(SCORING_STATUS_LIMIT)
 
+  if (tErr) {
+    console.error('getScoringStatus tournaments error:', tErr.message)
+    return []
+  }
   if (!tournaments?.length) return []
 
-  const ids = tournaments.map(t => t.id)
+  // Counts are aggregated in Postgres — see 053_scoring_status_rpc.sql. Doing it
+  // here would mean shipping every match_result id back as a URL parameter.
+  const { data: counts, error: cErr } = await admin.rpc('scoring_status', {
+    p_tournament_ids: tournaments.map(t => t.id),
+  })
 
-  // Count non-BYE match results per tournament.
-  // NULL scores must be included (API-synced results often have no score
-  // string) — a bare .neq('score','BYE') silently drops them, which showed
-  // "0 results" for live tournaments and disabled the Re-run button. Same
-  // filter the award-points cron uses.
-  const { data: results } = await admin
-    .from('match_results')
-    .select('id, tournament_id')
-    .in('tournament_id', ids)
-    .or('score.neq.BYE,score.is.null')
-
-  const resultCountByTournament: Record<string, number> = {}
-  const resultIdsByTournament: Record<string, Set<string>> = {}
-  for (const r of results ?? []) {
-    resultCountByTournament[r.tournament_id] = (resultCountByTournament[r.tournament_id] ?? 0) + 1
-    if (!resultIdsByTournament[r.tournament_id]) resultIdsByTournament[r.tournament_id] = new Set()
-    resultIdsByTournament[r.tournament_id].add(r.id)
+  if (cErr) {
+    console.error('getScoringStatus rpc error:', cErr.message)
+    return []
   }
 
-  // Get scored match_result_ids from point_ledger
-  const allResultIds = (results ?? []).map(r => r.id)
-  const { data: scored } = allResultIds.length > 0
-    ? await admin
-        .from('point_ledger')
-        .select('match_result_id')
-        .in('match_result_id', allResultIds)
-    : { data: [] }
+  type ScoringCount = { tournament_id: string; total_results: number; scored_results: number }
+  const byId = new Map<string, ScoringCount>(
+    ((counts ?? []) as ScoringCount[]).map(c => [c.tournament_id, c]),
+  )
 
-  // Unique scored result IDs per tournament
-  const scoredByTournament: Record<string, Set<string>> = {}
-  for (const s of scored ?? []) {
-    // Find which tournament this result belongs to
-    for (const [tid, rids] of Object.entries(resultIdsByTournament)) {
-      if (rids.has(s.match_result_id)) {
-        if (!scoredByTournament[tid]) scoredByTournament[tid] = new Set()
-        scoredByTournament[tid].add(s.match_result_id)
-        break
-      }
-    }
-  }
-
-  return tournaments.map((t: any) => {
-    const total = resultCountByTournament[t.id] ?? 0
-    const scored = scoredByTournament[t.id]?.size ?? 0
+  return tournaments.map(t => {
+    const c = byId.get(t.id)
+    const total  = Number(c?.total_results  ?? 0)
+    const scored = Number(c?.scored_results ?? 0)
     return {
       id: t.id,
       name: t.name,
