@@ -1,5 +1,6 @@
 import type { MyTournament, PlayerSummary } from '@/lib/tennis/my-tournament'
 import { ROUND_LABEL } from '@/lib/tennis/my-tournament'
+import InfoBubble from '@/components/InfoBubble'
 
 const mono = { fontFamily: 'var(--font-mono)' } as const
 
@@ -66,8 +67,14 @@ export default function MyTournamentPanel({
   return (
     <section className="bg-white rounded-sm border p-4 md:p-6 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
       <div className="flex items-baseline justify-between gap-3 mb-4 flex-wrap">
-        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em' }}>
+        <h2 className="flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em' }}>
           Your tournament
+          <InfoBubble label="your tournament">
+            How your bracket is doing so far. <strong>Points so far</strong> counts only
+            matches already played. <strong>Correct picks</strong> compares your bracket
+            against every match decided so far. <strong>Still alive</strong> is how many of
+            the players you picked have not lost yet.
+          </InfoBubble>
         </h2>
         {currentRound && (
           <span style={{
@@ -88,8 +95,15 @@ export default function MyTournamentPanel({
       {/* Still riding — the follow list. Only meaningful mid-tournament. */}
       {!isComplete && stillRiding.length > 0 && (
         <div className="mb-6">
-          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', marginBottom: '2px' }}>
+          <h3 className="flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', marginBottom: '2px' }}>
             Still riding on
+            <InfoBubble label="still riding on">
+              Players you picked who have not lost yet, ranked by how much you still
+              stand to gain from them. <strong>3 to come</strong> means three of their
+              matches are still picked in your bracket. A player who survives past the
+              round you predicted them out in stays in the draw but has nothing riding
+              on them, so they drop to the summary line.
+            </InfoBubble>
           </h3>
           <p style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)', marginBottom: '8px' }}>
             Players you picked who are still in the draw
@@ -132,8 +146,15 @@ export default function MyTournamentPanel({
       {/* Round by round — accuracy against share of points */}
       {rounds.length > 0 && (
         <div className="mb-6">
-          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', marginBottom: '6px' }}>
+          <h3 className="flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', marginBottom: '6px' }}>
             Round by round
+            <InfoBubble label="round by round">
+              The grey bar is how many matches you called correctly in that round. The
+              green bar is how much of your total came from it. The two rarely line up:
+              later rounds are worth far more per match and the streak bonus compounds,
+              so a round can have low accuracy and still be where most of your points
+              came from.
+            </InfoBubble>
           </h3>
           <div className="flex items-center gap-4 mb-3" style={{ ...mono, fontSize: '0.62rem', color: 'var(--muted)' }}>
             <span className="flex items-center gap-1.5">
@@ -170,8 +191,14 @@ export default function MyTournamentPanel({
       {/* Your players */}
       {topEarners.length > 0 && (
         <div>
-          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', marginBottom: '2px' }}>
+          <h3 className="flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', marginBottom: '2px' }}>
             Your players
+            <InfoBubble label="your players">
+              What each pick has returned. <strong>pk</strong> is how many times you
+              picked that player to win a match, so backing someone deep counts more
+              than once. <strong>Backed but never paid off</strong> are players you
+              picked more than once who earned you nothing.
+            </InfoBubble>
           </h3>
           <p style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)', marginBottom: '8px' }}>
             How each pick has paid off

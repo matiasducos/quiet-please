@@ -26,7 +26,7 @@ export default function RootLoading() {
       <NavSkeleton />
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-12">
         <div className="skeleton h-10 w-64 mb-3" />
-        <div className="skeleton h-5 w-96 mb-8" />
+        <div className="skeleton h-5 w-full max-w-96 mb-8" />
         <div className="skeleton h-48 w-full rounded-sm" />
       </div>
     </main>
