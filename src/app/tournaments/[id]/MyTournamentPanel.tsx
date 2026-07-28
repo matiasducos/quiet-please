@@ -34,12 +34,18 @@ function PlayerName({ p, color }: { p: PlayerSummary; color: string }) {
   )
 }
 
-function PlayerLine({ p, tone, isChampion }: { p: PlayerSummary; tone: 'alive' | 'neutral' | 'bust'; isChampion: boolean }) {
+function PlayerLine({ p, tone, isChampion, isFinished }: { p: PlayerSummary; tone: 'alive' | 'neutral' | 'bust'; isChampion: boolean; isFinished: boolean }) {
   const bg = tone === 'alive' ? '#edf7f0' : tone === 'bust' ? '#fdf2ed' : 'var(--chalk)'
   const nameColor = tone === 'bust' ? '#993C1D' : 'var(--ink)'
-  // "Alive" is derived from never having lost, so the champion of a finished
-  // tournament qualifies — label them for what they actually are.
-  const statusLabel = isChampion ? 'champion' : p.alive ? 'alive' : `out ${p.outRound ?? ''}`
+  // "Alive" is derived from never having lost. On a finished tournament that is
+  // true of the champion — and also of anyone whose defeat was never recorded
+  // (a withdrawal, or a missing result). Only one player can still be standing,
+  // so everyone else is out; we just don't know which round.
+  const statusLabel = isChampion
+    ? 'champion'
+    : p.alive
+      ? (isFinished ? 'out' : 'alive')
+      : `out ${p.outRound ?? ''}`
   return (
     <div className="flex items-center gap-2 px-2 md:px-3 py-2 rounded-sm" style={{ background: bg }}>
       <PlayerName p={p} color={nameColor} />
@@ -49,7 +55,7 @@ function PlayerLine({ p, tone, isChampion }: { p: PlayerSummary; tone: 'alive' |
       <span style={{ ...mono, fontSize: '0.75rem', color: p.points > 0 ? 'var(--ink)' : 'var(--muted)', width: '58px', textAlign: 'right', flexShrink: 0 }}>
         {p.points.toLocaleString()}
       </span>
-      <span style={{ ...mono, fontSize: '0.62rem', width: '58px', textAlign: 'right', flexShrink: 0, color: isChampion ? '#1a6b3c' : p.alive ? '#1a6b3c' : 'var(--muted)' }}>
+      <span style={{ ...mono, fontSize: '0.62rem', width: '58px', textAlign: 'right', flexShrink: 0, color: isChampion || (p.alive && !isFinished) ? '#1a6b3c' : 'var(--muted)' }}>
         {statusLabel}
       </span>
     </div>
@@ -222,6 +228,7 @@ export default function MyTournamentPanel({
                 p={p}
                 tone={p.alive ? 'alive' : 'neutral'}
                 isChampion={isComplete && p.externalId === championExternalId}
+                isFinished={isComplete}
               />
             ))}
             {busts.length > 0 && (
@@ -230,7 +237,7 @@ export default function MyTournamentPanel({
                   Backed but never paid off
                 </p>
                 {busts.map(p => (
-                  <PlayerLine key={p.externalId} p={p} tone="bust" isChampion={false} />
+                  <PlayerLine key={p.externalId} p={p} tone="bust" isChampion={false} isFinished={isComplete} />
                 ))}
               </>
             )}
