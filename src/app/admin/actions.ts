@@ -819,9 +819,10 @@ export interface ScoringTournament {
   status: string
   location: string | null
   flag_emoji: string | null
-  totalResults: number      // non-BYE match results
-  scoredResults: number     // unique match_result_ids in point_ledger
-  pendingResults: number    // totalResults - scoredResults
+  totalResults: number       // played, non-BYE match results
+  correctPicks: number       // correct, non-locked picks across all predictions
+  unscoredPicks: number      // correct picks with no point_ledger row  ← pending work
+  driftPredictions: number   // predictions whose stored total disagrees with the ledger
 }
 
 export async function getScoringStatus(): Promise<ScoringTournament[]> {
@@ -843,8 +844,9 @@ export async function getScoringStatus(): Promise<ScoringTournament[]> {
   }
   if (!tournaments?.length) return []
 
-  // Counts are aggregated in Postgres — see 053_scoring_status_rpc.sql. Doing it
-  // here would mean shipping every match_result id back as a URL parameter.
+  // Aggregated in Postgres — see 054_scoring_status_pending_work.sql. This asserts
+  // the award-points cron's invariants, the same ones scripts/verify-scoring.mjs
+  // checks; both counts at zero means nothing is left to award.
   const { data: counts, error: cErr } = await admin.rpc('scoring_status', {
     p_tournament_ids: tournaments.map(t => t.id),
   })
@@ -854,24 +856,29 @@ export async function getScoringStatus(): Promise<ScoringTournament[]> {
     return []
   }
 
-  type ScoringCount = { tournament_id: string; total_results: number; scored_results: number }
+  type ScoringCount = {
+    tournament_id: string
+    total_results: number
+    correct_picks: number
+    unscored_picks: number
+    drift_predictions: number
+  }
   const byId = new Map<string, ScoringCount>(
     ((counts ?? []) as ScoringCount[]).map(c => [c.tournament_id, c]),
   )
 
   return tournaments.map(t => {
     const c = byId.get(t.id)
-    const total  = Number(c?.total_results  ?? 0)
-    const scored = Number(c?.scored_results ?? 0)
     return {
       id: t.id,
       name: t.name,
       status: t.status,
       location: t.location ?? null,
       flag_emoji: t.flag_emoji ?? null,
-      totalResults: total,
-      scoredResults: scored,
-      pendingResults: total - scored,
+      totalResults:     Number(c?.total_results     ?? 0),
+      correctPicks:     Number(c?.correct_picks     ?? 0),
+      unscoredPicks:    Number(c?.unscored_picks    ?? 0),
+      driftPredictions: Number(c?.drift_predictions ?? 0),
     }
   })
 }
