@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import BracketPredictor from '@/app/tournaments/[id]/predict/BracketPredictor'
+import ChallengeComparison from './ChallengeComparison'
+import type { Draw } from '@/lib/tennis/types'
 
 export default function ChallengePicksTabs({
   tournament,
@@ -15,7 +17,7 @@ export default function ChallengePicksTabs({
   theirMatchPoints,
 }: {
   tournament: any
-  draw: any
+  draw: Draw
   myPicks: Record<string, string>
   theirPicks: Record<string, string>
   myUsername: string
@@ -24,22 +26,27 @@ export default function ChallengePicksTabs({
   myMatchPoints: Record<string, { points: number; streakMultiplier: number }>
   theirMatchPoints: Record<string, { points: number; streakMultiplier: number }>
 }) {
-  const [activeTab, setActiveTab] = useState<'me' | 'them'>('me')
+  // Compare leads: the side-by-side diff is what a reader actually wants here,
+  // and the single-bracket views stay one click away for the full picture.
+  const [activeTab, setActiveTab] = useState<'compare' | 'me' | 'them'>('compare')
 
-  const activePicks = activeTab === 'me' ? myPicks : theirPicks
-  const activeUsername = activeTab === 'me' ? myUsername : theirUsername
-  const activeMatchPoints = activeTab === 'me' ? myMatchPoints : theirMatchPoints
+  const isBracketTab = activeTab === 'me' || activeTab === 'them'
+  const activePicks = activeTab === 'them' ? theirPicks : myPicks
+  const activeUsername = activeTab === 'them' ? theirUsername : myUsername
+  const activeMatchPoints = activeTab === 'them' ? theirMatchPoints : myMatchPoints
 
-  // Count correct picks for the counter
+  // Count correct picks for the counter — only meaningful on a single bracket;
+  // the compare view carries its own summary.
   const resultsCount = Object.keys(matchResults).length
-  const correctCount = resultsCount > 0
+  const correctCount = isBracketTab && resultsCount > 0
     ? Object.entries(activePicks).filter(([matchId, playerId]) => matchResults[matchId] === playerId).length
     : null
 
   return (
     <div>
-      <div className="flex items-center gap-0 mb-4 border-b" style={{ borderColor: 'var(--chalk-dim)' }}>
+      <div className="flex items-center gap-0 mb-4 border-b overflow-x-auto" style={{ borderColor: 'var(--chalk-dim)' }}>
         {([
+          { key: 'compare' as const, label: 'Compare' },
           { key: 'me' as const, label: `${myUsername}'s picks` },
           { key: 'them' as const, label: `${theirUsername}'s picks` },
         ]).map(({ key, label }) => {
@@ -53,6 +60,7 @@ export default function ChallengePicksTabs({
                 fontFamily: 'var(--font-mono)',
                 fontSize: '0.75rem',
                 letterSpacing: '0.03em',
+                whiteSpace: 'nowrap',
                 color: isActive ? 'var(--court)' : 'var(--muted)',
                 borderBottom: isActive ? '2px solid var(--court)' : '2px solid transparent',
                 marginBottom: '-1px',
@@ -70,20 +78,33 @@ export default function ChallengePicksTabs({
         )}
       </div>
 
-      <BracketPredictor
-        key={activeTab}
-        tournament={tournament}
-        draw={draw}
-        existingPicks={activePicks}
-        predictionId={null}
-        username={activeUsername}
-        matchResults={matchResults}
-        matchPoints={activeMatchPoints}
-        readOnly={true}
-        hideSaveButtons={true}
-        hideBackLink={true}
-        hideNav={true}
-      />
+      {activeTab === 'compare' ? (
+        <ChallengeComparison
+          draw={draw}
+          myPicks={myPicks}
+          theirPicks={theirPicks}
+          myUsername={myUsername}
+          theirUsername={theirUsername}
+          matchResults={matchResults}
+          myMatchPoints={myMatchPoints}
+          theirMatchPoints={theirMatchPoints}
+        />
+      ) : (
+        <BracketPredictor
+          key={activeTab}
+          tournament={tournament}
+          draw={draw}
+          existingPicks={activePicks}
+          predictionId={null}
+          username={activeUsername}
+          matchResults={matchResults}
+          matchPoints={activeMatchPoints}
+          readOnly={true}
+          hideSaveButtons={true}
+          hideBackLink={true}
+          hideNav={true}
+        />
+      )}
     </div>
   )
 }
