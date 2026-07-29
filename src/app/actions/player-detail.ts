@@ -37,6 +37,14 @@ export interface PlayerDetail {
  * so this deliberately serves any profile's numbers, but it still requires a
  * session — the aggregate is not public.
  */
+/** The signed-in viewer's own record for a player — used where there is no profile in context. */
+export async function getMyPlayerDetail(externalId: string): Promise<PlayerDetail> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, rounds: [], tournaments: [] }
+  return getPlayerDetail(user.id, externalId)
+}
+
 export async function getPlayerDetail(
   profileUserId: string,
   externalId: string,

@@ -4,8 +4,8 @@ import { useState, useMemo, useTransition } from 'react'
 import { nameToFlag } from '@/app/admin/countries'
 import InfoBubble from '@/components/InfoBubble'
 import type { PlayerStat } from '@/components/PredictionStats'
-import { getPlayerDetail, type PlayerDetail } from './actions'
-import PlayerDetailView from './PlayerDetailView'
+import { getPlayerDetail, type PlayerDetail } from '@/app/actions/player-detail'
+import PlayerDetailView from '@/components/PlayerDetailView'
 
 const mono = { fontFamily: 'var(--font-mono)' } as const
 

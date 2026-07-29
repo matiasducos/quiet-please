@@ -28,6 +28,11 @@ function InfoIcon() {
   )
 }
 
+const PlayerStatsDrawer = dynamic(() => import('@/components/PlayerStatsDrawer'), {
+  ssr: false,
+  loading: () => <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--muted)', fontSize: '0.85rem' }}>Loading your record…</div>,
+})
+
 const H2HDrawer = dynamic(() => import('@/components/H2HDrawer'), {
   ssr: false,
   loading: () => <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--muted)', fontSize: '0.85rem' }}>Loading H2H data…</div>,
@@ -190,6 +195,7 @@ export default function BracketPredictor({
   const [importing, setImporting] = useState(false)
   const [showImport, setShowImport] = useState(true)
   const [h2hPlayers, setH2HPlayers] = useState<{ player1: Player; player2: Player } | null>(null)
+  const [statsPlayers, setStatsPlayers] = useState<{ player1: Player; player2: Player } | null>(null)
   const [activeRound, setActiveRound] = useState(() => {
     const sorted = draw.rounds.slice().sort((a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b))
     return sorted[0] ?? 'QF'
@@ -1061,6 +1067,21 @@ export default function BracketPredictor({
                                 H2H
                               </button>
                             )}
+                            {p1 && p2 && !isBye && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setStatsPlayers({ player1: p1, player2: p2 }) }}
+                                className="h2h-btn"
+                                title="Your record picking these players"
+                                style={{
+                                  fontFamily: 'var(--font-mono)', fontSize: '0.55rem', letterSpacing: '0.04em',
+                                  color: 'var(--court)', background: 'white',
+                                  border: '1px solid var(--chalk-dim)', borderRadius: '2px',
+                                  padding: '2px 6px', lineHeight: 1, cursor: 'pointer',
+                                }}
+                              >
+                                STATS
+                              </button>
+                            )}
                             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.1em' }}>VS</span>
                           </div>
 
@@ -1208,6 +1229,16 @@ export default function BracketPredictor({
           </div>
         )}
       </div>
+
+      {/* Your-record drawer */}
+      {statsPlayers && (
+        <PlayerStatsDrawer
+          key={`${statsPlayers.player1.externalId}-${statsPlayers.player2.externalId}`}
+          player1={statsPlayers.player1}
+          player2={statsPlayers.player2}
+          onClose={() => setStatsPlayers(null)}
+        />
+      )}
 
       {/* H2H drawer */}
       {h2hPlayers && (
