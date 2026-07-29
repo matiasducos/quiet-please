@@ -158,10 +158,23 @@ export default function AdminPanel({ tournaments, cronRuns, autoPredictStats, ap
 
   const [awardStatus, setAwardStatus] = useState<AsyncStatus>({ type: 'idle' })
 
+  // Maps to ?silent=1 on the award-points route. The run is identical in every
+  // other respect — ledger rows, points_earned, league and ranking recalcs and
+  // achievements are all still written — it only skips the points notifications,
+  // the points emails and the achievement notifications.
+  //
+  // This exists for catch-up runs. award-points spent a month unable to finish
+  // inside its 60s budget (see PR #61), and the first run after a gap like that
+  // clears the whole backlog at once — announcing weeks-old points to everyone
+  // in a single burst. Silent lets the data catch up without the noise.
+  //
+  // Defaults to off: the routine case is a normal run that does notify.
+  const [silentRun, setSilentRun] = useState(false)
+
   async function handleRunAwardPoints() {
     setAwardStatus({ type: 'loading' })
     try {
-      const { ok, data } = await triggerCron('award-points')
+      const { ok, data } = await triggerCron('award-points', silentRun ? { silent: '1' } : undefined)
       setAwardStatus({ type: ok ? 'success' : 'error', message: JSON.stringify(data, null, 2) })
     } catch (err) {
       setAwardStatus({ type: 'error', message: String(err) })
@@ -328,7 +341,7 @@ export default function AdminPanel({ tournaments, cronRuns, autoPredictStats, ap
                 className="px-3 py-1 text-xs font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
                 style={{ background: '#92400e', color: 'white' }}
               >
-                {awardStatus.type === 'loading' ? 'Running…' : 'Award Points Now'}
+                {awardStatus.type === 'loading' ? 'Running…' : silentRun ? 'Award Points (Silent)' : 'Award Points Now'}
               </button>
             </div>
           </div>
@@ -486,12 +499,40 @@ export default function AdminPanel({ tournaments, cronRuns, autoPredictStats, ap
               <button
                 onClick={handleRunAwardPoints}
                 disabled={awardStatus.type === 'loading'}
-                className="px-4 py-1.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
-                style={{ background: 'var(--court)', color: 'white' }}
+                className="px-4 py-1.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40 flex-shrink-0"
+                style={{ background: silentRun ? '#92400e' : 'var(--court)', color: 'white' }}
               >
-                {awardStatus.type === 'loading' ? 'Running…' : 'Run Award Points'}
+                {awardStatus.type === 'loading' ? 'Running…' : silentRun ? 'Run Silently' : 'Run Award Points'}
               </button>
             </div>
+
+            {/* Silent-mode toggle. The copy is deliberately explicit about what
+                silent does and does not skip — the distinction is easy to
+                misremember months later. */}
+            <label
+              className="flex items-start gap-2.5 mb-4 p-3 rounded-sm border cursor-pointer"
+              style={{ borderColor: silentRun ? '#fde68a' : 'var(--chalk-dim)', background: silentRun ? '#fffbeb' : 'white' }}
+            >
+              <input
+                type="checkbox"
+                checked={silentRun}
+                onChange={e => setSilentRun(e.target.checked)}
+                style={{ marginTop: '3px', flexShrink: 0 }}
+              />
+              <span className="min-w-0">
+                <span style={{ display: 'block', fontSize: '0.85rem', color: 'var(--ink)', marginBottom: '3px' }}>
+                  Run silently — no notifications, no emails
+                </span>
+                <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--muted)', lineHeight: 1.55 }}>
+                  Everything is still awarded exactly as normal: point ledger, points earned,
+                  league and ranking recalculations, and achievements. Only the announcements are skipped.
+                  <br />
+                  Use this for a <strong style={{ color: 'var(--ink)', fontWeight: 500 }}>catch-up run</strong> — when
+                  the job has been failing for a while, the first run that succeeds clears the whole backlog at once and
+                  would tell every user about weeks-old points in a single burst. Leave it off for routine runs.
+                </span>
+              </span>
+            </label>
 
             {awardStatus.message && (
               <div
