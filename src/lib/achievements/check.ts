@@ -203,24 +203,20 @@ export async function checkCronAchievements(
   const results: AwardResult[] = []
 
   // ── Accuracy: correct picks in this tournament ────────────────
-  const accuracyKeys = ['sharp_eye', 'on_fire', 'crystal_ball']
-  const needsAccuracy = accuracyKeys.some(k => !existing.has(k))
+  // Every key with a threshold must appear here. double_digits was missing, so
+  // once a user held the other three the whole block short-circuited and that
+  // badge could never be granted — which is how 8 users came to hold On Fire
+  // (15 correct) without Double Digits (10).
+  const accuracyThresholds = [
+    { min: 5,  key: 'sharp_eye' },
+    { min: 10, key: 'double_digits' },
+    { min: 15, key: 'on_fire' },
+    { min: 25, key: 'crystal_ball' },
+  ]
+  const needsAccuracy = accuracyThresholds.some(t => !existing.has(t.key))
 
   if (needsAccuracy) {
-    const { count } = await admin
-      .from('point_ledger')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('tournament_id', tournamentId)
-      .gt('points', 0)
-
-    const correctPicks = count ?? 0
-    const accuracyThresholds = [
-      { min: 5, key: 'sharp_eye' },
-      { min: 10, key: 'double_digits' },
-      { min: 15, key: 'on_fire' },
-      { min: 25, key: 'crystal_ball' },
-    ]
+    const correctPicks = await countCorrectPicks(admin, userId, tournamentId)
     for (const t of accuracyThresholds) {
       if (correctPicks >= t.min && !existing.has(t.key)) {
         const res = await awardAchievement(admin, userId, t.key)
@@ -230,12 +226,30 @@ export async function checkCronAchievements(
   }
 
   // ── Sharpshooter: 5+ correct picks in 3 different tournaments ─
+  // Scoped to the user's own predictions. Unscoped, a friends challenge is a
+  // separate bracket with its own ledger rows, so entering challenges alone
+  // could carry a tournament past the 5-correct bar.
+  //
+  // Uses the ledger rather than countCorrectPicks because this spans every
+  // tournament the user has entered — one query instead of two per tournament.
+  // A ledger row can outlive an edited pick (~2% of rows), which is immaterial
+  // against a threshold of 5 but would matter for an exact figure.
   if (!existing.has('sharpshooter')) {
-    const { data: byTournament } = await admin
-      .from('point_ledger')
-      .select('tournament_id')
+    const { data: ownPredictions } = await admin
+      .from('predictions')
+      .select('id')
       .eq('user_id', userId)
-      .gt('points', 0)
+      .is('challenge_id', null)
+
+    const ownIds = (ownPredictions ?? []).map(p => p.id)
+    const { data: byTournament } = ownIds.length
+      ? await admin
+          .from('point_ledger')
+          .select('tournament_id')
+          .eq('user_id', userId)
+          .gt('points', 0)
+          .in('prediction_id', ownIds)
+      : { data: [] as { tournament_id: string }[] }
 
     if (byTournament) {
       const countsByTournament = new Map<string, number>()
@@ -326,6 +340,52 @@ export async function checkCronAchievements(
   }
 
   return results
+}
+
+/**
+ * Correct picks in one tournament, from the user's own bracket.
+ *
+ * Not a count of point_ledger rows. The ledger holds a row per
+ * (match, prediction), and a friends challenge is a separate full bracket, so
+ * counting rows added a whole bracket's worth of correct picks for every
+ * challenge entered — a user in three challenges cleared a 15-correct bar at
+ * five correct each. Challenge brackets affect neither ranking nor leagues and
+ * should not earn profile badges.
+ *
+ * BYEs and admin-locked matches are excluded for the same reason they are in
+ * checkPerfectPrediction: neither can be picked, so neither can be correct.
+ */
+async function countCorrectPicks(
+  admin: AdminClient,
+  userId: string,
+  tournamentId: string,
+): Promise<number> {
+  const { data: results } = await admin
+    .from('match_results')
+    .select('external_match_id, winner_external_id')
+    .eq('tournament_id', tournamentId)
+    .or('score.neq.BYE,score.is.null')
+    .not('winner_external_id', 'is', null)
+
+  if (!results?.length) return 0
+
+  const { data: prediction } = await admin
+    .from('predictions')
+    .select('picks, locked_picks')
+    .eq('user_id', userId)
+    .eq('tournament_id', tournamentId)
+    .is('challenge_id', null)
+    .maybeSingle()
+
+  if (!prediction) return 0
+
+  const picks  = (prediction.picks ?? {}) as Record<string, string>
+  const locked = new Set((prediction.locked_picks ?? []) as string[])
+
+  return results.filter(r =>
+    !locked.has(r.external_match_id) &&
+    picks[r.external_match_id] === r.winner_external_id,
+  ).length
 }
 
 // ── 3b. The Perfect Prediction (special, tournament-specific) ──
