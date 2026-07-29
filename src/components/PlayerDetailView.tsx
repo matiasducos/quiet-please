@@ -1,4 +1,4 @@
-import type { PlayerDetail } from './actions'
+import type { PlayerDetail } from '@/app/actions/player-detail'
 
 const mono = { fontFamily: 'var(--font-mono)' } as const
 const ACCURACY_BLUE = '#378ADD'
@@ -34,7 +34,8 @@ export default function PlayerDetailView({
   isOwnProfile,
 }: {
   detail: PlayerDetail
-  overallAvg: number
+  /** viewer's own points-per-pick, for context. Omit to hide the comparison line. */
+  overallAvg?: number
   isOwnProfile: boolean
 }) {
   const totals = detailTotals(detail)
@@ -53,7 +54,7 @@ export default function PlayerDetailView({
       </div>
 
       <p style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)', marginBottom: '14px', lineHeight: 1.6 }}>
-        {totals.avg >= Math.round(overallAvg)
+        {overallAvg === undefined ? '' : totals.avg >= Math.round(overallAvg)
           ? `Above ${isOwnProfile ? 'your' : 'their'} overall ${Math.round(overallAvg)} per pick.`
           : `Below ${isOwnProfile ? 'your' : 'their'} overall ${Math.round(overallAvg)} per pick.`}
         {totals.voided > 0 && ` ${totals.voided} of those picks were void — rounds they never reached.`}
