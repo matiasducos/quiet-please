@@ -10,7 +10,7 @@ import { getActivity, timeAgo } from '@/lib/friends/activity'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { getLiveTournaments } from '@/lib/tournaments/cached'
 import PredictionStats from '@/components/PredictionStats'
-import type { RoundStat, PlayerStat } from '@/components/PredictionStats'
+import type { RoundStat, PlayerStat, MissedPlayerStat } from '@/components/PredictionStats'
 import DashboardTour from '@/components/DashboardTour'
 import { formatPoints } from '@/lib/utils/format'
 import { getLiveStatuses } from '@/lib/tennis/live-status'
@@ -31,7 +31,7 @@ export default async function DashboardPage() {
   // The all-time aggregates sit in this batch rather than after it: they are the
   // slowest queries on the page (they scan every prediction the user has made),
   // so running them in parallel keeps them off the critical path.
-  const [liveTournaments, { count: predictionCount }, roundRes, playerRes] = await Promise.all([
+  const [liveTournaments, { count: predictionCount }, roundRes, playerRes, missedRes] = await Promise.all([
     getLiveTournaments(4),
     supabase.from('predictions')
       .select('id', { count: 'exact', head: true })
@@ -39,12 +39,15 @@ export default async function DashboardPage() {
       .is('challenge_id', null),
     admin.rpc('user_round_stats', { p_user_id: user.id }),
     admin.rpc('user_player_stats', { p_user_id: user.id, p_limit: 14 }),
+    admin.rpc('user_missed_winners', { p_user_id: user.id, p_limit: 6 }),
   ])
 
   if (roundRes.error)  console.error('[dashboard] user_round_stats failed:', roundRes.error.message)
   if (playerRes.error) console.error('[dashboard] user_player_stats failed:', playerRes.error.message)
+  if (missedRes.error) console.error('[dashboard] user_missed_winners failed:', missedRes.error.message)
   const roundStats  = (roundRes.data ?? []) as RoundStat[]
   const playerStats = (playerRes.data ?? []) as PlayerStat[]
+  const missedStats = (missedRes.data ?? []) as MissedPlayerStat[]
 
   // Rank + engagement in parallel (both depend on prior data)
   const liveIds = liveTournaments.map(t => t.id)
@@ -217,6 +220,7 @@ export default async function DashboardPage() {
           <PredictionStats
             rounds={roundStats}
             players={playerStats}
+            missedPlayers={missedStats}
             tournamentsEntered={predictionCount ?? 0}
             isOwnProfile
             username={profile?.username ?? ''}

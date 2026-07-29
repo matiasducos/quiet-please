@@ -17,7 +17,7 @@ import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
 import AchievementsTab from './AchievementsTab'
 import PredictionStats from '@/components/PredictionStats'
 import PlayerLookup from './PlayerLookup'
-import type { RoundStat, PlayerStat } from '@/components/PredictionStats'
+import type { RoundStat, PlayerStat, MissedPlayerStat } from '@/components/PredictionStats'
 import Footer from '@/components/Footer'
 import DeleteAccountSection from '@/app/profile/DeleteAccountSection'
 import RecentFormDot from './RecentFormDot'
@@ -153,20 +153,25 @@ export default async function ProfilePage({
   // user has ever made, which is far more than a profile view should carry.
   let roundStats: RoundStat[] = []
   let playerStats: PlayerStat[] = []
+  let missedStats: MissedPlayerStat[] = []
   let tournamentsEntered = 0
   if (activeTab === 'stats') {
-    const [rs, ps, te] = await Promise.all([
+    const [rs, ps, ms, te] = await Promise.all([
       admin.rpc('user_round_stats', { p_user_id: profile.id }),
       // High limit: the same list powers the lookup search, which must cover every
       // player picked (136 for the heaviest user today), not just the leaders.
       admin.rpc('user_player_stats', { p_user_id: profile.id, p_limit: 500 }),
+      // Only the panel consumes this one, so it stays at display depth.
+      admin.rpc('user_missed_winners', { p_user_id: profile.id, p_limit: 6 }),
       admin.from('predictions').select('id', { count: 'exact', head: true })
         .eq('user_id', profile.id).is('challenge_id', null),
     ])
     if (rs.error) console.error('[profile] user_round_stats failed:', rs.error.message)
     if (ps.error) console.error('[profile] user_player_stats failed:', ps.error.message)
+    if (ms.error) console.error('[profile] user_missed_winners failed:', ms.error.message)
     roundStats  = (rs.data ?? []) as RoundStat[]
     playerStats = (ps.data ?? []) as PlayerStat[]
+    missedStats = (ms.data ?? []) as MissedPlayerStat[]
     tournamentsEntered = te.count ?? 0
   }
 
@@ -569,6 +574,7 @@ export default async function ProfilePage({
             <PredictionStats
               rounds={roundStats}
               players={playerStats}
+              missedPlayers={missedStats}
               tournamentsEntered={tournamentsEntered}
               isOwnProfile={isOwnProfile}
               username={profile.username}
