@@ -2,7 +2,7 @@
  * Qualifier pick remapping.
  *
  * A prediction is stored as `picks[matchId] = playerExternalId`, and everything
- * downstream (dead-pick display, scoring) matches by that externalId. This is
+ * downstream (void-pick display, scoring) matches by that externalId. This is
  * fine for named players whose id never changes — but a *qualifier* slot starts
  * life as a placeholder (`{ externalId: 'qualifier-1' | 'Qualifier', name:
  * 'Qualifier' }`) and later resolves to a real player with a brand-new id. The

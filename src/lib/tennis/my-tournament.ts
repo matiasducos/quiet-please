@@ -65,10 +65,10 @@ export interface PlayerSummary {
   country: string | null
   picks: number
   points: number
-  alive: boolean
-  /** rounds still picked and not yet played — only meaningful while alive */
+  active: boolean
+  /** rounds still picked and not yet played — only meaningful while active */
   riding: number
-  /** round the player was eliminated in, null while alive */
+  /** round the player was eliminated in, null while still active */
   outRound: string | null
 }
 
@@ -77,20 +77,20 @@ export interface MyTournament {
   correct: number
   decided: number
   distinctPicked: number
-  aliveCount: number
+  activeCount: number
   /** the most advanced round with at least one result, null before play starts */
   currentRound: string | null
   /**
    * Winner of the final, once played. Needed because "never lost a match" is how
-   * alive is derived — which would otherwise label the champion as still alive
+   * active is derived — which would otherwise label the champion as still active
    * on a finished tournament.
    */
   championExternalId: string | null
   rounds: RoundSummary[]
-  /** alive players with picks still to come, richest first */
-  stillRiding: PlayerSummary[]
-  /** alive players with nothing left riding on them */
-  aliveIdle: PlayerSummary[]
+  /** active players with picks still to come, richest first */
+  stillToCome: PlayerSummary[]
+  /** active players with no picks left to come */
+  activeIdle: PlayerSummary[]
   /** every picked player, by points earned then picks made */
   players: PlayerSummary[]
 }
@@ -168,7 +168,7 @@ export function buildMyTournament(input: MyTournamentInput): MyTournament {
   for (const [matchId, playerId] of Object.entries(picks)) {
     if (!playerId) continue
     pickCount[playerId] = (pickCount[playerId] ?? 0) + 1
-    // Still riding = picked for a match that has not been played yet. Keyed off
+    // Picks still to come = picked for a match not yet played. Keyed off
     // the result rather than the round, so a half-finished round counts correctly.
     if (!resultByMatchId.has(matchId) && roundByMatchId[matchId]) {
       riding[playerId] = (riding[playerId] ?? 0) + 1
@@ -185,15 +185,15 @@ export function buildMyTournament(input: MyTournamentInput): MyTournament {
 
   const players: PlayerSummary[] = Object.keys(pickCount).map(externalId => {
     const outRound = eliminatedIn.get(externalId) ?? null
-    const alive = outRound === null
+    const active = outRound === null
     return {
       externalId,
       name: displayName(externalId, nameByExternalId, overrides),
       country: countryByExternalId[externalId] || overrides[externalId]?.country || null,
       picks: pickCount[externalId],
       points: pointsByPlayer[externalId] ?? 0,
-      alive,
-      riding: alive ? (riding[externalId] ?? 0) : 0,
+      active,
+      riding: active ? (riding[externalId] ?? 0) : 0,
       outRound,
     }
   })
@@ -201,19 +201,19 @@ export function buildMyTournament(input: MyTournamentInput): MyTournament {
   const byValue = (a: PlayerSummary, b: PlayerSummary) => b.points - a.points || b.picks - a.picks
   players.sort(byValue)
 
-  const alive = players.filter(p => p.alive)
+  const active = players.filter(p => p.active)
 
   return {
     pointsSoFar,
     correct,
     decided: results.length,
     distinctPicked: players.length,
-    aliveCount: alive.length,
+    activeCount: active.length,
     currentRound,
     championExternalId,
     rounds,
-    stillRiding: alive.filter(p => p.riding > 0).sort((a, b) => b.riding - a.riding || byValue(a, b)),
-    aliveIdle: alive.filter(p => p.riding === 0).sort(byValue),
+    stillToCome: active.filter(p => p.riding > 0).sort((a, b) => b.riding - a.riding || byValue(a, b)),
+    activeIdle: active.filter(p => p.riding === 0).sort(byValue),
     players,
   }
 }

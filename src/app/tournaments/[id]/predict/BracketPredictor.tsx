@@ -952,17 +952,17 @@ export default function BracketPredictor({
                       const noPlayers = !p1 && !p2
                       const lockDisplay = getMatchLockDisplay(match.matchId)
 
-                      // Dead pick: user picked someone who's been eliminated (not in this match anymore)
-                      const deadPick = !isBye && pickedId && p1 && p2
+                      // Void pick: user picked someone who's been eliminated (not in this match anymore)
+                      const voidPick = !isBye && pickedId && p1 && p2
                         && pickedId !== p1.externalId && pickedId !== p2.externalId
-                      const deadPickPlayer = deadPick ? allPlayers.get(pickedId) : null
+                      const voidPickPlayer = voidPick ? allPlayers.get(pickedId) : null
 
                       // BYE matches: non-null player gets 'bye' state, null side gets 'none'
-                      const s1 = isBye ? (match.player1 ? 'bye' as const : 'none' as const) : getPickState(deadPick ? undefined : pickedId, p1?.externalId, actualWinnerId)
-                      const s2 = isBye ? (match.player2 ? 'bye' as const : 'none' as const) : getPickState(deadPick ? undefined : pickedId, p2?.externalId, actualWinnerId)
+                      const s1 = isBye ? (match.player1 ? 'bye' as const : 'none' as const) : getPickState(voidPick ? undefined : pickedId, p1?.externalId, actualWinnerId)
+                      const s2 = isBye ? (match.player2 ? 'bye' as const : 'none' as const) : getPickState(voidPick ? undefined : pickedId, p2?.externalId, actualWinnerId)
 
-                      // Show per-pick lock button? Only if: editable, has a valid (non-dead) pick, not saving
-                      const showLockBtn = lockDisplay === 'editable' && !!pickedId && !isBye && !deadPick
+                      // Show per-pick lock button? Only if: editable, has a valid (non-void) pick, not saving
+                      const showLockBtn = lockDisplay === 'editable' && !!pickedId && !isBye && !voidPick
 
                       return (
                         <div key={match.matchId} className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: isBye ? '#bfdbfe' : 'var(--chalk-dim)' }}>
@@ -972,22 +972,22 @@ export default function BracketPredictor({
                               MATCH {i + 1}{isBye ? ' · BYE' : ''}
                             </span>
 
-                            {/* Dead pick indicator */}
-                            {deadPick && (
+                            {/* Void pick indicator */}
+                            {voidPick && (
                               <Tooltip text="Your pick lost in an earlier round. You can still make picks for later rounds, but they won't score unless you change your upstream picks.">
                                 <span style={{
                                   fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.04em',
                                   color: '#991b1b', background: '#fee2e2', padding: '1px 6px', borderRadius: '2px',
                                   display: 'inline-flex', alignItems: 'center', cursor: 'help',
                                 }}>
-                                  {deadPickPlayer?.name ?? 'Your pick'} eliminated
+                                  {voidPickPlayer?.name ?? 'Your pick'} eliminated
                                   <InfoIcon />
                                 </span>
                               </Tooltip>
                             )}
 
                             {/* Lock status / hint — voluntary (user chose to lock THIS pick) → green */}
-                            {!deadPick && lockDisplay === 'voluntary_locked' && (
+                            {!voidPick && lockDisplay === 'voluntary_locked' && (
                               <Tooltip text="You locked this pick yourself. It can't be changed anymore.">
                                 <span style={{
                                   fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em',
@@ -999,7 +999,7 @@ export default function BracketPredictor({
                               </Tooltip>
                             )}
                             {/* Fully locked — whole bracket is final (read-only or "Lock all picks") → gray */}
-                            {!deadPick && lockDisplay === 'fully_locked' && (
+                            {!voidPick && lockDisplay === 'fully_locked' && (
                               <Tooltip text="This bracket is locked. Predictions are final — no more changes possible.">
                                 <span style={{
                                   fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em',
@@ -1010,12 +1010,12 @@ export default function BracketPredictor({
                                 </span>
                               </Tooltip>
                             )}
-                            {!deadPick && lockDisplay === 'auto_locked' && (
+                            {!voidPick && lockDisplay === 'auto_locked' && (
                               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em', color: 'var(--muted)' }}>
                                 PLAYED
                               </span>
                             )}
-                            {!deadPick && lockDisplay === 'admin_locked_pickable' && (
+                            {!voidPick && lockDisplay === 'admin_locked_pickable' && (
                               <Tooltip text="You can still make a pick, but no points will be awarded — the admin locked this match after it started.">
                                 <span style={{
                                   fontFamily: 'var(--font-mono)', fontSize: '0.55rem', letterSpacing: '0.04em',
@@ -1027,7 +1027,7 @@ export default function BracketPredictor({
                                 </span>
                               </Tooltip>
                             )}
-                            {!deadPick && showLockBtn && (
+                            {!voidPick && showLockBtn && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleLockPick(match.matchId) }}
                                 disabled={saving}
@@ -1037,7 +1037,7 @@ export default function BracketPredictor({
                                 Lock pick
                               </button>
                             )}
-                            {!deadPick && noPlayers && !readOnly && !isBye && lockDisplay === 'editable' && (
+                            {!voidPick && noPlayers && !readOnly && !isBye && lockDisplay === 'editable' && (
                               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
                                 {activeRound === sortedRounds[0] ? 'Players not available yet' : 'Pick earlier rounds first'}
                               </span>

@@ -19,9 +19,9 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: str
 export function detailTotals(detail: PlayerDetail) {
   const picks = detail.rounds.reduce((s, r) => s + Number(r.picks), 0)
   const wins  = detail.rounds.reduce((s, r) => s + Number(r.wins), 0)
-  const dead  = detail.rounds.reduce((s, r) => s + Number(r.dead), 0)
+  const voided = detail.rounds.reduce((s, r) => s + Number(r.voided), 0)
   const pts   = detail.rounds.reduce((s, r) => s + Number(r.points), 0)
-  return { picks, wins, dead, pts, avg: picks > 0 ? Math.round(pts / picks) : 0 }
+  return { picks, wins, voided, pts, avg: picks > 0 ? Math.round(pts / picks) : 0 }
 }
 
 /**
@@ -56,7 +56,7 @@ export default function PlayerDetailView({
         {totals.avg >= Math.round(overallAvg)
           ? `Above ${isOwnProfile ? 'your' : 'their'} overall ${Math.round(overallAvg)} per pick.`
           : `Below ${isOwnProfile ? 'your' : 'their'} overall ${Math.round(overallAvg)} per pick.`}
-        {totals.dead > 0 && ` ${totals.dead} of those picks were for rounds they never reached.`}
+        {totals.voided > 0 && ` ${totals.voided} of those picks were void — rounds they never reached.`}
       </p>
 
       <p style={{ ...mono, fontSize: '0.58rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '6px' }}>
@@ -67,7 +67,7 @@ export default function PlayerDetailView({
           <span style={{ width: '38px', flexShrink: 0 }} />
           <span style={{ flex: 1 }} />
           <span style={{ width: '46px', textAlign: 'right' }}>w/pk</span>
-          <span style={{ width: '38px', textAlign: 'right' }}>dead</span>
+          <span style={{ width: '38px', textAlign: 'right' }}>void</span>
           <span style={{ width: '54px', textAlign: 'right' }}>pts</span>
         </div>
         {detail.rounds.map(r => {
@@ -82,8 +82,8 @@ export default function PlayerDetailView({
               <span style={{ ...mono, fontSize: '0.7rem', color: 'var(--ink)', width: '46px', textAlign: 'right', flexShrink: 0 }}>
                 {wins}/{picks}
               </span>
-              <span style={{ ...mono, fontSize: '0.7rem', color: Number(r.dead) > 0 ? '#993C1D' : 'var(--muted)', width: '38px', textAlign: 'right', flexShrink: 0 }}>
-                {Number(r.dead) || '—'}
+              <span style={{ ...mono, fontSize: '0.7rem', color: Number(r.voided) > 0 ? '#993C1D' : 'var(--muted)', width: '38px', textAlign: 'right', flexShrink: 0 }}>
+                {Number(r.voided) || '—'}
               </span>
               <span style={{ ...mono, fontSize: '0.72rem', color: 'var(--ink)', width: '54px', textAlign: 'right', flexShrink: 0 }}>
                 {Number(r.points).toLocaleString()}

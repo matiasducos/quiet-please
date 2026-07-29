@@ -37,17 +37,17 @@ function PlayerName({ p, color }: { p: PlayerSummary; color: string }) {
   )
 }
 
-function PlayerLine({ p, tone, isChampion, isFinished }: { p: PlayerSummary; tone: 'alive' | 'neutral' | 'bust'; isChampion: boolean; isFinished: boolean }) {
-  const bg = tone === 'alive' ? '#edf7f0' : tone === 'bust' ? '#fdf2ed' : 'var(--chalk)'
+function PlayerLine({ p, tone, isChampion, isFinished }: { p: PlayerSummary; tone: 'active' | 'neutral' | 'bust'; isChampion: boolean; isFinished: boolean }) {
+  const bg = tone === 'active' ? '#edf7f0' : tone === 'bust' ? '#fdf2ed' : 'var(--chalk)'
   const nameColor = tone === 'bust' ? '#993C1D' : 'var(--ink)'
-  // "Alive" is derived from never having lost. On a finished tournament that is
+  // "Active" is derived from never having lost. On a finished tournament that is
   // true of the champion — and also of anyone whose defeat was never recorded
   // (a withdrawal, or a missing result). Only one player can still be standing,
   // so everyone else is out; we just don't know which round.
   const statusLabel = isChampion
     ? 'champion'
-    : p.alive
-      ? (isFinished ? 'out' : 'alive')
+    : p.active
+      ? (isFinished ? 'out' : 'active')
       : `out ${p.outRound ?? ''}`
   return (
     <div className="flex items-center gap-2 px-2 md:px-3 py-2 rounded-sm" style={{ background: bg }}>
@@ -58,7 +58,7 @@ function PlayerLine({ p, tone, isChampion, isFinished }: { p: PlayerSummary; ton
       <span style={{ ...mono, fontSize: '0.75rem', color: p.points > 0 ? 'var(--ink)' : 'var(--muted)', width: '58px', textAlign: 'right', flexShrink: 0 }}>
         {p.points.toLocaleString()}
       </span>
-      <span style={{ ...mono, fontSize: '0.62rem', width: '58px', textAlign: 'right', flexShrink: 0, color: isChampion || (p.alive && !isFinished) ? '#1a6b3c' : 'var(--muted)' }}>
+      <span style={{ ...mono, fontSize: '0.62rem', width: '58px', textAlign: 'right', flexShrink: 0, color: isChampion || (p.active && !isFinished) ? '#1a6b3c' : 'var(--muted)' }}>
         {statusLabel}
       </span>
     </div>
@@ -72,14 +72,14 @@ export default function MyTournamentPanel({
   data: MyTournament
   isComplete: boolean
 }) {
-  const { pointsSoFar, correct, decided, aliveCount, distinctPicked, currentRound, championExternalId, rounds, stillRiding, aliveIdle, players } = data
+  const { pointsSoFar, correct, decided, activeCount, distinctPicked, currentRound, championExternalId, rounds, stillToCome, activeIdle, players } = data
 
   const topEarners = players.filter(p => p.points > 0).slice(0, 5)
   // Early in a draw almost nobody has been eliminated, so this list would run to
   // every player picked. Cap it — the point is the few with most at stake.
   const RIDING_LIMIT = 5
-  const ridingShown = stillRiding.slice(0, RIDING_LIMIT)
-  const ridingRest  = stillRiding.length - ridingShown.length
+  const ridingShown = stillToCome.slice(0, RIDING_LIMIT)
+  const ridingRest  = stillToCome.length - ridingShown.length
   // Players backed more than once who returned nothing — the inverse of the
   // earners list, and where the interesting information actually is.
   const busts = players
@@ -95,7 +95,7 @@ export default function MyTournamentPanel({
           <InfoBubble label="your tournament">
             How your bracket is doing so far. <strong>Points so far</strong> counts only
             matches already played. <strong>Correct picks</strong> compares your bracket
-            against every match decided so far. <strong>Still alive</strong> is how many of
+            against every match decided so far. <strong>Still active</strong> is how many of
             the players you picked have not lost yet.
           </InfoBubble>
         </h2>
@@ -112,20 +112,20 @@ export default function MyTournamentPanel({
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3 mb-6">
         <Metric label="Points so far" value={pointsSoFar.toLocaleString()} />
         <Metric label="Correct picks" value={String(correct)} sub={`of ${decided}`} />
-        {!isComplete && <Metric label="Still alive" value={String(aliveCount)} sub={`of ${distinctPicked}`} />}
+        {!isComplete && <Metric label="Still active" value={String(activeCount)} sub={`of ${distinctPicked}`} />}
       </div>
 
-      {/* Still riding — the follow list. Only meaningful mid-tournament. */}
-      {!isComplete && stillRiding.length > 0 && (
+      {/* Still to come — the follow list. Only meaningful mid-tournament. */}
+      {!isComplete && stillToCome.length > 0 && (
         <div className="mb-6">
           <h3 className="flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', marginBottom: '2px' }}>
-            Still riding on
-            <InfoBubble label="still riding on">
-              Players you picked who have not lost yet, ranked by how much you still
+            Still to come
+            <InfoBubble label="still to come">
+              Players you picked who are still in the draw, ranked by how much you still
               stand to gain from them. <strong>3 to come</strong> means three of their
               matches are still picked in your bracket. A player who survives past the
-              round you predicted them out in stays in the draw but has nothing riding
-              on them, so they drop to the summary line.
+              round you predicted them out in stays in the draw but has no picks left
+              to come, so they drop to the summary line.
             </InfoBubble>
           </h3>
           <p style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)', marginBottom: '8px' }}>
@@ -146,17 +146,17 @@ export default function MyTournamentPanel({
                 </span>
               </div>
             ))}
-            {(ridingRest > 0 || aliveIdle.length > 0) && (
+            {(ridingRest > 0 || activeIdle.length > 0) && (
               <div className="flex items-center gap-3 px-3 py-2 rounded-sm" style={{ background: 'var(--chalk)' }}>
                 <span style={{ ...mono, fontSize: '0.72rem', color: 'var(--muted)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {ridingRest > 0
-                    ? `${ridingRest} more still riding`
-                    : aliveIdle.slice(0, 3).map(p => p.name).join(', ') + (aliveIdle.length > 3 ? ` +${aliveIdle.length - 3}` : '')}
+                    ? `${ridingRest} more to come`
+                    : activeIdle.slice(0, 3).map(p => p.name).join(', ') + (activeIdle.length > 3 ? ` +${activeIdle.length - 3}` : '')}
                 </span>
                 <span style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
                   {ridingRest > 0
-                    ? `${aliveIdle.length} with nothing riding`
-                    : 'nothing riding'}
+                    ? `${activeIdle.length} with none left`
+                    : 'none left'}
                 </span>
               </div>
             )}
@@ -233,7 +233,7 @@ export default function MyTournamentPanel({
               <PlayerLine
                 key={p.externalId}
                 p={p}
-                tone={p.alive ? 'alive' : 'neutral'}
+                tone={p.active ? 'active' : 'neutral'}
                 isChampion={isComplete && p.externalId === championExternalId}
                 isFinished={isComplete}
               />
