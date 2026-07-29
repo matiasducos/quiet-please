@@ -562,6 +562,7 @@ export async function GET(request: Request) {
                   to: authUser.email,
                   tournamentName: (notif.meta?.tournament_name as string) ?? 'a tournament',
                   tournamentId: notif.tournament_id,
+                  tournamentFlagEmoji: (notif.meta?.tournament_flag_emoji as string) ?? null,
                   picksCount: (notif.meta?.picks_count as number) ?? 0,
                   unsubscribeToken: prefs?.unsubscribe_token ?? '',
                 })

@@ -213,11 +213,12 @@ export async function GET(request: Request) {
                 return isEmailEnabled(prefs?.email_notifications, prefs?.email_preferences, 'draw_open')
               })
               .map((u: any) => sendDrawOpenEmail({
-                to:               u.email,
-                tournamentName:   tournament.name,
-                tournamentId:     tournament.id,
-                closeDate:        tournament.draw_close_at ?? null,
-                unsubscribeToken: prefsMap.get(u.id)?.unsubscribe_token ?? '',
+                to:                  u.email,
+                tournamentName:      tournament.name,
+                tournamentId:        tournament.id,
+                tournamentFlagEmoji: tournament.flag_emoji ?? null,
+                closeDate:           tournament.draw_close_at ?? null,
+                unsubscribeToken:    prefsMap.get(u.id)?.unsubscribe_token ?? '',
               })),
           )
           const emailFailed = emailResults.filter(r => r.status === 'rejected').length
