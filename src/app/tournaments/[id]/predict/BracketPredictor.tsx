@@ -38,6 +38,14 @@ const H2HDrawer = dynamic(() => import('@/components/H2HDrawer'), {
   loading: () => <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--muted)', fontSize: '0.85rem' }}>Loading H2H data…</div>,
 })
 
+/**
+ * H2H is hidden until it is backed by real data — getH2HData() still returns
+ * deterministic mock records, and presenting invented meetings as history is
+ * worse than showing nothing. The drawer and its plumbing are left intact:
+ * flip this to true once a real source is wired up.
+ */
+const SHOW_H2H: boolean = false
+
 interface Player {
   externalId: string
   name: string
@@ -1053,7 +1061,7 @@ export default function BracketPredictor({
                           {renderPlayer(match, p1, 'player1', s1, true)}
 
                           <div className="flex items-center justify-center py-1 gap-2" style={{ background: '#fafaf8' }}>
-                            {p1 && p2 && !isBye && (
+                            {SHOW_H2H && p1 && p2 && !isBye && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); setH2HPlayers({ player1: p1, player2: p2 }) }}
                                 className="h2h-btn"
@@ -1241,7 +1249,7 @@ export default function BracketPredictor({
       )}
 
       {/* H2H drawer */}
-      {h2hPlayers && (
+      {SHOW_H2H && h2hPlayers && (
         <H2HDrawer
           player1={h2hPlayers.player1}
           player2={h2hPlayers.player2}

@@ -27,6 +27,12 @@ export interface PlayerDetail {
   ok: boolean
   rounds: PlayerRoundDetail[]
   tournaments: PlayerTournamentDetail[]
+  /**
+   * Why `ok` is false. `/picks/[username]` is public once a bracket locks, so a
+   * signed-out visitor can open the stats drawer — that is a missing session,
+   * not a failure, and the two need different copy.
+   */
+  reason?: 'unauthenticated' | 'error'
 }
 
 /**
@@ -41,7 +47,7 @@ export interface PlayerDetail {
 export async function getMyPlayerDetail(externalId: string): Promise<PlayerDetail> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { ok: false, rounds: [], tournaments: [] }
+  if (!user) return { ok: false, rounds: [], tournaments: [], reason: 'unauthenticated' }
   return getPlayerDetail(user.id, externalId)
 }
 
@@ -51,9 +57,9 @@ export async function getPlayerDetail(
 ): Promise<PlayerDetail> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { ok: false, rounds: [], tournaments: [] }
+  if (!user) return { ok: false, rounds: [], tournaments: [], reason: 'unauthenticated' }
 
-  if (!profileUserId || !externalId) return { ok: false, rounds: [], tournaments: [] }
+  if (!profileUserId || !externalId) return { ok: false, rounds: [], tournaments: [], reason: 'error' }
 
   const admin = createAdminClient()
   const [roundsRes, tournamentsRes] = await Promise.all([
@@ -63,7 +69,7 @@ export async function getPlayerDetail(
 
   if (roundsRes.error) console.error('[profile] user_player_round_detail failed:', roundsRes.error.message)
   if (tournamentsRes.error) console.error('[profile] user_player_tournament_detail failed:', tournamentsRes.error.message)
-  if (roundsRes.error || tournamentsRes.error) return { ok: false, rounds: [], tournaments: [] }
+  if (roundsRes.error || tournamentsRes.error) return { ok: false, rounds: [], tournaments: [], reason: 'error' }
 
   return {
     ok: true,
