@@ -329,31 +329,64 @@ export async function checkCronAchievements(
 }
 
 // ── 3b. The Perfect Prediction (special, tournament-specific) ──
-// Awarded when a user's correct picks equal the total played matches
-// in the tournament. Repeatable per tournament (like trophies).
+// Awarded when a user's global bracket called every played match in the
+// tournament. Repeatable per tournament (like trophies).
+//
+// Compared against the picks themselves rather than against point_ledger. The
+// ledger cannot answer this question:
+//   - it holds a row per (match, prediction), and a friends challenge is a
+//     separate full bracket, so summing a user's ledger rows added one
+//     bracket's worth of correct picks per challenge entered. Three challenges
+//     at a grand slam cleared a 127-match bar at ~49% accuracy;
+//   - a row can outlive the pick that earned it, since brackets stay editable
+//     while a tournament runs.
+// Both made the achievement measure volume rather than accuracy.
 export async function checkPerfectPrediction(
   admin: AdminClient,
   userId: string,
   tournamentId: string,
 ): Promise<AwardResult[]> {
-  // Total matches played in the tournament (non-BYE with a winner)
-  const { count: totalMatches } = await admin
+  // Played matches that could actually be predicted. BYEs carry a winner but
+  // are never picked, so counting them made this unreachable on any draw with
+  // byes — every 250-level event needed 31 of 27 possible.
+  const { data: results } = await admin
     .from('match_results')
-    .select('id', { count: 'exact', head: true })
+    .select('external_match_id, winner_external_id')
     .eq('tournament_id', tournamentId)
+    .or('score.neq.BYE,score.is.null')
     .not('winner_external_id', 'is', null)
 
-  if (!totalMatches || totalMatches === 0) return []
+  const totalMatches = results?.length ?? 0
+  if (totalMatches === 0) return []
 
-  // User's correct picks in the tournament
-  const { count: correctPicks } = await admin
-    .from('point_ledger')
-    .select('id', { count: 'exact', head: true })
+  // The user's own bracket — challenge picks are excluded deliberately: they do
+  // not affect ranking or leagues, so they should not earn a profile trophy.
+  const { data: prediction } = await admin
+    .from('predictions')
+    .select('picks, locked_picks')
     .eq('user_id', userId)
     .eq('tournament_id', tournamentId)
-    .gt('points', 0)
+    .is('challenge_id', null)
+    .maybeSingle()
 
-  if ((correctPicks ?? 0) < totalMatches) return []
+  if (!prediction) return []
+
+  const picks = (prediction.picks ?? {}) as Record<string, string>
+  const locked = new Set((prediction.locked_picks ?? []) as string[])
+
+  // Admin-locked matches leave both sides of the comparison, for the same reason
+  // BYEs do: the award-points cron skips them, so no pick on a locked match can
+  // ever score. Counting them in the denominator would permanently bar anyone
+  // who was locked out of a single match — 20 predictions today, up to 32
+  // matches each. The achievement measures every match that was theirs to call.
+  const scoreable = results!.filter(r => !locked.has(r.external_match_id))
+  if (scoreable.length === 0) return []
+
+  const correctPicks = scoreable.filter(
+    r => picks[r.external_match_id] === r.winner_external_id,
+  ).length
+
+  if (correctPicks < scoreable.length) return []
 
   // Fetch tournament meta for the notification / display
   const { data: tournament } = await admin
@@ -368,7 +401,9 @@ export async function checkPerfectPrediction(
     tournament_flag_emoji: tournament?.flag_emoji ?? null,
     tournament_tour: tournament?.tour ?? null,
     tournament_year: year,
-    total_matches: totalMatches,
+    // What the badge claims: the matches actually called, not the tournament's
+    // raw total, so a bracket with admin-locked matches does not overstate.
+    total_matches: scoreable.length,
   }
 
   const res = await awardAchievement(admin, userId, 'perfect_prediction', tournamentId, meta)
