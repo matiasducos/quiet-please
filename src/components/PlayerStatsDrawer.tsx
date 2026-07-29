@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import CountryFlag from './CountryFlag'
 import PlayerDetailView from './PlayerDetailView'
 import { getMyPlayerDetail, type PlayerDetail } from '@/app/actions/player-detail'
@@ -51,6 +52,10 @@ export default function PlayerStatsDrawer({
     return () => { cancelled = true }
   }, [player1.externalId, player2.externalId])
 
+  // A missing session fails both players at once, so it is a state of the whole
+  // drawer rather than a per-player empty record.
+  const needsSignIn = Object.values(details).some(d => d?.reason === 'unauthenticated')
+
   // Escape closes, matching the H2H drawer.
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
@@ -90,6 +95,19 @@ export default function PlayerStatsDrawer({
         <div className="px-4 py-4 flex flex-col gap-5">
           {loading ? (
             <p style={{ ...mono, fontSize: '0.75rem', color: 'var(--muted)' }}>Loading your record…</p>
+          ) : needsSignIn ? (
+            <div className="bg-white rounded-sm border p-4" style={{ borderColor: 'var(--chalk-dim)' }}>
+              <p style={{ fontSize: '0.85rem', color: 'var(--ink)', lineHeight: 1.5, marginBottom: '0.75rem' }}>
+                Sign in to see how you have fared backing {player1.name} and {player2.name}.
+              </p>
+              <Link
+                href="/login"
+                className="inline-block px-4 py-2 text-sm font-medium rounded-sm hover:opacity-90"
+                style={{ background: 'var(--court)', color: 'white', textDecoration: 'none' }}
+              >
+                Sign in →
+              </Link>
+            </div>
           ) : (
             [player1, player2].map(p => {
               const detail = details[p.externalId]
