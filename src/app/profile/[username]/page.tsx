@@ -16,6 +16,7 @@ import ReplayTourButton from '@/components/ReplayTourButton'
 import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
 import AchievementsTab from './AchievementsTab'
 import PredictionStats from '@/components/PredictionStats'
+import PlayerLookup from './PlayerLookup'
 import type { RoundStat, PlayerStat } from '@/components/PredictionStats'
 import Footer from '@/components/Footer'
 import DeleteAccountSection from '@/app/profile/DeleteAccountSection'
@@ -156,7 +157,9 @@ export default async function ProfilePage({
   if (activeTab === 'stats') {
     const [rs, ps, te] = await Promise.all([
       admin.rpc('user_round_stats', { p_user_id: profile.id }),
-      admin.rpc('user_player_stats', { p_user_id: profile.id, p_limit: 14 }),
+      // High limit: the same list powers the lookup search, which must cover every
+      // player picked (136 for the heaviest user today), not just the leaders.
+      admin.rpc('user_player_stats', { p_user_id: profile.id, p_limit: 500 }),
       admin.from('predictions').select('id', { count: 'exact', head: true })
         .eq('user_id', profile.id).is('challenge_id', null),
     ])
@@ -562,13 +565,23 @@ export default async function ProfilePage({
 
         {/* Stats tab */}
         {activeTab === 'stats' && (
-          <PredictionStats
-            rounds={roundStats}
-            players={playerStats}
-            tournamentsEntered={tournamentsEntered}
-            isOwnProfile={isOwnProfile}
-            username={profile.username}
-          />
+          <div className="flex flex-col gap-6">
+            <PredictionStats
+              rounds={roundStats}
+              players={playerStats}
+              tournamentsEntered={tournamentsEntered}
+              isOwnProfile={isOwnProfile}
+              username={profile.username}
+            />
+            {playerStats.length > 0 && (
+              <PlayerLookup
+                players={playerStats}
+                profileUserId={profile.id}
+                isOwnProfile={isOwnProfile}
+                username={profile.username}
+              />
+            )}
+          </div>
         )}
 
         {/* Achievements tab */}
