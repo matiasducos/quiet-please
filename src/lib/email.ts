@@ -36,6 +36,7 @@ export async function sendDrawOpenEmail(opts: {
   to: string
   tournamentName: string
   tournamentId: string
+  tournamentFlagEmoji: string | null
   closeDate: string | null
   unsubscribeToken: string
 }) {
@@ -52,7 +53,7 @@ export async function sendDrawOpenEmail(opts: {
       <div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#f5f2eb;">
         <p style="font-size:12px;letter-spacing:0.08em;color:#6b6b6b;text-transform:uppercase;margin-bottom:24px;">Quiet Please</p>
         <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 12px;">The draw is open.</h1>
-        <p style="color:#6b6b6b;font-size:16px;margin-bottom:8px;">${opts.tournamentName}</p>
+        <p style="color:#6b6b6b;font-size:16px;margin-bottom:8px;">${opts.tournamentFlagEmoji ? `${opts.tournamentFlagEmoji} ` : ''}${opts.tournamentName}</p>
         ${closeLine}
         <div style="margin-top:28px;">
           <a href="${BASE_URL}/tournaments/${opts.tournamentId}"
@@ -184,6 +185,7 @@ export async function sendChallengeReceivedEmail(opts: {
   to: string
   challengerUsername: string
   tournamentName: string
+  tournamentFlagEmoji: string | null
   unsubscribeToken: string
 }) {
   if (!canSend()) return
@@ -196,7 +198,7 @@ export async function sendChallengeReceivedEmail(opts: {
       <div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#f5f2eb;">
         <p style="font-size:12px;letter-spacing:0.08em;color:#6b6b6b;text-transform:uppercase;margin-bottom:24px;">Quiet Please</p>
         <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 12px;">You've been challenged.</h1>
-        <p style="color:#6b6b6b;font-size:16px;margin-bottom:4px;"><strong style="color:#0d0d0d;">${opts.challengerUsername}</strong> challenged you for ${opts.tournamentName}.</p>
+        <p style="color:#6b6b6b;font-size:16px;margin-bottom:4px;"><strong style="color:#0d0d0d;">${opts.challengerUsername}</strong> challenged you for ${opts.tournamentFlagEmoji ? `${opts.tournamentFlagEmoji} ` : ''}${opts.tournamentName}.</p>
         <div style="margin-top:28px;">
           <a href="${BASE_URL}/challenges"
              style="display:inline-block;background:#1a6b3c;color:white;text-decoration:none;padding:12px 24px;font-size:14px;border-radius:2px;">
@@ -266,6 +268,7 @@ export async function sendAutoPredsEmail(opts: {
   to: string
   tournamentName: string
   tournamentId: string
+  tournamentFlagEmoji: string | null
   picksCount: number
   unsubscribeToken: string
 }) {
@@ -279,7 +282,7 @@ export async function sendAutoPredsEmail(opts: {
       <div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#f5f2eb;">
         <p style="font-size:12px;letter-spacing:0.08em;color:#6b6b6b;text-transform:uppercase;margin-bottom:24px;">Quiet Please</p>
         <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 12px;">Picks generated for you.</h1>
-        <p style="color:#6b6b6b;font-size:16px;margin-bottom:4px;">${opts.tournamentName} — ${opts.picksCount} picks auto-generated.</p>
+        <p style="color:#6b6b6b;font-size:16px;margin-bottom:4px;">${opts.tournamentFlagEmoji ? `${opts.tournamentFlagEmoji} ` : ''}${opts.tournamentName} — ${opts.picksCount} picks auto-generated.</p>
         <p style="font-size:14px;color:#6b6b6b;">Review and adjust them before the tournament starts.</p>
         <div style="margin-top:28px;">
           <a href="${BASE_URL}/tournaments/${opts.tournamentId}/predict"

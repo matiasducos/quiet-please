@@ -80,6 +80,7 @@ export async function createChallenge(formData: FormData) {
       to: email,
       challengerUsername: challengerProfile?.username ?? 'Someone',
       tournamentName: tournamentForNotif?.name ?? 'a tournament',
+      tournamentFlagEmoji: tournamentForNotif?.flag_emoji ?? null,
       unsubscribeToken: token,
     }))
   } catch (e) {
