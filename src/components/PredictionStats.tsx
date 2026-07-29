@@ -30,7 +30,7 @@ function Metric({ label, value, sub }: { label: string; value: string; sub?: str
   )
 }
 
-export default function StatsTab({
+export default function PredictionStats({
   rounds,
   players,
   tournamentsEntered,

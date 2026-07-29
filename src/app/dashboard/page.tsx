@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
@@ -7,7 +8,9 @@ import Nav from '@/components/Nav'
 import TournamentCard from '@/components/TournamentCard'
 import { getActivity, timeAgo } from '@/lib/friends/activity'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
-import { getUpcomingTournaments, getLiveTournaments } from '@/lib/tournaments/cached'
+import { getLiveTournaments } from '@/lib/tournaments/cached'
+import PredictionStats from '@/components/PredictionStats'
+import type { RoundStat, PlayerStat } from '@/components/PredictionStats'
 import DashboardTour from '@/components/DashboardTour'
 import { formatPoints } from '@/lib/utils/format'
 import { getLiveStatuses } from '@/lib/tennis/live-status'
@@ -20,16 +23,28 @@ export default async function DashboardPage() {
   if (!user) redirect('/login')
 
   const supabase = await createClient()
+  // The stats functions are granted to service_role only (057), so they must go
+  // through the admin client — the user client is explicitly revoked.
+  const admin = createAdminClient()
 
   // Shared tournament data is cached (60s TTL); user-specific data is not
-  const [upcomingTournaments, liveTournaments, { count: predictionCount }] = await Promise.all([
-    getUpcomingTournaments(3),
+  // The all-time aggregates sit in this batch rather than after it: they are the
+  // slowest queries on the page (they scan every prediction the user has made),
+  // so running them in parallel keeps them off the critical path.
+  const [liveTournaments, { count: predictionCount }, roundRes, playerRes] = await Promise.all([
     getLiveTournaments(4),
     supabase.from('predictions')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.id)
       .is('challenge_id', null),
+    admin.rpc('user_round_stats', { p_user_id: user.id }),
+    admin.rpc('user_player_stats', { p_user_id: user.id, p_limit: 14 }),
   ])
+
+  if (roundRes.error)  console.error('[dashboard] user_round_stats failed:', roundRes.error.message)
+  if (playerRes.error) console.error('[dashboard] user_player_stats failed:', playerRes.error.message)
+  const roundStats  = (roundRes.data ?? []) as RoundStat[]
+  const playerStats = (playerRes.data ?? []) as PlayerStat[]
 
   // Rank + engagement in parallel (both depend on prior data)
   const liveIds = liveTournaments.map(t => t.id)
@@ -191,64 +206,21 @@ export default async function DashboardPage() {
           </div>
         )}
 
-        {/* Upcoming tournaments */}
-        <div data-tour="upcoming">
+        {/* Your record — the same panel as the profile Stats tab */}
+        <div data-tour="record">
           <div className="flex items-center justify-between mb-4">
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.01em' }}>Upcoming tournaments</h2>
-            <Link href="/tournaments" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>View all →</Link>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.01em' }}>Your record</h2>
+            <Link href={`/profile/${profile?.username ?? ''}?tab=stats`} style={{ fontSize: '0.875rem', color: 'var(--court)' }}>
+              Full stats →
+            </Link>
           </div>
-
-          {!upcomingTournaments || upcomingTournaments.length === 0 ? (
-            <div className="bg-white rounded-sm border py-16 px-8 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
-              <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', color: 'var(--ink)', marginBottom: '0.5rem' }}>
-                No upcoming tournaments
-              </p>
-              <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem', maxWidth: '360px', margin: '0 auto 1.5rem' }}>
-                The calendar syncs daily. When draws open, they&apos;ll appear here so you can make your picks.
-              </p>
-              <Link
-                href="/tournaments"
-                className="inline-block px-6 py-2.5 text-sm font-medium text-white rounded-sm hover:opacity-90"
-                style={{ background: 'var(--court)' }}
-              >
-                Browse all tournaments
-              </Link>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {upcomingTournaments.map(t => (
-                <Link
-                  key={t.id}
-                  href={`/tournaments/${t.id}`}
-                  className="flex items-center justify-between bg-white rounded-sm border px-6 py-4 tournament-card"
-                  style={{ borderColor: 'var(--chalk-dim)', textDecoration: 'none' }}
-                >
-                  <div className="flex items-center gap-4 min-w-0">
-                    <span className="px-2 py-0.5 text-xs rounded-sm flex-shrink-0" style={{ background: t.tour === 'WTA' ? '#fbeaf0' : '#e6f1fb', color: t.tour === 'WTA' ? '#993556' : '#185FA5', fontFamily: 'var(--font-mono)' }}>
-                      {t.tour}
-                    </span>
-                    <div className="min-w-0">
-                      <span className="truncate block" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem' }}>
-                        {t.flag_emoji && <span style={{ marginRight: '4px' }}>{t.flag_emoji}</span>}
-                        {t.location ?? t.name}
-                      </span>
-                      {t.location && (
-                        <span className="truncate block" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--muted)' }}>{t.name}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4 flex-shrink-0 ml-4">
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>
-                      {t.starts_at ? new Date(t.starts_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}
-                    </span>
-                    {t.status === 'accepting_predictions' && (
-                      <span style={{ fontSize: '0.8rem', color: 'var(--court)', fontWeight: 500, whiteSpace: 'nowrap' }}>Predict →</span>
-                    )}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
+          <PredictionStats
+            rounds={roundStats}
+            players={playerStats}
+            tournamentsEntered={predictionCount ?? 0}
+            isOwnProfile
+            username={profile?.username ?? ''}
+          />
         </div>
       </div>
       <DashboardTour />
