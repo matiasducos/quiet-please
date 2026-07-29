@@ -41,7 +41,10 @@ export async function GET(request: Request) {
       while (true) {
         const { data: page, error: pageErr } = await supabase
           .from('match_results')
-          .select('id, tournament_id, round, external_match_id, winner_external_id, tournaments(id, category, starts_at)')
+          // status/ends_at ride along on the join the query already does: the
+          // achievement phase below needs them, and fetching them per result
+          // was costing one sequential round trip per match result.
+          .select('id, tournament_id, round, external_match_id, winner_external_id, tournaments(id, category, starts_at, status, ends_at)')
           .or('score.neq.BYE,score.is.null')
           .order('played_at', { ascending: true })
           .range(from, from + RESULT_PAGE - 1)
@@ -630,16 +633,40 @@ export async function GET(request: Request) {
       if (!silent) await notifyAchievements(supabase, results)
     }
     try {
-      // 13a. Tournament trophies: check completed tournaments that had results this run
+      // 13a. Tournament trophies — for completed tournaments still in scope.
+      //
+      // This used to fetch tournaments.status once per match result: one
+      // sequential round trip per row of allResults, for a handful of distinct
+      // tournaments, on every run including ones that awarded nothing. status
+      // now rides along on the join above, so the set costs no queries at all.
+      //
+      // Scope matters as much as cost. Every completed tournament stayed in
+      // this set forever, so the achievement loops below re-checked the entire
+      // back catalogue on every run and the job grew slower with each event
+      // ever played. A tournament is in scope when either:
+      //   (a) it was scored this run — covers reruns and backfills, or
+      //   (b) it finished recently — covers a tournament completing in a run
+      //       that happened to score nothing new.
+      // (b) is a window rather than a one-shot flag so a missed or killed run
+      // self-heals on the next one.
+      const ACHIEVEMENT_WINDOW_DAYS = 30
+      const windowStart = Date.now() - ACHIEVEMENT_WINDOW_DAYS * 24 * 60 * 60 * 1000
+      const scoredThisRun = new Set(ledgerRows.map(r => r.tournament_id))
+
       const completedTournamentIds = new Set<string>()
       for (const r of allResults as any[]) {
-        const { data: t } = await supabase
-          .from('tournaments')
-          .select('status')
-          .eq('id', r.tournament_id)
-          .single()
-        if (t?.status === 'completed') completedTournamentIds.add(r.tournament_id)
+        const t = r.tournaments
+        if (t?.status !== 'completed') continue
+        if (scoredThisRun.has(r.tournament_id)) {
+          completedTournamentIds.add(r.tournament_id)
+          continue
+        }
+        // No ends_at means we cannot age it out — keep it rather than risk
+        // silently dropping a tournament's achievements.
+        const endsAt = t.ends_at ? new Date(t.ends_at).getTime() : null
+        if (endsAt === null || endsAt >= windowStart) completedTournamentIds.add(r.tournament_id)
       }
+      console.log(`[award-points] achievement scope: ${completedTournamentIds.size} completed tournaments`)
 
       for (const tId of completedTournamentIds) {
         const trophyResults = await checkTournamentTrophies(supabase, tId)
@@ -666,11 +693,19 @@ export async function GET(request: Request) {
           .eq('tournament_id', tId)
           .is('challenge_id', null)
 
-        const pickerIds = new Set((tournamentPickers ?? []).map(p => p.user_id))
-        for (const uid of pickerIds) {
-          const perfectResults = await checkPerfectPrediction(supabase, uid, tId)
-          await maybeNotifyAchievements(perfectResults)
-          achievementsAwarded += perfectResults.filter(r => r.isNew).length
+        // Batched rather than sequential: checkPerfectPrediction runs two
+        // queries of its own, so a popular draw (97 pickers on one tournament
+        // here) cost ~200 sequential round trips on its own. Each picker
+        // touches a different user's achievement rows, so they do not contend.
+        const pickerIds = [...new Set((tournamentPickers ?? []).map(p => p.user_id))]
+        for (let i = 0; i < pickerIds.length; i += 50) {
+          const batch = await Promise.all(
+            pickerIds.slice(i, i + 50).map(uid => checkPerfectPrediction(supabase, uid, tId))
+          )
+          for (const perfectResults of batch) {
+            await maybeNotifyAchievements(perfectResults)
+            achievementsAwarded += perfectResults.filter(r => r.isNew).length
+          }
         }
       }
 
