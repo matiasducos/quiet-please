@@ -5,7 +5,7 @@ import { createAdminClient, listAllUsers } from '@/lib/supabase/admin'
 import { tennisAdapter } from '@/lib/tennis'
 import { buildQualifierRemaps, type QualifierRemap, type DrawLike } from '@/lib/tennis/qualifier-remap'
 import { sendDrawOpenEmail, isBotEmail } from '@/lib/email'
-import { isEmailEnabled } from '@/lib/email-preferences'
+import { isEmailEnabled, type EmailPreferences } from '@/lib/email-preferences'
 import { withCronLogging } from '@/lib/cron-logger'
 import type { Json } from '@/types/database'
 
@@ -198,21 +198,47 @@ export async function GET(request: Request) {
             }))
             await (supabase as any).from('notifications').insert(notificationRows)
           }
-          // Fetch email preferences to respect unsubscribe
-          const { data: userPrefs } = await supabase
-            .from('users')
-            .select('id, email_notifications, email_preferences, unsubscribe_token')
-          const prefsMap = new Map((userPrefs ?? []).map((p: any) => [p.id, p]))
+          // Fetch email preferences to respect unsubscribe — paginated, since
+          // PostgREST silently caps unbounded selects at 1000 rows. Without
+          // this, users past #1000 fall out of prefsMap and isEmailEnabled()
+          // defaults them to "subscribed", so unsubscribed users got emailed
+          // anyway, with an empty (broken) unsubscribe token.
+          type UserPrefsRow = {
+            id: string
+            email_notifications: boolean | null
+            email_preferences: Partial<EmailPreferences> | null
+            unsubscribe_token: string | null
+          }
+          const userPrefs: UserPrefsRow[] = []
+          {
+            const PREFS_PAGE = 1000
+            let from = 0
+            while (true) {
+              const { data: page, error: prefsErr } = await supabase
+                .from('users')
+                .select('id, email_notifications, email_preferences, unsubscribe_token')
+                .range(from, from + PREFS_PAGE - 1)
+              if (prefsErr) throw new Error(`user prefs query failed: ${prefsErr.message}`)
+              if (!page?.length) break
+              userPrefs.push(...(page as UserPrefsRow[]))
+              if (page.length < PREFS_PAGE) break
+              from += PREFS_PAGE
+            }
+          }
+          const prefsMap = new Map(userPrefs.map(p => [p.id, p]))
 
-          // Send all emails in parallel — avoids O(n) sequential await per user.
-          const emailResults = await Promise.allSettled(
-            allUsers
-              .filter((u: any) => {
-                if (!u.email || isBotEmail(u.email)) return false
-                const prefs = prefsMap.get(u.id)
-                return isEmailEnabled(prefs?.email_notifications, prefs?.email_preferences, 'draw_open')
-              })
-              .map((u: any) => sendDrawOpenEmail({
+          const emailRecipients = allUsers.filter((u: any) => {
+            if (!u.email || isBotEmail(u.email)) return false
+            const prefs = prefsMap.get(u.id)
+            return isEmailEnabled(prefs?.email_notifications, prefs?.email_preferences, 'draw_open')
+          })
+
+          // Send in batches of 10 rather than all at once — firing thousands of
+          // concurrent Resend calls trips its rate limit (same batching as award-points).
+          let emailFailed = 0
+          for (let i = 0; i < emailRecipients.length; i += 10) {
+            const results = await Promise.allSettled(
+              emailRecipients.slice(i, i + 10).map((u: any) => sendDrawOpenEmail({
                 to:                  u.email,
                 tournamentName:      tournament.name,
                 tournamentId:        tournament.id,
@@ -220,8 +246,9 @@ export async function GET(request: Request) {
                 closeDate:           tournament.draw_close_at ?? null,
                 unsubscribeToken:    prefsMap.get(u.id)?.unsubscribe_token ?? '',
               })),
-          )
-          const emailFailed = emailResults.filter(r => r.status === 'rejected').length
+            )
+            emailFailed += results.filter(r => r.status === 'rejected').length
+          }
           console.log(
             `[sync-draws] Notified ${allUsers.length} users for ${tournament.name}` +
             (emailFailed ? ` (${emailFailed} email errors)` : ''),
