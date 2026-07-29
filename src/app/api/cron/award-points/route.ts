@@ -4,7 +4,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getPointsForRound, calculateStreakMultiplier, buildFeedMap } from '@/lib/tennis'
 import type { DrawMatch, Round, TournamentCategory } from '@/lib/tennis'
 import { sendPointsAwardedEmail, isBotEmail } from '@/lib/email'
+import type { PointsAwardedTournament } from '@/lib/email'
 import { isEmailEnabled } from '@/lib/email-preferences'
+import { ROUND_LABEL, ROUND_ORDER } from '@/lib/tennis/my-tournament'
 import { checkTournamentTrophies, checkCronAchievements, checkChallengeAchievements, checkPerfectPrediction } from '@/lib/achievements/check'
 import { notifyAchievements } from '@/lib/achievements/notify'
 import { withCronLogging } from '@/lib/cron-logger'
@@ -166,6 +168,11 @@ export async function GET(request: Request) {
     const predictionPointsDelta: Record<string, number> = {}
     // Track per-user per-tournament points for notifications (global only)
     const userTournamentPoints: Record<string, Record<string, number>> = {}
+    // Track per-user per-tournament per-round breakdown for the points email
+    // (global only — same scope as userTournamentPoints, see the comment below).
+    // `matches` = predicted matches that finished this run (win or loss),
+    // `wins` = how many of those were correct; only wins add `points`.
+    const userTournamentRounds: Record<string, Record<string, Record<string, { points: number; matches: number; wins: number }>>> = {}
     // Track auto-locks to apply
     const autoLocks: Map<string, Record<string, string>> = new Map() // predictionId → { matchId: "auto" }
 
@@ -208,8 +215,26 @@ export async function GET(request: Request) {
         // Skip locked picks — made after match started, no points / no streak / no ledger
         if (lockedPicksSet.has(result.external_match_id)) continue
 
+        // A genuine prediction must exist for this match — matches the user
+        // left blank don't count as "played" either way.
+        const userPick = picks[result.external_match_id]
+        if (!userPick) continue
+
         // Per-match check: the pick for THIS specific match must match the winner
-        const didPickWinnerForThisMatch = picks[result.external_match_id] === result.winner_external_id
+        const didPickWinnerForThisMatch = userPick === result.winner_external_id
+
+        // Record the win/loss outcome for the email breakdown regardless of
+        // correctness — only wins earn points (below), but both count as a
+        // match "played and predicted" this run.
+        if (!prediction.challenge_id) {
+          if (!userTournamentRounds[prediction.user_id]) userTournamentRounds[prediction.user_id] = {}
+          if (!userTournamentRounds[prediction.user_id][result.tournament_id]) userTournamentRounds[prediction.user_id][result.tournament_id] = {}
+          const roundBucket = userTournamentRounds[prediction.user_id][result.tournament_id]
+          if (!roundBucket[result.round]) roundBucket[result.round] = { points: 0, matches: 0, wins: 0 }
+          roundBucket[result.round].matches += 1
+          if (didPickWinnerForThisMatch) roundBucket[result.round].wins += 1
+        }
+
         if (!didPickWinnerForThisMatch) continue
 
         // Calculate streak multiplier using bracket data
@@ -252,6 +277,9 @@ export async function GET(request: Request) {
           if (!userTournamentPoints[prediction.user_id]) userTournamentPoints[prediction.user_id] = {}
           userTournamentPoints[prediction.user_id][result.tournament_id] =
             (userTournamentPoints[prediction.user_id][result.tournament_id] ?? 0) + totalPoints
+
+          // Bucket already exists — created above when this match's win/loss was recorded.
+          userTournamentRounds[prediction.user_id][result.tournament_id][result.round].points += totalPoints
         }
       }
     }
@@ -290,6 +318,10 @@ export async function GET(request: Request) {
     }
 
     // ── 7. Insert point ledger + update predictions ────────────────────────
+    // Hoisted out of the `if` below so step 10 (email rank/movement) can read
+    // post-run totals for predictions scored this run, falling back to the
+    // pre-run predMap value for everyone else.
+    const predPointsTotals: Record<string, number> = {}
     if (ledgerRows.length > 0) {
       // Use upsert with ignoreDuplicates to safely handle concurrent cron runs.
       // The DB unique constraint on (match_result_id, prediction_id) ensures
@@ -304,7 +336,6 @@ export async function GET(request: Request) {
       // Idempotent: recalculate points_earned from point_ledger SUM instead of
       // incrementally adding deltas (prevents inflation from stale scoredPairs).
       const affectedPredIds = Object.keys(predictionPointsDelta)
-      const predPointsTotals: Record<string, number> = {}
 
       // Fetch actual ledger totals per prediction (avoids row limit issues)
       for (let i = 0; i < affectedPredIds.length; i += 50) {
@@ -375,14 +406,54 @@ export async function GET(request: Request) {
       )
     }
 
+    // ── 9c. Worldwide rank + movement per tournament, for the points email ──
+    // Reuses predsByTournament (already in memory from step 5) — no extra
+    // queries. "Before" ranks use the points_earned each prediction had when
+    // loaded at the top of this run; "after" ranks use predPointsTotals where
+    // this run touched the prediction, falling back to the pre-run value
+    // otherwise. Scoped to global predictions only, matching the public
+    // tournament leaderboard (`challenge_id is null`).
+    const rankByTournament: Record<string, { total: number; byUser: Record<string, { position: number; previousPosition: number }> }> = {}
+    {
+      const tournamentIdsNeedingRank = new Set<string>()
+      for (const tPoints of Object.values(userTournamentPoints)) {
+        for (const tId of Object.keys(tPoints)) tournamentIdsNeedingRank.add(tId)
+      }
+      for (const tId of tournamentIdsNeedingRank) {
+        const globalPreds = (predsByTournament[tId] ?? []).filter(p => !p.challenge_id)
+        if (globalPreds.length === 0) continue
+
+        const previousPositionByUser: Record<string, number> = {}
+        globalPreds
+          .map(p => ({ userId: p.user_id, pts: p.points_earned ?? 0 }))
+          .sort((a, b) => b.pts - a.pts)
+          .forEach((row, idx) => { previousPositionByUser[row.userId] = idx + 1 })
+
+        const byUser: Record<string, { position: number; previousPosition: number }> = {}
+        globalPreds
+          .map(p => ({ userId: p.user_id, pts: predPointsTotals[p.id] ?? p.points_earned ?? 0 }))
+          .sort((a, b) => b.pts - a.pts)
+          .forEach((row, idx) => {
+            byUser[row.userId] = { position: idx + 1, previousPosition: previousPositionByUser[row.userId] ?? idx + 1 }
+          })
+
+        rankByTournament[tId] = { total: globalPreds.length, byUser }
+      }
+    }
+
     // ── 10. Notifications (blocking) + emails (fire-and-forget) ──────────
     if (silent) {
       console.log('[award-points] silent mode — skipping points notifications and emails')
     } else try {
       const notifRows: Array<{ user_id: string; type: string; tournament_id: string; meta: any }> = []
-      const emailJobs: Array<{ userId: string; tId: string; tName: string; pts: number }> = []
+
+      // One email per user per cron run — aggregates every tournament they
+      // scored in this run, each broken down by round.
+      const emailJobs: Array<{ userId: string; correctPicks: number; totalPoints: number; tournaments: PointsAwardedTournament[] }> = []
 
       for (const [userId, tPoints] of Object.entries(userTournamentPoints)) {
+        const tournaments: PointsAwardedTournament[] = []
+        let correctPicks = 0
         for (const [tId, pts] of Object.entries(tPoints)) {
           const tName = tournamentNames[tId] ?? 'a tournament'
           notifRows.push({
@@ -391,8 +462,34 @@ export async function GET(request: Request) {
             tournament_id: tId,
             meta: { points: pts, tournament_name: tName, tournament_location: tournamentLocations[tId] ?? null, tournament_flag_emoji: tournamentFlags[tId] ?? null },
           })
-          emailJobs.push({ userId, tId, tName, pts })
+
+          const roundBucket = userTournamentRounds[userId]?.[tId] ?? {}
+          const roundOrder: readonly string[] = ROUND_ORDER
+          const rounds = Object.entries(roundBucket)
+            .sort(([a], [b]) => roundOrder.indexOf(a) - roundOrder.indexOf(b))
+            .map(([round, { points, matches, wins }]) => ({
+              round,
+              label: ROUND_LABEL[round] ?? round,
+              matches,
+              wins,
+              points,
+            }))
+          correctPicks += rounds.reduce((acc, r) => acc + r.wins, 0)
+
+          const rank = rankByTournament[tId]?.byUser[userId]
+          tournaments.push({
+            tournamentId: tId,
+            tournamentName: tName,
+            flagEmoji: tournamentFlags[tId] ?? null,
+            points: pts,
+            rank: rank
+              ? { position: rank.position, total: rankByTournament[tId].total, movement: rank.previousPosition - rank.position }
+              : null,
+            rounds,
+          })
         }
+        const totalPoints = Object.values(tPoints).reduce((a, b) => a + b, 0)
+        emailJobs.push({ userId, correctPicks, totalPoints, tournaments })
       }
 
       // Batch insert all notifications at once (await — these are fast DB inserts)
@@ -422,10 +519,9 @@ export async function GET(request: Request) {
                   if (authUser?.email && !isBotEmail(authUser.email)) {
                     await sendPointsAwardedEmail({
                       to: authUser.email,
-                      tournamentName: job.tName,
-                      tournamentId: job.tId,
-                      points: job.pts,
-                      totalPoints: globalUserPointsDelta[job.userId],
+                      totalPoints: job.totalPoints,
+                      correctPicks: job.correctPicks,
+                      tournaments: job.tournaments,
                       unsubscribeToken: prefs?.unsubscribe_token ?? '',
                     })
                   }
