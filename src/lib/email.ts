@@ -65,28 +65,112 @@ export async function sendDrawOpenEmail(opts: {
   })
 }
 
+export interface PointsAwardedRoundBreakdown {
+  round: string
+  label: string
+  matches: number
+  wins: number
+  points: number
+}
+
+export interface PointsAwardedRank {
+  position: number
+  total: number
+  /** previous position minus current position: positive = moved up, negative = moved down, 0 = no change */
+  movement: number
+}
+
+export interface PointsAwardedTournament {
+  tournamentId: string
+  tournamentName: string
+  flagEmoji: string | null
+  points: number
+  rank: PointsAwardedRank | null
+  rounds: PointsAwardedRoundBreakdown[]
+}
+
+function rankLine(rank: PointsAwardedRank | null): string {
+  if (!rank) return ''
+  const movementHtml =
+    rank.movement > 0
+      ? `<span style="color:#1a6b3c;">&#9650; up ${rank.movement}</span>`
+      : rank.movement < 0
+        ? `<span style="color:#b3392c;">&#9660; down ${Math.abs(rank.movement)}</span>`
+        : `<span style="color:#8a867e;">&#8212; no change</span>`
+  return `
+        <tr>
+          <td colspan="2" style="padding:0 0 10px;font-family:Georgia,serif;font-size:12px;color:#6b6b6b;">
+            You're <strong style="color:#0d0d0d;">#${rank.position}</strong> of ${rank.total} ${movementHtml}
+          </td>
+        </tr>`
+}
+
+function tournamentBlock(t: PointsAwardedTournament): string {
+  const roundRows = t.rounds
+    .map(
+      r => `
+        <tr>
+          <td style="padding:7px 0 0;font-family:Georgia,serif;font-size:13px;color:#6b6b6b;">${r.label}</td>
+          <td align="right" style="padding:7px 0 0;font-family:Georgia,serif;font-size:13px;color:#0d0d0d;white-space:nowrap;">${r.points} pts</td>
+        </tr>
+        <tr>
+          <td colspan="2" style="padding:0 0 7px;font-family:Georgia,serif;font-size:12px;color:#8a867e;border-bottom:1px solid #e8e3d8;">
+            ${r.matches} match${r.matches === 1 ? '' : 'es'} played (${r.wins} winner${r.wins === 1 ? '' : 's'})
+          </td>
+        </tr>`,
+    )
+    .join('')
+  return `
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-bottom:8px;">
+        <tr>
+          <td style="padding:0 0 2px;font-family:Georgia,serif;font-size:16px;color:#0d0d0d;">
+            ${t.flagEmoji ? `${t.flagEmoji} ` : ''}${t.tournamentName}
+          </td>
+          <td align="right" style="padding:0 0 2px;font-family:Georgia,serif;font-size:16px;color:#1a6b3c;white-space:nowrap;">
+            +${t.points} pts
+          </td>
+        </tr>
+        ${rankLine(t.rank)}
+      </table>
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 24px;border-top:1px solid #e8e3d8;">
+        ${roundRows}
+      </table>`
+}
+
 export async function sendPointsAwardedEmail(opts: {
   to: string
-  tournamentName: string
-  tournamentId: string
-  points: number
   totalPoints: number
+  correctPicks: number
+  tournaments: PointsAwardedTournament[]
   unsubscribeToken: string
 }) {
   if (!canSend()) return
+  const single = opts.tournaments.length === 1
+  const subject = single
+    ? `+${opts.totalPoints} pts — ${opts.tournaments[0].tournamentName}`
+    : `+${opts.totalPoints} pts across ${opts.tournaments.length} tournaments`
+  const subLine = single
+    ? `${opts.correctPicks} correct pick${opts.correctPicks === 1 ? '' : 's'}`
+    : `Across ${opts.tournaments.length} tournaments · ${opts.correctPicks} correct pick${opts.correctPicks === 1 ? '' : 's'}`
+  // Deep-link to the single tournament when there's only one; otherwise send
+  // users to their dashboard where all affected tournaments are visible.
+  const ctaHref = single
+    ? `${BASE_URL}/tournaments/${opts.tournaments[0].tournamentId}`
+    : `${BASE_URL}/dashboard`
+
   await resend!.emails.send({
     from: FROM,
     replyTo: REPLY_TO,
     to: opts.to,
-    subject: `+${opts.points} pts — ${opts.tournamentName}`,
+    subject,
     html: `
       <div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#f5f2eb;">
         <p style="font-size:12px;letter-spacing:0.08em;color:#6b6b6b;text-transform:uppercase;margin-bottom:24px;">Quiet Please</p>
-        <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 12px;">+${opts.points} points earned.</h1>
-        <p style="color:#6b6b6b;font-size:16px;margin-bottom:4px;">${opts.tournamentName}</p>
-        <p style="font-size:14px;color:#6b6b6b;">Your total: <strong style="color:#0d0d0d;">${opts.totalPoints} pts</strong></p>
-        <div style="margin-top:28px;">
-          <a href="${BASE_URL}/tournaments/${opts.tournamentId}"
+        <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 6px;">+${opts.totalPoints} points earned.</h1>
+        <p style="color:#6b6b6b;font-size:14px;margin:0 0 28px;">${subLine}</p>
+        ${opts.tournaments.map(tournamentBlock).join('')}
+        <div>
+          <a href="${ctaHref}"
              style="display:inline-block;background:#1a6b3c;color:white;text-decoration:none;padding:12px 24px;font-size:14px;border-radius:2px;">
             View your picks →
           </a>
