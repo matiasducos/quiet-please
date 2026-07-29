@@ -16,7 +16,7 @@
 
 ### Supabase
 - Project is NOT linked locally — migrations must be run manually in the Supabase dashboard.
-- Latest migration: `061_reconcile_accuracy_achievements.sql` (remember to bump this file when you add a new migration)
+- Latest migration: `062_user_missed_winners.sql` (remember to bump this file when you add a new migration)
 
 ### Notifications
 - When adding a new notification type, update 4 places:

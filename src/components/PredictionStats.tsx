@@ -10,11 +10,26 @@ export interface PlayerStat {
   picks: number
   points: number
 }
+/**
+ * The inverse of PlayerStat — see 062_user_missed_winners.sql.
+ * `missed` counts matches this player contested where the user backed someone
+ * else or left the slot blank; `missed_wins` is how many of those they won.
+ */
+export interface MissedPlayerStat {
+  external_id: string
+  name: string | null
+  country: string | null
+  picks: number
+  missed: number
+  missed_wins: number
+}
 
 const mono = { fontFamily: 'var(--font-mono)' } as const
 
 /** Accuracy bar colour — the app's blue, distinct from the green used for points. */
 const ACCURACY_BLUE = '#378ADD'
+/** Warm red for the missed-winner section — reads as a cost, not a gain. */
+const MISS_RED = '#993C1D'
 
 /**
  * White rather than var(--chalk): this panel renders directly on the page
@@ -49,12 +64,14 @@ function Metric({ label, value, sub, foot, footTone }: {
 export default function PredictionStats({
   rounds,
   players,
+  missedPlayers = [],
   tournamentsEntered,
   isOwnProfile,
   username,
 }: {
   rounds: RoundStat[]
   players: PlayerStat[]
+  missedPlayers?: MissedPlayerStat[]
   tournamentsEntered: number
   isOwnProfile: boolean
   username: string
@@ -84,6 +101,9 @@ export default function PredictionStats({
     .slice(0, 6)
     .sort((a, b) => b.picks - a.picks)
     .slice(0, 3)
+
+  // Already ordered by missed_wins desc in SQL; trim to keep the panel scannable.
+  const topMissed = missedPlayers.slice(0, 6)
 
   const who = isOwnProfile ? 'you' : username
 
@@ -200,6 +220,62 @@ export default function PredictionStats({
           </div>
         </div>
       )}
+
+      {/* The inverse: players who won matches after being passed over */}
+      {topMissed.length > 0 && (
+        <div className="bg-white rounded-sm border p-4 md:p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
+          <h3 className="flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', marginBottom: '2px' }}>
+            Ones that got away
+            <InfoBubble label="ones that got away">
+              Matches where {who} backed the other player — or left the slot blank — and this player
+              won anyway. <strong>won</strong> is how many times that happened out of every match{' '}
+              {isOwnProfile ? 'you' : username} passed on them, and <strong>rate</strong> is the share.
+              A high rate on someone with a low <strong>pk</strong> is a blind spot: a player{' '}
+              {isOwnProfile ? 'you rarely back' : `${username} rarely backs`} who keeps winning regardless.
+            </InfoBubble>
+          </h3>
+          <p style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)', marginBottom: '10px' }}>
+            All time, most costly first
+          </p>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2 px-2 md:px-3" style={{ ...mono, fontSize: '0.58rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>
+              <span style={{ flex: 1, minWidth: 0 }} />
+              <span style={{ width: '34px', textAlign: 'right', flexShrink: 0 }}>pk</span>
+              <span style={{ width: '48px', textAlign: 'right', flexShrink: 0 }}>won</span>
+              <span style={{ width: '46px', textAlign: 'right', flexShrink: 0 }}>rate</span>
+            </div>
+            {topMissed.map(p => <MissedPlayerRow key={p.external_id} p={p} />)}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MissedPlayerRow({ p }: { p: MissedPlayerStat }) {
+  const flag = nameToFlag(p.country)
+  const rate = p.missed > 0 ? Math.round((p.missed_wins / p.missed) * 100) : 0
+  return (
+    <div className="flex items-center gap-2 px-2 md:px-3 py-2 rounded-sm" style={{ background: 'var(--chalk)' }}>
+      <span style={{ ...mono, fontSize: '0.78rem', color: 'var(--ink)', flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <span aria-hidden="true" style={{ fontSize: '0.85rem', lineHeight: 1, width: '1.1em', flexShrink: 0, textAlign: 'center' }}>
+          {flag ?? ''}
+        </span>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {p.name ?? 'Unknown player'}
+        </span>
+      </span>
+      {/* Zero picks is the interesting case, not a gap — a player never backed
+          once who kept winning. Dimmed rather than hidden so it reads as "never". */}
+      <span style={{ ...mono, fontSize: '0.7rem', color: p.picks === 0 ? 'var(--muted)' : 'var(--ink)', width: '34px', textAlign: 'right', flexShrink: 0 }}>
+        {p.picks}
+      </span>
+      <span style={{ ...mono, fontSize: '0.7rem', color: 'var(--muted)', width: '48px', textAlign: 'right', flexShrink: 0 }}>
+        {p.missed_wins}/{p.missed}
+      </span>
+      <span style={{ ...mono, fontSize: '0.75rem', color: MISS_RED, width: '46px', textAlign: 'right', flexShrink: 0 }}>
+        {rate}%
+      </span>
     </div>
   )
 }
