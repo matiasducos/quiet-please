@@ -16,9 +16,20 @@ const mono = { fontFamily: 'var(--font-mono)' } as const
 /** Accuracy bar colour — the app's blue, distinct from the green used for points. */
 const ACCURACY_BLUE = '#378ADD'
 
-function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
+/**
+ * White rather than var(--chalk): this panel renders directly on the page
+ * background, which is also var(--chalk), so a chalk card was invisible on the
+ * dashboard. The border keeps it legible on any surface.
+ */
+function Metric({ label, value, sub, foot, footTone }: {
+  label: string
+  value: string
+  sub?: string
+  foot?: string
+  footTone?: string
+}) {
   return (
-    <div className="rounded-sm p-3 md:p-4" style={{ background: 'var(--chalk)' }}>
+    <div className="rounded-sm border p-3 md:p-4" style={{ background: 'white', borderColor: 'var(--chalk-dim)' }}>
       <p style={{ ...mono, fontSize: '0.65rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '4px' }}>
         {label}
       </p>
@@ -26,6 +37,11 @@ function Metric({ label, value, sub }: { label: string; value: string; sub?: str
         {value}
         {sub && <span style={{ ...mono, fontSize: '0.75rem', color: 'var(--muted)', marginLeft: '5px' }}>{sub}</span>}
       </p>
+      {foot && (
+        <p style={{ ...mono, fontSize: '0.7rem', color: footTone ?? 'var(--muted)', marginTop: '3px' }}>
+          {foot}
+        </p>
+      )}
     </div>
   )
 }
@@ -88,7 +104,13 @@ export default function PredictionStats({
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3">
         <Metric label="Points all time" value={totalPoints.toLocaleString()} />
-        <Metric label="Correct picks" value={totalCorrect.toLocaleString()} sub={`of ${totalDecided.toLocaleString()}`} />
+        <Metric
+          label="Correct picks"
+          value={totalCorrect.toLocaleString()}
+          sub={`of ${totalDecided.toLocaleString()}`}
+          foot={totalDecided > 0 ? `${Math.round((totalCorrect / totalDecided) * 100)}% hit rate` : undefined}
+          footTone={ACCURACY_BLUE}
+        />
         <Metric label="Tournaments" value={String(tournamentsEntered)} />
       </div>
 

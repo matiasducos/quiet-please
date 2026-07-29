@@ -8,7 +8,7 @@ const mono = { fontFamily: 'var(--font-mono)' } as const
 /** Accuracy bar colour — matches the profile Stats tab. */
 const ACCURACY_BLUE = '#378ADD'
 
-function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function Metric({ label, value, sub, foot }: { label: string; value: string; sub?: string; foot?: string }) {
   return (
     <div className="rounded-sm p-3 md:p-4" style={{ background: 'var(--chalk)' }}>
       <p style={{ ...mono, fontSize: '0.65rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '4px' }}>
@@ -18,6 +18,9 @@ function Metric({ label, value, sub }: { label: string; value: string; sub?: str
         {value}
         {sub && <span style={{ ...mono, fontSize: '0.75rem', color: 'var(--muted)', marginLeft: '5px' }}>{sub}</span>}
       </p>
+      {foot && (
+        <p style={{ ...mono, fontSize: '0.7rem', color: ACCURACY_BLUE, marginTop: '3px' }}>{foot}</p>
+      )}
     </div>
   )
 }
@@ -111,7 +114,12 @@ export default function MyTournamentPanel({
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3 mb-6">
         <Metric label="Points so far" value={pointsSoFar.toLocaleString()} />
-        <Metric label="Correct picks" value={String(correct)} sub={`of ${decided}`} />
+        <Metric
+          label="Correct picks"
+          value={String(correct)}
+          sub={`of ${decided}`}
+          foot={decided > 0 ? `${Math.round((correct / decided) * 100)}% hit rate` : undefined}
+        />
         {!isComplete && <Metric label="Still active" value={String(activeCount)} sub={`of ${distinctPicked}`} />}
       </div>
 
