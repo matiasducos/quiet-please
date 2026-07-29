@@ -7,7 +7,7 @@ export interface PlayerRoundDetail {
   round: string
   picks: number
   wins: number
-  dead: number
+  voided: number
   points: number
 }
 

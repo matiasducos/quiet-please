@@ -144,7 +144,7 @@ export default async function TournamentDetailPage({ params }: { params: Promise
   // ── "Your tournament" summary ─────────────────────────────────────────────
   // Results are read per-request rather than from the hour-long tournament cache:
   // this panel is the live view of a tournament in progress, so a stale bracket
-  // would show players as alive after they had already lost.
+  // would show players as active after they had already lost.
   let myTournament: MyTournament | null = null
   if (prediction && Object.keys((prediction.picks as Record<string, string>) ?? {}).length > 0) {
     const { data: results, error: resultsErr } = await supabase

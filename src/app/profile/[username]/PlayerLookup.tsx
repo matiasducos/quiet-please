@@ -63,7 +63,7 @@ export default function PlayerLookup({
         Look up a player
         <InfoBubble label="look up a player">
           Search any player {who} {isOwnProfile ? 'have' : 'has'} picked, for a full breakdown by
-          round and by tournament. <strong>dead</strong> counts picks for rounds the player never
+          round and by tournament. <strong>void</strong> counts picks for rounds the player never
           reached — a bracket is filled in before play, so backing someone deep costs a pick per
           round whether or not they got there.
         </InfoBubble>

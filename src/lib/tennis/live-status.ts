@@ -98,8 +98,8 @@ export async function getLiveStatuses(
       pointsSoFar: summary.pointsSoFar,
       correct: summary.correct,
       decided: summary.decided,
-      ridingCount: summary.stillRiding.length,
-      topRiding: summary.stillRiding.slice(0, 2).map(p => ({ name: p.name, riding: p.riding })),
+      ridingCount: summary.stillToCome.length,
+      topRiding: summary.stillToCome.slice(0, 2).map(p => ({ name: p.name, riding: p.riding })),
       currentRound: summary.currentRound,
     }
   }
