@@ -8,22 +8,6 @@ import type { PredictionMode } from '@/lib/app-settings'
 import { NOTIFICATION_TYPES } from './constants'
 import type { NotificationType } from './constants'
 
-// ── Cron jobs ─────────────────────────────────────────────────────────────────
-
-const ENDPOINTS = [
-  { key: 'auto-predict',     label: 'Auto-Predict',     description: 'Generate predictions for auto-predict users + bot gap-fill', scheduleUtcHour: 9.5,  disabled: true  },
-] as const
-
-function formatCronSchedule(utcHour: number | null): string {
-  if (utcHour === null) return 'On-demand only'
-  const d = new Date()
-  d.setUTCHours(utcHour, 0, 0, 0)
-  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })
-  const tz   = d.toLocaleTimeString('en-GB', { timeZoneName: 'short', timeZone: 'Europe/Paris' }).split(' ').pop() ?? 'CET'
-  return `Daily at ${time} ${tz}`
-}
-
-type EndpointKey = typeof ENDPOINTS[number]['key']
 type AsyncStatus = { type: 'idle' | 'loading' | 'success' | 'error'; message?: string }
 
 function timeAgo(dateStr: string): string {
@@ -46,7 +30,7 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'past-tournaments',   label: 'Past Tournaments',  icon: '📦' },
   { key: 'award-points',       label: 'Award Points',      icon: '⭐' },
   { key: 'auto-predict',       label: 'Auto-Predict',      icon: '🤖' },
-  { key: 'cron-jobs',          label: 'Cron Jobs',         icon: '⚙️' },
+  { key: 'cron-jobs',          label: 'Cron Runs',         icon: '⚙️' },
   { key: 'test-notifications', label: 'Notifications',     icon: '🔔' },
   { key: 'settings',           label: 'Settings',          icon: '🔧' },
 ]
@@ -172,24 +156,7 @@ export default function AdminPanel({ tournaments, cronRuns, autoPredictStats, ap
     setPastSearchTimer(setTimeout(() => loadPastTournaments(q), 300))
   }
 
-  // ── Cron state ──────────────────────────────────────────────────────────────
-  const [cronStatuses, setCronStatuses] = useState<Record<EndpointKey, AsyncStatus>>(
-    Object.fromEntries(ENDPOINTS.map(e => [e.key, { type: 'idle' }])) as Record<EndpointKey, AsyncStatus>
-  )
   const [awardStatus, setAwardStatus] = useState<AsyncStatus>({ type: 'idle' })
-
-  async function handleTriggerCron(key: EndpointKey) {
-    setCronStatuses(s => ({ ...s, [key]: { type: 'loading' } }))
-    try {
-      const { ok, data } = await triggerCron(key)
-      setCronStatuses(s => ({
-        ...s,
-        [key]: { type: ok ? 'success' : 'error', message: JSON.stringify(data, null, 2) },
-      }))
-    } catch (err) {
-      setCronStatuses(s => ({ ...s, [key]: { type: 'error', message: String(err) } }))
-    }
-  }
 
   async function handleRunAwardPoints() {
     setAwardStatus({ type: 'loading' })
@@ -661,64 +628,31 @@ export default function AdminPanel({ tournaments, cronRuns, autoPredictStats, ap
           </div>
         )}
 
-        {/* ── Cron Jobs tab ── */}
+        {/* ── Cron Runs tab ── */}
+        {/* Read-only. The manual-trigger list that used to sit here held a single
+            permanently-disabled endpoint, duplicated by the working button on the
+            Auto-Predict tab. Jobs fire on their Vercel schedule; this is where you
+            see whether they did. */}
         {activeTab === 'cron-jobs' && (
           <div>
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em', marginBottom: '0.75rem' }}>
-              Cron Jobs
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em', marginBottom: '0.25rem' }}>
+              Cron Runs
             </h2>
-            <div className="flex flex-col gap-4">
-              {ENDPOINTS.map(endpoint => {
-                const status = cronStatuses[endpoint.key]
-                return (
-                  <div key={endpoint.key} className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)', marginBottom: '2px' }}>
-                          {endpoint.label}
-                        </p>
-                        <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '2px' }}>
-                          {endpoint.description}
-                        </p>
-                        <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.03em' }}>
-                          {formatCronSchedule(endpoint.scheduleUtcHour)}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => handleTriggerCron(endpoint.key)}
-                        disabled={status.type === 'loading' || endpoint.disabled}
-                        className="px-4 py-2 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40 flex-shrink-0"
-                        style={{ background: 'var(--court)', color: 'white' }}
-                      >
-                        {status.type === 'loading' ? 'Running…' : endpoint.disabled ? 'Disabled' : 'Run'}
-                      </button>
-                    </div>
+            <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '1rem' }}>
+              The last 20 logged runs, newest first. A job missing from this list has not run.
+            </p>
 
-                    {status.message && (
-                      <div
-                        className="mt-3 p-3 rounded-sm overflow-x-auto"
-                        style={{
-                          background: status.type === 'error' ? '#fee2e2' : '#f0fdf4',
-                          borderLeft: `3px solid ${status.type === 'error' ? '#ef4444' : '#22c55e'}`,
-                        }}
-                      >
-                        <pre style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: status.type === 'error' ? '#991b1b' : '#166534', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                          {status.message}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Recent Cron Runs */}
-            {cronRuns.length > 0 && (
-              <div className="mt-8">
-                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', letterSpacing: '-0.01em', marginBottom: '0.5rem' }}>
-                  Recent runs
-                </h3>
-                <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+            {cronRuns.length === 0 ? (
+              <div className="bg-white rounded-sm border py-12 px-6 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
+                <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)', marginBottom: '0.4rem' }}>
+                  Nothing logged yet
+                </p>
+                <p style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+                  Jobs write a row here through withCronLogging the first time they run.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
                   <div className="overflow-x-auto">
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <thead>
@@ -766,7 +700,6 @@ export default function AdminPanel({ tournaments, cronRuns, autoPredictStats, ap
                       </tbody>
                     </table>
                   </div>
-                </div>
               </div>
             )}
           </div>
