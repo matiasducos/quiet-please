@@ -15,8 +15,8 @@ import { resolvePreferences } from '@/lib/email-preferences'
 import ReplayTourButton from '@/components/ReplayTourButton'
 import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
 import AchievementsTab from './AchievementsTab'
-import StatsTab from './StatsTab'
-import type { RoundStat, PlayerStat } from './StatsTab'
+import PredictionStats from '@/components/PredictionStats'
+import type { RoundStat, PlayerStat } from '@/components/PredictionStats'
 import Footer from '@/components/Footer'
 import DeleteAccountSection from '@/app/profile/DeleteAccountSection'
 import RecentFormDot from './RecentFormDot'
@@ -562,7 +562,7 @@ export default async function ProfilePage({
 
         {/* Stats tab */}
         {activeTab === 'stats' && (
-          <StatsTab
+          <PredictionStats
             rounds={roundStats}
             players={playerStats}
             tournamentsEntered={tournamentsEntered}
