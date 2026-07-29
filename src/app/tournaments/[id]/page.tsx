@@ -202,6 +202,36 @@ export default async function TournamentDetailPage({ params }: { params: Promise
   const statusAllowed = await canPredictForStatus(t.status ?? 'upcoming')
   const canPredict = statusAllowed && !prediction?.is_fully_locked
   const hasDraw = draw && draw.bracket_data
+  const isLiveOrDone = t.status === 'in_progress' || t.status === 'completed'
+
+  // /predict bounces back here when the status is not predictable and the
+  // tournament is not completed (see predict/page.tsx), which happens to a
+  // locked in_progress bracket under pre_tournament mode. Send those viewers
+  // to the read-only bracket instead so the button never dead-ends.
+  const canOpenPredict = statusAllowed || t.status === 'completed'
+  const myPicksHref = canOpenPredict || !profile?.username
+    ? `/tournaments/${t.id}/predict`
+    : `/tournaments/${t.id}/picks/${profile.username}`
+
+  // The predict CTA takes the primary (green) slot whenever it is actionable;
+  // otherwise the leaderboard does. Never two greens in the same row.
+  const predictCtaLabel = user && canPredict ? (prediction ? 'Edit my picks' : 'Make predictions') : null
+  const primary = { background: 'var(--court)', color: 'white', textDecoration: 'none' }
+  const secondary = { background: 'white', color: 'var(--ink)', textDecoration: 'none', border: '1px solid var(--chalk-dim)' }
+  const btnClass = 'px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-80'
+
+  // Replaces the explanatory copy that used to live in the Draw card.
+  const note = !hasDraw
+    ? 'Draw not yet published — usually released a few days before play starts.'
+    : !prediction && !canPredict
+    ? t.status === 'completed'
+      ? 'This tournament has ended.'
+      : t.status === 'draw_published'
+      ? 'The qualifying draw is live. Predictions open once the main draw is published.'
+      : t.status === 'in_progress'
+      ? 'This tournament is already underway. Predictions are closed.'
+      : 'Predictions will open when the draw is published.'
+    : null
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
@@ -258,69 +288,113 @@ export default async function TournamentDetailPage({ params }: { params: Promise
 
           {/* Body */}
           <div style={{ padding: '24px 20px 20px' }}>
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-5">
 
-            {/* Location (primary heading) */}
-            <h1 className="text-3xl md:text-4xl" style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', lineHeight: 1.1, marginBottom: '6px' }}>
-              {t.flag_emoji && <span style={{ marginRight: '8px' }}>{t.flag_emoji}</span>}
-              {t.location ?? t.name}
-            </h1>
+              <div className="flex-1 min-w-0">
+                {/* Location (primary heading) */}
+                <h1 className="text-3xl md:text-4xl" style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', lineHeight: 1.1, marginBottom: '6px' }}>
+                  {t.flag_emoji && <span style={{ marginRight: '8px' }}>{t.flag_emoji}</span>}
+                  {t.location ?? t.name}
+                </h1>
 
-            {/* Tournament name (secondary) + date */}
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--muted)', letterSpacing: '0.03em', marginBottom: '16px' }}>
-              {t.location ? <>{t.name} · {formatDateRange(t.starts_at, t.ends_at)}</> : formatDateRange(t.starts_at, t.ends_at)}
-            </div>
+                {/* Tournament name (secondary) + date */}
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--muted)', letterSpacing: '0.03em', marginBottom: '16px' }}>
+                  {t.location ? <>{t.name} · {formatDateRange(t.starts_at, t.ends_at)}</> : formatDateRange(t.starts_at, t.ends_at)}
+                </div>
 
-            {/* Meta row: surface + picks-close */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-              <span
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '0.65rem',
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  background: surface.bg,
-                  color: surface.text,
-                  padding: '4px 10px',
-                  borderRadius: '2px',
-                }}
-              >
-                {surface.label}
-              </span>
-
-              {(t.status === 'in_progress' || t.status === 'completed') && (
-                <>
-                  <Link
-                    href={`/leaderboard/tournaments/${t.id}`}
-                    className="px-3 py-1 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
-                    style={{ background: 'var(--court)', color: 'white', textDecoration: 'none' }}
+                {/* Meta row: surface + actions + picks-close */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.65rem',
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                      background: surface.bg,
+                      color: surface.text,
+                      padding: '4px 10px',
+                      borderRadius: '2px',
+                      marginRight: '6px',
+                    }}
                   >
-                    See results
-                  </Link>
-                  <Link
-                    href={`/tournaments/${t.id}/results`}
-                    className="px-3 py-1 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
-                    style={{ background: 'white', color: 'var(--ink)', textDecoration: 'none', border: '1px solid var(--chalk-dim)' }}
-                  >
-                    Draw results
-                  </Link>
-                  <Link
-                    href={`/tournaments/${t.id}/upcoming`}
-                    className="px-3 py-1 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
-                    style={{ background: 'white', color: 'var(--ink)', textDecoration: 'none', border: '1px solid var(--chalk-dim)' }}
-                  >
-                    Upcoming
-                  </Link>
-                </>
-              )}
-
-              {t.draw_close_at && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
-                    PICKS CLOSE
+                    {surface.label}
                   </span>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--ink)' }}>
-                    {formatDate(t.draw_close_at)}
-                  </span>
+
+                  {isLiveOrDone && (
+                    <Link
+                      href={`/leaderboard/tournaments/${t.id}`}
+                      className={btnClass}
+                      style={predictCtaLabel ? secondary : primary}
+                    >
+                      Leaderboard
+                    </Link>
+                  )}
+
+                  {predictCtaLabel ? (
+                    <Link href={`/tournaments/${t.id}/predict`} className={btnClass} style={primary}>
+                      {predictCtaLabel}
+                    </Link>
+                  ) : user && prediction ? (
+                    <Link href={myPicksHref} className={btnClass} style={secondary}>
+                      See my picks
+                    </Link>
+                  ) : !user && (statusAllowed || t.status === 'upcoming') ? (
+                    <Link href="/login" className={btnClass} style={isLiveOrDone ? secondary : primary}>
+                      Sign in to predict
+                    </Link>
+                  ) : null}
+
+                  {isLiveOrDone && (
+                    <>
+                      <Link href={`/tournaments/${t.id}/results`} className={btnClass} style={secondary}>
+                        Draw results
+                      </Link>
+                      <Link href={`/tournaments/${t.id}/upcoming`} className={btnClass} style={secondary}>
+                        Upcoming matches
+                      </Link>
+                    </>
+                  )}
+
+                  {t.draw_close_at && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '6px' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
+                        PICKS CLOSE
+                      </span>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--ink)' }}>
+                        {formatDate(t.draw_close_at)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {note && (
+                  <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)', letterSpacing: '0.02em', lineHeight: 1.5, marginTop: '12px' }}>
+                    {note}
+                  </p>
+                )}
+              </div>
+
+              {/* Your prediction — status + points, moved up from the sidebar */}
+              {user && prediction && (
+                <div
+                  className="rounded-sm border px-4 py-3 w-full md:w-auto md:min-w-[200px] flex-shrink-0"
+                  style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}
+                >
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '8px' }}>
+                    Your prediction
+                  </div>
+                  <div className="flex items-center justify-between gap-6 mb-1.5">
+                    <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>Status</span>
+                    <span style={{ fontSize: '0.78rem', fontFamily: 'var(--font-mono)', color: prediction.is_fully_locked ? '#993C1D' : '#1a6b3c' }}>
+                      {prediction.is_fully_locked ? 'Locked' : 'In progress'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-6">
+                    <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>Points earned</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>
+                      {prediction.points_earned ?? 0} pts
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
@@ -332,218 +406,48 @@ export default async function TournamentDetailPage({ params }: { params: Promise
           <MyTournamentPanel data={myTournament} isComplete={t.status === 'completed'} />
         )}
 
-        {/* ── Main content grid ─────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-
-          {/* Left — draw / bracket */}
-          <div className="col-span-1 md:col-span-2">
-            <div className="bg-white rounded-sm border p-6" style={{ borderColor: 'var(--chalk-dim)' }}>
-              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', marginBottom: '1rem' }}>
-                Draw
-              </h2>
-
-              {!hasDraw ? (
-                <div className="py-12 text-center">
-                  <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--muted)', marginBottom: '0.5rem' }}>
-                    Draw not yet published
-                  </p>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
-                    The official draw is usually released a few days before the tournament starts. Check back soon.
-                  </p>
-                </div>
-              ) : user && prediction?.is_fully_locked ? (
-                <div className="py-6 text-center">
-                  <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)', letterSpacing: '0.04em', marginBottom: '1rem' }}>
-                    Your bracket is locked.
-                  </p>
-                  <div className="flex flex-col items-center gap-3">
-                    <Link
-                      href={`/tournaments/${id}/predict`}
-                      className="inline-block px-5 py-2 text-sm font-medium rounded-sm hover:opacity-90"
-                      style={{ background: 'var(--court)', color: 'white' }}
-                    >
-                      View your picks →
-                    </Link>
-                    {(t.status === 'in_progress' || t.status === 'completed') && (
-                      <Link
-                        href={`/tournaments/${id}/picks`}
-                        style={{ fontSize: '0.8rem', color: 'var(--muted)' }}
-                      >
-                        See all picks →
-                      </Link>
-                    )}
-                  </div>
-                </div>
-              ) : user && canPredict ? (
-                <div>
-                  <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem' }}>
-                    {t.status === 'in_progress'
-                      ? 'The tournament is underway. You can still predict unplayed matches.'
-                      : 'The draw is published. Make your picks before the first match starts.'}
-                  </p>
-                  <Link
-                    href={`/tournaments/${t.id}/predict`}
-                    className="inline-block px-6 py-3 text-white text-sm font-medium rounded-sm hover:opacity-90"
-                    style={{ background: 'var(--court)' }}
-                  >
-                    {prediction ? 'Edit predictions →' : 'Make predictions →'}
-                  </Link>
-                </div>
-              ) : (
-                <div className="py-8 text-center">
-                  <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1rem' }}>
-                    {t.status === 'accepting_predictions'
-                      ? 'Sign in to make your picks.'
-                      : t.status === 'draw_published'
-                      ? 'The qualifying draw is live. Sign in — predictions open once the main draw is published.'
-                      : t.status === 'completed'
-                      ? 'This tournament has ended.'
-                      : t.status === 'in_progress' && !user
-                      ? 'Sign in to predict unplayed matches.'
-                      : 'Sign in to be notified when predictions open.'}
-                  </p>
-                  <div className="flex flex-col items-center gap-3">
-                    {(t.status === 'accepting_predictions' || t.status === 'in_progress' || t.status === 'upcoming') && !user && (
-                      <Link
-                        href="/login"
-                        className="inline-block px-6 py-2.5 text-sm font-medium rounded-sm hover:opacity-90"
-                        style={{ background: 'var(--court)', color: 'white' }}
-                      >
-                        Sign in to predict →
-                      </Link>
-                    )}
-                    {(t.status === 'in_progress' || t.status === 'completed') && (
-                      <Link
-                        href={`/tournaments/${id}/picks`}
-                        style={{ fontSize: '0.875rem', color: 'var(--court)' }}
-                      >
-                        See all picks →
-                      </Link>
-                    )}
-                  </div>
-                </div>
-              )}
+        {/* ── Points breakdown ──────────────────────────────────────────── */}
+        <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
+          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.75rem' }}>
+            Points per round
+          </h3>
+          {user && (
+            <div className="flex items-center justify-between pb-1.5" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)' }}>
+              <span />
+              <span className="flex items-center" style={{ gap: '18px' }}>
+                <span>Base</span>
+                <span style={{ minWidth: '3.5rem', textAlign: 'right' }}>You</span>
+              </span>
             </div>
-          </div>
-
-          {/* Right — prediction status + points */}
-          <div className="col-span-1 flex flex-col gap-4">
-
-            {/* Prediction card */}
-            <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.75rem' }}>
-                {user ? 'Your prediction' : 'Predict the draw'}
-              </h3>
-
-              {!user ? (
-                <div>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
-                    {t.status === 'accepting_predictions' || t.status === 'in_progress'
-                      ? 'The draw is open. Sign in to pick your bracket and earn points.'
-                      : t.status === 'draw_published'
-                      ? 'The qualifying draw is live. Predictions open when the main draw is published.'
-                      : t.status === 'upcoming'
-                      ? 'Sign in to be notified when predictions open.'
-                      : 'Sign in to track your predictions and compare with friends.'}
-                  </p>
-                  <Link
-                    href="/login"
-                    className="block w-full py-2.5 text-sm font-medium text-white text-center rounded-sm hover:opacity-90"
-                    style={{ background: 'var(--court)' }}
-                  >
-                    Sign in
-                  </Link>
-                </div>
-              ) : prediction ? (
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Status</span>
-                    <span style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)', color: prediction.is_fully_locked ? '#993C1D' : '#1a6b3c' }}>
-                      {prediction.is_fully_locked ? 'Locked' : 'In progress'}
+          )}
+          {[
+            { round: 'Winner',      ledger: 'F',    pts: t.category === 'grand_slam' ? 2000 : t.category === 'masters_1000' ? 1000 : t.category === '500' ? 500  : 250 },
+            { round: 'Semifinal',   ledger: 'SF',   pts: t.category === 'grand_slam' ? 720  : t.category === 'masters_1000' ? 360  : t.category === '500' ? 90   : 45  },
+            { round: 'Quarterfinal',ledger: 'QF',   pts: t.category === 'grand_slam' ? 360  : t.category === 'masters_1000' ? 180  : t.category === '500' ? 60   : 29  },
+            { round: 'R16',         ledger: 'R16',  pts: t.category === 'grand_slam' ? 180  : t.category === 'masters_1000' ? 90   : t.category === '500' ? 30   : 13  },
+            { round: 'R32',         ledger: 'R32',  pts: t.category === 'grand_slam' ? 90   : t.category === 'masters_1000' ? 45   : t.category === '500' ? 20   : 6   },
+            ...(['grand_slam', 'masters_1000'].includes(t.category) ? [
+              { round: 'R64',       ledger: 'R64',  pts: t.category === 'grand_slam' ? 45   : 25 },
+            ] : []),
+            ...(['grand_slam', 'masters_1000'].includes(t.category) ? [
+              { round: 'R128',      ledger: 'R128', pts: t.category === 'grand_slam' ? 10   : 10 },
+            ] : []),
+          ].map(({ round, ledger, pts }) => {
+            const earned = pointsByRound[ledger] ?? 0
+            return (
+              <div key={round} className="flex items-center justify-between py-1.5 border-b last:border-0" style={{ borderColor: 'var(--chalk-dim)' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{round}</span>
+                <span className="flex items-center" style={{ gap: '18px', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--ink)' }}>
+                  <span>{pts} pts</span>
+                  {user && (
+                    <span style={{ minWidth: '3.5rem', textAlign: 'right', color: earned > 0 ? 'var(--court)' : 'var(--muted)' }}>
+                      {earned} pts
                     </span>
-                  </div>
-                  <div className="flex items-center justify-between mb-4">
-                    <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Points earned</span>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }}>
-                      {prediction.points_earned ?? 0} pts
-                    </span>
-                  </div>
-                  {canPredict && (
-                    <Link href={`/tournaments/${id}/predict`} className="block w-full py-2.5 text-sm font-medium text-white text-center rounded-sm hover:opacity-90" style={{ background: 'var(--court)' }}>
-                      Edit picks
-                    </Link>
                   )}
-                </div>
-              ) : canPredict ? (
-                <div>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
-                    {t.status === 'in_progress'
-                      ? 'The tournament is underway. You can still predict unplayed matches.'
-                      : 'The draw is open. Make your bracket predictions before the first match starts.'}
-                  </p>
-                  <Link href={`/tournaments/${id}/predict`} className="block w-full py-2.5 text-sm font-medium text-white text-center rounded-sm hover:opacity-90" style={{ background: 'var(--court)' }}>
-                    Make predictions
-                  </Link>
-                </div>
-              ) : (
-                <p style={{ fontSize: '0.8rem', color: 'var(--muted)', lineHeight: 1.5 }}>
-                  {t.status === 'draw_published'
-                    ? 'The qualifying draw is live. Predictions will open once the main draw is published.'
-                    : t.status === 'upcoming'
-                    ? 'Predictions will open when the draw is published.'
-                    : t.status === 'completed'
-                    ? 'This tournament has ended.'
-                    : t.status === 'in_progress'
-                    ? 'This tournament is already underway. Predictions are closed.'
-                    : 'Predictions are closed for this tournament.'}
-                </p>
-              )}
-            </div>
-
-            {/* Points breakdown */}
-            <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.75rem' }}>
-                Points per round
-              </h3>
-              {user && (
-                <div className="flex items-center justify-between pb-1.5" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)' }}>
-                  <span />
-                  <span className="flex items-center" style={{ gap: '18px' }}>
-                    <span>Base</span>
-                    <span style={{ minWidth: '3.5rem', textAlign: 'right' }}>You</span>
-                  </span>
-                </div>
-              )}
-              {[
-                { round: 'Winner',      ledger: 'F',    pts: t.category === 'grand_slam' ? 2000 : t.category === 'masters_1000' ? 1000 : t.category === '500' ? 500  : 250 },
-                { round: 'Semifinal',   ledger: 'SF',   pts: t.category === 'grand_slam' ? 720  : t.category === 'masters_1000' ? 360  : t.category === '500' ? 90   : 45  },
-                { round: 'Quarterfinal',ledger: 'QF',   pts: t.category === 'grand_slam' ? 360  : t.category === 'masters_1000' ? 180  : t.category === '500' ? 60   : 29  },
-                { round: 'R16',         ledger: 'R16',  pts: t.category === 'grand_slam' ? 180  : t.category === 'masters_1000' ? 90   : t.category === '500' ? 30   : 13  },
-                { round: 'R32',         ledger: 'R32',  pts: t.category === 'grand_slam' ? 90   : t.category === 'masters_1000' ? 45   : t.category === '500' ? 20   : 6   },
-                ...(['grand_slam', 'masters_1000'].includes(t.category) ? [
-                  { round: 'R64',       ledger: 'R64',  pts: t.category === 'grand_slam' ? 45   : 25 },
-                ] : []),
-                ...(['grand_slam', 'masters_1000'].includes(t.category) ? [
-                  { round: 'R128',      ledger: 'R128', pts: t.category === 'grand_slam' ? 10   : 10 },
-                ] : []),
-              ].map(({ round, ledger, pts }) => {
-                const earned = pointsByRound[ledger] ?? 0
-                return (
-                  <div key={round} className="flex items-center justify-between py-1.5 border-b last:border-0" style={{ borderColor: 'var(--chalk-dim)' }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{round}</span>
-                    <span className="flex items-center" style={{ gap: '18px', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--ink)' }}>
-                      <span>{pts} pts</span>
-                      {user && (
-                        <span style={{ minWidth: '3.5rem', textAlign: 'right', color: earned > 0 ? 'var(--court)' : 'var(--muted)' }}>
-                          {earned} pts
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
+                </span>
+              </div>
+            )
+          })}
         </div>
       </div>
     </main>

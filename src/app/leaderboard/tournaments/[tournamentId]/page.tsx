@@ -87,8 +87,8 @@ export default async function GlobalTournamentResultsPage({
     .from('predictions')
     .select(
       scope === 'country' || scope === 'city'
-        ? 'id, user_id, points_earned, picks, users!inner(username, country, city)'
-        : 'id, user_id, points_earned, picks, users(username, country)',
+        ? 'id, user_id, points_earned, picks, is_fully_locked, users!inner(username, country, city)'
+        : 'id, user_id, points_earned, picks, is_fully_locked, users(username, country)',
     )
     .eq('tournament_id', tournamentId)
     .is('challenge_id', null)
@@ -135,6 +135,7 @@ export default async function GlobalTournamentResultsPage({
       total_picks: Object.keys(p.picks ?? {}).length,
       streak_power: acc && acc.basePts > 0 ? acc.totalPts / acc.basePts : 1,
       isMe: p.user_id === user.id,
+      picks_locked: p.is_fully_locked === true,
     }
   })
 
