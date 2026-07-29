@@ -42,6 +42,8 @@ export type PlayerResult = {
   total_picks: number
   streak_power: number
   isMe: boolean
+  /** Others' brackets are only viewable once locked — /picks/[username] 404s otherwise. */
+  picks_locked?: boolean
 }
 
 function formatDateRange(startsAt: string | null, endsAt: string | null): string {
@@ -125,10 +127,10 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
       {/* Results table */}
       <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="overflow-x-auto">
-        <div className="min-w-[600px]">
+        <div className="min-w-[680px]">
         <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
           <div className="col-span-1" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>RANK</div>
-          <div className="col-span-4" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>PLAYER</div>
+          <div className="col-span-3" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>PLAYER</div>
           <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>ACCURACY</div>
           <div className="col-span-1 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>RATE</div>
           <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>
@@ -137,6 +139,7 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
             </Tooltip>
           </div>
           <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>POINTS</div>
+          <div className="col-span-1 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>PICKS</div>
         </div>
 
         {players.length === 0 ? (
@@ -149,6 +152,8 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
             const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null
             const accuracy = p.total_picks > 0 ? `${p.correct_picks}/${p.total_picks}` : '—'
             const rate = p.total_picks > 0 ? `${Math.round((p.correct_picks / p.total_picks) * 100)}%` : '—'
+            // Own bracket is always viewable; everyone else's only once locked.
+            const canViewPicks = Boolean(tournament.id) && (p.isMe || p.picks_locked)
             return (
               <div key={p.user_id} className="grid grid-cols-12 px-5 py-4 border-b last:border-0"
                 style={{ borderColor: 'var(--chalk-dim)', background: p.isMe ? '#edf4fc' : 'white' }}>
@@ -156,8 +161,8 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
                   {medal ? <span style={{ fontSize: '1rem' }}>{medal}</span>
                     : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{i + 1}</span>}
                 </div>
-                <div className="col-span-4 flex items-center gap-2">
-                  <Link href={`/profile/${p.username}`} style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: p.isMe ? '#1e4e8c' : 'var(--ink)', textDecoration: 'none' }}>{p.username}</Link>
+                <div className="col-span-3 flex items-center gap-2 min-w-0">
+                  <Link href={`/profile/${p.username}`} className="truncate" style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: p.isMe ? '#1e4e8c' : 'var(--ink)', textDecoration: 'none' }}>{p.username}</Link>
                   {p.country && <CountryFlag country={p.country} size={14} />}
                   {p.isMe && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#1e4e8c', background: '#dbeafe', padding: '1px 6px', borderRadius: '2px' }}>you</span>}
                 </div>
@@ -178,6 +183,20 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: p.points > 0 ? 'var(--court)' : 'var(--muted)', fontWeight: 500 }}>
                     {p.points > 0 ? `+${formatPoints(p.points)}` : '0'}
                   </span>
+                </div>
+                <div className="col-span-1 flex items-center justify-end">
+                  {canViewPicks ? (
+                    <Link
+                      href={`/tournaments/${tournament.id}/picks/${p.username}`}
+                      style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', textDecoration: 'none', whiteSpace: 'nowrap' }}
+                    >
+                      View →
+                    </Link>
+                  ) : (
+                    <Tooltip text="Brackets stay hidden until they lock.">
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--chalk-dim)', cursor: 'help' }}>—</span>
+                    </Tooltip>
+                  )}
                 </div>
               </div>
             )

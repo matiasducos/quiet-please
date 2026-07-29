@@ -86,7 +86,7 @@ export async function sendPointsAwardedEmail(opts: {
         <p style="color:#6b6b6b;font-size:16px;margin-bottom:4px;">${opts.tournamentName}</p>
         <p style="font-size:14px;color:#6b6b6b;">Your total: <strong style="color:#0d0d0d;">${opts.totalPoints} pts</strong></p>
         <div style="margin-top:28px;">
-          <a href="${BASE_URL}/tournaments/${opts.tournamentId}/picks"
+          <a href="${BASE_URL}/tournaments/${opts.tournamentId}"
              style="display:inline-block;background:#1a6b3c;color:white;text-decoration:none;padding:12px 24px;font-size:14px;border-radius:2px;">
             View your picks →
           </a>
