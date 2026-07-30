@@ -66,7 +66,11 @@ export default async function ChallengeDetailPage({
   let myPredId: string | null = null
   let theirPredId: string | null = null
 
-  if (['accepted', 'completed'].includes(challenge.status)) {
+  // Also runs for 'pending': the challenger can now save picks before the
+  // other side accepts (see below), so their count/lock state needs to be
+  // available on the pending screen too. Cheap either way — a single query
+  // scoped to this one challenge, not something that grows with the user base.
+  if (['pending', 'accepted', 'completed'].includes(challenge.status)) {
     const { data: preds } = await admin
       .from('predictions')
       .select('id, user_id, is_fully_locked, picks, points_earned')
@@ -199,9 +203,32 @@ export default async function ChallengeDetailPage({
         {effectiveStatus === 'pending' && isChallenger && (
           <div className="bg-white rounded-sm border p-6 mb-6 text-center" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
             <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1rem' }}>
-              Waiting for <strong>{theirUsername}</strong> to accept your challenge.
+              Waiting for <strong>{theirUsername}</strong> to accept — no need to wait to start your picks.
             </p>
-            <CancelButton challengeId={challenge.id} />
+            {myPickCount > 0 && (
+              <div className="flex items-center justify-center gap-2 mb-4">
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
+                  {myPickCount} picks
+                </span>
+                {myPicksLocked && (
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', letterSpacing: '0.05em' }}>
+                    LOCKED ✓
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="flex items-center justify-center gap-3 flex-wrap">
+              {!myPicksLocked && (
+                <Link
+                  href={`/tournaments/${challenge.tournament_id}/predict?challenge=${challenge.id}`}
+                  className="inline-block px-5 py-2.5 text-sm font-medium text-white rounded-sm hover:opacity-90"
+                  style={{ background: 'var(--court)', textDecoration: 'none' }}
+                >
+                  {myPickCount > 0 ? 'Edit your picks →' : 'Make your picks →'}
+                </Link>
+              )}
+              <CancelButton challengeId={challenge.id} />
+            </div>
           </div>
         )}
 
