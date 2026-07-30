@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, type ReactNode } from 'react'
+import { useState, useEffect, useSyncExternalStore, type ReactNode } from 'react'
 
 const STEPS = [
   {
@@ -153,9 +153,29 @@ const MOCK_COMPONENTS: Record<string, () => ReactNode> = {
   ranking: RankingMock,
 }
 
+// Media queries via useSyncExternalStore rather than an effect — the same
+// pattern used elsewhere in this codebase, and it avoids a render with the
+// wrong value on mount.
+const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'
+
+function subscribeToReducedMotion(onChange: () => void) {
+  const mql = window.matchMedia(REDUCED_MOTION_QUERY)
+  mql.addEventListener('change', onChange)
+  return () => mql.removeEventListener('change', onChange)
+}
+
+function usePrefersReducedMotion() {
+  return useSyncExternalStore(
+    subscribeToReducedMotion,
+    () => window.matchMedia(REDUCED_MOTION_QUERY).matches,
+    () => false, // server: assume motion is fine, the client corrects on hydrate
+  )
+}
+
 export default function HowItWorksDemo() {
   const [activeStep, setActiveStep] = useState(0)
   const [pausedUntil, setPausedUntil] = useState(0)
+  const prefersReducedMotion = usePrefersReducedMotion()
 
   function handleStepClick(i: number) {
     setActiveStep(i)
@@ -163,12 +183,15 @@ export default function HowItWorksDemo() {
   }
 
   useEffect(() => {
+    // Anyone who has asked the OS to reduce motion gets a static panel they
+    // drive themselves, rather than content swapping under them every 5s.
+    if (prefersReducedMotion) return
     const timer = setInterval(() => {
       if (Date.now() < pausedUntil) return
       setActiveStep(s => (s + 1) % STEPS.length)
     }, AUTO_CYCLE_MS)
     return () => clearInterval(timer)
-  }, [pausedUntil])
+  }, [pausedUntil, prefersReducedMotion])
 
   const MockComponent = MOCK_COMPONENTS[STEPS[activeStep].key]
 
@@ -178,7 +201,9 @@ export default function HowItWorksDemo() {
         {STEPS.map((step, i) => (
           <button
             key={i}
+            type="button"
             onClick={() => handleStepClick(i)}
+            aria-current={i === activeStep ? 'true' : undefined}
             style={{
               flex: 1, padding: '12px 8px', background: 'none', border: 'none',
               borderBottom: i === activeStep ? '2px solid #1a6b3c' : '2px solid transparent',
@@ -202,17 +227,31 @@ export default function HowItWorksDemo() {
         <MockComponent />
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginTop: '12px' }}>
-        {STEPS.map((_, i) => (
-          <div
+      {/* Real <button>s, not clickable divs: these need to be focusable and
+          operable from the keyboard. The visible pill stays small, so padding
+          carries the touch target up to 44px without changing the look. */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '2px', marginTop: '4px' }}>
+        {STEPS.map((step, i) => (
+          <button
             key={i}
+            type="button"
             onClick={() => handleStepClick(i)}
+            aria-label={`Show step ${i + 1}: ${step.label}`}
+            aria-current={i === activeStep ? 'true' : undefined}
             style={{
-              width: i === activeStep ? '20px' : '6px', height: '6px', borderRadius: '3px',
-              background: i === activeStep ? '#1a6b3c' : '#d4d0c8',
-              transition: 'all 0.3s ease', cursor: 'pointer',
+              background: 'none', border: 'none', padding: '19px 8px',
+              display: 'flex', alignItems: 'center', cursor: 'pointer',
             }}
-          />
+          >
+            <span
+              style={{
+                display: 'block',
+                width: i === activeStep ? '20px' : '6px', height: '6px', borderRadius: '3px',
+                background: i === activeStep ? '#1a6b3c' : '#d4d0c8',
+                transition: 'all 0.3s ease',
+              }}
+            />
+          </button>
         ))}
       </div>
     </div>
