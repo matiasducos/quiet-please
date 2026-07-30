@@ -40,14 +40,23 @@
 Tier 1 (SEO plumbing) and Tier 2 (mobile/a11y) shipped in PR #78. Everything below is
 what remains, roughly in impact order.
 
-### Slam landing pages — the biggest organic opportunity
-- Evergreen routes per Grand Slam: `/wimbledon-bracket-challenge`, `/us-open-tennis-bracket`,
-  `/australian-open-bracket-predictions`, `/roland-garros-draw-predictions`
-- These terms spike enormously around each event and are currently held by one-off news
-  articles rather than durable product pages — winnable for a small site
-- Each page needs its own metadata, FAQPage JSON-LD, and a CTA into that tournament's bracket
-- Add them to `src/app/sitemap.ts` once they exist
-- Competitor doing this already: bracket.tennis names all four slams in its meta description
+### ✅ Slam landing pages (2026-07-30, PR #79)
+- Four evergreen routes live: `/wimbledon-bracket-challenge`, `/french-open-bracket-challenge`,
+  `/us-open-tennis-bracket`, `/australian-open-bracket-challenge`
+- Per-slam config in `src/lib/slams/config.ts` — palette, copy, facts, FAQ. Adding a fifth
+  page is one config entry plus a ~10-line route file
+- Four phases (`live`/`open`/`upcoming`/`offseason`) in `src/lib/slams/data.ts`; pages never
+  404 so they hold ranking year-round
+- Follow-ups below
+
+### Slam pages — follow-ups
+- **WTA slam rows don't exist.** The DB has only ATP rows for Wimbledon / Roland Garros /
+  US Open, and no Australian Open row at all. Each page renders "The WTA draw appears here as
+  soon as it is added" — add the WTA rows via admin to complete them
+- **Sync leaves `location`/`flag_emoji` NULL.** `src/app/api/cron/sync-tournaments/route.ts`
+  never writes either column, so API-created tournaments lack the flag the project convention
+  requires. Landing pages work around it via config; the real fix is in the sync + a backfill
+- Consider per-slam hero imagery once the imagery item below is tackled
 
 ### Hero: add a product visual + social proof
 - The hero is ~640–750px of pure typography; the bracket (the actual product) doesn't appear
@@ -72,6 +81,17 @@ what remains, roughly in impact order.
   features #04). "Start predicting" appears 4×
 - The name is never explained — "Quiet Please" is the umpire's call. A one-line nod would
   add charm and make the brand stick
+
+### Canonical host hygiene (low priority — canonical tags already mitigate)
+- `quiet-please.vercel.app` serves Production, returns 200 and a crawlable `Allow: /`
+  robots.txt (correctly — it *is* the production deployment). Duplicate content, but every
+  page emits `<link rel="canonical" href="https://quietplease.app">` so Google consolidates
+- If belt-and-braces is wanted later: a host check in `proxy.ts` redirecting any non-canonical
+  host to `SITE_URL` would cover the `.vercel.app` alias and any future alias in one place
+- ✅ www → apex 308 redirect set in Vercel project Settings → Domains (2026-07-30)
+- Vercel shows "DNS Change Recommended" on the apex. Site resolves and serves fine
+  (`76.76.21.21`, HTTP 200) — do NOT act on this if it means moving nameservers to Vercel;
+  DNS is deliberately at Hostinger
 
 ### Leaderboard teaser exposes real usernames
 - Rows 4–5 are visually blurred with `filter: blur(5px)` but the real usernames sit in the
