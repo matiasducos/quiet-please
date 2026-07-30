@@ -2,6 +2,7 @@ import type { MetadataRoute } from 'next'
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
 import { SITE_URL } from '@/lib/site'
+import { ALL_SLAMS } from '@/lib/slams/config'
 
 // Tournament rows change as draws open and results land; an hour is a
 // reasonable floor for how often crawlers should see a fresh list.
@@ -18,6 +19,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: SITE_URL, changeFrequency: 'daily', priority: 1 },
     { url: `${SITE_URL}/tournaments`, changeFrequency: 'daily', priority: 0.9 },
+    // Grand Slam landing pages — evergreen, so they stay listed year-round
+    // rather than only while an edition is live.
+    ...ALL_SLAMS.map(slam => ({
+      url: `${SITE_URL}${slam.route}`,
+      changeFrequency: 'weekly' as const,
+      priority: 0.9,
+    })),
     { url: `${SITE_URL}/leaderboard`, changeFrequency: 'daily', priority: 0.8 },
     { url: `${SITE_URL}/challenges/create`, changeFrequency: 'monthly', priority: 0.7 },
     { url: `${SITE_URL}/signup`, changeFrequency: 'monthly', priority: 0.6 },
