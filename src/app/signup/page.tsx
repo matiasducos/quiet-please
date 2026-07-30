@@ -3,6 +3,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { TERMS_VERSION } from '@/lib/legal/terms'
 import posthog from 'posthog-js'
 
 /**
@@ -48,7 +49,10 @@ export default function SignupPage() {
     trackSignupStarted('email')
     const supabase = createClient()
     // No username at signup — all users pick username at /setup-username after confirming email
-    const { data: signUpData, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard` } })
+    // The accepted version rides along on the confirmation link so /auth/callback can
+    // record it. It can't be written here: with email confirmation on, signUp returns
+    // a null session, so there is no authenticated context yet.
+    const { data: signUpData, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard&consent=${TERMS_VERSION}` } })
     if (error) { setError(error.message); setLoading(false); return }
     // If email confirmation is required, session will be null — show check-email page
     if (!signUpData.session) {
@@ -63,13 +67,13 @@ export default function SignupPage() {
     if (blockedByConsent()) return
     trackSignupStarted('google')
     const supabase = createClient()
-    await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${window.location.origin}/auth/callback` } })
+    await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${window.location.origin}/auth/callback?consent=${TERMS_VERSION}` } })
   }
 
   async function handleFacebookSignup() {
     if (blockedByConsent()) return
     const supabase = createClient()
-    await supabase.auth.signInWithOAuth({ provider: 'facebook', options: { redirectTo: `${window.location.origin}/auth/callback` } })
+    await supabase.auth.signInWithOAuth({ provider: 'facebook', options: { redirectTo: `${window.location.origin}/auth/callback?consent=${TERMS_VERSION}` } })
   }
 
   return (

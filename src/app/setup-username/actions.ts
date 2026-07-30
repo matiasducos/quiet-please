@@ -5,25 +5,14 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { rateLimit } from '@/lib/rate-limit'
 import { trackServerEvent } from '@/lib/posthog/server'
-import { TERMS_VERSION, MINIMUM_AGE } from '@/lib/legal/terms'
 
-export async function setUsername(
-  username: string,
-  consented: boolean,
-): Promise<{ error?: string }> {
+export async function setUsername(username: string): Promise<{ error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
 
   const rl = rateLimit(`set-username:${user.id}`, { maxRequests: 5, windowMs: 60_000 })
   if (rl.limited) return { error: `Too many attempts. Try again in ${rl.retryAfter}s.` }
-
-  // Re-checked server-side rather than trusting the disabled button: this action
-  // is reachable directly, and an account that reaches the app without a consent
-  // row is precisely the state the whole feature exists to prevent.
-  if (consented !== true) {
-    return { error: `Please confirm you are ${MINIMUM_AGE} or older and accept the Terms and Privacy Policy.` }
-  }
 
   const clean = username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '')
   if (clean.length < 3) return { error: 'Username must be at least 3 characters.' }
@@ -40,21 +29,14 @@ export async function setUsername(
 
   if (existing) return { error: 'That username is already taken.' }
 
-  // Consent is written in the same statement that flips username_is_set, so a
-  // user can never end up past this gate with the flag set but no consent row —
-  // two separate writes could be interrupted between them.
-  const acceptedAt = new Date().toISOString()
+  // Consent is deliberately NOT written here. The checkbox lives on /signup, and
+  // /auth/callback records the acceptance when the ?consent= param comes back
+  // with it. Stamping it here would credit an acceptance to anyone who reached
+  // this screen — including Google sign-ups started from /login, who are never
+  // shown the checkbox at all.
   const { error } = await admin
     .from('users')
-    .update({
-      username: clean,
-      username_is_set: true,
-      terms_accepted_at: acceptedAt,
-      terms_version: TERMS_VERSION,
-      // Same tick, same timestamp: the checkbox label states both the age
-      // representation and the Terms/Privacy acceptance explicitly.
-      age_confirmed_at: acceptedAt,
-    })
+    .update({ username: clean, username_is_set: true })
     .eq('id', user.id)
 
   if (error) return { error: error.message }

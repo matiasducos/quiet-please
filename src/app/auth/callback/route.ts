@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { processReferralSignup, REFERRAL_COOKIE_NAME } from '@/lib/referrals'
+import { parseAcceptedVersion } from '@/lib/legal/terms'
 
 /** Validate that a redirect target is a safe relative path (prevent open redirect) */
 function getSafeRedirectPath(next: string | null): string {
@@ -23,6 +25,35 @@ export async function GET(request: Request) {
     const supabase = await createClient()
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
+      // ── Terms acceptance ──────────────────────────────────────────
+      // The ?consent=<version> param is attached by /signup, the only page
+      // that shows the checkbox, and rides through both the email
+      // confirmation link and the OAuth round trip. Signing in with Google
+      // straight from /login carries no param, so those accounts are left
+      // NULL rather than credited with an acceptance nobody was asked for.
+      const acceptedVersion = parseAcceptedVersion(searchParams.get('consent'))
+      if (acceptedVersion) {
+        const { data: { user }, error: userError } = await supabase.auth.getUser()
+        if (userError) {
+          console.error('[auth/callback] could not load user to record consent:', userError.message)
+        } else if (user) {
+          // `.is('terms_accepted_at', null)` makes this a no-op on every later
+          // sign-in through the same link, so the original acceptance timestamp
+          // is never overwritten. Doing it as one conditional statement rather
+          // than read-then-write leaves no window for two tabs to race.
+          const { error: consentError } = await createAdminClient()
+            .from('users')
+            .update({ terms_accepted_at: new Date().toISOString(), terms_version: acceptedVersion })
+            .eq('id', user.id)
+            .is('terms_accepted_at', null)
+          if (consentError) {
+            // Never block the sign-in on this — a missing record is recoverable,
+            // a user locked out of a confirmed account is not.
+            console.error('[auth/callback] failed to record consent:', consentError.message)
+          }
+        }
+      }
+
       // ── Referral attribution ──────────────────────────────────────
       // If the cookie was stashed by the /invite/<username> landing
       // page, turn it into a referrals row + auto-friendship. Only
