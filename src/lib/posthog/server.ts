@@ -11,7 +11,19 @@ export function getPostHogServer(): PostHog | null {
 
   if (!posthogServer) {
     posthogServer = new PostHog(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
-      host: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://eu.i.posthog.com',
+      // Direct, unlike the browser client which goes through the /ingest
+      // rewrite: CSP only constrains the browser, and a server-side relative
+      // path has no origin to resolve against.
+      //
+      // Hardcoded rather than env-overridable, deliberately. This previously
+      // read NEXT_PUBLIC_POSTHOG_HOST, which is a trap: the name invites
+      // pasting a phc_ token into it, and since trackServerEvent swallows all
+      // errors by design, a bad host silently drops every server-side event
+      // (signup_completed, prediction_submitted, ...) while browser pageviews
+      // keep working — the hardest possible shape of bug to notice.
+      // The region already lives in the /ingest rewrites in next.config.ts;
+      // keeping both in code means one place to change and nothing to misset.
+      host: 'https://eu.i.posthog.com',
       // Flush events immediately in serverless (no persistent process)
       flushAt: 1,
       flushInterval: 0,

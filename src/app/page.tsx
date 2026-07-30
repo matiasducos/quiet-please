@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import TrackedCTA from '@/components/TrackedCTA'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { unstable_cache } from 'next/cache'
 import TournamentCard from '@/components/TournamentCard'
@@ -187,13 +188,14 @@ export default async function HomePage() {
           Fill out the bracket before the draw closes. Earn prediction points based on ATP &amp; WTA scoring for every correct pick. Challenge your friends across the full season.
         </p>
         <div className="flex flex-col sm:flex-row items-center gap-3 mt-10">
-          <Link
+          <TrackedCTA
             href="/signup"
+            location="hero"
             className="w-full sm:w-auto px-6 py-3.5 md:px-8 text-white text-sm font-medium rounded-sm hover:opacity-90 text-center"
             style={{ background: 'var(--court)' }}
           >
             Start predicting — it&apos;s free
-          </Link>
+          </TrackedCTA>
           <Link
             href="/challenges/create"
             className="w-full sm:w-auto px-6 py-3.5 md:px-8 text-sm font-medium rounded-sm border transition-opacity hover:opacity-80 text-center"
@@ -331,12 +333,13 @@ export default async function HomePage() {
                 background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.97))',
                 display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '10px',
               }}>
-                <Link
+                <TrackedCTA
                   href="/signup"
+                  location="leaderboard_teaser"
                   style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--court)', textDecoration: 'none', letterSpacing: '0.03em' }}
                 >
                   Sign up to see full rankings →
-                </Link>
+                </TrackedCTA>
               </div>
             </div>
 
@@ -520,13 +523,14 @@ export default async function HomePage() {
           <p style={{ color: 'var(--muted)', maxWidth: '36ch', margin: '0 auto 2rem', lineHeight: 1.7, fontSize: '0.9rem' }}>
             Create your free account and make your first picks before the next draw closes.
           </p>
-          <Link
+          <TrackedCTA
             href="/signup"
+            location="footer"
             className="inline-block px-8 py-4 text-sm font-medium text-white rounded-sm hover:opacity-90"
             style={{ background: 'var(--court)' }}
           >
             Start predicting — it&apos;s free
-          </Link>
+          </TrackedCTA>
         </div>
       </section>
 

@@ -3,6 +3,21 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import posthog from 'posthog-js'
+
+/**
+ * Fires the top of the signup funnel. Guarded on __loaded because PostHog
+ * no-ops entirely when NEXT_PUBLIC_POSTHOG_KEY is unset — without the guard
+ * this would throw on every signup attempt in an unconfigured environment.
+ */
+function trackSignupStarted(method: 'email' | 'google') {
+  try {
+    if (!posthog.__loaded) return
+    posthog.capture('signup_started', { method })
+  } catch {
+    // Analytics must never block someone creating an account.
+  }
+}
 
 export default function SignupPage() {
   const router = useRouter()
@@ -14,6 +29,7 @@ export default function SignupPage() {
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true); setError(null)
+    trackSignupStarted('email')
     const supabase = createClient()
     // No username at signup — all users pick username at /setup-username after confirming email
     const { data: signUpData, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard` } })
@@ -28,6 +44,7 @@ export default function SignupPage() {
   }
 
   async function handleGoogleSignup() {
+    trackSignupStarted('google')
     const supabase = createClient()
     await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${window.location.origin}/auth/callback` } })
   }

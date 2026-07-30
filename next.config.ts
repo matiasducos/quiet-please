@@ -2,6 +2,25 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
+  // PostHog is proxied through our own origin rather than called directly, for
+  // the same two reasons Sentry uses tunnelRoute below:
+  //   1. CSP stays tight. connect-src can remain 'self' — no third-party
+  //      analytics host needs whitelisting, and nothing breaks silently later
+  //      if PostHog changes ingestion domains.
+  //   2. Ad-blockers routinely block *.posthog.com by hostname. Since the point
+  //      of this instrumentation is measuring acquisition, undercounting exactly
+  //      the ad-block-using segment would bias every conversion number.
+  // Order matters: the /static rewrite must come before the catch-all.
+  async rewrites() {
+    return [
+      { source: '/ingest/static/:path*', destination: 'https://eu-assets.i.posthog.com/static/:path*' },
+      { source: '/ingest/:path*',        destination: 'https://eu.i.posthog.com/:path*' },
+    ]
+  },
+  // PostHog's ingestion endpoints are trailing-slash sensitive; Next's default
+  // redirect would break the proxied POSTs.
+  skipTrailingSlashRedirect: true,
+
   async headers() {
     return [
       {

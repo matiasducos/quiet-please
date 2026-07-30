@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { rateLimit } from '@/lib/rate-limit'
+import { trackServerEvent } from '@/lib/posthog/server'
 
 export async function setUsername(username: string): Promise<{ error?: string }> {
   const supabase = await createClient()
@@ -34,6 +35,20 @@ export async function setUsername(username: string): Promise<{ error?: string }>
     .eq('id', user.id)
 
   if (error) return { error: error.message }
+
+  // The one reliable "account created" moment. Every user passes through this
+  // screen exactly once, gated on username_is_set going false → true, so this
+  // fires once per real account and never for a returning login. The obvious
+  // alternatives are both wrong: /signup submit fires before email
+  // confirmation (counting people who never come back), and /auth/callback
+  // fires on every OAuth sign-in, not just the first.
+  trackServerEvent(user.id, 'signup_completed', {
+    username: clean,
+    // OAuth users arrive with a verified address already; email signups only
+    // reach here after clicking the confirmation link. Distinguishing them
+    // shows which route actually converts.
+    provider: user.app_metadata?.provider ?? 'email',
+  })
 
   revalidatePath('/dashboard')
   return {}

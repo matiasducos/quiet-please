@@ -12,7 +12,14 @@ export function initPostHog() {
   }
 
   posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
-    api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://eu.i.posthog.com',
+    // Same-origin by design — /ingest/* is rewritten to PostHog EU in
+    // next.config.ts. Deliberately not env-overridable: pointing this at
+    // eu.i.posthog.com directly would be blocked by our own connect-src 'self'
+    // CSP and fail silently, which is exactly the trap this avoids.
+    api_host: '/ingest',
+    // Needed so "view in PostHog" links in the toolbar resolve to the real app
+    // rather than to /ingest on our own domain.
+    ui_host: 'https://eu.posthog.com',
     // Cookieless mode — no cookie banner needed, GDPR-friendly
     persistence: 'memory',
     // Auto-capture page views via the Next.js router (see PostHogPageView)
