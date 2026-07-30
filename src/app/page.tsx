@@ -8,6 +8,7 @@ import Footer from '@/components/Footer'
 import HowItWorksDemo from '@/components/HowItWorksDemo'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { formatPoints } from '@/lib/utils/format'
+import { SITE_URL, SITE_NAME } from '@/lib/site'
 
 // ── Cached homepage data: live tournaments + top players ──────────────────
 const getHomepageData = unstable_cache(
@@ -143,29 +144,98 @@ function MockBracketPreview() {
   )
 }
 
+// ── Structured data ─────────────────────────────────────────────────────────
+// WebApplication describes the product itself; FAQPage targets the questions
+// people actually type ("is it free", "how does scoring work"), which is how a
+// small site earns SERP real estate against bigger domains.
+const homepageJsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebApplication',
+      '@id': `${SITE_URL}/#app`,
+      name: SITE_NAME,
+      url: SITE_URL,
+      applicationCategory: 'GameApplication',
+      operatingSystem: 'Any',
+      description:
+        'Free tennis bracket challenge for ATP and WTA tournaments. Predict every match, earn points for correct picks, and compete with friends across the season.',
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    },
+    {
+      '@type': 'FAQPage',
+      '@id': `${SITE_URL}/#faq`,
+      mainEntity: [
+        {
+          '@type': 'Question',
+          name: 'Is Quiet Please free to play?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Yes. Creating an account and filling out brackets for any ATP or WTA tournament is completely free. You can also challenge a friend without signing up at all.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'How does the tennis bracket challenge work?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'When the official draw is published, you pick the winner of every match from the first round through to the final. Each correct pick earns points, and backing the same player through consecutive rounds compounds your score with a streak multiplier.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Which tournaments can I predict?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'All 60+ ATP and WTA tournaments across the season, including every Grand Slam — the Australian Open, Roland Garros, Wimbledon and the US Open.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'How is scoring calculated?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Correct picks earn points using a formula modelled on professional tour scoring, so correctly picking a Grand Slam champion is worth substantially more than an early-round match. Points roll into a global ranking over a 52-week window.',
+          },
+        },
+      ],
+    },
+  ],
+}
+
 export default async function HomePage() {
   const { liveTournaments, topPlayers } = await getHomepageData()
 
   return (
     <main className="min-h-screen flex flex-col" style={{ background: 'var(--chalk)' }}>
 
+      {/* Structured data — lets Google render this as a rich result for
+          "tennis bracket challenge" rather than a plain blue link. */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(homepageJsonLd) }}
+      />
+
       {/* ── Nav ───────────────────────────────────────────────────── */}
       <nav className="border-b sticky top-0 z-50" style={{ borderColor: 'var(--chalk-dim)', background: 'var(--chalk)' }}>
         <div className="max-w-5xl mx-auto flex items-center justify-between px-4 md:px-8 py-3 md:py-5">
-          <div className="flex items-center gap-6">
-            <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', color: 'var(--ink)' }}>
+          <div className="flex items-center gap-4 md:gap-6">
+            <span className="whitespace-nowrap" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)' }}>
               Quiet Please
             </span>
-            <Link href="/onboarding" className="hidden md:inline" style={{ fontSize: '0.875rem', color: 'var(--muted)', textDecoration: 'none' }}>
+            {/* min-h-[44px] on every nav control: below that, tap accuracy on a
+                phone drops sharply (WCAG 2.5.5). These are the highest-intent
+                links on the page, so they are the last place to shave pixels. */}
+            <Link href="/onboarding" className="hidden md:inline-flex items-center min-h-[44px]" style={{ fontSize: '0.875rem', color: 'var(--muted)', textDecoration: 'none' }}>
               How it works
             </Link>
           </div>
-          <div className="flex items-center gap-2 md:gap-4">
-            <Link href="/onboarding" className="md:hidden" style={{ fontSize: '0.75rem', color: 'var(--muted)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+          <div className="flex items-center gap-1 md:gap-3">
+            <Link href="/onboarding" className="md:hidden inline-flex items-center min-h-[44px] px-2" style={{ fontSize: '0.75rem', color: 'var(--muted)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
               How it works
             </Link>
-            <Link href="/login" style={{ color: 'var(--muted)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>Sign in</Link>
-            <Link href="/signup" className="px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm text-white rounded-sm hover:opacity-90 whitespace-nowrap" style={{ background: 'var(--court)' }}>
+            <Link href="/login" className="inline-flex items-center min-h-[44px] px-2" style={{ color: 'var(--muted)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>Sign in</Link>
+            <Link href="/signup" className="inline-flex items-center justify-center min-h-[44px] px-4 text-xs md:text-sm text-white rounded-sm hover:opacity-90 whitespace-nowrap" style={{ background: 'var(--court)' }}>
               Get started
             </Link>
           </div>
@@ -181,12 +251,17 @@ export default async function HomePage() {
           <span style={{ color: 'var(--clay)' }}>●</span>
           ATP · WTA · All tournaments
         </div>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(3rem, 8vw, 6.5rem)', lineHeight: '1.0', letterSpacing: '-0.02em', color: 'var(--ink)', maxWidth: '14ch' }}>
+        {/* The display type carries the emotion; the h1 carries the keywords.
+            Screen readers and crawlers read both, in this order. */}
+        <p
+          aria-hidden="true"
+          style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(3rem, 8vw, 6.5rem)', lineHeight: '1.0', letterSpacing: '-0.02em', color: 'var(--ink)', maxWidth: '14ch' }}
+        >
           Predict.<br /><em style={{ color: 'var(--court)' }}>Compete.</em><br />Win.
-        </h1>
-        <p className="mt-8" style={{ fontSize: '1.125rem', color: 'var(--muted)', maxWidth: '42ch', lineHeight: '1.6', fontWeight: 300 }}>
-          Fill out the bracket before the draw closes. Earn prediction points based on ATP &amp; WTA scoring for every correct pick. Challenge your friends across the full season.
         </p>
+        <h1 className="mt-8" style={{ fontFamily: 'var(--font-body)', fontSize: '1.125rem', color: 'var(--muted)', maxWidth: '46ch', lineHeight: '1.6', fontWeight: 300 }}>
+          Free tennis bracket challenges for every ATP &amp; WTA tournament — fill out the draw before it closes, earn points for every correct pick, and compete with friends all season.
+        </h1>
         <div className="flex flex-col sm:flex-row items-center gap-3 mt-10">
           <TrackedCTA
             href="/signup"
@@ -196,12 +271,15 @@ export default async function HomePage() {
           >
             Start predicting — it&apos;s free
           </TrackedCTA>
+          {/* /challenges/create works without an account — that is the whole
+              appeal of this path, so the label says so rather than making
+              visitors guess whether it will hit a signup wall. */}
           <Link
             href="/challenges/create"
             className="w-full sm:w-auto px-6 py-3.5 md:px-8 text-sm font-medium rounded-sm border transition-opacity hover:opacity-80 text-center"
             style={{ background: 'white', borderColor: 'var(--chalk-dim)', color: 'var(--ink)' }}
           >
-            Challenge a friend
+            Challenge a friend — no signup
           </Link>
         </div>
       </section>
@@ -220,7 +298,7 @@ export default async function HomePage() {
                   Live right now
                 </span>
               </div>
-              <Link href="/tournaments" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>See all tournaments →</Link>
+              <Link href="/tournaments" className="inline-flex items-center min-h-[44px]" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>See all tournaments →</Link>
             </div>
             <div className={`grid gap-3 ${liveTournaments.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
               {liveTournaments.map(t => (
@@ -336,6 +414,7 @@ export default async function HomePage() {
                 <TrackedCTA
                   href="/signup"
                   location="leaderboard_teaser"
+                  className="inline-flex items-center min-h-[44px] px-3"
                   style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--court)', textDecoration: 'none', letterSpacing: '0.03em' }}
                 >
                   Sign up to see full rankings →

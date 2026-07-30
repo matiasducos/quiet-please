@@ -131,8 +131,11 @@ export default function TournamentCard({ t, disableLink, action, footer, predict
       {/* ── Card body ──────────────────────────────────────────────── */}
       <div style={{ padding: '14px 16px 14px' }}>
 
-        {/* Location (primary heading) */}
-        <h2
+        {/* Location (card heading). h3, not h2: these cards sit inside a
+            section whose own h2 is the section title, and promoting city names
+            to h2 puts "Los Cabos, Mexico" on the same outline level as the
+            page's real section headings. */}
+        <h3
           style={{
             fontFamily: 'var(--font-display)',
             fontSize: '1.2rem',
@@ -144,7 +147,7 @@ export default function TournamentCard({ t, disableLink, action, footer, predict
         >
           {t.flag_emoji && <span style={{ marginRight: '6px' }}>{t.flag_emoji}</span>}
           {displayLocation ?? t.name}
-        </h2>
+        </h3>
 
         {/* Tournament name (secondary) + date */}
         <div

@@ -35,6 +35,51 @@
 
 ---
 
+## Landing Page Improvements (from the 2026-07-30 review)
+
+Tier 1 (SEO plumbing) and Tier 2 (mobile/a11y) shipped in PR #78. Everything below is
+what remains, roughly in impact order.
+
+### Slam landing pages — the biggest organic opportunity
+- Evergreen routes per Grand Slam: `/wimbledon-bracket-challenge`, `/us-open-tennis-bracket`,
+  `/australian-open-bracket-predictions`, `/roland-garros-draw-predictions`
+- These terms spike enormously around each event and are currently held by one-off news
+  articles rather than durable product pages — winnable for a small site
+- Each page needs its own metadata, FAQPage JSON-LD, and a CTA into that tournament's bracket
+- Add them to `src/app/sitemap.ts` once they exist
+- Competitor doing this already: bracket.tennis names all four slams in its meta description
+
+### Hero: add a product visual + social proof
+- The hero is ~640–750px of pure typography; the bracket (the actual product) doesn't appear
+  until ~1,500px down. Pull a bracket visual into the hero, right-aligned at `md:` and up
+- No social proof anywhere on the page. `getTournamentEngagement()` and `topPlayers` are
+  already fetched in `getHomepageData()` — surface "X predictions locked in this week"
+
+### Imagery
+- 4 images on the entire page, all country flags. A tennis product with no image of tennis
+- One well-chosen court texture or action shot in the hero would change the emotional register
+
+### Colour system is fragmenting
+- Features grid hardcodes `#eef4ff` / `#edf7f0`; the achievements section adds ~9 more
+  hardcoded hex pairs. None are tokens in `globals.css`
+- `--muted` (#6b6b6b) on `--chalk` is 4.76:1 — passes AA but with almost no margin, and most
+  body copy sits at 0.875–0.9rem. Darkening to ~#5a5a5a costs nothing
+
+### Copy
+- "Built for every tennis fan!" — the only exclamation mark on the page; undercuts the
+  restrained editorial tone everything else establishes
+- Streak multiplier is explained three separate times (bracket section, how-it-works,
+  features #04). "Start predicting" appears 4×
+- The name is never explained — "Quiet Please" is the umpire's call. A one-line nod would
+  add charm and make the brand stick
+
+### Leaderboard teaser exposes real usernames
+- Rows 4–5 are visually blurred with `filter: blur(5px)` but the real usernames sit in the
+  DOM in plain text, readable in DevTools. Either render placeholders server-side or accept
+  it deliberately
+
+---
+
 ## Queued (Not Yet Scoped)
 
 ### Season-Long Narrative in Notifications

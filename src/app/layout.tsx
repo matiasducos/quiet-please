@@ -3,6 +3,7 @@ import { DM_Serif_Display, DM_Mono, DM_Sans } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Suspense } from 'react'
 import PostHogProvider from '@/components/PostHogProvider'
+import { SITE_URL, SITE_NAME } from '@/lib/site'
 import './globals.css'
 
 const dmSerifDisplay = DM_Serif_Display({
@@ -28,9 +29,44 @@ const dmSans = DM_Sans({
 
 import type { Viewport } from 'next'
 
+// Search positioning: "tennis bracket challenge" is the category term, and the
+// sites ranking for it are small independents rather than media giants. We
+// deliberately do NOT target "tennis predictions" (owned by betting/tipster
+// sites — wrong intent, wrong audience) or "fantasy tennis" (a draft/roster
+// game, which is not what this is).
 export const metadata: Metadata = {
-  title: 'Quiet Please — Tennis Bracket Predictions',
-  description: 'Predict ATP & WTA tournament brackets, earn real ranking points, and compete with friends.',
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: 'Free Tennis Bracket Challenge — ATP & WTA | Quiet Please',
+    template: '%s | Quiet Please',
+  },
+  description:
+    'Fill out the bracket for any ATP or WTA tournament, earn points for every correct pick, and compete with friends across the full season. Free to play.',
+  keywords: [
+    'tennis bracket challenge',
+    'tennis bracket predictions',
+    'ATP bracket',
+    'WTA bracket',
+    'tennis pick em',
+    'tennis draw predictions',
+  ],
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    type: 'website',
+    siteName: SITE_NAME,
+    url: '/',
+    title: 'Free Tennis Bracket Challenge — ATP & WTA',
+    description:
+      'Fill out the bracket for any ATP or WTA tournament, earn points for every correct pick, and compete with friends across the full season.',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Free Tennis Bracket Challenge — ATP & WTA',
+    description:
+      'Fill out the bracket for any ATP or WTA tournament, earn points for every correct pick, and compete with friends across the full season.',
+  },
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
@@ -46,8 +82,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  // maximumScale/userScalable are deliberately unset: pinning them blocks
+  // pinch-zoom, which fails WCAG 1.4.4 and hurts anyone who needs to magnify.
   themeColor: '#1a6b3c',
 }
 
