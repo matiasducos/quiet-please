@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
+import { TERMS_LAST_UPDATED_LABEL } from '@/lib/legal/terms'
 
 export const metadata: Metadata = {
   title: 'Terms of Service — Quiet Please',
@@ -12,7 +13,7 @@ export default function TermsOfService() {
         <Link href="/" style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem' }}>Quiet Please</Link>
 
         <h1 className="mt-8 mb-2" style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', letterSpacing: '-0.02em' }}>Terms of Service</h1>
-        <p className="mb-8" style={{ color: 'var(--muted)', fontSize: '0.85rem', fontFamily: 'var(--font-mono)' }}>Last updated: March 25, 2026</p>
+        <p className="mb-8" style={{ color: 'var(--muted)', fontSize: '0.85rem', fontFamily: 'var(--font-mono)' }}>Last updated: {TERMS_LAST_UPDATED_LABEL}</p>
 
         <div className="prose" style={{ fontFamily: 'var(--font-body)', fontSize: '0.95rem', lineHeight: 1.7, color: 'var(--ink)' }}>
           <Section title="1. Acceptance of terms">
