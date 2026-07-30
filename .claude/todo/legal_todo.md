@@ -5,8 +5,9 @@
 - ⬜ Set up `support@quietplease.app` mailbox
 
 ## Phase 2 — High Priority
-- ⬜ Cookie consent banner (Vercel Analytics + `username_is_set` cookie)
-- ⬜ Age gate — confirm 16+ at signup
+- ⬜ Cookie consent banner (Vercel Analytics + PostHog + `username_is_set` cookie) — **still open, and now the only unmet consent gap.** PostHog fires `$pageview`/`cta_clicked` for anonymous homepage visitors *before* any account exists, so the signup checkbox does not and cannot cover analytics consent.
+- ✅ Age gate — confirm 16+ at signup (2026-07-30) — combined checkbox at `/setup-username`, recorded in `users.age_confirmed_at`
+- ✅ Explicit Terms/Privacy acceptance (2026-07-30) — `users.terms_accepted_at` + `terms_version`, migration `065`
 - ✅ Self-host Google Fonts (2026-04-04) — switched to next/font/google
 - ⬜ Add gambling disclaimer to homepage/footer: "Free prediction game for entertainment only. No real money or prizes."
 
