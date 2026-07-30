@@ -11,6 +11,9 @@ export function getPostHogServer(): PostHog | null {
 
   if (!posthogServer) {
     posthogServer = new PostHog(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
+      // Direct, unlike the browser client which goes through the /ingest
+      // rewrite: CSP only constrains the browser, and a server-side relative
+      // path has no origin to resolve against.
       host: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://eu.i.posthog.com',
       // Flush events immediately in serverless (no persistent process)
       flushAt: 1,
