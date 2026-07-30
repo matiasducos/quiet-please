@@ -9,6 +9,13 @@ export interface PlayerStat {
   country: string | null
   picks: number
   points: number
+  /**
+   * How many bracket slots this player was structurally eligible to be
+   * picked for — from their own first real (non-bye) round through the
+   * final — regardless of whether the user actually picked them there.
+   * See 063_user_player_pick_opportunities.sql.
+   */
+  opportunities: number
 }
 /**
  * The inverse of PlayerStat — see 062_user_missed_winners.sql.
@@ -192,10 +199,14 @@ export default function PredictionStats({
             Players
             <InfoBubble label="players">
               Who {who} {isOwnProfile ? 'have' : 'has'} backed across every tournament, and what they
-              returned. <strong>pk</strong> counts each match a player was picked to win, so backing
-              someone deep counts once per round — including rounds they never reached, because a
-              bracket is filled in before anyone plays. <strong>avg</strong> is points divided by
-              those picks, so a player who went out early drags their own average down.
+              returned. <strong>pk</strong> is picks out of opportunities — how many times {who} backed
+              this player to win, out of how many bracket slots could have gone to them, from their
+              own first real round through the final. Backing someone deep counts once per round,
+              including rounds they never reached, because a
+              bracket is filled in before anyone plays — a first-round bye removes one opportunity,
+              since nothing was ever decided for a match with only one real side.{' '}
+              <strong>avg</strong> is points divided by picks made, so a player who went out early
+              drags their own average down.
             </InfoBubble>
           </h3>
           <p style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)', marginBottom: '10px' }}>
@@ -204,7 +215,7 @@ export default function PredictionStats({
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2 px-2 md:px-3" style={{ ...mono, fontSize: '0.58rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>
               <span style={{ flex: 1, minWidth: 0 }} />
-              <span style={{ width: '34px', textAlign: 'right', flexShrink: 0 }}>pk</span>
+              <span style={{ width: '56px', textAlign: 'right', flexShrink: 0 }}>pk</span>
               <span style={{ width: '48px', textAlign: 'right', flexShrink: 0 }}>avg</span>
               <span style={{ width: '58px', textAlign: 'right', flexShrink: 0 }}>pts</span>
             </div>
@@ -292,8 +303,10 @@ function PlayerRow({ p, bust }: { p: PlayerStat; bust: boolean }) {
           {p.name ?? 'Unknown player'}
         </span>
       </span>
-      <span style={{ ...mono, fontSize: '0.7rem', color: 'var(--muted)', width: '34px', textAlign: 'right', flexShrink: 0 }}>
-        {p.picks}
+      {/* picks/opportunities — e.g. "17/23" — rather than a bare count, so the
+          ratio is visible without a whole extra column at mobile width. */}
+      <span style={{ ...mono, fontSize: '0.7rem', color: 'var(--muted)', width: '56px', textAlign: 'right', flexShrink: 0, whiteSpace: 'nowrap' }}>
+        {p.picks}/{p.opportunities}
       </span>
       {/* Average over every pick, including ones made for rounds the player never
           reached — the cost of backing someone who went out early is part of
