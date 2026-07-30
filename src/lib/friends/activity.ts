@@ -9,6 +9,21 @@ export type ActivityItem = {
   label: string
   date: string
   href?: string
+  /**
+   * For 'result' rows only: how the *viewer's* own global bracket did on that
+   * match. 'correct' means point_ledger paid them for it, not merely that the
+   * live pick matches the winner — see the comment at the query.
+   *
+   * Absent in two cases, both of which must render as no colour rather than as
+   * a miss:
+   *   - they had no pick for the match
+   *   - the pick was locked, i.e. made after the match started, which
+   *     award-points skips entirely, so it can never pay out
+   *
+   * It describes the viewer, never the row's subject, so it must not be reused
+   * on a feed rendered for someone else's profile.
+   */
+  outcome?: 'correct' | 'wrong'
 }
 
 export function timeAgo(dateStr: string): string {
@@ -124,6 +139,8 @@ async function fetchTournamentEvents(
   admin: SupabaseClient,
   relevantUserIds: string[],
   since: string,
+  /** Whose picks decide the colour on result rows — the person looking, not the row's subject. */
+  viewerId: string,
 ): Promise<ActivityItem[]> {
   // Get tournament IDs where any of these users have predictions
   const { data: relevantPreds } = await admin
@@ -140,19 +157,72 @@ async function fetchTournamentEvents(
     R16: 'R16', QF: 'Quarterfinals', SF: 'Semifinals', F: 'Final',
   }
 
-  const [{ data: tournaments }, { data: recentResults }] = await Promise.all([
+  const [{ data: tournaments }, { data: recentResults }, { data: viewerPreds, error: viewerPredsError }] = await Promise.all([
     admin.from('tournaments')
       .select('id, name, location, flag_emoji, status, starts_at, ends_at')
       .in('id', tournamentIds)
       .in('status', ['accepting_predictions', 'draw_published', 'in_progress', 'completed']),
     admin.from('match_results')
-      .select('external_match_id, round, winner_external_id, loser_external_id, score, played_at, tournament_id, tournaments(name, location, flag_emoji)')
+      .select('id, external_match_id, round, winner_external_id, loser_external_id, score, played_at, tournament_id, tournaments(name, location, flag_emoji)')
       .in('tournament_id', tournamentIds)
       .gte('played_at', since)
       .or('score.neq.BYE,score.is.null')
       .order('played_at', { ascending: false })
       .limit(50),
+    // The viewer's own brackets across the tournaments already in play — one
+    // bounded query rather than a lookup per result row.
+    //
+    // `.is('challenge_id', null)` is load-bearing: anyone in a friend challenge
+    // has a second predictions row for the same tournament, and colouring the
+    // dashboard from a challenge bracket is the leak that has produced wrong
+    // per-user figures before.
+    admin.from('predictions')
+      .select('id, tournament_id, picks, locked_picks')
+      .eq('user_id', viewerId)
+      .is('challenge_id', null)
+      .in('tournament_id', tournamentIds),
   ])
+
+  if (viewerPredsError) {
+    // Losing the colour is cosmetic; losing the feed is not. Log and carry on
+    // with every result row uncoloured.
+    console.error('[activity] could not load viewer picks for result colouring:', viewerPredsError.message)
+  }
+
+  // tournament_id → the viewer's picks and which of them were locked
+  const viewerBrackets = new Map<string, { picks: Record<string, string>; locked: Set<string> }>()
+  for (const p of viewerPreds ?? []) {
+    viewerBrackets.set(p.tournament_id, {
+      picks: (p.picks as Record<string, string>) ?? {},
+      locked: new Set((p.locked_picks as string[]) ?? []),
+    })
+  }
+
+  // Which of these matches actually paid the viewer out.
+  //
+  // A hit is sourced from point_ledger rather than from `picks[matchId] ===
+  // winner`, because brackets stay editable and a ledger row outlives the pick
+  // that earned it — measured at 68 of 5173 paid matches where the current pick
+  // no longer matches the winner. Comparing the live pick would call those
+  // misses on a match the user was paid for.
+  //
+  // Scoped by prediction_id, not user_id: challenge brackets write to
+  // point_ledger too (752 rows today), and user_id alone would let a friend
+  // challenge tint the dashboard.
+  const paidMatchIds = new Set<string>()
+  const viewerPredIds = (viewerPreds ?? []).map(p => p.id)
+  const resultIds = (recentResults ?? []).map(r => r.id)
+  if (viewerPredIds.length > 0 && resultIds.length > 0) {
+    const { data: paidRows, error: paidError } = await admin
+      .from('point_ledger')
+      .select('match_result_id')
+      .in('prediction_id', viewerPredIds)
+      .in('match_result_id', resultIds)
+    if (paidError) {
+      console.error('[activity] could not load point ledger for result colouring:', paidError.message)
+    }
+    for (const row of paidRows ?? []) paidMatchIds.add(row.match_result_id)
+  }
 
   const events: ActivityItem[] = []
   for (const t of tournaments ?? []) {
@@ -219,11 +289,24 @@ async function fetchTournamentEvents(
       const round = ROUND_LABELS[r.round] ?? r.round
       const score = r.score ? ` ${r.score}` : ''
 
+      // Paid wins over everything, so an edited bracket can't turn a match the
+      // viewer was actually paid for into a miss. Only then fall back to the
+      // live pick to tell "had a pick that earned nothing" from "no pick".
+      const bracket = viewerBrackets.get(r.tournament_id)
+      const pick = bracket?.picks[r.external_match_id]
+      let outcome: ActivityItem['outcome']
+      if (paidMatchIds.has(r.id)) {
+        outcome = 'correct'
+      } else if (pick !== undefined && !bracket!.locked.has(r.external_match_id)) {
+        outcome = 'wrong'
+      }
+
       events.push({
         type: 'result', user_id: null, username: winner,
         label: `d. ${loser}${score} — ${round} at ${tName}`,
         date: r.played_at,
         href: `/tournaments/${r.tournament_id}/results`,
+        outcome,
       })
     }
   }
@@ -273,7 +356,7 @@ export async function getActivity(userId: string, limit = 10): Promise<ActivityI
 
   const [userEvents, tournamentEvents] = await Promise.all([
     fetchUserEvents(admin, allUserIds, since),
-    fetchTournamentEvents(admin, allUserIds, since),
+    fetchTournamentEvents(admin, allUserIds, since, userId),
   ])
 
   return [...userEvents, ...tournamentEvents]

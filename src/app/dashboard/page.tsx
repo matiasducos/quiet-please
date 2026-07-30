@@ -117,11 +117,15 @@ export default async function DashboardPage() {
               {activity.map((item, i) => {
                 const icon = item.type === 'tournament' ? '🎾' : item.type === 'result' ? '🏆' : item.type === 'picks' ? '🔒' : item.type === 'points' ? '⭐' : '👥'
                 const isMe = item.user_id === user.id
+                // Tints reuse the two the homepage feature grid already uses, so
+                // the feed doesn't introduce a third pair of greens and reds.
+                // Rows with no outcome (no pick, or a locked one) stay white.
+                const outcomeTint = item.outcome === 'correct' ? '#edf7f0' : item.outcome === 'wrong' ? '#fef2f2' : undefined
                 return (
                   <div
                     key={`${item.type}-${item.user_id ?? 'system'}-${item.date}-${i}`}
                     className="flex items-center gap-3 px-5 py-3 border-b last:border-0"
-                    style={{ borderColor: 'var(--chalk-dim)' }}
+                    style={{ borderColor: 'var(--chalk-dim)', background: outcomeTint }}
                   >
                     <span style={{ fontSize: '1rem', flexShrink: 0 }}>{icon}</span>
                     <div className="flex-1 min-w-0 truncate">
@@ -147,6 +151,20 @@ export default async function DashboardPage() {
                           <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>{item.label}</span>
                         )}
                     </div>
+                    {/* Shape as well as colour — a red/green tint alone is the
+                        one pairing colour-blind readers can't separate. */}
+                    {item.outcome && (
+                      <span
+                        aria-label={item.outcome === 'correct' ? 'You predicted this correctly' : 'You predicted this incorrectly'}
+                        title={item.outcome === 'correct' ? 'You predicted this correctly' : 'You predicted this incorrectly'}
+                        style={{
+                          fontFamily: 'var(--font-mono)', fontSize: '0.8rem', flexShrink: 0,
+                          color: item.outcome === 'correct' ? '#15803d' : '#b91c1c',
+                        }}
+                      >
+                        {item.outcome === 'correct' ? '✓' : '✗'}
+                      </span>
+                    )}
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', flexShrink: 0 }}>
                       {timeAgo(item.date)}
                     </span>
