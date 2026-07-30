@@ -88,13 +88,22 @@ export default async function ChallengeDetailPage({
     theirPredId      = theirPred?.id ?? null
   }
 
-  // Fetch draw, match results, and per-match points when both picks are locked
+  // Fetch draw, match results, and per-match points once picks may be revealed.
+  //
+  // The poker rule (hide the opponent until both have locked) only has to hold
+  // while the challenge is still live. `is_fully_locked` is set solely by an
+  // explicit user lock, so gating on it alone left a finished challenge with no
+  // bracket at all whenever either side never pressed lock — the result banner
+  // rendered, but the picks it referred to did not.
+  const picksRevealed =
+    (myPicksLocked && theirPicksLocked) || challenge.status === 'completed'
+
   let drawData: any = null
   let matchResultsMap: Record<string, string> = {}
   let myMatchPoints: Record<string, { points: number; streakMultiplier: number }> = {}
   let theirMatchPoints: Record<string, { points: number; streakMultiplier: number }> = {}
 
-  if (myPicksLocked && theirPicksLocked) {
+  if (picksRevealed) {
     const [{ data: drawRow }, { data: resultsData }, { data: myPointsData }, { data: theirPointsData }] = await Promise.all([
       admin.from('draws').select('bracket_data').eq('tournament_id', challenge.tournament_id).single(),
       admin.from('match_results').select('external_match_id, winner_external_id').eq('tournament_id', challenge.tournament_id),
