@@ -4,9 +4,11 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { setUsername } from './actions'
+import { MINIMUM_AGE } from '@/lib/legal/terms'
 
 export default function SetupUsernamePage() {
   const [username, setUsernameValue] = useState('')
+  const [consented, setConsented] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
@@ -15,7 +17,7 @@ export default function SetupUsernamePage() {
     e.preventDefault()
     setError(null)
     startTransition(async () => {
-      const result = await setUsername(username)
+      const result = await setUsername(username, consented)
       if (result.error) {
         setError(result.error)
       } else {
@@ -44,7 +46,7 @@ export default function SetupUsernamePage() {
             Pick your username
           </h1>
           <p style={{ fontSize: '0.875rem', color: 'var(--muted)', lineHeight: 1.6, marginBottom: '2rem' }}>
-            This is how you'll appear on leaderboards and to other players. You can change it later from your profile.
+            This is how you&apos;ll appear on leaderboards and to other players. You can change it later from your profile.
           </p>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -83,6 +85,38 @@ export default function SetupUsernamePage() {
               </p>
             </div>
 
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={consented}
+                onChange={e => setConsented(e.target.checked)}
+                required
+                className="mt-0.5 shrink-0"
+                style={{ width: '1rem', height: '1rem', accentColor: 'var(--court)' }}
+              />
+              <span className="text-xs" style={{ color: 'var(--muted)', lineHeight: 1.5 }}>
+                I&apos;m {MINIMUM_AGE} or older and I agree to the{' '}
+                <Link
+                  href="/terms"
+                  target="_blank"
+                  style={{ color: 'var(--court)', textDecoration: 'underline' }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  Terms of Service
+                </Link>{' '}
+                and{' '}
+                <Link
+                  href="/privacy"
+                  target="_blank"
+                  style={{ color: 'var(--court)', textDecoration: 'underline' }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  Privacy Policy
+                </Link>
+                .
+              </span>
+            </label>
+
             {error && (
               <p
                 className="text-sm px-3 py-2 rounded-sm"
@@ -94,7 +128,7 @@ export default function SetupUsernamePage() {
 
             <button
               type="submit"
-              disabled={isPending || username.length < 3}
+              disabled={isPending || username.length < 3 || !consented}
               className="w-full py-3 text-sm font-medium text-white rounded-sm hover:opacity-90 disabled:opacity-50"
               style={{ background: 'var(--court)' }}
             >

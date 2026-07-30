@@ -16,7 +16,7 @@
 
 ### Supabase
 - Project is NOT linked locally — migrations must be run manually in the Supabase dashboard.
-- Latest migration: `064_exclude_off_draw_picks.sql` (remember to bump this file when you add a new migration)
+- Latest migration: `065_signup_consent.sql` (remember to bump this file when you add a new migration)
 
 ### Notifications
 - When adding a new notification type, update 4 places:
