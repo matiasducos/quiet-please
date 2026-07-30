@@ -24,6 +24,10 @@ export function initPostHog() {
     persistence: 'memory',
     // Auto-capture page views via the Next.js router (see PostHogPageView)
     capture_pageview: false,
+    // Pairs with the manual $pageview capture to emit $pageleave on unload/
+    // route change, which is what lets PostHog compute time-on-page and
+    // session duration — there's no other duration tracking in this app.
+    capture_pageleave: true,
     // Auto-capture clicks, inputs, etc.
     autocapture: true,
     // Don't capture text content of elements (privacy)

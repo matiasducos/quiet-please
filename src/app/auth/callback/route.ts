@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processReferralSignup, REFERRAL_COOKIE_NAME } from '@/lib/referrals'
 import { parseAcceptedVersion } from '@/lib/legal/terms'
+import { trackServerEvent } from '@/lib/posthog/server'
 
 /** Validate that a redirect target is a safe relative path (prevent open redirect) */
 function getSafeRedirectPath(next: string | null): string {
@@ -25,6 +26,19 @@ export async function GET(request: Request) {
     const supabase = await createClient()
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
+      // ── Login tracking ────────────────────────────────────────────
+      // Fires for every OAuth sign-in, new account or returning. That
+      // double-counts against signup_completed on someone's very first
+      // Google/Facebook sign-in, which is correct here — it's genuinely
+      // both a signup and a login, and downstream queries can exclude
+      // day-of-signup logins if a "returning user" cut is ever needed.
+      const { data: { user: signedInUser } } = await supabase.auth.getUser()
+      if (signedInUser) {
+        trackServerEvent(signedInUser.id, 'user_logged_in', {
+          method: signedInUser.app_metadata?.provider ?? 'oauth',
+        })
+      }
+
       // ── Terms acceptance ──────────────────────────────────────────
       // The ?consent=<version> param is attached by /signup, the only page
       // that shows the checkbox, and rides through both the email

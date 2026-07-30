@@ -3,6 +3,23 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import posthog from 'posthog-js'
+
+/**
+ * Fires on every successful password sign-in (not just first-ever). OAuth
+ * logins are tracked server-side in /auth/callback instead, since
+ * signInWithOAuth only kicks off a redirect here with no success callback.
+ * Guarded on __loaded for the same reason as trackSignupStarted in /signup —
+ * PostHog no-ops when unconfigured and would otherwise throw mid-login.
+ */
+function trackLoggedIn() {
+  try {
+    if (!posthog.__loaded) return
+    posthog.capture('user_logged_in', { method: 'password' })
+  } catch {
+    // Analytics must never block someone signing in.
+  }
+}
 
 export default function LoginPage() {
   const router = useRouter()
@@ -17,6 +34,7 @@ export default function LoginPage() {
     const supabase = createClient()
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) { setError(error.message); setLoading(false); return }
+    trackLoggedIn()
     router.push('/dashboard'); router.refresh()
   }
 
