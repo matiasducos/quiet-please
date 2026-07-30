@@ -9,5 +9,18 @@
  */
 export const TERMS_VERSION = '2026-07-30'
 
-/** Minimum age, per GDPR Art. 8 as implemented in Latvia. */
-export const MINIMUM_AGE = 16
+/** Shape a version string must have to be trusted from a URL. */
+const VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * Validate a version that arrived in a redirect URL before it is written to the
+ * database. The value is user-editable, so without this a hand-crafted callback
+ * could store arbitrary text in users.terms_version — junk that would then be
+ * indistinguishable from a real acceptance when auditing.
+ *
+ * Returns the version, or null if it is missing or malformed.
+ */
+export function parseAcceptedVersion(raw: string | null): string | null {
+  if (!raw || !VERSION_PATTERN.test(raw)) return null
+  return raw
+}

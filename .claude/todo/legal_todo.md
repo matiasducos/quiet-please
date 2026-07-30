@@ -6,8 +6,9 @@
 
 ## Phase 2 — High Priority
 - ⬜ Cookie consent banner (Vercel Analytics + PostHog + `username_is_set` cookie) — **still open, and now the only unmet consent gap.** PostHog fires `$pageview`/`cta_clicked` for anonymous homepage visitors *before* any account exists, so the signup checkbox does not and cannot cover analytics consent.
-- ✅ Age gate — confirm 16+ at signup (2026-07-30) — combined checkbox at `/setup-username`, recorded in `users.age_confirmed_at`
-- ✅ Explicit Terms/Privacy acceptance (2026-07-30) — `users.terms_accepted_at` + `terms_version`, migration `065`
+- ⬜ Age gate — confirm 16+ at signup. **Briefly shipped 2026-07-30 then deliberately removed** the same day when the second checkbox was dropped in favour of a single one on `/signup`. The `users.age_confirmed_at` column from migration `065` still exists and is now always NULL — reuse it if the gate comes back.
+- ✅ Explicit Terms/Privacy acceptance (2026-07-30) — one checkbox on `/signup`; `/auth/callback` records `terms_accepted_at` + `terms_version` from the `?consent=` param. Migration `065`.
+  - ⚠️ Accounts created by signing in with Google from `/login` never see the checkbox and are left NULL by design. Query: `select count(*) from users where terms_accepted_at is null and username_is_set` to size the gap.
 - ✅ Self-host Google Fonts (2026-04-04) — switched to next/font/google
 - ⬜ Add gambling disclaimer to homepage/footer: "Free prediction game for entertainment only. No real money or prizes."
 
