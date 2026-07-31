@@ -8,7 +8,9 @@ const mono = { fontFamily: 'var(--font-mono)' } as const
 /** Accuracy bar colour — matches the profile Stats tab. */
 const ACCURACY_BLUE = '#378ADD'
 
-function Metric({ label, value, sub, foot }: { label: string; value: string; sub?: string; foot?: string }) {
+function Metric({ label, value, sub, foot, footTone = 'accent' }: {
+  label: string; value: string; sub?: string; foot?: string; footTone?: 'accent' | 'muted'
+}) {
   return (
     <div className="rounded-sm p-3 md:p-4" style={{ background: 'var(--chalk)' }}>
       <p style={{ ...mono, fontSize: '0.65rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '4px' }}>
@@ -19,7 +21,7 @@ function Metric({ label, value, sub, foot }: { label: string; value: string; sub
         {sub && <span style={{ ...mono, fontSize: '0.75rem', color: 'var(--muted)', marginLeft: '5px' }}>{sub}</span>}
       </p>
       {foot && (
-        <p style={{ ...mono, fontSize: '0.7rem', color: ACCURACY_BLUE, marginTop: '3px' }}>{foot}</p>
+        <p style={{ ...mono, fontSize: '0.7rem', color: footTone === 'muted' ? 'var(--muted)' : ACCURACY_BLUE, marginTop: '3px' }}>{foot}</p>
       )}
     </div>
   )
@@ -40,28 +42,45 @@ function PlayerName({ p, color }: { p: PlayerSummary; color: string }) {
   )
 }
 
-function PlayerLine({ p, tone, isChampion, isFinished }: { p: PlayerSummary; tone: 'active' | 'neutral' | 'bust'; isChampion: boolean; isFinished: boolean }) {
-  const bg = tone === 'active' ? '#edf7f0' : tone === 'bust' ? '#fdf2ed' : 'var(--chalk)'
+/**
+ * Whether a player can still add to your total — which is *not* the same as
+ * still being in the draw. If you predicted them out in an earlier round, every
+ * match they have left carries someone else's name in your bracket, so they are
+ * finished paying out even while they keep winning. `riding` is that signal.
+ */
+function canStillScore(p: PlayerSummary, isFinished: boolean) {
+  return !isFinished && p.active && p.riding > 0
+}
+
+function PlayerLine({ p, tone, isChampion, isFinished }: { p: PlayerSummary; tone: 'live' | 'neutral' | 'bust'; isChampion: boolean; isFinished: boolean }) {
+  const bg = tone === 'live' ? '#edf7f0' : tone === 'bust' ? '#fdf2ed' : 'var(--chalk)'
   const nameColor = tone === 'bust' ? '#993C1D' : 'var(--ink)'
+  const live = canStillScore(p, isFinished)
   // "Active" is derived from never having lost. On a finished tournament that is
   // true of the champion — and also of anyone whose defeat was never recorded
   // (a withdrawal, or a missing result). Only one player can still be standing,
   // so everyone else is out; we just don't know which round.
+  //
+  // While the tournament runs, the label counts picks rather than naming a
+  // state: "0 to come" says plainly that a player still in the draw has nothing
+  // left to give you, which the old "active" actively hid.
   const statusLabel = isChampion
     ? 'champion'
     : p.active
-      ? (isFinished ? 'out' : 'active')
+      ? (isFinished ? 'out' : `${p.riding} to come`)
       : `out ${p.outRound ?? ''}`
   return (
     <div className="flex items-center gap-2 px-2 md:px-3 py-2 rounded-sm" style={{ background: bg }}>
       <PlayerName p={p} color={nameColor} />
-      <span style={{ ...mono, fontSize: '0.68rem', color: 'var(--muted)', width: '44px', textAlign: 'right', flexShrink: 0 }}>
+      {/* The three fixed columns are kept as narrow as their content allows: at
+          375px every pixel here comes straight out of the player's name. */}
+      <span style={{ ...mono, fontSize: '0.68rem', color: 'var(--muted)', width: '38px', textAlign: 'right', flexShrink: 0 }}>
         {p.picks}<span style={{ opacity: 0.7 }}>&nbsp;pk</span>
       </span>
-      <span style={{ ...mono, fontSize: '0.75rem', color: p.points > 0 ? 'var(--ink)' : 'var(--muted)', width: '58px', textAlign: 'right', flexShrink: 0 }}>
+      <span style={{ ...mono, fontSize: '0.75rem', color: p.points > 0 ? 'var(--ink)' : 'var(--muted)', width: '48px', textAlign: 'right', flexShrink: 0 }}>
         {p.points.toLocaleString()}
       </span>
-      <span style={{ ...mono, fontSize: '0.62rem', width: '58px', textAlign: 'right', flexShrink: 0, color: isChampion || (p.active && !isFinished) ? '#1a6b3c' : 'var(--muted)' }}>
+      <span style={{ ...mono, fontSize: '0.62rem', width: '58px', textAlign: 'right', flexShrink: 0, color: isChampion || live ? '#1a6b3c' : 'var(--muted)' }}>
         {statusLabel}
       </span>
     </div>
@@ -76,6 +95,12 @@ export default function MyTournamentPanel({
   isComplete: boolean
 }) {
   const { pointsSoFar, correct, decided, activeCount, distinctPicked, currentRound, championExternalId, rounds, stillToCome, activeIdle, players } = data
+
+  // Points only ever come from a correct pick, and a correct pick needs the
+  // picked player to still be alive — so a player with picks left to come is
+  // the only route to more points. An empty `stillToCome` therefore means the
+  // bracket is finished scoring, whatever the draw still has left to play.
+  const canStillEarn = stillToCome.length > 0
 
   const topEarners = players.filter(p => p.points > 0).slice(0, 5)
   // Early in a draw almost nobody has been eliminated, so this list would run to
@@ -99,7 +124,9 @@ export default function MyTournamentPanel({
             How your bracket is doing so far. <strong>Points so far</strong> counts only
             matches already played. <strong>Correct picks</strong> compares your bracket
             against every match decided so far. <strong>Still active</strong> is how many of
-            the players you picked have not lost yet.
+            the players you picked have not lost yet — being in the draw is not the same
+            as being able to score for you, so the line underneath counts only the ones
+            who can.
           </InfoBubble>
         </h2>
         {currentRound && (
@@ -120,11 +147,21 @@ export default function MyTournamentPanel({
           sub={`of ${decided}`}
           foot={decided > 0 ? `${Math.round((correct / decided) * 100)}% hit rate` : undefined}
         />
-        {!isComplete && <Metric label="Still active" value={String(activeCount)} sub={`of ${distinctPicked}`} />}
+        {!isComplete && (
+          <Metric
+            label="Still active"
+            value={String(activeCount)}
+            sub={`of ${distinctPicked}`}
+            foot={`${stillToCome.length} can still score`}
+            footTone={canStillEarn ? 'accent' : 'muted'}
+          />
+        )}
       </div>
 
-      {/* Still to come — the follow list. Only meaningful mid-tournament. */}
-      {!isComplete && stillToCome.length > 0 && (
+      {/* Still to come — the follow list. Only meaningful mid-tournament.
+          Rendered even when nothing is left to come: a missing section reads as
+          "no data", when the real news is that the bracket has stopped scoring. */}
+      {!isComplete && (stillToCome.length > 0 || activeIdle.length > 0) && (
         <div className="mb-6">
           <h3 className="flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', marginBottom: '2px' }}>
             Still to come
@@ -140,6 +177,20 @@ export default function MyTournamentPanel({
             Players you picked who are still in the draw
           </p>
           <div className="flex flex-col gap-1.5">
+            {!canStillEarn && (
+              <div className="px-3 py-2.5 rounded-sm" style={{ background: 'var(--chalk)' }}>
+                <p style={{ ...mono, fontSize: '0.72rem', color: 'var(--ink)', marginBottom: '3px' }}>
+                  Nothing left to come
+                </p>
+                <p style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+                  {activeIdle.length === 1
+                    ? 'Your last player in the draw has'
+                    : `All ${activeIdle.length} of your players left in the draw have`}{' '}
+                  outlasted the round you picked them out in, so no match still to be played
+                  carries your pick. Your bracket is done scoring this tournament.
+                </p>
+              </div>
+            )}
             {ridingShown.map(p => (
               <div key={p.externalId} className="flex items-center gap-2 md:gap-3 px-3 py-2 rounded-sm" style={{ background: '#edf7f0' }}>
                 <PlayerName p={p} color="var(--ink)" />
@@ -163,8 +214,8 @@ export default function MyTournamentPanel({
                 </span>
                 <span style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
                   {ridingRest > 0
-                    ? `${activeIdle.length} with none left`
-                    : 'none left'}
+                    ? `${activeIdle.length} can't score`
+                    : "can't score"}
                 </span>
               </div>
             )}
@@ -229,8 +280,11 @@ export default function MyTournamentPanel({
             <InfoBubble label="your players">
               What each pick has returned. <strong>pk</strong> is how many times you
               picked that player to win a match, so backing someone deep counts more
-              than once. <strong>Backed but never paid off</strong> are players you
-              picked more than once who earned you nothing.
+              than once. <strong>2 to come</strong> means two of their matches are still
+              picked in your bracket; <strong>0 to come</strong> means they are still in
+              the draw but have nothing left to give you, because you picked them out
+              in a round they went on to win. <strong>Backed but never paid off</strong>{' '}
+              are players you picked more than once who earned you nothing.
             </InfoBubble>
           </h3>
           <p style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)', marginBottom: '8px' }}>
@@ -241,7 +295,7 @@ export default function MyTournamentPanel({
               <PlayerLine
                 key={p.externalId}
                 p={p}
-                tone={p.active ? 'active' : 'neutral'}
+                tone={canStillScore(p, isComplete) ? 'live' : 'neutral'}
                 isChampion={isComplete && p.externalId === championExternalId}
                 isFinished={isComplete}
               />
