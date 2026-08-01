@@ -16,7 +16,7 @@
 
 ### Supabase
 - Project is NOT linked locally — migrations must be run manually in the Supabase dashboard.
-- Latest migration: `065_signup_consent.sql` (remember to bump this file when you add a new migration)
+- Latest migration: `068_match_results_scored_at.sql` (remember to bump this file when you add a new migration)
 
 ### Notifications
 - When adding a new notification type, update 4 places:

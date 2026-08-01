@@ -46,7 +46,7 @@ export async function GET(request: Request) {
           // status/ends_at ride along on the join the query already does: the
           // achievement phase below needs them, and fetching them per result
           // was costing one sequential round trip per match result.
-          .select('id, tournament_id, round, external_match_id, winner_external_id, tournaments(id, category, starts_at, status, ends_at)')
+          .select('id, tournament_id, round, external_match_id, winner_external_id, scored_at, tournaments(id, category, starts_at, status, ends_at)')
           .or('score.neq.BYE,score.is.null')
           .order('played_at', { ascending: true })
           .range(from, from + RESULT_PAGE - 1)
@@ -170,9 +170,14 @@ export async function GET(request: Request) {
     const userTournamentPoints: Record<string, Record<string, number>> = {}
     // Track per-user per-tournament per-round breakdown for the points email
     // (global only — same scope as userTournamentPoints, see the comment below).
-    // `matches` = predicted matches that finished this run (win or loss),
-    // `wins` = how many of those were correct; only wins add `points`.
+    // `matches` = predicted matches processed for the FIRST time in this run
+    // (win or loss), `wins` = how many of those were correct; only wins add
+    // `points`. Scoped by match_results.scored_at — see newResultIds below.
     const userTournamentRounds: Record<string, Record<string, Record<string, { points: number; matches: number; wins: number }>>> = {}
+    // Match results this run is processing for the first time. Losing picks
+    // leave no trace in point_ledger, so without this marker every past loss
+    // would be re-counted into the email breakdown on every single run.
+    const newResultIds: string[] = []
     // Track auto-locks to apply
     const autoLocks: Map<string, Record<string, string>> = new Map() // predictionId → { matchId: "auto" }
 
@@ -186,6 +191,15 @@ export async function GET(request: Request) {
     for (const result of allResults as any[]) {
       const tournament = result.tournaments as any
       if (!tournament?.category) continue
+
+      // First time award-points sees this result? Only then do its losing picks
+      // belong in the email breakdown — on later runs they're old news.
+      // Hoisted above the basePoints guard so zero-point rounds (a 250's R64 has
+      // no POINTS_TABLE entry) get stamped too and don't pile up in the index.
+      // scored_at never gates SCORING — point_ledger still does — so a category
+      // correction that turns a 0-point round into a real one still awards.
+      const isNewResult = !result.scored_at
+      if (isNewResult) newResultIds.push(result.id)
 
       const isWinner = result.round === 'F'
       const basePoints = getPointsForRound(
@@ -226,7 +240,15 @@ export async function GET(request: Request) {
         // Record the win/loss outcome for the email breakdown regardless of
         // correctness — only wins earn points (below), but both count as a
         // match "played and predicted" this run.
-        if (!prediction.challenge_id) {
+        //
+        // A win reaching this line is always new (the scoredPairs guard above
+        // filters out already-scored pairs), so it's recorded unconditionally —
+        // the points line below relies on the bucket existing. A LOSS has no
+        // ledger row to dedupe against, so it only counts on the run that first
+        // processes the result. Both conditions can hold at once: a pick added
+        // to an existing bracket after the match played still scores, and still
+        // needs its round line.
+        if (!prediction.challenge_id && (isNewResult || didPickWinnerForThisMatch)) {
           if (!userTournamentRounds[prediction.user_id]) userTournamentRounds[prediction.user_id] = {}
           if (!userTournamentRounds[prediction.user_id][result.tournament_id]) userTournamentRounds[prediction.user_id][result.tournament_id] = {}
           const roundBucket = userTournamentRounds[prediction.user_id][result.tournament_id]
@@ -367,6 +389,23 @@ export async function GET(request: Request) {
       for (let i = 0; i < predictionUpdates.length; i += 50) {
         await Promise.all(predictionUpdates.slice(i, i + 50))
       }
+    }
+
+    // ── 8b. Stamp newly processed match results ──────────────────────────
+    // Runs AFTER the ledger insert: if that throws, these stay NULL and the
+    // next run reprocesses them rather than silently swallowing a round.
+    // Stamped by explicit id — a blanket `where scored_at is null` would also
+    // catch results inserted by sync-results while this run was in flight.
+    if (newResultIds.length > 0) {
+      // Chunked: a single .in() with hundreds of uuids overflows the request URL.
+      for (let i = 0; i < newResultIds.length; i += 200) {
+        const { error: stampErr } = await supabase
+          .from('match_results')
+          .update({ scored_at: new Date().toISOString() })
+          .in('id', newResultIds.slice(i, i + 200))
+        if (stampErr) throw new Error(`match_results scored_at update failed: ${stampErr.message}`)
+      }
+      console.log(`[award-points] Marked ${newResultIds.length} match results as scored`)
     }
 
     // ── 9. Update global user totals + leagues + rankings ───────────────
@@ -836,7 +875,11 @@ export async function GET(request: Request) {
       status: 200,
       body: {
         message: 'Points awarded successfully',
-        new_results_processed: allResults.length,
+        // `results_scanned` is every non-BYE result in the DB (the loop re-walks
+        // them all each run); `new_results_processed` is the subset this run saw
+        // for the first time — the ones the points email describes.
+        results_scanned: allResults.length,
+        new_results_processed: newResultIds.length,
         point_entries_created: ledgerRows.length,
         users_awarded: Object.keys(globalUserPointsDelta).length,
         auto_locks_applied: autoLocksApplied,
