@@ -30,6 +30,11 @@ const STEPS = [
     title: 'Challenges',
     body: 'Go head-to-head with a friend on any tournament. You each lock in your bracket — whoever scores more points wins. Challenge points are separate from your global ranking.',
   },
+  {
+    target: 'user-menu',
+    title: 'Emails, your way',
+    body: 'We\'ll email you when a draw opens and when you earn points. Open this menu → Profile → Email preferences to switch any of them off individually. Every email has a one-click unsubscribe too.',
+  },
 ]
 
 interface Rect {
@@ -56,13 +61,25 @@ export default function DashboardTour() {
     }
   }, [])
 
+  // Declared before measureTarget, which calls it when the last step has no
+  // visible target. A plain function declaration below would hoist at runtime
+  // but read stale here, which is what react-hooks/immutability flags.
+  const completeTour = useCallback(() => {
+    localStorage.setItem(STORAGE_KEY, '1')
+    setVisible(false)
+  }, [])
+
   const measureTarget = useCallback(() => {
     const currentStep = STEPS[step]
     if (!currentStep) return
 
     const el = document.querySelector(`[data-tour="${currentStep.target}"]`)
-    if (!el) {
-      // Target doesn't exist (e.g. no live tournaments) — skip to next
+    const rect = el?.getBoundingClientRect()
+    // Skip when the target is absent (e.g. no live tournaments) OR present but
+    // not rendered. The nav links carry `hidden md:flex`, so below 768px they
+    // stay in the DOM with a 0x0 rect — querySelector finds them and the tour
+    // used to spotlight a zero-size hole in the overlay at mobile widths.
+    if (!el || !rect || rect.width === 0 || rect.height === 0) {
       if (step < STEPS.length - 1) {
         setStep(s => s + 1)
       } else {
@@ -71,7 +88,6 @@ export default function DashboardTour() {
       return
     }
 
-    const rect = el.getBoundingClientRect()
     const scrollY = window.scrollY
 
     setTargetRect({
@@ -100,7 +116,7 @@ export default function DashboardTour() {
         })
       })
     }
-  }, [step])
+  }, [step, completeTour])
 
   useEffect(() => {
     if (!visible) return
@@ -108,11 +124,6 @@ export default function DashboardTour() {
     window.addEventListener('resize', measureTarget)
     return () => window.removeEventListener('resize', measureTarget)
   }, [visible, step, measureTarget])
-
-  function completeTour() {
-    localStorage.setItem(STORAGE_KEY, '1')
-    setVisible(false)
-  }
 
   function handleNext() {
     if (step < STEPS.length - 1) {
