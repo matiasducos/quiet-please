@@ -189,13 +189,7 @@ export async function GET(request: Request) {
         // Shared with the two admin publish paths (saveManualDraw / buildDraw)
         // so an automated sync and a hand-entered draw announce identically —
         // same opt-out handling, same per-type unsubscribe footer.
-        const { notified, emailed } = await announceDrawOpen({
-          id: tournament.id,
-          name: tournament.name,
-          location: tournament.location ?? null,
-          flagEmoji: tournament.flag_emoji ?? null,
-          closeDate: tournament.draw_close_at ?? null,
-        })
+        const { notified, emailed } = await announceDrawOpen(tournament.id)
         console.log(`[sync-draws] "${tournament.name}": ${notified} notified, ${emailed} emailed`)
       }
       // If already accepting_predictions: no status change, just refresh draw data.

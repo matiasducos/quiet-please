@@ -1,14 +1,8 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendDrawOpenEmails, isBotEmail, type DrawOpenEmail } from '@/lib/email'
+import { sendDrawOpenEmails, isBotEmail, type DrawOpenEmail, type DrawOpenTournamentInfo } from '@/lib/email'
 import { isEmailEnabled, type EmailPreferences } from '@/lib/email-preferences'
-
-export interface DrawOpenTournament {
-  id: string
-  name: string
-  location: string | null
-  flagEmoji: string | null
-  closeDate: string | null
-}
+import { WINNER_POINTS } from '@/lib/tennis'
+import type { TournamentCategory } from '@/lib/tennis'
 
 export interface AnnounceResult {
   notified: number
@@ -20,45 +14,99 @@ const USER_PAGE = 1000
 /** Notification rows per insert. One 10k-row insert is a request-size problem. */
 const NOTIF_CHUNK = 1000
 
+interface UserRow {
+  id: string
+  username: string | null
+  email: string | null
+  ranking_points: number | null
+  email_notifications: boolean | null
+  email_preferences: Partial<EmailPreferences> | null
+  unsubscribe_token: string | null
+}
+
+/**
+ * Standard competition ranking over a points-descending list: equal points get
+ * equal rank, and the next distinct value skips ahead. This matches what
+ * /leaderboard shows, which computes rank as count(points > mine) + 1 — if the
+ * two disagreed, the email would contradict the page it links to.
+ */
+function rankByUser(users: UserRow[]): Map<string, number> {
+  const ranked = users
+    .filter(u => u.username && (u.ranking_points ?? 0) > 0)
+    .sort((a, b) => (b.ranking_points ?? 0) - (a.ranking_points ?? 0))
+
+  const out = new Map<string, number>()
+  let lastPoints: number | null = null
+  let lastRank = 0
+  ranked.forEach((u, i) => {
+    const pts = u.ranking_points ?? 0
+    if (pts !== lastPoints) {
+      lastRank = i + 1
+      lastPoints = pts
+    }
+    out.set(u.id, lastRank)
+  })
+  return out
+}
+
 /**
  * Announce that a tournament draw is open: an in-app notification for every
  * user, plus a draw-open email for everyone who hasn't opted out.
+ *
+ * Takes only the tournament id and reads the row itself, so every caller sends
+ * an identical email — three callers each passing their own subset of columns
+ * is how the "picks close" line silently went missing from one path before.
  *
  * Deliberately reads `public.users` instead of `listAllUsers()`. That helper
  * goes through GoTrue's admin API, which on this project fails outright above
  * ~30 per page (see src/lib/supabase/admin.ts) and would need one round trip
  * per 25 users besides. `public.users` already carries email, username,
- * preferences and unsubscribe_token, so the whole recipient list — including
- * the opt-out filter — resolves in the database.
+ * preferences, ranking points and unsubscribe_token, so the recipient list —
+ * opt-out filter and per-user standing included — resolves in one paged query.
  *
  * Never throws: a draw is already published by the time this runs, and failing
  * the admin action afterwards would imply the publish itself failed.
  */
-export async function announceDrawOpen(t: DrawOpenTournament): Promise<AnnounceResult> {
+export async function announceDrawOpen(tournamentId: string): Promise<AnnounceResult> {
   const result: AnnounceResult = { notified: 0, emailed: 0 }
 
   try {
     const admin = createAdminClient()
 
-    const users: Array<{
-      id: string
-      username: string | null
-      email: string | null
-      email_notifications: boolean | null
-      email_preferences: Partial<EmailPreferences> | null
-      unsubscribe_token: string | null
-    }> = []
+    const { data: row, error: tErr } = await admin
+      .from('tournaments')
+      .select('id, name, location, flag_emoji, tour, category, surface, draw_size, starts_at, ends_at, draw_close_at')
+      .eq('id', tournamentId)
+      .single()
+    if (tErr || !row) throw new Error(`tournament query failed: ${tErr?.message ?? 'not found'}`)
+
+    const tournament: DrawOpenTournamentInfo = {
+      id: row.id,
+      name: row.name,
+      location: row.location ?? null,
+      flagEmoji: row.flag_emoji ?? null,
+      tour: row.tour ?? null,
+      category: row.category ?? null,
+      surface: row.surface ?? null,
+      drawSize: row.draw_size ?? null,
+      startsAt: row.starts_at ?? null,
+      endsAt: row.ends_at ?? null,
+      closeDate: row.draw_close_at ?? null,
+      winnerPoints: WINNER_POINTS[row.category as TournamentCategory] ?? null,
+    }
+
+    const users: UserRow[] = []
     {
       let from = 0
       while (true) {
         const { data: page, error } = await admin
           .from('users')
-          .select('id, username, email, email_notifications, email_preferences, unsubscribe_token')
+          .select('id, username, email, ranking_points, email_notifications, email_preferences, unsubscribe_token')
           .order('id', { ascending: true })
           .range(from, from + USER_PAGE - 1)
         if (error) throw new Error(`users query failed: ${error.message}`)
         if (!page?.length) break
-        users.push(...(page as typeof users))
+        users.push(...(page as UserRow[]))
         if (page.length < USER_PAGE) break
         from += USER_PAGE
       }
@@ -69,14 +117,14 @@ export async function announceDrawOpen(t: DrawOpenTournament): Promise<AnnounceR
     // Bots are the QA accounts used to verify signed-in UI, so they need the
     // notification rows. They're filtered out of email below.
     const meta = {
-      tournament_name: t.name,
-      tournament_location: t.location ?? null,
-      tournament_flag_emoji: t.flagEmoji ?? null,
+      tournament_name: tournament.name,
+      tournament_location: tournament.location,
+      tournament_flag_emoji: tournament.flagEmoji,
     }
     const rows = users.map(u => ({
       user_id: u.id,
       type: 'draw_open',
-      tournament_id: t.id,
+      tournament_id: tournament.id,
       meta,
     }))
     for (let i = 0; i < rows.length; i += NOTIF_CHUNK) {
@@ -89,6 +137,10 @@ export async function announceDrawOpen(t: DrawOpenTournament): Promise<AnnounceR
     }
 
     // ── Emails: opted-in humans only ─────────────────────────────────────────
+    // Ranks come from the rows already in memory — no per-recipient query.
+    const ranks = rankByUser(users)
+    const rankedTotal = users.filter(u => u.username).length
+
     const recipients: DrawOpenEmail[] = []
     let missingToken = 0
     for (const u of users) {
@@ -100,20 +152,22 @@ export async function announceDrawOpen(t: DrawOpenTournament): Promise<AnnounceR
         continue
       }
       if (!isEmailEnabled(u.email_notifications, u.email_preferences, 'draw_open')) continue
+
+      const position = ranks.get(u.id)
       recipients.push({
         to: u.email,
-        tournamentName: t.name,
-        tournamentId: t.id,
-        tournamentFlagEmoji: t.flagEmoji,
-        closeDate: t.closeDate,
         unsubscribeToken: u.unsubscribe_token,
         username: u.username ?? undefined,
+        tournament,
+        rank: position
+          ? { position, total: rankedTotal, points: u.ranking_points ?? 0 }
+          : null,
       })
     }
     result.emailed = await sendDrawOpenEmails(recipients)
 
     console.log(
-      `[announceDrawOpen] ${t.name}: ${result.notified} notified, ` +
+      `[announceDrawOpen] ${tournament.name}: ${result.notified} notified, ` +
       `${result.emailed}/${recipients.length} emailed (${users.length} users scanned` +
       `${missingToken ? `, ${missingToken} skipped for missing unsubscribe_token` : ''})`,
     )

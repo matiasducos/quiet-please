@@ -281,20 +281,7 @@ export async function saveManualDraw(
       .eq('id', tournamentId)
 
     // Notify + email all users that predictions are now open
-    const { data: t } = await admin
-      .from('tournaments')
-      .select('name, location, flag_emoji, draw_close_at')
-      .eq('id', tournamentId)
-      .single()
-    if (t) {
-      await announceDrawOpen({
-        id: tournamentId,
-        name: t.name,
-        location: t.location ?? null,
-        flagEmoji: t.flag_emoji ?? null,
-        closeDate: t.draw_close_at ?? null,
-      })
-    }
+    await announceDrawOpen(tournamentId)
   }
 
   return { ok: true, matchCount: allMatches.length }
@@ -1242,13 +1229,7 @@ export async function buildDraw(
     .eq('id', tournamentId)
 
   // Notify + email users
-  await announceDrawOpen({
-    id: tournamentId,
-    name: tournament.name,
-    location: tournament.location ?? null,
-    flagEmoji: tournament.flag_emoji ?? null,
-    closeDate: (tournament as { draw_close_at?: string | null }).draw_close_at ?? null,
-  })
+  await announceDrawOpen(tournamentId)
 
   revalidateTag('tournament-detail', 'default')
   revalidateTag('tournament-list', 'default')

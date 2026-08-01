@@ -67,35 +67,158 @@ function unsubscribeFooter(
     </div>`
 }
 
+export interface DrawOpenTournamentInfo {
+  id: string
+  name: string
+  /** "City, Country" as stored on the tournament row. */
+  location: string | null
+  flagEmoji: string | null
+  tour: string | null
+  category: string | null
+  surface: string | null
+  drawSize: number | null
+  startsAt: string | null
+  endsAt: string | null
+  closeDate: string | null
+  /** Points for picking the champion — the headline prize for this category. */
+  winnerPoints: number | null
+}
+
+/** The recipient's own standing, so the email says something about THEM. */
+export interface DrawOpenRank {
+  position: number
+  total: number
+  points: number
+}
+
 export interface DrawOpenEmail {
   to: string
-  tournamentName: string
-  tournamentId: string
-  tournamentFlagEmoji: string | null
-  closeDate: string | null
   unsubscribeToken: string
+  tournament: DrawOpenTournamentInfo
+  /** null for players who haven't scored yet — they get an invitation instead. */
+  rank: DrawOpenRank | null
   /** Used to deep-link the recipient's own Email preferences panel. */
   username?: string
 }
 
+const CATEGORY_LABEL: Record<string, string> = {
+  grand_slam: 'Grand Slam',
+  masters_1000: 'Masters 1000',
+  '500': '500',
+  '250': '250',
+}
+
+/** "Masters 1000" alone is ambiguous across tours; "Grand Slam" already isn't. */
+function categoryLabel(tour: string | null, category: string | null): string | null {
+  if (!category) return null
+  const base = CATEGORY_LABEL[category]
+  if (!base) return null
+  if (category === 'grand_slam') return base
+  return tour ? `${tour} ${base}` : base
+}
+
+/** "2–9 August" when one month, "28 July – 3 August" when it straddles two. */
+function dateRange(startsAt: string | null, endsAt: string | null): string | null {
+  if (!startsAt) return null
+  const s = new Date(startsAt)
+  if (Number.isNaN(s.getTime())) return null
+  const month = (d: Date) => d.toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' })
+  const day = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', timeZone: 'UTC' })
+  if (!endsAt) return `${day(s)} ${month(s)}`
+  const e = new Date(endsAt)
+  if (Number.isNaN(e.getTime())) return `${day(s)} ${month(s)}`
+  return month(s) === month(e)
+    ? `${day(s)}–${day(e)} ${month(s)}`
+    : `${day(s)} ${month(s)} – ${day(e)} ${month(e)}`
+}
+
+const nf = new Intl.NumberFormat('en-GB')
+
 function drawOpenSubject(o: DrawOpenEmail) {
-  return `Draw open: ${o.tournamentName}`
+  const flag = o.tournament.flagEmoji ? `${o.tournament.flagEmoji} ` : ''
+  return `${flag}Draw open: ${o.tournament.name}`
 }
 
 function drawOpenHtml(o: DrawOpenEmail) {
-  const closeLine = o.closeDate
-    ? `<p style="color:#6b6b6b;font-size:14px;">Picks close on <strong>${new Date(o.closeDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</strong>.</p>`
+  const t = o.tournament
+  const prefsHref = o.username
+    ? `${BASE_URL}/profile/${encodeURIComponent(o.username)}#email-preferences`
+    : undefined
+
+  // Meta line: "ATP Masters 1000 · Hard · 128 draw". Every part is optional
+  // because manually-entered tournaments don't always carry all of them.
+  const facts = [
+    categoryLabel(t.tour, t.category),
+    t.surface ? t.surface.charAt(0).toUpperCase() + t.surface.slice(1) : null,
+    t.drawSize ? `${t.drawSize} draw` : null,
+  ].filter(Boolean)
+
+  const dates = dateRange(t.startsAt, t.endsAt)
+
+  const closeLine = t.closeDate
+    ? `<tr><td style="padding:14px 0 0;font-family:Georgia,serif;font-size:13px;color:#b3392c;">
+         Picks close ${new Date(t.closeDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}.
+       </td></tr>`
     : ''
-  const prefsHref = o.username ? `${BASE_URL}/profile/${encodeURIComponent(o.username)}#email-preferences` : undefined
+
+  // The engagement block. A ranked player sees where they stand; someone who
+  // hasn't scored yet is told how to get on the board rather than being shown
+  // a last-place number, which reads as a reason not to bother.
+  const standing = o.rank
+    ? `
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;background:#ffffff;border:1px solid #e8e3d8;border-radius:3px;margin:0 0 24px;">
+        <tr>
+          <td style="padding:16px 18px;">
+            <p style="margin:0 0 6px;font-family:Georgia,serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8a867e;">Where you stand</p>
+            <p style="margin:0;font-family:Georgia,serif;font-size:20px;color:#0d0d0d;">
+              <strong>#${nf.format(o.rank.position)}</strong>
+              <span style="font-size:14px;color:#6b6b6b;"> of ${nf.format(o.rank.total)} worldwide</span>
+            </p>
+            <p style="margin:4px 0 0;font-family:Georgia,serif;font-size:13px;color:#6b6b6b;">${nf.format(o.rank.points)} ranking points</p>
+          </td>
+        </tr>
+      </table>`
+    : `
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;background:#ffffff;border:1px solid #e8e3d8;border-radius:3px;margin:0 0 24px;">
+        <tr>
+          <td style="padding:16px 18px;">
+            <p style="margin:0 0 6px;font-family:Georgia,serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8a867e;">Where you stand</p>
+            <p style="margin:0;font-family:Georgia,serif;font-size:16px;color:#0d0d0d;">Not on the board yet.</p>
+            <p style="margin:4px 0 0;font-family:Georgia,serif;font-size:13px;color:#6b6b6b;">One correct pick is all it takes to get a ranking.</p>
+          </td>
+        </tr>
+      </table>`
+
+  const prize = t.winnerPoints
+    ? `<p style="margin:0 0 28px;font-family:Georgia,serif;font-size:13px;color:#6b6b6b;text-align:center;">
+         Pick the champion and take <strong style="color:#1a6b3c;">${nf.format(t.winnerPoints)} points</strong>.
+       </p>`
+    : ''
+
   return `
       <div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#f5f2eb;">
-        <p style="font-size:12px;letter-spacing:0.08em;color:#6b6b6b;text-transform:uppercase;margin-bottom:24px;">Quiet Please</p>
-        <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 12px;">The draw is open.</h1>
-        <p style="color:#6b6b6b;font-size:16px;margin-bottom:8px;">${o.tournamentFlagEmoji ? `${o.tournamentFlagEmoji} ` : ''}${o.tournamentName}</p>
-        ${closeLine}
-        <div style="margin-top:28px;">
-          <a href="${BASE_URL}/tournaments/${o.tournamentId}"
-             style="display:inline-block;background:#1a6b3c;color:white;text-decoration:none;padding:12px 24px;font-size:14px;border-radius:2px;">
+        <p style="font-size:12px;letter-spacing:0.08em;color:#6b6b6b;text-transform:uppercase;margin:0 0 24px;">Quiet Please</p>
+        <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 20px;">The draw is open.</h1>
+
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 24px;padding:0;border-top:1px solid #e8e3d8;border-bottom:1px solid #e8e3d8;">
+          <tr>
+            <td style="padding:18px 0 0;font-family:Georgia,serif;font-size:19px;line-height:1.3;color:#0d0d0d;">
+              ${t.flagEmoji ? `${t.flagEmoji} ` : ''}${t.name}
+            </td>
+          </tr>
+          ${t.location ? `<tr><td style="padding:6px 0 0;font-family:Georgia,serif;font-size:14px;color:#6b6b6b;">${t.location}</td></tr>` : ''}
+          ${facts.length ? `<tr><td style="padding:4px 0 0;font-family:Georgia,serif;font-size:13px;color:#8a867e;">${facts.join(' · ')}</td></tr>` : ''}
+          ${dates ? `<tr><td style="padding:4px 0 0;font-family:Georgia,serif;font-size:13px;color:#8a867e;">${dates}</td></tr>` : ''}
+          ${closeLine}
+          <tr><td style="padding:0 0 18px;"></td></tr>
+        </table>
+
+        ${standing}
+        ${prize}
+
+        <div style="text-align:center;">
+          <a href="${BASE_URL}/tournaments/${t.id}"
+             style="display:inline-block;background:#1a6b3c;color:#ffffff;text-decoration:none;padding:13px 28px;font-size:15px;border-radius:2px;">
             Make your picks →
           </a>
         </div>
