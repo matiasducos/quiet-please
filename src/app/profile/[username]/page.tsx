@@ -907,7 +907,10 @@ export default async function ProfilePage({
 
           {/* Email preferences */}
           {isOwnProfile && (
-            <div className="mt-10">
+            // id + scroll-margin: the unsubscribe footer on every email deep-links
+            // here (#email-preferences), and the sticky navbar would otherwise
+            // cover the heading it lands on.
+            <div className="mt-10 scroll-mt-24" id="email-preferences">
               <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em', marginBottom: '1rem' }}>
                 Email preferences
               </h2>

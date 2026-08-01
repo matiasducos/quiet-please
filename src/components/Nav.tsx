@@ -186,7 +186,10 @@ export default function Nav({ username, activePage, userId, deletionRequestedAt 
 
               {/* User menu — <details> dropdown, no JS */}
               <details className="user-menu">
-                <summary aria-label="User menu">
+                {/* data-tour: the dashboard tour points here for "where your
+                    account and email preferences live". Unlike the nav links
+                    above (hidden below md) this is visible at every width. */}
+                <summary aria-label="User menu" data-tour="user-menu">
                   <span className="avatar-circle" aria-hidden="true">
                     {username!.charAt(0)}
                   </span>

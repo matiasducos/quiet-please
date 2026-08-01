@@ -3,6 +3,7 @@
 import { revalidateTag } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient, listAllUsers } from '@/lib/supabase/admin'
+import { announceDrawOpen } from '@/lib/announce-draw-open'
 import { COUNTRIES, codeToFlag } from './countries'
 
 /** Look up a country name and return its flag emoji, or null if not found. */
@@ -279,27 +280,20 @@ export async function saveManualDraw(
       .update({ status: 'accepting_predictions' })
       .eq('id', tournamentId)
 
-    // Notify all users that predictions are now open
-    try {
-      const { data: t } = await admin
-        .from('tournaments')
-        .select('name, location, flag_emoji, draw_close_at')
-        .eq('id', tournamentId)
-        .single()
-      const allUsers = await listAllUsers(admin)
-      if (allUsers.length > 0 && t) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const rows = allUsers.map((u: any) => ({
-          user_id:       u.id,
-          type:          'draw_open',
-          tournament_id: tournamentId,
-          meta:          { tournament_name: t.name, tournament_location: t.location ?? null, tournament_flag_emoji: t.flag_emoji ?? null },
-        }))
-        await (admin as unknown as { from: (t: string) => { insert: (r: unknown) => Promise<unknown> } })
-          .from('notifications').insert(rows)
-      }
-    } catch (e) {
-      console.error('[saveManualDraw] notification error:', e)
+    // Notify + email all users that predictions are now open
+    const { data: t } = await admin
+      .from('tournaments')
+      .select('name, location, flag_emoji, draw_close_at')
+      .eq('id', tournamentId)
+      .single()
+    if (t) {
+      await announceDrawOpen({
+        id: tournamentId,
+        name: t.name,
+        location: t.location ?? null,
+        flagEmoji: t.flag_emoji ?? null,
+        closeDate: t.draw_close_at ?? null,
+      })
     }
   }
 
@@ -1067,7 +1061,7 @@ export async function getTournamentWithDraw(tournamentId: string): Promise<{
 
   const { data: tournament, error: tErr } = await admin
     .from('tournaments')
-    .select('id, name, external_id, tour, category, status, draw_size, starts_at, location, flag_emoji')
+    .select('id, name, external_id, tour, category, status, draw_size, starts_at, location, flag_emoji, draw_close_at')
     .eq('id', tournamentId)
     .single()
 
@@ -1247,23 +1241,14 @@ export async function buildDraw(
     .update({ status: 'accepting_predictions' })
     .eq('id', tournamentId)
 
-  // Notify users
-  try {
-    const allUsers = await listAllUsers(admin)
-    if (allUsers.length > 0) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rows = allUsers.map((u: any) => ({
-        user_id: u.id,
-        type: 'draw_open',
-        tournament_id: tournamentId,
-        meta: { tournament_name: tournament.name, tournament_location: tournament.location ?? null, tournament_flag_emoji: tournament.flag_emoji ?? null },
-      }))
-      await (admin as unknown as { from: (t: string) => { insert: (r: unknown) => Promise<unknown> } })
-        .from('notifications').insert(rows)
-    }
-  } catch (e) {
-    console.error('[buildDraw] notification error:', e)
-  }
+  // Notify + email users
+  await announceDrawOpen({
+    id: tournamentId,
+    name: tournament.name,
+    location: tournament.location ?? null,
+    flagEmoji: tournament.flag_emoji ?? null,
+    closeDate: (tournament as { draw_close_at?: string | null }).draw_close_at ?? null,
+  })
 
   revalidateTag('tournament-detail', 'default')
   revalidateTag('tournament-list', 'default')

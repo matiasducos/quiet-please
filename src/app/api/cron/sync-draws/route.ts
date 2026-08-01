@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { revalidateTag } from 'next/cache'
-import { createAdminClient, listAllUsers } from '@/lib/supabase/admin'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { tennisAdapter } from '@/lib/tennis'
 import { buildQualifierRemaps, type QualifierRemap, type DrawLike } from '@/lib/tennis/qualifier-remap'
-import { sendDrawOpenEmail, isBotEmail } from '@/lib/email'
-import { isEmailEnabled, type EmailPreferences } from '@/lib/email-preferences'
+import { announceDrawOpen } from '@/lib/announce-draw-open'
 import { withCronLogging } from '@/lib/cron-logger'
 import type { Json } from '@/types/database'
 
@@ -187,76 +186,17 @@ export async function GET(request: Request) {
         // Main draw now has named players — open predictions and notify all users.
         await supabase.from('tournaments').update({ status: 'accepting_predictions' }).eq('id', tournament.id)
 
-        try {
-          const allUsers = await listAllUsers(supabase)
-          if (allUsers.length > 0) {
-            const notificationRows = allUsers.map((u: any) => ({
-              user_id:       u.id,
-              type:          'draw_open',
-              tournament_id: tournament.id,
-              meta:          { tournament_name: tournament.name, tournament_location: tournament.location ?? null, tournament_flag_emoji: tournament.flag_emoji ?? null },
-            }))
-            await (supabase as any).from('notifications').insert(notificationRows)
-          }
-          // Fetch email preferences to respect unsubscribe — paginated, since
-          // PostgREST silently caps unbounded selects at 1000 rows. Without
-          // this, users past #1000 fall out of prefsMap and isEmailEnabled()
-          // defaults them to "subscribed", so unsubscribed users got emailed
-          // anyway, with an empty (broken) unsubscribe token.
-          type UserPrefsRow = {
-            id: string
-            email_notifications: boolean | null
-            email_preferences: Partial<EmailPreferences> | null
-            unsubscribe_token: string | null
-          }
-          const userPrefs: UserPrefsRow[] = []
-          {
-            const PREFS_PAGE = 1000
-            let from = 0
-            while (true) {
-              const { data: page, error: prefsErr } = await supabase
-                .from('users')
-                .select('id, email_notifications, email_preferences, unsubscribe_token')
-                .range(from, from + PREFS_PAGE - 1)
-              if (prefsErr) throw new Error(`user prefs query failed: ${prefsErr.message}`)
-              if (!page?.length) break
-              userPrefs.push(...(page as UserPrefsRow[]))
-              if (page.length < PREFS_PAGE) break
-              from += PREFS_PAGE
-            }
-          }
-          const prefsMap = new Map(userPrefs.map(p => [p.id, p]))
-
-          const emailRecipients = allUsers.filter((u: any) => {
-            if (!u.email || isBotEmail(u.email)) return false
-            const prefs = prefsMap.get(u.id)
-            return isEmailEnabled(prefs?.email_notifications, prefs?.email_preferences, 'draw_open')
-          })
-
-          // Send in batches of 10 rather than all at once — firing thousands of
-          // concurrent Resend calls trips its rate limit (same batching as award-points).
-          let emailFailed = 0
-          for (let i = 0; i < emailRecipients.length; i += 10) {
-            const results = await Promise.allSettled(
-              emailRecipients.slice(i, i + 10).map((u: any) => sendDrawOpenEmail({
-                to:                  u.email,
-                tournamentName:      tournament.name,
-                tournamentId:        tournament.id,
-                tournamentFlagEmoji: tournament.flag_emoji ?? null,
-                closeDate:           tournament.draw_close_at ?? null,
-                unsubscribeToken:    prefsMap.get(u.id)?.unsubscribe_token ?? '',
-              })),
-            )
-            emailFailed += results.filter(r => r.status === 'rejected').length
-          }
-          console.log(
-            `[sync-draws] Notified ${allUsers.length} users for ${tournament.name}` +
-            (emailFailed ? ` (${emailFailed} email errors)` : ''),
-          )
-        } catch (notifyErr) {
-          console.error('[sync-draws] notification error:', notifyErr)
-          Sentry.captureException(notifyErr)
-        }
+        // Shared with the two admin publish paths (saveManualDraw / buildDraw)
+        // so an automated sync and a hand-entered draw announce identically —
+        // same opt-out handling, same per-type unsubscribe footer.
+        const { notified, emailed } = await announceDrawOpen({
+          id: tournament.id,
+          name: tournament.name,
+          location: tournament.location ?? null,
+          flagEmoji: tournament.flag_emoji ?? null,
+          closeDate: tournament.draw_close_at ?? null,
+        })
+        console.log(`[sync-draws] "${tournament.name}": ${notified} notified, ${emailed} emailed`)
       }
       // If already accepting_predictions: no status change, just refresh draw data.
 

@@ -1,6 +1,6 @@
 import { Resend } from 'resend'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { type EmailPrefKey, isEmailEnabled } from '@/lib/email-preferences'
+import { type EmailPrefKey, EMAIL_PREF_LABELS, isEmailEnabled } from '@/lib/email-preferences'
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 const FROM = process.env.EMAIL_FROM ?? 'Quiet Please <notifications@quietplease.app>'
@@ -21,49 +21,138 @@ export function isBotEmail(email: string): boolean {
   return email.endsWith('@bot.quietplease.app')
 }
 
-function unsubscribeFooter(unsubscribeToken: string) {
-  const url = `${BASE_URL}/api/unsubscribe?token=${unsubscribeToken}`
+/**
+ * @param prefKey  When given, the footer leads with a one-click opt-out for
+ *                 THIS kind of email only, and "unsubscribe from everything"
+ *                 becomes the secondary option. Use it for mail the user did
+ *                 not trigger by an action of their own — draw announcements go
+ *                 to the entire user base, so "stop these" has to be at least
+ *                 as easy to find as "stop all", or people reach for the spam
+ *                 button instead.
+ * @param prefsHref Deep link to the user's own Email preferences panel. Passing
+ *                 it is what makes per-type control discoverable from the inbox.
+ */
+function unsubscribeFooter(
+  unsubscribeToken: string,
+  prefKey?: EmailPrefKey,
+  prefsHref?: string,
+) {
+  const allUrl = `${BASE_URL}/api/unsubscribe?token=${unsubscribeToken}`
+  const link = (href: string, text: string) =>
+    `<a href="${href}" style="color:#999;text-decoration:underline;">${text}</a>`
+
+  const manageLine = prefsHref
+    ? `<br/>Or ${link(prefsHref, 'choose which emails you get')}.`
+    : ''
+
+  if (prefKey) {
+    const oneUrl = `${allUrl}&type=${prefKey}`
+    const label = EMAIL_PREF_LABELS[prefKey].label.toLowerCase()
+    return `
+    <div style="margin-top:40px;padding-top:20px;border-top:1px solid #e8e3d8;">
+      <p style="font-size:11px;color:#999;line-height:1.5;">
+        You received this email because you have an account on Quiet Please.<br/>
+        ${link(oneUrl, `Unsubscribe from ${label} emails`)} — you'll still get your other notifications.<br/>
+        ${link(allUrl, 'Unsubscribe from all emails')}.${manageLine}
+      </p>
+    </div>`
+  }
+
   return `
     <div style="margin-top:40px;padding-top:20px;border-top:1px solid #e8e3d8;">
       <p style="font-size:11px;color:#999;line-height:1.5;">
         You received this email because you have an account on Quiet Please.<br/>
-        <a href="${url}" style="color:#999;text-decoration:underline;">Unsubscribe</a> from all email notifications.
+        ${link(allUrl, 'Unsubscribe')} from all email notifications.${manageLine}
       </p>
     </div>`
 }
 
-export async function sendDrawOpenEmail(opts: {
+export interface DrawOpenEmail {
   to: string
   tournamentName: string
   tournamentId: string
   tournamentFlagEmoji: string | null
   closeDate: string | null
   unsubscribeToken: string
-}) {
-  if (!canSend()) return
-  const closeLine = opts.closeDate
-    ? `<p style="color:#6b6b6b;font-size:14px;">Picks close on <strong>${new Date(opts.closeDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</strong>.</p>`
+  /** Used to deep-link the recipient's own Email preferences panel. */
+  username?: string
+}
+
+function drawOpenSubject(o: DrawOpenEmail) {
+  return `Draw open: ${o.tournamentName}`
+}
+
+function drawOpenHtml(o: DrawOpenEmail) {
+  const closeLine = o.closeDate
+    ? `<p style="color:#6b6b6b;font-size:14px;">Picks close on <strong>${new Date(o.closeDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</strong>.</p>`
     : ''
-  await resend!.emails.send({
-    from: FROM,
-    replyTo: REPLY_TO,
-    to: opts.to,
-    subject: `Draw open: ${opts.tournamentName}`,
-    html: `
+  const prefsHref = o.username ? `${BASE_URL}/profile/${encodeURIComponent(o.username)}#email-preferences` : undefined
+  return `
       <div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#f5f2eb;">
         <p style="font-size:12px;letter-spacing:0.08em;color:#6b6b6b;text-transform:uppercase;margin-bottom:24px;">Quiet Please</p>
         <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 12px;">The draw is open.</h1>
-        <p style="color:#6b6b6b;font-size:16px;margin-bottom:8px;">${opts.tournamentFlagEmoji ? `${opts.tournamentFlagEmoji} ` : ''}${opts.tournamentName}</p>
+        <p style="color:#6b6b6b;font-size:16px;margin-bottom:8px;">${o.tournamentFlagEmoji ? `${o.tournamentFlagEmoji} ` : ''}${o.tournamentName}</p>
         ${closeLine}
         <div style="margin-top:28px;">
-          <a href="${BASE_URL}/tournaments/${opts.tournamentId}"
+          <a href="${BASE_URL}/tournaments/${o.tournamentId}"
              style="display:inline-block;background:#1a6b3c;color:white;text-decoration:none;padding:12px 24px;font-size:14px;border-radius:2px;">
             Make your picks →
           </a>
         </div>
-        ${unsubscribeFooter(opts.unsubscribeToken)}
-      </div>`,
+        ${unsubscribeFooter(o.unsubscribeToken, 'draw_open', prefsHref)}
+      </div>`
+}
+
+export async function sendDrawOpenEmail(opts: DrawOpenEmail) {
+  if (!canSend()) return
+  await resend!.emails.send({
+    from: FROM,
+    replyTo: REPLY_TO,
+    to: opts.to,
+    subject: drawOpenSubject(opts),
+    html: drawOpenHtml(opts),
   })
+}
+
+/** Resend's batch endpoint accepts at most 100 messages per request. */
+const RESEND_BATCH_LIMIT = 100
+
+/**
+ * Draw-open is the only email that fans out to the ENTIRE user base, so it's
+ * the one place per-message sends don't scale: at 10k users that's 10k HTTP
+ * round trips, which no serverless invocation will survive. Resend's batch
+ * endpoint takes 100 per request, turning that into 100 calls.
+ *
+ * Returns the number of messages accepted so callers can log and surface it —
+ * a fan-out that quietly reaches nobody is exactly the failure mode this whole
+ * change exists to fix.
+ */
+export async function sendDrawOpenEmails(recipients: DrawOpenEmail[]): Promise<number> {
+  if (!canSend() || recipients.length === 0) return 0
+  let sent = 0
+  for (let i = 0; i < recipients.length; i += RESEND_BATCH_LIMIT) {
+    const chunk = recipients.slice(i, i + RESEND_BATCH_LIMIT)
+    try {
+      const { error } = await resend!.batch.send(
+        chunk.map(r => ({
+          from: FROM,
+          replyTo: REPLY_TO,
+          to: r.to,
+          subject: drawOpenSubject(r),
+          html: drawOpenHtml(r),
+        })),
+      )
+      if (error) {
+        console.error('[email] draw-open batch failed:', error.message)
+        continue
+      }
+      sent += chunk.length
+    } catch (e) {
+      // One bad chunk must not cost the remaining recipients their email.
+      console.error('[email] draw-open batch threw:', e)
+    }
+  }
+  return sent
 }
 
 export interface PointsAwardedRoundBreakdown {
