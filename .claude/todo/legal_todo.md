@@ -13,7 +13,12 @@
 - ⬜ Add gambling disclaimer to homepage/footer: "Free prediction game for entertainment only. No real money or prizes."
 
 ## Phase 3 — Account & Email
-- ⬜ Account deletion flow (GDPR Article 17 — Right to Erasure)
+- ✅ Account deletion flow (GDPR Article 17 — Right to Erasure) — shipped in three parts, the checkbox was simply never ticked:
+  - **Self-serve**: `requestAccountDeletion()` / `cancelAccountDeletion()` (`src/app/profile/deletion-actions.ts`), typed-username confirmation, sets `users.deletion_requested_at` (migration `050`). Nav shows a pending-deletion banner while the user can still cancel.
+  - **Execution**: `/api/cron/process-deletions` nightly at 03:00 (`vercel.json`) once the 7-day grace period has elapsed.
+  - **Admin**: `/admin/users` (2026-08-02) — search, deletion-impact preview, immediate delete that skips the grace period.
+  - All three call one `deleteUserAccount()` (`src/lib/delete-user.ts`): transfers owned leagues to their longest-standing member, clears `challenges.winner_id` (its FK has no ON DELETE clause), then deletes the `auth.users` row so every child table cascades.
+  - ⚠️ No audit trail — an admin delete logs to the server console only, with no record of who removed whom.
 - ⬜ Email preferences page in account settings (re-subscribe option)
 - ⬜ Content moderation: profanity filter on usernames, display names, league names
 - ⬜ Copyright footer entity name (once LLC/entity is formed)
