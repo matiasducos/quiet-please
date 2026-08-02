@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidateTag } from 'next/cache'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient, listAllUsers } from '@/lib/supabase/admin'
 import { announceDrawOpen } from '@/lib/announce-draw-open'
@@ -115,7 +116,13 @@ export async function setTournamentStatus(
     .from('tournaments')
     .update({ status })
     .eq('id', tournamentId)
-  return error ? { ok: false, error: error.message } : { ok: true }
+  if (error) return { ok: false, error: error.message }
+
+  // Status drives what the public pages render (live vs finished), so the
+  // cached tournament reads have to be dropped or the change is invisible.
+  revalidateTag('tournament-detail', 'default')
+  revalidateTag('tournament-list', 'default')
+  return { ok: true }
 }
 
 // ── Tournament delete ─────────────────────────────────────────────────────────
@@ -789,6 +796,28 @@ export async function getScoringStatus(): Promise<ScoringTournament[]> {
 // achievement notifications. Existing notifications are left untouched — this
 // is a repair tool, not a re-announcement.
 
+/**
+ * Refuse a repair while an award-points run is in flight — mutating mid-run
+ * lets the cron write rows computed from pre-repair state. Same 10-minute
+ * staleness window as the withCronLogging guard.
+ *
+ * Returns an error message when the job is running, null when it is safe.
+ */
+async function awardPointsInFlight(admin: SupabaseClient): Promise<string | null> {
+  const staleThreshold = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+  const { data, error } = await admin
+    .from('cron_runs')
+    .select('id')
+    .eq('job_name', 'award-points')
+    .eq('status', 'running')
+    .gte('started_at', staleThreshold)
+    .limit(1)
+  if (error) return error.message
+  return data && data.length > 0
+    ? 'award-points is currently running — try again in a minute.'
+    : null
+}
+
 export interface RerunSummary {
   ledgerRowsDeleted: number
   predictionsReset: number
@@ -802,21 +831,8 @@ export async function rerunTournamentPoints(
   await assertAdmin()
   const admin = createAdminClient()
 
-  // Refuse while an award-points run is in flight — erasing mid-run could let
-  // the cron insert ledger rows computed from pre-erase state. Same 10-minute
-  // staleness window as the withCronLogging guard.
-  const staleThreshold = new Date(Date.now() - 10 * 60 * 1000).toISOString()
-  const { data: runningRows, error: runningErr } = await admin
-    .from('cron_runs')
-    .select('id')
-    .eq('job_name', 'award-points')
-    .eq('status', 'running')
-    .gte('started_at', staleThreshold)
-    .limit(1)
-  if (runningErr) return { ok: false, error: runningErr.message }
-  if (runningRows && runningRows.length > 0) {
-    return { ok: false, error: 'award-points is currently running — try again in a minute.' }
-  }
+  const busy = await awardPointsInFlight(admin)
+  if (busy) return { ok: false, error: busy }
 
   // ── 1. Snapshot affected users BEFORE the wipe (paginated) ────────────────
   // Only global predictions (challenge_id IS NULL) drive rankings/leagues.
@@ -942,6 +958,157 @@ export async function rerunTournamentPoints(
   // ── 8. Re-score everything via the existing cron — silent (no notifications) ──
   const { ok, data } = await triggerCron('award-points', { silent: '1' })
   return { ok, erased, rerun: data, ...(ok ? {} : { error: 'Erase succeeded but award-points re-run failed — run it manually from this tab.' }) }
+}
+
+// ── Revert a premature "completed" ────────────────────────────────────────────
+// Marking a tournament completed is a trigger, not a label. The award-points
+// cron reads the status as the finish line and, in the same run:
+//   - awards top-3 trophies and Perfect Prediction,
+//   - finalizes friends challenges (writing winner_id),
+//   - finalizes anonymous challenges,
+//   - expires every still-pending challenge invite for the tournament.
+// Flipping the status back on its own leaves all of that behind — a champion
+// crowned before the final was played.
+//
+// What this does NOT touch: point_ledger, predictions.points_earned, rankings,
+// leagues. Those matches really were played and their points are correct; only
+// the "the tournament is over" consequences are undone. Use
+// rerunTournamentPoints for a mis-entered result.
+//
+// Silent by design: the achievement notifications go with the badges, so a user
+// who has not opened the app since sees nothing at all. Emails already sent
+// cannot be recalled — that is the one visible trace.
+export interface RevertCompletionSummary {
+  newStatus: string
+  achievementsRemoved: number
+  notificationsRemoved: number
+  challengesReopened: number
+  challengeInvitesRestored: number
+}
+
+export async function revertTournamentCompletion(
+  tournamentId: string,
+  newStatus: 'in_progress' | 'accepting_predictions' = 'in_progress',
+): Promise<{ ok: boolean; error?: string; summary?: RevertCompletionSummary }> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  if (newStatus !== 'in_progress' && newStatus !== 'accepting_predictions') {
+    return { ok: false, error: `Invalid target status "${newStatus}"` }
+  }
+
+  const busy = await awardPointsInFlight(admin)
+  if (busy) return { ok: false, error: busy }
+
+  const { data: tournament, error: tErr } = await admin
+    .from('tournaments')
+    .select('id, status')
+    .eq('id', tournamentId)
+    .single()
+  if (tErr || !tournament) return { ok: false, error: tErr?.message ?? 'Tournament not found' }
+  if (tournament.status !== 'completed') {
+    return { ok: false, error: `Tournament is "${tournament.status}", not completed — nothing to revert.` }
+  }
+
+  // ── 1. Flip the status FIRST ──────────────────────────────────────────────
+  // Order matters: a cron run starting mid-repair would re-award every trophy
+  // we are about to delete. Removing the trigger before the consequences means
+  // the worst case is a half-cleaned state we can safely re-run, never a
+  // silently re-awarded badge.
+  const { error: statusErr } = await admin
+    .from('tournaments')
+    .update({ status: newStatus })
+    .eq('id', tournamentId)
+    .eq('status', 'completed')
+  if (statusErr) return { ok: false, error: `status update: ${statusErr.message}` }
+
+  // ── 2. Delete tournament-scoped achievements ──────────────────────────────
+  // Trophies + Perfect Prediction both carry tournament_id, so this is the
+  // complete set of badges the premature completion produced. Global milestones
+  // (tournament_id IS NULL) are one-way and stay untouched.
+  // The returned rows are what lets us find the matching notifications.
+  const { data: removedAchievements, error: achErr } = await admin
+    .from('user_achievements')
+    .delete()
+    .eq('tournament_id', tournamentId)
+    .select('user_id, achievement_key, earned_at')
+  if (achErr) return { ok: false, error: `achievements delete: ${achErr.message}` }
+
+  // ── 3. Delete the badge notifications they generated ──────────────────────
+  // notifyAchievements writes no tournament_id — only meta.achievement_key — so
+  // the achievement's earned_at is the only thing separating this award from the
+  // same (repeatable) trophy won at another event. A ±10 minute window around it
+  // is wide enough for the notification insert and far narrower than any two
+  // tournaments completing.
+  let notificationsRemoved = 0
+  const awards = removedAchievements ?? []
+  for (let i = 0; i < awards.length; i += 25) {
+    const batch = await Promise.all(
+      awards.slice(i, i + 25).map(a => {
+        const earned = new Date(a.earned_at).getTime()
+        return admin
+          .from('notifications')
+          .delete()
+          .eq('user_id', a.user_id)
+          .eq('type', 'achievement_earned')
+          .eq('meta->>achievement_key', a.achievement_key)
+          .gte('created_at', new Date(earned - 10 * 60 * 1000).toISOString())
+          .lte('created_at', new Date(earned + 10 * 60 * 1000).toISOString())
+          .select('id')
+      }),
+    )
+    for (const { data, error } of batch) {
+      if (error) return { ok: false, error: `notifications delete: ${error.message}` }
+      notificationsRemoved += data?.length ?? 0
+    }
+  }
+
+  // ── 4. Reopen the challenges the completion finalized ─────────────────────
+  // Points stay: they are recomputed from the (untouched) predictions on every
+  // run and are correct as of now. Only the verdict is withdrawn.
+  const { data: friendsReopened, error: friendsErr } = await admin
+    .from('challenges')
+    .update({ status: 'accepted', winner_id: null, updated_at: new Date().toISOString() })
+    .eq('tournament_id', tournamentId)
+    .eq('status', 'completed')
+    .eq('is_anonymous', false)
+    .select('id')
+  if (friendsErr) return { ok: false, error: `friends challenges reopen: ${friendsErr.message}` }
+
+  const { data: anonReopened, error: anonErr } = await admin
+    .from('challenges')
+    .update({ status: 'active', updated_at: new Date().toISOString() })
+    .eq('tournament_id', tournamentId)
+    .eq('status', 'completed')
+    .eq('is_anonymous', true)
+    .select('id')
+  if (anonErr) return { ok: false, error: `anonymous challenges reopen: ${anonErr.message}` }
+
+  // ── 5. Un-expire the invites the completion killed ────────────────────────
+  // Both paths that write 'expired' (this cron and respondToChallenge) fire only
+  // because the tournament was completed, so for this tournament every expired
+  // row is collateral from the mistake.
+  const { data: unexpired, error: expErr } = await admin
+    .from('challenges')
+    .update({ status: 'pending', updated_at: new Date().toISOString() })
+    .eq('tournament_id', tournamentId)
+    .eq('status', 'expired')
+    .select('id')
+  if (expErr) return { ok: false, error: `challenge invites restore: ${expErr.message}` }
+
+  revalidateTag('tournament-detail', 'default')
+  revalidateTag('tournament-list', 'default')
+
+  return {
+    ok: true,
+    summary: {
+      newStatus,
+      achievementsRemoved: awards.length,
+      notificationsRemoved,
+      challengesReopened: (friendsReopened?.length ?? 0) + (anonReopened?.length ?? 0),
+      challengeInvitesRestored: unexpired?.length ?? 0,
+    },
+  }
 }
 
 export async function getTournament(tournamentId: string): Promise<{
