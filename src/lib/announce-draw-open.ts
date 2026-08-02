@@ -1,8 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendDrawOpenEmails, isBotEmail, type DrawOpenEmail, type DrawOpenTournamentInfo } from '@/lib/email'
 import { isEmailEnabled, type EmailPreferences } from '@/lib/email-preferences'
-import { WINNER_POINTS } from '@/lib/tennis'
-import type { TournamentCategory } from '@/lib/tennis'
 
 export interface AnnounceResult {
   notified: number
@@ -53,6 +51,14 @@ function rankByUser(users: UserRow[]): Map<string, number> {
  * Announce that a tournament draw is open: an in-app notification for every
  * user, plus a draw-open email for everyone who hasn't opted out.
  *
+ * Sends at most once per tournament, guarded by `tournaments.draw_announced_at`
+ * (migration 070). Callers therefore don't have to know whether a draw has been
+ * published before: re-saving an open draw in the admin panel, or a sync-draws
+ * pass over a tournament that is already accepting predictions, is a no-op.
+ * Deliberately at-most-once rather than at-least-once — a bulk mail that goes
+ * out twice is a worse failure than one that needs re-arming by hand (clear the
+ * column to re-announce).
+ *
  * Takes only the tournament id and reads the row itself, so every caller sends
  * an identical email — three callers each passing their own subset of columns
  * is how the "picks close" line silently went missing from one path before.
@@ -73,12 +79,37 @@ export async function announceDrawOpen(tournamentId: string): Promise<AnnounceRe
   try {
     const admin = createAdminClient()
 
+    // Claim the announcement before doing any work. This is a conditional
+    // UPDATE rather than a read-then-write check because two publish paths can
+    // overlap — an admin re-saving a draw while sync-draws runs, say — and
+    // Postgres settling it by row lock is the only way exactly one of them
+    // wins. It doubles as the tournament read: PostgREST returns the updated
+    // row, so the guard costs no extra round trip.
     const { data: row, error: tErr } = await admin
       .from('tournaments')
-      .select('id, name, location, flag_emoji, tour, category, surface, draw_size, starts_at, ends_at, draw_close_at')
+      .update({ draw_announced_at: new Date().toISOString() })
       .eq('id', tournamentId)
-      .single()
-    if (tErr || !row) throw new Error(`tournament query failed: ${tErr?.message ?? 'not found'}`)
+      .is('draw_announced_at', null)
+      .select('id, name, location, flag_emoji, tour, category, surface, draw_size, starts_at, ends_at, draw_close_at')
+      .maybeSingle()
+    if (tErr) throw new Error(`tournament claim failed: ${tErr.message}`)
+    if (!row) {
+      // No row means the claim lost: either this draw was already announced or
+      // the id is wrong. Worth one extra query to say which, since this path
+      // now runs on every re-save of a live draw and a vague log would read
+      // like a failure.
+      const { data: existing } = await admin
+        .from('tournaments')
+        .select('name, draw_announced_at')
+        .eq('id', tournamentId)
+        .maybeSingle()
+      console.log(
+        existing
+          ? `[announceDrawOpen] "${existing.name}": already announced at ${existing.draw_announced_at}, skipping`
+          : `[announceDrawOpen] tournament ${tournamentId} not found, skipping`,
+      )
+      return result
+    }
 
     const tournament: DrawOpenTournamentInfo = {
       id: row.id,
@@ -92,7 +123,6 @@ export async function announceDrawOpen(tournamentId: string): Promise<AnnounceRe
       startsAt: row.starts_at ?? null,
       endsAt: row.ends_at ?? null,
       closeDate: row.draw_close_at ?? null,
-      winnerPoints: WINNER_POINTS[row.category as TournamentCategory] ?? null,
     }
 
     const users: UserRow[] = []
