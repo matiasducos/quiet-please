@@ -2,6 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { deleteUserAccount } from '@/lib/delete-user'
+import { recordAdminAction } from '@/lib/admin-audit'
 import { assertAdmin, ADMIN_IDS } from '../auth'
 
 const USERS_PAGE_SIZE = 50
@@ -175,7 +176,7 @@ export async function adminDeleteUser(
   userId: string,
   confirmUsername: string,
 ): Promise<{ ok: boolean; error?: string; transferredLeagues?: number; deactivatedLeagues?: number }> {
-  await assertAdmin()
+  const actor = await assertAdmin()
 
   // Refuse to delete an admin. Losing your own account here would also lose
   // the panel you would use to fix it.
@@ -184,9 +185,11 @@ export async function adminDeleteUser(
   }
 
   const admin = createAdminClient()
+  // Read the identity *before* deleting: this is the last moment it exists,
+  // and the audit row has nothing to resolve the id against afterwards.
   const { data: user, error } = await admin
     .from('users')
-    .select('username')
+    .select('username, email, ranking_points, created_at')
     .eq('id', userId)
     .maybeSingle()
   if (error) return { ok: false, error: `Lookup failed: ${error.message}` }
@@ -200,6 +203,22 @@ export async function adminDeleteUser(
   if (!res.ok) return { ok: false, error: res.error ?? 'Deletion failed' }
 
   console.log(`[adminDeleteUser] deleted ${userId} (${user.username})`)
+
+  await recordAdminAction({
+    actor,
+    action: 'user.delete',
+    targetType: 'user',
+    targetId: userId,
+    targetLabel: `${user.username ?? '(no username)'} <${user.email}>`,
+    meta: {
+      ranking_points: user.ranking_points ?? 0,
+      account_created_at: user.created_at,
+      leagues_transferred: res.transferredLeagues,
+      leagues_deactivated: res.deactivatedLeagues,
+      immediate: true, // skipped the 7-day self-serve grace period
+    },
+  })
+
   return {
     ok: true,
     transferredLeagues: res.transferredLeagues,
