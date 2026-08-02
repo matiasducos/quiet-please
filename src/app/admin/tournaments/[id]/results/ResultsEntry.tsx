@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
-import { saveMatchResult, clearMatchResult, setTournamentStatus, lockMatches, unlockMatches, lockRound } from '../../../actions'
+import { saveMatchResult, clearMatchResult, setTournamentStatus, revertTournamentCompletion, lockMatches, unlockMatches, lockRound } from '../../../actions'
 import { nameToFlag } from '@/app/admin/countries'
 import type { PredictionMode } from '@/lib/app-settings'
 
@@ -66,6 +66,10 @@ export default function ResultsEntry({
   const [results, setResults] = useState<MatchResult[]>(initialResults)
   const [savingMatch, setSavingMatch] = useState<string | null>(null)
   const [completeStatus, setCompleteStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error'; message?: string }>({ type: 'idle' })
+  // Local mirror of the prop so completing / un-completing swaps the controls
+  // without a round trip. The server action is the source of truth; this only
+  // moves after it succeeds.
+  const [status, setStatus] = useState(tournamentStatus)
 
   // Tracks which rounds are expanded (all collapsed by default)
   const [expandedRounds, setExpandedRounds] = useState<Set<string>>(new Set())
@@ -278,7 +282,36 @@ export default function ResultsEntry({
     setCompleteStatus({ type: 'loading' })
     const { ok, error } = await setTournamentStatus(tournamentId, 'completed')
     if (ok) {
+      setStatus('completed')
       setCompleteStatus({ type: 'success', message: 'Tournament marked as completed' })
+    } else {
+      setCompleteStatus({ type: 'error', message: error ?? 'Failed' })
+    }
+  }
+
+  async function handleRevertComplete() {
+    const confirmed = window.confirm(
+      'Un-complete this tournament?\n\n'
+      + 'This puts it back to In progress and undoes what completing it triggered:\n'
+      + '  • trophies and Perfect Prediction badges for this tournament are removed\n'
+      + '  • the badge notifications are deleted too, so players see nothing\n'
+      + '  • finalized challenges reopen and expired invites go back to pending\n\n'
+      + 'Points, rankings and leagues are NOT touched — those matches were really played.\n'
+      + 'Badge emails that already went out cannot be recalled.',
+    )
+    if (!confirmed) return
+
+    setCompleteStatus({ type: 'loading' })
+    const { ok, error, summary } = await revertTournamentCompletion(tournamentId)
+    if (ok && summary) {
+      setStatus(summary.newStatus)
+      setCompleteStatus({
+        type: 'success',
+        message: `Back to ${summary.newStatus} — ${summary.achievementsRemoved} badge(s), `
+          + `${summary.notificationsRemoved} notification(s) removed, `
+          + `${summary.challengesReopened} challenge(s) reopened, `
+          + `${summary.challengeInvitesRestored} invite(s) restored`,
+      })
     } else {
       setCompleteStatus({ type: 'error', message: error ?? 'Failed' })
     }
@@ -311,7 +344,7 @@ export default function ResultsEntry({
             Click on a player to select them as the winner.
           </p>
           <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', marginTop: '0.25rem' }}>
-            Status: {tournamentStatus}
+            Status: {status}
             {isManualLock && (
               <span style={{ marginLeft: '12px', color: '#4338ca', background: '#eef2ff', padding: '2px 8px', borderRadius: '9999px', fontSize: '0.65rem' }}>
                 Manual lock mode
@@ -603,10 +636,19 @@ export default function ResultsEntry({
           )
         })}
 
-        {/* Mark as completed — with global progress */}
-        {tournamentStatus !== 'completed' && (
-          <div className="mt-8">
-            <div className="flex items-center gap-4">
+        {/* Complete / un-complete — with global progress */}
+        <div className="mt-8">
+          <div className="flex flex-wrap items-center gap-3">
+            {status === 'completed' ? (
+              <button
+                onClick={handleRevertComplete}
+                disabled={completeStatus.type === 'loading'}
+                className="px-6 py-2 text-sm font-medium rounded-sm border transition-opacity hover:opacity-90 disabled:opacity-40"
+                style={{ background: 'white', color: '#991b1b', borderColor: '#991b1b' }}
+              >
+                {completeStatus.type === 'loading' ? 'Reverting...' : 'Un-complete Tournament'}
+              </button>
+            ) : (
               <button
                 onClick={handleMarkComplete}
                 disabled={completeStatus.type === 'loading'}
@@ -615,29 +657,31 @@ export default function ResultsEntry({
               >
                 {completeStatus.type === 'loading' ? 'Completing...' : 'Mark Tournament as Completed'}
               </button>
-              <span
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '0.75rem',
-                  color: totalResultsEntered === totalMatches ? '#166534' : 'var(--muted)',
-                  background: totalResultsEntered === totalMatches ? '#dcfce7' : 'var(--chalk)',
-                  padding: '4px 10px',
-                  borderRadius: '9999px',
-                }}
-              >
-                {totalResultsEntered}/{totalMatches} results
-              </span>
-              {completeStatus.message && (
-                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: completeStatus.type === 'error' ? '#991b1b' : '#166534' }}>
-                  {completeStatus.message}
-                </p>
-              )}
-            </div>
-            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', marginTop: '8px' }}>
-              Remember to run Award Points from the admin panel before marking as completed.
-            </p>
+            )}
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.75rem',
+                color: totalResultsEntered === totalMatches ? '#166534' : 'var(--muted)',
+                background: totalResultsEntered === totalMatches ? '#dcfce7' : 'var(--chalk)',
+                padding: '4px 10px',
+                borderRadius: '9999px',
+              }}
+            >
+              {totalResultsEntered}/{totalMatches} results
+            </span>
           </div>
-        )}
+          {completeStatus.message && (
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: completeStatus.type === 'error' ? '#991b1b' : '#166534', marginTop: '8px' }}>
+              {completeStatus.message}
+            </p>
+          )}
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', marginTop: '8px', lineHeight: 1.5 }}>
+            {status === 'completed'
+              ? 'Completed too early? Un-completing puts it back to In progress and silently removes this tournament’s badges, notifications and challenge verdicts. Points are kept.'
+              : 'Remember to run Award Points from the admin panel before marking as completed.'}
+          </p>
+        </div>
       </div>
     </main>
   )
