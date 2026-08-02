@@ -61,6 +61,10 @@ export default function ChallengeComparison({
   theirMatchPoints: Record<string, { points: number; streakMultiplier: number }>
 }) {
   const [showAll, setShowAll] = useState(false)
+  // Collapsed rather than expanded: the table's job is to show picks, so open is
+  // the default and a round that only appears under a different filter opens
+  // with it instead of silently hiding itself.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   // Player lookup spans the whole draw on purpose: a pick for a later round
   // names someone who only appears as a first-round entrant, so a per-match
@@ -152,6 +156,19 @@ export default function ChallengeComparison({
     else grouped.push({ round: r.round, rows: [r] })
   }
 
+  const allCollapsed = grouped.length > 0 && grouped.every(g => collapsed.has(g.round))
+
+  const toggleRound = (round: string) =>
+    setCollapsed(prev => {
+      const next = new Set(prev)
+      if (next.has(round)) next.delete(round)
+      else next.add(round)
+      return next
+    })
+
+  const toggleAll = () =>
+    setCollapsed(allCollapsed ? new Set() : new Set(grouped.map(g => g.round)))
+
   return (
     <div className="flex flex-col gap-4">
 
@@ -170,6 +187,15 @@ export default function ChallengeComparison({
       <div className="flex items-center gap-2 flex-wrap">
         <Toggle active={!showAll} onClick={() => setShowAll(false)} label={`Differences (${different})`} />
         <Toggle active={showAll}  onClick={() => setShowAll(true)}  label={`All (${rows.length})`} />
+        {grouped.length > 1 && (
+          <button
+            type="button"
+            onClick={toggleAll}
+            style={{ ...mono, fontSize: '0.68rem', letterSpacing: '0.03em', padding: '5px 8px', color: 'var(--muted)', textDecoration: 'underline', textUnderlineOffset: '3px' }}
+          >
+            {allCollapsed ? 'Expand' : 'Collapse'}
+          </button>
+        )}
         <span className="ml-auto flex items-center">
           <InfoBubble label="comparison">
             Every match where at least one of you made a pick. <strong>Same pick</strong> is where you
@@ -196,11 +222,41 @@ export default function ChallengeComparison({
           <p style={{ ...mono, fontSize: '0.75rem', color: 'var(--muted)', padding: '16px 12px' }}>
             You picked identically on every match — no differences to show.
           </p>
-        ) : grouped.map(g => (
+        ) : grouped.map(g => {
+          const isOpen = !collapsed.has(g.round)
+          const diffs = g.rows.filter(r => r.differs).length
+          return (
           <div key={g.round}>
-            <div style={{ ...mono, fontSize: '0.58rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)', background: '#fafaf8', padding: '5px 10px', borderBottom: '1px solid var(--chalk-dim)' }}>
-              {ROUND_LABEL[g.round] ?? g.round}
-            </div>
+            <button
+              type="button"
+              onClick={() => toggleRound(g.round)}
+              aria-expanded={isOpen}
+              aria-controls={`cmp-round-${g.round}`}
+              className="w-full flex items-center gap-2 text-left"
+              style={{ ...mono, fontSize: '0.58rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)', background: '#fafaf8', padding: '7px 10px', borderBottom: '1px solid var(--chalk-dim)', cursor: 'pointer' }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  display: 'inline-block',
+                  fontSize: '0.7rem',
+                  lineHeight: 1,
+                  color: 'var(--ink)',
+                  flexShrink: 0,
+                  transition: 'transform 0.15s ease',
+                  transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
+                }}
+              >
+                ▾
+              </span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {ROUND_LABEL[g.round] ?? g.round}
+              </span>
+              <span style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--muted)' }}>
+                {showAll && diffs > 0 ? `${diffs}/${g.rows.length} diff` : g.rows.length}
+              </span>
+            </button>
+            {isOpen && <div id={`cmp-round-${g.round}`}>
             {g.rows.map(r => (
               <div key={r.matchId} className="flex items-stretch" style={{ borderBottom: '1px solid var(--chalk-dim)' }}>
                 {r.differs ? (
@@ -230,8 +286,10 @@ export default function ChallengeComparison({
                 )}
               </div>
             ))}
+            </div>}
           </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
