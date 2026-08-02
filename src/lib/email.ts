@@ -80,8 +80,6 @@ export interface DrawOpenTournamentInfo {
   startsAt: string | null
   endsAt: string | null
   closeDate: string | null
-  /** Points for picking the champion — the headline prize for this category. */
-  winnerPoints: number | null
 }
 
 /** The recipient's own standing, so the email says something about THEM. */
@@ -189,11 +187,10 @@ function drawOpenHtml(o: DrawOpenEmail) {
         </tr>
       </table>`
 
-  const prize = t.winnerPoints
-    ? `<p style="margin:0 0 28px;font-family:Georgia,serif;font-size:13px;color:#6b6b6b;text-align:center;">
-         Pick the champion and take <strong style="color:#1a6b3c;">${nf.format(t.winnerPoints)} points</strong>.
+  // No longer keyed to the winner's points, so it renders for every category.
+  const prize = `<p style="margin:0 0 28px;font-family:Georgia,serif;font-size:13px;color:#6b6b6b;text-align:center;">
+         Make your picks and win as many points to climb the <strong style="color:#1a6b3c;">leaderboard</strong>.
        </p>`
-    : ''
 
   return `
       <div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#f5f2eb;">
