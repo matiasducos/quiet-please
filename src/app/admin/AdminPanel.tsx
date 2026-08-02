@@ -393,6 +393,16 @@ export default function AdminPanel({ tournaments, cronRuns, autoPredictStats, ap
               Manage Players
             </span>
           </Link>
+          <Link
+            href="/admin/users"
+            className="flex items-center gap-2 px-4 py-3 rounded-sm border transition-colors"
+            style={{ borderColor: 'var(--chalk-dim)', background: 'transparent', textDecoration: 'none' }}
+          >
+            <span style={{ fontSize: '1rem' }}>👥</span>
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.85rem', color: 'var(--muted)' }}>
+              Manage Users
+            </span>
+          </Link>
         </div>
 
         {/* ── Tournaments tab ── */}

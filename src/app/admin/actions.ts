@@ -2,7 +2,6 @@
 
 import { revalidateTag } from 'next/cache'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient, listAllUsers } from '@/lib/supabase/admin'
 import { announceDrawOpen } from '@/lib/announce-draw-open'
 import { COUNTRIES, codeToFlag } from './countries'
@@ -15,19 +14,8 @@ function flagForCountry(countryName: string): string | null {
 }
 
 // ── Auth guard ────────────────────────────────────────────────────────────────
-
-// Cache admin IDs at module level — parsed once per cold start, not per request
-const ADMIN_IDS = new Set(
-  (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean)
-)
-
-async function assertAdmin() {
-  if (process.env.NODE_ENV === 'development') return
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Unauthorized')
-  if (!ADMIN_IDS.has(user.id)) throw new Error('Forbidden')
-}
+// Lives in ./auth so the users panel shares one definition of "is an admin".
+import { assertAdmin } from './auth'
 
 function getBaseUrl(): string {
   // In dev: localhost. In prod: use NEXT_PUBLIC_BASE_URL or VERCEL_URL.
