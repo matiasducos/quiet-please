@@ -110,6 +110,11 @@ what remains, roughly in impact order.
 - "Share my bracket" → generates an image card
 - Per-tournament page public with top picks, current standings (SEO surface)
 - Dynamic social card per prediction
+- **Cheaper now**: the admin card renderer (PR #91) already solves fonts, flag
+  emoji and the Satori-safe template subset in `src/lib/social/`. A user-facing
+  share card is a new template + a public route, not a new pipeline. Note the
+  admin route is service-role and admin-guarded — a public one needs its own
+  auth story and caching (these are `no-store`).
 
 ### Referral Mechanics
 - "Bring 3 friends to your league and unlock X"
@@ -122,6 +127,12 @@ what remains, roughly in impact order.
 ---
 
 ## Shipped
+
+### ✅ Admin social cards for Instagram (2026-08-03, PR #91)
+- `/admin/tournaments/[id]/social` — draw published / round recap / champion, each as IG story (1080×1920) and square (1080×1080), downloaded as a real PNG
+- Preview and download share one render (blob: URL), so what you approve is the file you get
+- Migration 074 `social_match_pick_counts` backs the "% of brackets called it" line off `point_ledger`, scoped to `challenge_id is null`
+- **Two gaps this surfaced, both still open**: no draw carries seeds (DrawBuilder never collects them, so the seed badges stay dormant), and 0 of 127 Wimbledon results have a score string (score pills never render). Filling scores at results entry is free content on every recap card.
 
 ### ✅ Qualifier pick resolution + admin points re-run (2026-07-14, PR #37)
 - User-reported bug: picking a QUALIFIER placeholder showed "Your pick eliminated" after the draw resolved, and no points were awarded
