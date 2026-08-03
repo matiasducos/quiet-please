@@ -16,7 +16,8 @@
 
 ### Supabase
 - Project is NOT linked locally — migrations must be run manually in the Supabase dashboard.
-- Latest migration: `071_admin_actions.sql` (remember to bump this file when you add a new migration)
+- Latest migration: `073_backfill_tournament_series.sql` (remember to bump this file when you add a new migration)
+- Migration numbers must reflect the order they were APPLIED, not written. 066/067 are a permanent gap — those numbers were never applied to any database.
 
 ### Notifications
 - When adding a new notification type, update 4 places:

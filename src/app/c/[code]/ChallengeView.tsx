@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import BracketPredictor from '@/app/tournaments/[id]/predict/BracketPredictor'
+import BracketPredictor from '@/app/tournaments/[slug]/predict/BracketPredictor'
 import { submitOpponentPicks } from '../actions'
 import { scoreAnonymousPicks } from '@/lib/tennis/anonymous-scoring'
 import type { Round, TournamentCategory, DrawMatch } from '@/lib/tennis/types'

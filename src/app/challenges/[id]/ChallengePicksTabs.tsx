@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import BracketPredictor from '@/app/tournaments/[id]/predict/BracketPredictor'
+import BracketPredictor from '@/app/tournaments/[slug]/predict/BracketPredictor'
 import ChallengeComparison from './ChallengeComparison'
 import type { Draw } from '@/lib/tennis/types'
 

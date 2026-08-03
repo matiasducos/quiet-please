@@ -2,16 +2,25 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { notFound } from 'next/navigation'
 import BracketPredictor from '../../predict/BracketPredictor'
+import { resolveTournamentParam } from '@/lib/tournaments/series'
+
+// A per-user bracket for every tournament is one URL per user per tournament —
+// ~340k near-identical pages at 10k users. Never index these.
+export const metadata = { robots: { index: false, follow: true } }
 
 export default async function UserPicksPage({
   params,
   searchParams,
 }: {
-  params: Promise<{ id: string; username: string }>
+  params: Promise<{ slug: string; username: string }>
   searchParams: Promise<{ challenge?: string }>
 }) {
-  const { id, username } = await params
+  const { slug: routeParam, username } = await params
   const { challenge: challengeId } = await searchParams
+
+  const resolved = await resolveTournamentParam(routeParam)
+  if (!resolved) notFound()
+  const id = resolved.tournamentId
 
   // Get current viewer for access control
   const userClient = await createClient()

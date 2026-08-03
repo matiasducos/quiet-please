@@ -1,0 +1,451 @@
+import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
+import Link from 'next/link'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
+import { getNavProfile } from '@/lib/supabase/profile'
+import { canPredictForStatus } from '@/lib/app-settings'
+import Nav from '@/components/Nav'
+import TournamentMatchList from '@/components/TournamentMatchList'
+import BracketPredictor from '../predict/BracketPredictor'
+import MyTournamentPanel from '../MyTournamentPanel'
+import { buildMyTournament } from '@/lib/tennis/my-tournament'
+import type { MyTournament, DrawMatch } from '@/lib/tennis/my-tournament'
+import { parseEditionYear } from '@/lib/tournaments/slug'
+import { getEdition, isEditionIndexable } from '@/lib/tournaments/series'
+import type { EditionDetail, EditionPage } from '@/lib/tournaments/series'
+import { buildEditionMetadata, buildEditionJsonLd } from '@/lib/tournaments/seo'
+import { TIER, SURFACE_COLORS, STATUS_STYLES, formatDateRange, roundPoints, toRenderDraw } from '../tournament-ui'
+
+/**
+ * One tournament edition — /tournaments/wimbledon/2026.
+ *
+ * This is the page that carries date-specific search intent and becomes
+ * long-tail archive traffic once the event is over. It is never redirected
+ * into the hub after the fact: doing so would throw away both the archive
+ * traffic and every backlink pointing at a specific year.
+ */
+
+// Short window because live editions change as results land. Every mutation
+// path also busts the `tournament-detail` tag, so this is the safety net
+// rather than the mechanism.
+export const revalidate = 300
+
+// Editions created after the last build (a new season's rows) render on first
+// request instead of 404ing until the next deploy.
+export const dynamicParams = true
+
+type RouteParams = { slug: string; year: string }
+
+/**
+ * Statically build every edition. At ~120 events a season across both tours,
+ * ten seasons is roughly 2,400 pages — nowhere near the scale that would force
+ * a hybrid "recent + dynamicParams for the tail" split.
+ */
+export async function generateStaticParams(): Promise<RouteParams[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('tournaments')
+    .select('starts_year, tournament_series(slug)')
+    .not('series_id', 'is', null)
+    .order('starts_year', { ascending: false })
+    .limit(2000)
+
+  if (error) {
+    // Falling back to an empty list means pages render on demand rather than
+    // failing the build — dynamicParams above makes that safe.
+    console.error('[edition] generateStaticParams failed:', error.message)
+    return []
+  }
+
+  const rows = (data ?? []) as {
+    starts_year: number | null
+    tournament_series?: { slug: string } | { slug: string }[] | null
+  }[]
+
+  const seen = new Set<string>()
+  const params: RouteParams[] = []
+  for (const row of rows) {
+    const embedded = row.tournament_series
+    const slug = Array.isArray(embedded) ? embedded[0]?.slug : embedded?.slug
+    if (!slug || row.starts_year == null) continue
+    // Both tours of one edition share a URL, so dedupe.
+    const key = `${slug}/${row.starts_year}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    params.push({ slug, year: String(row.starts_year) })
+  }
+  return params
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<RouteParams>
+}): Promise<Metadata> {
+  const { slug, year: rawYear } = await params
+  const year = parseEditionYear(rawYear)
+  if (year === null) return {}
+  const page = await getEdition(slug, year)
+  if (!page) return {}
+  return buildEditionMetadata(page)
+}
+
+export default async function EditionPage({ params }: { params: Promise<RouteParams> }) {
+  const { slug, year: rawYear } = await params
+
+  // Without this guard /tournaments/wimbledon/predcit renders a 200 empty page
+  // instead of a 404 — a soft 404, which is what degrades crawl quality at scale.
+  const year = parseEditionYear(rawYear)
+  if (year === null) notFound()
+
+  const [{ user, profile }, page] = await Promise.all([getNavProfile(), getEdition(slug, year)])
+  if (!page) notFound()
+
+  const jsonLd = buildEditionJsonLd(page)
+  const indexable = isEditionIndexable(page)
+
+  return (
+    <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
+      <Nav
+        deletionRequestedAt={profile?.deletion_requested_at}
+        username={profile?.username}
+        points={profile?.ranking_points ?? 0}
+        activePage="tournaments"
+        userId={user?.id}
+      />
+
+      {/* Emitted only for pages we actually want indexed — structured data on a
+          noindex page is wasted bytes and a mixed signal. */}
+      {indexable && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      )}
+
+      <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
+        <nav
+          className="flex items-center gap-2 mb-8 flex-wrap"
+          style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}
+        >
+          <Link href="/tournaments" style={{ color: 'var(--muted)' }}>Tournaments</Link>
+          <span>/</span>
+          <Link href={`/tournaments/${page.series.slug}`} style={{ color: 'var(--muted)' }}>
+            {page.series.name}
+          </Link>
+          <span>/</span>
+          <span style={{ color: 'var(--ink)' }}>{year}</span>
+        </nav>
+
+        {page.tours.map(detail => (
+          <TourSection
+            key={detail.tournament.id}
+            page={page}
+            detail={detail}
+            userId={user?.id ?? null}
+            username={profile?.username ?? null}
+            showTourLabel={page.tours.length > 1}
+          />
+        ))}
+
+        <OtherEditions page={page} />
+      </div>
+    </main>
+  )
+}
+
+// ── One tour's worth of an edition ───────────────────────────────────────────
+
+async function TourSection({
+  page,
+  detail,
+  userId,
+  username,
+  showTourLabel,
+}: {
+  page: EditionPage
+  detail: EditionDetail
+  userId: string | null
+  username: string | null
+  showTourLabel: boolean
+}) {
+  const t = detail.tournament
+  const { series, year } = page
+
+  const tier = TIER[`${t.tour}|${t.category}`] ?? { label: t.tour, bg: '#4a5568', text: '#fff' }
+  const surface = SURFACE_COLORS[t.surface ?? 'hard']
+  const status = STATUS_STYLES[t.status]
+  const isDone = t.status === 'completed'
+  const renderDraw = toRenderDraw(detail.bracket)
+
+  const statusAllowed = await canPredictForStatus(t.status)
+
+  // User-specific data is read per request, never from the shared cache — a
+  // cached bracket would show players as still active after they had lost.
+  const myTournament = userId ? await loadMyTournament(t.id, userId, detail) : null
+
+  const resultsByMatch: Record<string, string> = Object.fromEntries(
+    detail.results.map(r => [r.external_match_id, r.winner_external_id]),
+  )
+
+  return (
+    <section className="mb-12">
+      <div className="rounded-sm border bg-white overflow-hidden mb-8" style={{ borderColor: 'var(--chalk-dim)' }}>
+        <div style={{ background: tier.bg, padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: tier.text, fontWeight: 600 }}>
+            {tier.label}{showTourLabel ? ` · ${t.tour}` : ''}
+          </span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.06em', background: status.bg, color: status.text, padding: '3px 9px', borderRadius: '2px' }}>
+            {status.label}
+          </span>
+        </div>
+
+        <div style={{ padding: '24px 20px 20px' }}>
+          {/* The H1 leads with the searched phrase — "Wimbledon 2026" — rather
+              than the sponsor name stored on the row. */}
+          <h1 className="text-3xl md:text-4xl" style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', lineHeight: 1.1, marginBottom: '6px' }}>
+            {t.flag_emoji && <span style={{ marginRight: '8px' }}>{t.flag_emoji}</span>}
+            {series.name} {year}
+          </h1>
+
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--muted)', letterSpacing: '0.03em', marginBottom: '16px' }}>
+            {t.location ? <>{t.location} · </> : null}
+            {formatDateRange(t.starts_at, t.ends_at)}
+            {t.name !== series.name ? <> · officially the {t.name}</> : null}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.08em', textTransform: 'uppercase', background: surface.bg, color: surface.text, padding: '4px 10px', borderRadius: '2px' }}>
+              {surface.label}
+            </span>
+            {t.draw_size ? (
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.08em', textTransform: 'uppercase', background: '#f1efe8', color: '#5F5E5A', padding: '4px 10px', borderRadius: '2px' }}>
+                {t.draw_size}-player draw
+              </span>
+            ) : null}
+
+            {statusAllowed && (
+              <Link
+                href={`/tournaments/${series.slug}/predict`}
+                className="px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
+                style={{ background: 'var(--court)', color: 'white', textDecoration: 'none' }}
+              >
+                {userId ? 'Make predictions' : 'Fill in this bracket — free'}
+              </Link>
+            )}
+            {(t.status === 'in_progress' || isDone) && (
+              <Link
+                href={`/leaderboard/tournaments/${t.id}`}
+                className="px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
+                style={{ background: 'white', color: 'var(--ink)', textDecoration: 'none', border: '1px solid var(--chalk-dim)' }}
+              >
+                Leaderboard
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Champion — the single most searched fact about a finished edition. */}
+      {isDone && detail.champion?.name && (
+        <div className="rounded-sm border bg-white p-5 mb-8" style={{ borderColor: 'var(--chalk-dim)' }}>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.75rem' }}>
+            {series.name} {year} champion
+          </h2>
+          <p style={{ fontSize: '1.05rem' }}>
+            <strong>{detail.champion.name}</strong>
+            {detail.champion.country ? <span style={{ color: 'var(--muted)' }}> ({detail.champion.country})</span> : null}
+            {detail.runnerUp?.name ? (
+              <> beat <strong>{detail.runnerUp.name}</strong>
+                {detail.runnerUp.country ? <span style={{ color: 'var(--muted)' }}> ({detail.runnerUp.country})</span> : null}
+                {' '}in the final.
+              </>
+            ) : ' won the title.'}
+          </p>
+          {/* Scorelines are deliberately absent: match_results.score is empty
+              for every row in the database, and inventing one would be worse
+              than omitting it. */}
+        </div>
+      )}
+
+      {myTournament && <MyTournamentPanel data={myTournament} isComplete={isDone} />}
+
+      {/* Participants — real, per-edition content, and the `competitor` list
+          backing the SportsEvent JSON-LD. */}
+      {detail.participants.length > 0 && (
+        <div className="rounded-sm border bg-white p-5 mb-8" style={{ borderColor: 'var(--chalk-dim)' }}>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.25rem' }}>
+            Players in the {series.name} {year} draw
+          </h2>
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)', marginBottom: '1rem' }}>
+            {detail.participants.length} players
+          </p>
+          <ul className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1.5" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {detail.participants.map(p => (
+              <li key={p.externalId} style={{ fontSize: '0.85rem' }}>
+                {p.name}
+                {p.country ? (
+                  <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}> · {p.country}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Upcoming matches — folded in from the old /upcoming route. */}
+      {!isDone && renderDraw && (
+        <div id="upcoming" className="mb-8">
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.75rem' }}>
+            Upcoming matches
+          </h2>
+          <TournamentMatchList
+            rounds={renderDraw.rounds}
+            matches={renderDraw.matches}
+            matchResults={detail.results}
+            mode="upcoming"
+          />
+        </div>
+      )}
+
+      {/* Full bracket — folded in from the old /results route. This is the
+          substance that keeps the page off the near-duplicate pile. */}
+      {renderDraw && (
+        <div id="draw" className="mb-8">
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.75rem' }}>
+            {isDone ? `${series.name} ${year} results — full draw` : `${series.name} ${year} draw`}
+          </h2>
+          <BracketPredictor
+            tournament={t}
+            draw={renderDraw}
+            existingPicks={{}}
+            predictionId={null}
+            username={username ?? ''}
+            returnUrl={`/tournaments/${series.slug}/${year}`}
+            matchResults={resultsByMatch}
+            readOnly
+            hideSaveButtons
+            drawResultsMode
+          />
+        </div>
+      )}
+
+      {!renderDraw && (
+        <div className="rounded-sm border bg-white p-5 mb-8" style={{ borderColor: 'var(--chalk-dim)' }}>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.5rem' }}>
+            The {series.name} {year} draw is not out yet
+          </h2>
+          <p style={{ fontSize: '0.9rem', color: 'var(--muted)', lineHeight: 1.6 }}>
+            The bracket is usually published a few days before play starts. This page
+            fills in with the full field, the order of play and round-by-round results
+            the moment it lands.
+          </p>
+        </div>
+      )}
+
+      <PointsPerRound category={t.category} />
+    </section>
+  )
+}
+
+// ── Sub-components ───────────────────────────────────────────────────────────
+
+function PointsPerRound({ category }: { category: string }) {
+  const rows = roundPoints(category)
+  return (
+    <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
+      <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.75rem' }}>
+        Points per round
+      </h2>
+      {rows.map(({ round, pts }) => (
+        <div
+          key={round}
+          className="flex items-center justify-between py-1.5 border-b last:border-0"
+          style={{ borderColor: 'var(--chalk-dim)' }}
+        >
+          <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{round}</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>{pts} pts</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function OtherEditions({ page }: { page: EditionPage }) {
+  return (
+    <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
+      <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.5rem' }}>
+        Every {page.series.name} edition
+      </h2>
+      <p style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+        See{' '}
+        <Link href={`/tournaments/${page.series.slug}`} style={{ color: 'var(--court)' }}>
+          past {page.series.name} winners, draws and results
+        </Link>
+        .
+      </p>
+    </div>
+  )
+}
+
+// ── User-specific bracket summary ────────────────────────────────────────────
+
+async function loadMyTournament(
+  tournamentId: string,
+  userId: string,
+  detail: EditionDetail,
+): Promise<MyTournament | null> {
+  const supabase = await createClient()
+
+  const { data: prediction, error } = await supabase
+    .from('predictions')
+    .select('id, picks, is_fully_locked, points_earned')
+    .eq('tournament_id', tournamentId)
+    .eq('user_id', userId)
+    .is('challenge_id', null)
+    .maybeSingle()
+
+  if (error) {
+    console.error('[edition] prediction lookup failed:', error.message)
+    return null
+  }
+
+  const picks = (prediction?.picks ?? {}) as Record<string, string>
+  if (!prediction || Object.keys(picks).length === 0) return null
+  if (detail.results.length === 0) return null
+
+  // Points are attributed per match so the panel can show which pick earned
+  // what. Scoped to this prediction id so challenge points never leak in.
+  const { data: ledger, error: ledgerError } = await supabase
+    .from('point_ledger')
+    .select('points, prediction_id, match_results(external_match_id)')
+    .eq('tournament_id', tournamentId)
+    .eq('user_id', userId)
+
+  if (ledgerError) console.error('[edition] ledger lookup failed:', ledgerError.message)
+
+  const pointsByMatch: Record<string, number> = {}
+  for (const row of (ledger ?? []) as {
+    points: number
+    prediction_id: string | null
+    match_results?: { external_match_id: string } | { external_match_id: string }[] | null
+  }[]) {
+    if (row.prediction_id !== prediction.id) continue
+    const embedded = row.match_results
+    const ext = Array.isArray(embedded) ? embedded[0]?.external_match_id : embedded?.external_match_id
+    if (ext) pointsByMatch[ext] = (pointsByMatch[ext] ?? 0) + row.points
+  }
+
+  const overrides = Object.fromEntries(
+    detail.participants.map(p => [p.externalId, { name: p.name, country: p.country }]),
+  )
+
+  return buildMyTournament({
+    picks,
+    results: detail.results,
+    matches: (detail.bracket?.matches ?? []) as unknown as DrawMatch[],
+    pointsByMatch,
+    overrides,
+  })
+}
