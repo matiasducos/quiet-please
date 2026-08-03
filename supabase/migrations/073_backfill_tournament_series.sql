@@ -121,19 +121,53 @@ update public.tournaments t
 -- ============================================================
 do $$
 declare
-  unlinked  int;
+  unmapped  int;
+  linked    int;
   series_n  int;
   dupes     int;
+  orphans   int;
+  stragglers text;
 begin
-  select count(*) into unlinked
-    from public.tournaments where series_id is null;
-  if unlinked > 0 then
-    raise exception 'Backfill incomplete: % tournament(s) still have no series_id', unlinked;
-  end if;
-
+  -- A short series count is how a mistyped external_id shows up: the CTE joins
+  -- tournaments, so a value matching no row simply produces no series.
   select count(*) into series_n from public.tournament_series;
   if series_n <> 34 then
-    raise exception 'Expected 34 series, found %', series_n;
+    raise exception
+      'Expected 34 series, found % — an external_id in the mapping matched no 2026 tournament', series_n;
+  end if;
+
+  -- Every series must have at least one edition pointing at it.
+  --
+  -- Phrased this way rather than "exactly 34 tournaments are linked" so the
+  -- check stays true on a re-run: once new rows have been given a series in
+  -- admin the total climbs above 34, which says nothing about whether THIS
+  -- backfill worked. An orphaned series does — it means the UPDATE half of the
+  -- statement did not land, and its slug URL would 404.
+  select count(*) into orphans
+    from public.tournament_series s
+   where not exists (select 1 from public.tournaments t where t.series_id = s.id);
+  if orphans > 0 then
+    raise exception
+      '% series have no linked edition — the backfill UPDATE did not apply', orphans;
+  end if;
+
+  select count(*) into linked
+    from public.tournaments where series_id is not null;
+
+  -- Tournaments outside the mapping are a NOTICE, not a failure.
+  --
+  -- Deliberately not fatal: a row added after this file was written is a
+  -- legitimate state — it simply has no series yet, which makes it noindex and
+  -- keeps it out of the sitemap until someone assigns one in admin. Aborting
+  -- here would roll back a correct backfill because of an unrelated new row.
+  select count(*) into unmapped from public.tournaments where series_id is null;
+  if unmapped > 0 then
+    select string_agg(format('%s (%s)', name, starts_year), ', ' order by starts_year desc, name)
+      into stragglers
+      from public.tournaments where series_id is null;
+    raise notice
+      'NOT BACKFILLED (%): %. These have no slug URL until a series is assigned in admin.',
+      unmapped, stragglers;
   end if;
 
   -- Every edition must be reachable at exactly one URL.
@@ -148,5 +182,5 @@ begin
     raise exception '% (series, year, tour) collision(s) — some editions share a URL', dupes;
   end if;
 
-  raise notice 'OK: % series, all tournaments linked, no URL collisions', series_n;
+  raise notice 'OK: % series, % editions linked, no URL collisions', series_n, linked;
 end $$;
