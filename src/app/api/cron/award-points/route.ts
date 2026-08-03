@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { revalidateTag } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPointsForRound, calculateStreakMultiplier, buildFeedMap } from '@/lib/tennis'
 import type { DrawMatch, Round, TournamentCategory } from '@/lib/tennis'
@@ -869,6 +870,18 @@ export async function GET(request: Request) {
     } catch (achErr) {
       console.error('[award-points] achievement checking error:', achErr)
       Sentry.captureException(achErr)
+    }
+
+    // The public hub and edition pages render results, champions and status,
+    // all of which this run can change. Bust the tags rather than leaving the
+    // pages to the 5-minute ISR window — a finished final should show a
+    // champion immediately, not on the next revalidation.
+    //
+    // Only when something actually changed: revalidating on every idle run
+    // would discard warm caches for nothing.
+    if (newResultIds.length > 0 || ledgerRows.length > 0) {
+      revalidateTag('tournament-detail', 'default')
+      revalidateTag('tournament-list', 'default')
     }
 
     return {

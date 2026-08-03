@@ -167,7 +167,15 @@ export async function updateTournamentDetails(
     .from('tournaments')
     .update(update)
     .eq('id', tournamentId)
-  return error ? { ok: false, error: error.message } : { ok: true }
+  if (error) return { ok: false, error: error.message }
+
+  // Name, dates and location are all rendered into the public hub and edition
+  // pages — including the <title>, meta description and SportsEvent JSON-LD —
+  // so an edit has to invalidate them. Without this the corrected value sat
+  // behind the ISR window while search engines kept the stale one.
+  revalidateTag('tournament-detail', 'default')
+  revalidateTag('tournament-list', 'default')
+  return { ok: true }
 }
 
 // ── Manual draw entry ─────────────────────────────────────────────────────────
