@@ -201,7 +201,7 @@ function DrawArt({ card, size }: { card: DrawCard; size: CardSize }): ReactEleme
     <Frame size={size} eyebrow="The draw is out" tournament={card.tournament} cta="Make your picks — quietplease.app">
       <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 44 : 28, flex: 1 }}>
         <StatBlock
-          value={String(card.drawSize)}
+          value={String(card.entrants)}
           label="players in the draw"
           story={story}
           note={card.countries > 1 ? `${card.countries} countries` : undefined}

@@ -63,6 +63,31 @@ const CATEGORY_LABEL: Record<string, string> = {
   '250': 'ATP/WTA 250',
 }
 
+/**
+ * The name as it should read on a card, not as it reads on a contract.
+ *
+ * Official tour names carry a sponsor clause — "National Bank Open presented by
+ * Rogers", "Mifel Tennis Open by Telcel Oppo" — which triples the title length
+ * and pushes it to three wrapped lines. Everyone calls these the National Bank
+ * Open and the Mifel Open, so the clause is dropped for display only; nothing
+ * downstream of this function stores or matches on the result.
+ */
+export function displayName(name: string): string {
+  return name.replace(/\s+(?:presented\s+)?by\s+.+$/i, '').trim() || name
+}
+
+/**
+ * Satori cannot measure text, so a title that outgrows its box just wraps and
+ * blows the layout. Stepping the size by character count is crude but total —
+ * every name lands somewhere, and the common short ones keep the full display size.
+ */
+function titleSize(name: string, story: boolean): number {
+  const base = story ? 96 : 76
+  if (name.length > 30) return Math.round(base * 0.62)
+  if (name.length > 22) return Math.round(base * 0.78)
+  return base
+}
+
 export function subtitle(t: CardTournament): string {
   return [CATEGORY_LABEL[t.category] ?? t.category, t.surface ? `${t.surface} court` : null, formatDates(t)]
     .filter(Boolean)
@@ -107,7 +132,8 @@ export function Frame({
 }) {
   const s = SAFE[size]
   const story = size === 'story'
-  const titleSize = story ? 96 : 76
+  const title = displayName(tournament.name)
+  const size_ = titleSize(title, story)
 
   return (
     <div
@@ -123,54 +149,47 @@ export function Frame({
         paddingRight: s.x,
       }}
     >
-      {/* Wordmark */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+      {/* Logo only — the wordmark is redundant next to the @quietplease handle
+          in the footer, and the mark reads better at size on a phone screen. */}
+      <div style={{ display: 'flex' }}>
         <div
           style={{
             display: 'flex',
-            width: 62,
-            height: 62,
-            borderRadius: 16,
+            width: 108,
+            height: 108,
+            borderRadius: 26,
             backgroundColor: C.court,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <div style={{ display: 'flex', fontFamily: DISPLAY, fontSize: 34, color: C.chalk }}>QP</div>
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            fontFamily: MONO,
-            fontWeight: 500,
-            fontSize: 24,
-            letterSpacing: 4,
-            textTransform: 'uppercase',
-            color: C.muted,
-          }}
-        >
-          Quiet Please
+          <div style={{ display: 'flex', fontFamily: DISPLAY, fontSize: 60, color: C.chalk }}>QP</div>
         </div>
       </div>
 
       {/* Headline block */}
       <div style={{ display: 'flex', flexDirection: 'column', marginTop: story ? 64 : 40 }}>
         <Eyebrow size={story ? 26 : 22}>{eyebrow}</Eyebrow>
+        {/* flex-start, not center: a name that wraps to two or three lines would
+            otherwise drag the flag down to the middle of the block, stranding it
+            inside the title instead of leading it. */}
         <div
           style={{
             display: 'flex',
-            alignItems: 'center',
+            alignItems: 'flex-start',
             gap: 22,
             marginTop: 18,
             fontFamily: DISPLAY,
-            fontSize: titleSize,
+            fontSize: size_,
             color: C.ink,
             lineHeight: 1.05,
           }}
         >
           {/* The flag is part of how a tournament is named across the app — never drop it. */}
-          {tournament.flagEmoji ? <div style={{ display: 'flex' }}>{tournament.flagEmoji}</div> : null}
-          <div style={{ display: 'flex' }}>{tournament.name}</div>
+          {tournament.flagEmoji ? (
+            <div style={{ display: 'flex', flexShrink: 0 }}>{tournament.flagEmoji}</div>
+          ) : null}
+          <div style={{ display: 'flex', flexDirection: 'column' }}>{title}</div>
         </div>
         <div
           style={{

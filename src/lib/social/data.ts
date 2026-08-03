@@ -44,7 +44,11 @@ export interface CardPlayer {
 export interface DrawCard {
   kind: 'draw'
   tournament: CardTournament
-  drawSize: number
+  /**
+   * People in the draw, not the bracket size — byes are empty slots and are not
+   * counted. A 64-bracket with 8 byes reports 56.
+   */
+  entrants: number
   /** Distinct countries in the draw — the one extra fact a draw always supports. */
   countries: number
   /**
@@ -134,6 +138,27 @@ interface ResultRow {
 /** Chunked so a wide draw never pushes the `.in()` list past the URL length limit. */
 const IN_CHUNK = 80
 
+/**
+ * A bye is not a player and a walkover is not a match.
+ *
+ * The two are stored differently, which is easy to get backwards:
+ *  - In the draw, a bye is a **null slot** (DrawBuilder maps 'BYE' → null).
+ *    A qualifier placeholder is the opposite — a real object, `{ externalId:
+ *    'qualifier-N', name: 'Qualifier' }`.
+ *  - In match_results, a bye is a row whose loser is the literal id 'bye' with
+ *    score 'BYE'. There are 197 such rows across the database, so a Masters
+ *    R128 recap without this filter is mostly "A. Zverev d. bye".
+ */
+const BYE_ID = 'bye'
+
+function isByeId(id: string | null | undefined): boolean {
+  return (id ?? '').trim().toLowerCase() === BYE_ID
+}
+
+function isQualifierSlot(p: RawDrawPlayer | null | undefined): boolean {
+  return !!p && (p.name === 'Qualifier' || String(p.externalId ?? '').startsWith('qualifier-'))
+}
+
 // ── Loader ────────────────────────────────────────────────────────────────────
 
 export async function getSocialCard(
@@ -175,7 +200,12 @@ export async function getSocialCard(
 
   const bracket = (drawRow?.bracket_data ?? null) as { matches?: RawDrawMatch[] } | null
   const drawMatches = bracket?.matches ?? []
-  const resultRows = (results ?? []) as ResultRow[]
+
+  // Walkovers are dropped once, here, so every consumer below is automatically
+  // bye-free: the round list, the recap, the pick-rate lookup and the final.
+  const resultRows = ((results ?? []) as ResultRow[]).filter(
+    r => !isByeId(r.winner_external_id) && !isByeId(r.loser_external_id),
+  )
 
   // Player identity comes from the draw snapshot, which is authoritative for the
   // names as they were seeded. Qualifiers and lucky losers entered later have no
@@ -191,17 +221,39 @@ export async function getSocialCard(
     }
   }
 
-  const missing = [...new Set(resultRows.flatMap(r => [r.winner_external_id, r.loser_external_id]))].filter(
-    id => id && !byId.has(id),
-  )
-  for (let i = 0; i < missing.length; i += IN_CHUNK) {
+  // Every id the card might name, resolved against the live registry — not just
+  // the ones the draw snapshot is missing.
+  //
+  // Two cases need this. A player who entered after the draw was built (a lucky
+  // loser, or a qualifier who came through) appears only in the results, so the
+  // draw has no snapshot at all; those really are the numeric registry ids —
+  // '12951' is J. Fearnley. And a name corrected in the registry after the draw
+  // was built would otherwise stay stale on the card forever, because the
+  // snapshot is a copy. Refreshing keeps posts current without changing which
+  // player an id refers to.
+  //
+  // The one thing this cannot repair is a `qualifier-N` placeholder: it has no
+  // registry row by construction, so a slot still reading "Qualifier" means the
+  // draw itself has not been updated yet.
+  const knownIds = new Set<string>([
+    ...byId.keys(),
+    ...resultRows.flatMap(r => [r.winner_external_id, r.loser_external_id]),
+  ])
+  const lookupIds = [...knownIds].filter(id => id && !id.startsWith('qualifier-'))
+
+  for (let i = 0; i < lookupIds.length; i += IN_CHUNK) {
     const { data: players, error } = await admin
       .from('players')
       .select('external_id, name, country')
-      .in('external_id', missing.slice(i, i + IN_CHUNK))
+      .in('external_id', lookupIds.slice(i, i + IN_CHUNK))
     if (error) console.error('getSocialCard: player lookup failed', error.message)
     for (const p of players ?? []) {
-      byId.set(p.external_id, { name: p.name, flag: countryToFlag(p.country), seed: null })
+      // Keep the seed, which is draw data the registry has no opinion on.
+      byId.set(p.external_id, {
+        name: p.name,
+        flag: countryToFlag(p.country),
+        seed: byId.get(p.external_id)?.seed ?? null,
+      })
     }
   }
 
@@ -209,26 +261,47 @@ export async function getSocialCard(
 
   if (kind === 'draw') {
     const firstRound = ROUND_ORDER.find(r => drawMatches.some(m => m.round === r && m.player1))
-    const opening = drawMatches.filter(m => m.round === firstRound)
-    if (!opening.length) return { ok: false, error: 'No draw has been published for this tournament yet' }
+    const firstRoundMatches = drawMatches.filter(m => m.round === firstRound)
+    if (!firstRoundMatches.length) {
+      return { ok: false, error: 'No draw has been published for this tournament yet' }
+    }
 
-    const toCard = (p: RawDrawPlayer | null): CardPlayer =>
-      p?.name
-        ? { name: p.name, flag: countryToFlag(p.country), seed: p.seed ?? null }
-        : { name: 'Qualifier', flag: '', seed: null }
+    const slots = firstRoundMatches.flatMap(m => [m.player1, m.player2])
 
-    const countries = new Set(
-      [...byId.values()].map(p => p.flag).filter(Boolean),
-    ).size
+    // Entrants, not bracket size. A 64-draw with 8 byes has 56 people in it, and
+    // "64 players in the draw" would be a false claim on a public post. A
+    // qualifier placeholder is still a person who will play, so it counts; a
+    // null slot is a bye and does not.
+    const entrants = slots.filter(p => p != null).length
+
+    // A snapshot name is only a fallback: prefer the registry entry, so a
+    // qualifier resolved (or a name fixed) after the draw was built shows up.
+    const toCard = (p: RawDrawPlayer | null): CardPlayer => {
+      if (!p) return { name: 'Bye', flag: '', seed: null }
+      const resolved = p.externalId ? byId.get(p.externalId) : undefined
+      if (resolved && !isQualifierSlot(p)) return { ...resolved, seed: p.seed ?? resolved.seed }
+      return {
+        name: p.name || 'Qualifier',
+        flag: countryToFlag(p.country),
+        seed: p.seed ?? null,
+      }
+    }
+
+    const countries = new Set([...byId.values()].map(p => p.flag).filter(Boolean)).size
 
     return {
       ok: true,
       card: {
         kind: 'draw',
         tournament,
-        drawSize: opening.length * 2,
+        entrants,
         countries,
-        opening: opening.slice(0, 6).map(m => ({ a: toCard(m.player1), b: toCard(m.player2) })),
+        // Only ties that will actually be played — "J. Sinner v Bye" is not a
+        // matchup worth putting on a story.
+        opening: firstRoundMatches
+          .filter(m => m.player1 != null && m.player2 != null)
+          .slice(0, 6)
+          .map(m => ({ a: toCard(m.player1), b: toCard(m.player2) })),
       },
     }
   }
