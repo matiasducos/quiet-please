@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import BracketPredictor from '@/app/tournaments/[id]/predict/BracketPredictor'
+import BracketPredictor from '@/app/tournaments/[slug]/predict/BracketPredictor'
 import { createAnonymousChallenge } from '@/app/c/actions'
 
 type Step = 'name' | 'picks' | 'submitting' | 'share'

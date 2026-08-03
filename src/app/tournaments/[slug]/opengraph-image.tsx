@@ -1,5 +1,6 @@
 import { ImageResponse } from 'next/og'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveTournamentParam } from '@/lib/tournaments/series'
 
 export const runtime = 'nodejs'
 export const size = { width: 1200, height: 630 }
@@ -36,14 +37,22 @@ function formatDateRange(startsAt: string | null, endsAt: string | null): string
   return `${start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} ${year}`
 }
 
-export default async function TournamentOGImage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
+export default async function TournamentOGImage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug: routeParam } = await params
+
+  // The param is a series slug for the hub and a tournament UUID for the
+  // legacy links that still redirect through here, so resolve it either way
+  // rather than assuming one shape.
+  const resolved = await resolveTournamentParam(routeParam)
+
   const supabase = createAdminClient()
-  const { data: t } = await supabase
-    .from('tournaments')
-    .select('name, tour, category, surface, starts_at, ends_at')
-    .eq('id', id)
-    .single()
+  const { data: t } = resolved
+    ? await supabase
+        .from('tournaments')
+        .select('name, tour, category, surface, starts_at, ends_at')
+        .eq('id', resolved.tournamentId)
+        .maybeSingle()
+    : { data: null }
 
   const name = t?.name ?? 'Tournament'
   const tierKey = t ? `${t.tour}|${t.category}` : ''

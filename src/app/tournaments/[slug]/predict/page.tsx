@@ -5,20 +5,32 @@ import BracketPredictor from './BracketPredictor'
 import { TEST_EXTERNAL_ID } from '@/app/test-tournaments/constants'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
 import { canPredictForStatus, isManualLockMode } from '@/lib/app-settings'
+import { resolveTournamentParam } from '@/lib/tournaments/series'
+
+// An app surface, not a landing page: it redirects signed-out visitors to
+// /login, so there is nothing here for a crawler. `follow` still lets link
+// equity pass back to the edition page.
+export const metadata = { robots: { index: false, follow: true } }
 
 export default async function PredictPage({
   params,
   searchParams,
 }: {
-  params: Promise<{ id: string }>
+  params: Promise<{ slug: string }>
   searchParams: Promise<{ challenge?: string }>
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { id } = await params
+  const { slug: routeParam } = await params
   const { challenge: challengeId } = await searchParams
+
+  // Accepts a series slug or a legacy tournament UUID — see
+  // resolveTournamentParam. Every existing in-app link passes the UUID.
+  const resolved = await resolveTournamentParam(routeParam)
+  if (!resolved) notFound()
+  const id = resolved.tournamentId
 
   // ── Parallel fetch: tournament, draw, prediction, profile, results ─────
   let predictionQuery = supabase

@@ -1,5 +1,6 @@
 import { unstable_cache } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isUuid as isUuidParam } from './slug'
 
 /**
  * Data layer for the public, indexable tournament pages.
@@ -416,6 +417,32 @@ export const resolveLegacyTournamentId = (
     ['tournament-legacy-id', id],
     { revalidate: 3600, tags: ['tournament-detail', 'tournament-list'] },
   )()
+
+/**
+ * Resolves the `[slug]` route param for the app surfaces that still address a
+ * single tournament — /predict and /picks.
+ *
+ * Accepts both forms on purpose. A UUID resolves straight through, so every
+ * existing internal link (`/tournaments/${t.id}/predict`, of which there are
+ * dozens across the dashboard, leagues and challenges) keeps working untouched
+ * rather than needing a coordinated rewrite. A slug resolves to the series'
+ * featured edition — the live or next one — which is what someone typing
+ * /tournaments/wimbledon/predict means.
+ */
+export async function resolveTournamentParam(
+  routeParam: string,
+): Promise<{ tournamentId: string; slug: string | null; year: number | null } | null> {
+  if (isUuidParam(routeParam)) {
+    const legacy = await resolveLegacyTournamentId(routeParam)
+    return { tournamentId: routeParam, slug: legacy?.slug ?? null, year: legacy?.year ?? null }
+  }
+
+  const hub = await getSeriesHub(routeParam)
+  if (!hub || hub.featuredYear == null) return null
+  const featured = hub.editions.find(e => e.year === hub.featuredYear)
+  if (!featured) return null
+  return { tournamentId: featured.tournamentId, slug: hub.series.slug, year: featured.year }
+}
 
 /**
  * Indexability gate.
