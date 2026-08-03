@@ -44,16 +44,26 @@ export function seriesVenue(series: SeriesRow, edition?: EditionDetail): string 
   return series.city ?? series.country ?? null
 }
 
+// UTC throughout: tournament dates are stored as dates, not moments, so
+// rendering them in the server's local zone can shift an event a day either way.
+const DATE_OPTS: Intl.DateTimeFormatOptions = {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+}
+
 function formatRange(startsAt: string | null, endsAt: string | null): string | null {
   if (!startsAt) return null
   const start = new Date(startsAt)
-  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' }
-  if (!endsAt) return start.toLocaleDateString('en-GB', opts)
+  if (!endsAt) return start.toLocaleDateString('en-GB', DATE_OPTS)
   const end = new Date(endsAt)
   if (start.getUTCMonth() === end.getUTCMonth()) {
     return `${start.getUTCDate()}–${end.getUTCDate()} ${start.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })}`
   }
-  return `${start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })} – ${end.toLocaleDateString('en-GB', opts)}`
+  // Both sides use the same month format — mixing 'short' and 'long' produced
+  // "29 Jun – 13 July 2026".
+  return `${start.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' })} – ${end.toLocaleDateString('en-GB', DATE_OPTS)}`
 }
 
 // ── Titles & descriptions ────────────────────────────────────────────────────

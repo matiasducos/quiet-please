@@ -214,10 +214,14 @@ export const getSeriesHub = (slug: string): Promise<SeriesHub | null> =>
         .eq('slug', slug)
         .maybeSingle()
 
-      if (seriesError) {
-        console.error('[series] hub lookup failed:', seriesError.message)
-        return null
-      }
+      // Throw rather than return null on a query ERROR.
+      //
+      // Returning null here would be indistinguishable from "this series does
+      // not exist", and unstable_cache would store that for the full revalidate
+      // window — so one transient Supabase failure 404s a live page for five
+      // minutes, and the same failure during a build bakes a 404 into a static
+      // page. Throwing leaves the cache empty and surfaces the error boundary.
+      if (seriesError) throw new Error(`[series] hub lookup failed: ${seriesError.message}`)
       if (!seriesData) return null
       const series = seriesData as SeriesRow
 
@@ -226,10 +230,7 @@ export const getSeriesHub = (slug: string): Promise<SeriesHub | null> =>
         .select(EDITION_FIELDS)
         .eq('series_id', series.id)
         .order('starts_year', { ascending: false })
-      if (editionError) {
-        console.error('[series] editions lookup failed:', editionError.message)
-        return null
-      }
+      if (editionError) throw new Error(`[series] editions lookup failed: ${editionError.message}`)
       const editions = (editionData ?? []) as EditionRow[]
       if (editions.length === 0) {
         return { series, editions: [], featuredYear: null }
@@ -290,10 +291,8 @@ export const getEdition = (slug: string, year: number): Promise<EditionPage | nu
         .select(SERIES_FIELDS)
         .eq('slug', slug)
         .maybeSingle()
-      if (seriesError) {
-        console.error('[series] edition series lookup failed:', seriesError.message)
-        return null
-      }
+      // Same reasoning as getSeriesHub: an error must not be cached as absence.
+      if (seriesError) throw new Error(`[series] edition series lookup failed: ${seriesError.message}`)
       if (!seriesData) return null
       const series = seriesData as SeriesRow
 
@@ -303,10 +302,7 @@ export const getEdition = (slug: string, year: number): Promise<EditionPage | nu
         .eq('series_id', series.id)
         .eq('starts_year', year)
         .order('tour', { ascending: true })
-      if (editionError) {
-        console.error('[series] edition lookup failed:', editionError.message)
-        return null
-      }
+      if (editionError) throw new Error(`[series] edition lookup failed: ${editionError.message}`)
       const editions = (editionData ?? []) as EditionRow[]
       if (editions.length === 0) return null
 
@@ -400,10 +396,9 @@ export const resolveLegacyTournamentId = (
         .eq('id', id)
         .maybeSingle()
 
-      if (error) {
-        console.error('[series] legacy id lookup failed:', error.message)
-        return null
-      }
+      // An error here would cache as "no such tournament" and turn a working
+      // legacy link into a permanent-looking 404.
+      if (error) throw new Error(`[series] legacy id lookup failed: ${error.message}`)
       if (!data) return null
 
       // PostgREST returns the embedded parent as an object for a many-to-one,
