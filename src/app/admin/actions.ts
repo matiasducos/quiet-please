@@ -4,6 +4,7 @@ import { revalidateTag } from 'next/cache'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient, listAllUsers } from '@/lib/supabase/admin'
 import { announceDrawOpen } from '@/lib/announce-draw-open'
+import { slugErrorMessage } from '@/lib/tournaments/slug'
 import { COUNTRIES, codeToFlag } from './countries'
 
 /** Look up a country name and return its flag emoji, or null if not found. */
@@ -513,6 +514,61 @@ export async function searchPlayers(
 
 // ── Manual tournament creation ────────────────────────────────────────────────
 
+export interface AdminSeriesOption {
+  id: string
+  slug: string
+  name: string
+  /** Years already taken, so the form can warn before the unique index does. */
+  years: number[]
+}
+
+/**
+ * Series for the create-tournament picker, newest activity first.
+ *
+ * Every new tournament is an EDITION of some series — that is what gives it a
+ * URL. Picking an existing series is the common path from the second season
+ * onward; only a genuinely new event mints a slug.
+ */
+export async function listTournamentSeries(): Promise<AdminSeriesOption[]> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  const { data, error } = await admin
+    .from('tournament_series')
+    .select('id, slug, name, tournaments(starts_year)')
+    .order('name', { ascending: true })
+    .limit(500)
+
+  if (error) {
+    console.error('[admin] listTournamentSeries failed:', error.message)
+    return []
+  }
+
+  return ((data ?? []) as {
+    id: string
+    slug: string
+    name: string
+    tournaments?: { starts_year: number | null }[] | null
+  }[]).map(row => ({
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    years: [...new Set((row.tournaments ?? []).map(t => t.starts_year).filter((y): y is number => y != null))]
+      .sort((a, b) => b - a),
+  }))
+}
+
+/**
+ * How the new tournament attaches to a series.
+ *
+ * `existing` is the common case from the second season on. `new` mints a slug,
+ * which is permanent — there is deliberately no way to change it later, since
+ * a moved URL discards every backlink pointing at it.
+ */
+export type SeriesSelection =
+  | { mode: 'existing'; seriesId: string }
+  | { mode: 'new'; slug: string; name: string; shortName?: string }
+
 export async function createTournament(data: {
   name: string
   tour: 'ATP' | 'WTA'
@@ -522,7 +578,8 @@ export async function createTournament(data: {
   surface: 'hard' | 'clay' | 'grass'
   startsAt: string
   drawSize: 32 | 64 | 128
-}): Promise<{ ok: boolean; tournamentId?: string; error?: string }> {
+  series: SeriesSelection
+}): Promise<{ ok: boolean; tournamentId?: string; slugUrl?: string; error?: string }> {
   await assertAdmin()
 
   const external_id = normalizePlayerId(data.name)
@@ -536,6 +593,60 @@ export async function createTournament(data: {
 
   const admin = createAdminClient()
   const flag = flagForCountry(data.country)
+  const location = `${data.city.trim()}, ${data.country.trim()}`
+
+  // ── Resolve the series first ───────────────────────────────────────────────
+  // Done before the tournament insert so a rejected slug fails cleanly rather
+  // than leaving an orphan tournament with no URL.
+  let seriesId: string
+  let seriesSlug: string
+
+  if (data.series.mode === 'existing') {
+    const { data: existing, error: lookupError } = await admin
+      .from('tournament_series')
+      .select('id, slug')
+      .eq('id', data.series.seriesId)
+      .maybeSingle()
+
+    if (lookupError) return { ok: false, error: lookupError.message }
+    if (!existing) return { ok: false, error: 'That series no longer exists.' }
+    seriesId = (existing as { id: string }).id
+    seriesSlug = (existing as { slug: string }).slug
+  } else {
+    const slug = data.series.slug.trim()
+    // Mirrors the CHECK constraints in 072 so the failure is a readable message
+    // rather than a Postgres constraint name.
+    const problem = slugErrorMessage(slug)
+    if (problem) return { ok: false, error: `URL slug: ${problem}` }
+
+    const seriesName = data.series.name.trim() || data.name.trim()
+
+    const { data: created, error: seriesError } = await admin
+      .from('tournament_series')
+      .insert({
+        slug,
+        name: seriesName,
+        short_name: data.series.shortName?.trim() || seriesName,
+        city: data.city.trim() || null,
+        country: data.country.trim() || null,
+        flag_emoji: flag,
+        surface: data.surface,
+        category: data.category,
+        // A human typed this slug on the form, so it is reviewed by definition.
+        slug_reviewed: true,
+      })
+      .select('id, slug')
+      .single()
+
+    if (seriesError) {
+      if (seriesError.code === '23505') {
+        return { ok: false, error: `The URL slug "${slug}" is already taken. Pick another.` }
+      }
+      return { ok: false, error: seriesError.message }
+    }
+    seriesId = (created as { id: string }).id
+    seriesSlug = (created as { slug: string }).slug
+  }
 
   const { data: tournament, error } = await admin
     .from('tournaments')
@@ -545,7 +656,7 @@ export async function createTournament(data: {
       tour: data.tour,
       category: data.category,
       surface: data.surface,
-      location: `${data.city.trim()}, ${data.country.trim()}`,
+      location,
       flag_emoji: flag,
       starts_at: startsAt.toISOString(),
       ends_at: endsAt.toISOString(),
@@ -553,17 +664,35 @@ export async function createTournament(data: {
       draw_size: data.drawSize,
       is_manual: true,
       status: 'upcoming',
+      series_id: seriesId,
     })
     .select('id')
     .single()
 
   if (error) {
     if (error.code === '23505') {
-      return { ok: false, error: `A tournament with slug "${external_id}" already exists for ${starts_year}. Try a different name.` }
+      // Two different unique indexes can land here, and they mean different
+      // things to whoever is filling in the form.
+      const isSeriesYearTour = error.message.includes('tournaments_series_year_tour_key')
+      return {
+        ok: false,
+        error: isSeriesYearTour
+          ? `A ${data.tour} edition of that series already exists for ${starts_year} — /tournaments/${seriesSlug}/${starts_year} is taken.`
+          : `A tournament with external_id "${external_id}" already exists for ${starts_year}. Try a different name.`,
+      }
     }
     return { ok: false, error: error.message }
   }
-  return { ok: true, tournamentId: tournament.id }
+
+  // The new edition changes both the hub and the tournament list.
+  revalidateTag('tournament-detail', 'default')
+  revalidateTag('tournament-list', 'default')
+
+  return {
+    ok: true,
+    tournamentId: tournament.id,
+    slugUrl: `/tournaments/${seriesSlug}/${starts_year}`,
+  }
 }
 
 export interface AdminTournament {

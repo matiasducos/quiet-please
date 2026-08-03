@@ -3,20 +3,11 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { createTournament } from '../../actions'
+import { createTournament, type AdminSeriesOption } from '../../actions'
 import CountrySelect from '../../CountrySelect'
+import { slugify, slugErrorMessage } from '@/lib/tournaments/slug'
 
-function nameToSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-}
-
-export default function TournamentCreator() {
+export default function TournamentCreator({ series: seriesList }: { series: AdminSeriesOption[] }) {
   const router = useRouter()
   const [name, setName] = useState('')
   const [tour, setTour] = useState<'ATP' | 'WTA'>('ATP')
@@ -29,11 +20,39 @@ export default function TournamentCreator() {
 
   const [status, setStatus] = useState<{ type: 'idle' | 'loading' | 'error'; message?: string }>({ type: 'idle' })
 
-  const slug = nameToSlug(name)
+  // ── Series ─────────────────────────────────────────────────────────────────
+  // A tournament is an EDITION of a series, and the series owns the public URL.
+  // From the second season onward the answer is almost always "an existing
+  // one", so that is the default mode.
+  const [seriesMode, setSeriesMode] = useState<'existing' | 'new'>('existing')
+  const [seriesId, setSeriesId] = useState('')
+  const [seriesName, setSeriesName] = useState('')
+  // Only holds a value once the field has been hand-edited. The slug below is
+  // DERIVED rather than synced from `name` in an effect — the suggestion is
+  // wrong for most real tournaments (22 of the 34 currently in the database
+  // are named after a title sponsor), so an edit is a decision that must stick.
+  const [slugOverride, setSlugOverride] = useState<string | null>(null)
+
+  const slug = slugOverride ?? slugify(seriesName || name)
+
+  const year = startsAt ? new Date(startsAt).getUTCFullYear() : null
+  const selectedSeries = seriesList.find(s => s.id === seriesId) ?? null
+  const slugProblem = seriesMode === 'new' && slug ? slugErrorMessage(slug) : null
+  const slugTaken =
+    seriesMode === 'new' && slug ? seriesList.some(s => s.slug === slug) : false
+  // Warn before the unique index does: one edition per series, year and tour.
+  const yearTaken =
+    seriesMode === 'existing' && selectedSeries && year
+      ? selectedSeries.years.includes(year)
+      : false
+
+  const effectiveSlug = seriesMode === 'new' ? slug : selectedSeries?.slug ?? ''
+  const seriesReady =
+    seriesMode === 'existing' ? Boolean(seriesId) : Boolean(slug) && !slugProblem && !slugTaken
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim() || !startsAt) return
+    if (!name.trim() || !startsAt || !seriesReady) return
 
     setStatus({ type: 'loading' })
     try {
@@ -46,6 +65,10 @@ export default function TournamentCreator() {
         surface,
         startsAt,
         drawSize,
+        series:
+          seriesMode === 'existing'
+            ? { mode: 'existing', seriesId }
+            : { mode: 'new', slug, name: seriesName.trim() || name.trim() },
       })
       if (ok && tournamentId) {
         router.push(`/admin/tournaments/${tournamentId}/draw`)
@@ -103,10 +126,96 @@ export default function TournamentCreator() {
             {/* Name */}
             <div>
               <label style={labelStyle}>Tournament Name</label>
-              <input value={name} onChange={e => setName(e.target.value)} placeholder="Test Open 2026" style={{ ...inputStyle, width: '100%' }} required />
-              {slug && (
-                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', marginTop: '4px' }}>
-                  external_id: {slug}
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="Terra Wortmann Open" style={{ ...inputStyle, width: '100%' }} required />
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', marginTop: '4px' }}>
+                The branded name for this year, sponsor and all. The public URL comes from the series below.
+              </p>
+            </div>
+
+            {/* ── Series ──────────────────────────────────────────────────── */}
+            <div className="rounded-sm border p-4" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
+              <label style={{ ...labelStyle, marginBottom: '8px' }}>Series</label>
+
+              <div className="flex gap-4 mb-3" style={{ fontSize: '0.8rem' }}>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    checked={seriesMode === 'existing'}
+                    onChange={() => setSeriesMode('existing')}
+                  />
+                  Existing tournament
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    checked={seriesMode === 'new'}
+                    onChange={() => setSeriesMode('new')}
+                  />
+                  Brand new event
+                </label>
+              </div>
+
+              {seriesMode === 'existing' ? (
+                <>
+                  <select
+                    value={seriesId}
+                    onChange={e => setSeriesId(e.target.value)}
+                    style={{ ...inputStyle, width: '100%', cursor: 'pointer' }}
+                  >
+                    <option value="">Select a series…</option>
+                    {seriesList.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} — /{s.slug}
+                        {s.years.length > 0 ? ` (${s.years.join(', ')})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {yearTaken && (
+                    <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#991b1b', marginTop: '6px' }}>
+                      {selectedSeries?.name} already has a {tour} edition for {year}.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <label style={labelStyle}>Series name (sponsor-free, permanent)</label>
+                    <input
+                      value={seriesName}
+                      onChange={e => setSeriesName(e.target.value)}
+                      placeholder="Halle Open"
+                      style={{ ...inputStyle, width: '100%' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>URL slug — cannot be changed later</label>
+                    <input
+                      value={slug}
+                      onChange={e => setSlugOverride(e.target.value)}
+                      placeholder="halle-open"
+                      style={{
+                        ...inputStyle,
+                        width: '100%',
+                        borderColor: slugProblem || slugTaken ? '#ef4444' : 'var(--chalk-dim)',
+                      }}
+                    />
+                    {slugProblem || slugTaken ? (
+                      <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#991b1b', marginTop: '4px' }}>
+                        {slugTaken ? 'That slug is already taken.' : slugProblem}
+                      </p>
+                    ) : (
+                      <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', marginTop: '4px' }}>
+                        Prefer what people search over the sponsor: <strong>halle-open</strong>, not
+                        {' '}terra-wortmann-open. Sponsors change; this URL never does.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {effectiveSlug && year && (
+                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--ink)', marginTop: '10px' }}>
+                  Public URL: <strong>/tournaments/{effectiveSlug}/{year}</strong>
                 </p>
               )}
             </div>
@@ -175,7 +284,7 @@ export default function TournamentCreator() {
 
           <button
             type="submit"
-            disabled={status.type === 'loading' || !name.trim() || !startsAt}
+            disabled={status.type === 'loading' || !name.trim() || !startsAt || !seriesReady || yearTaken}
             className="mt-6 px-6 py-2 text-sm font-medium rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
             style={{ background: 'var(--court)', color: 'white' }}
           >
