@@ -2,6 +2,14 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
+  // The social-card renderer reads .ttf files off disk at request time (see
+  // src/lib/social/fonts.ts). Nothing imports them, so build-time tracing has no
+  // way to know they are needed and would leave them out of the serverless
+  // bundle — the route then 500s in production while working fine locally.
+  outputFileTracingIncludes: {
+    '/admin/tournaments/[id]/social/image': ['./src/lib/social/fonts/*.ttf'],
+  },
+
   // PostHog is proxied through our own origin rather than called directly, for
   // the same two reasons Sentry uses tunnelRoute below:
   //   1. CSP stays tight. connect-src can remain 'self' — no third-party

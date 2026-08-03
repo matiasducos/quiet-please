@@ -95,6 +95,16 @@ function TournamentCard({ t }: { t: AdminTournament }) {
               {t.status === 'completed' ? 'View Results' : 'Enter Results'}
             </Link>
           )}
+          {/* Social cards need a draw to describe — hidden until there is one. */}
+          {t.has_draw && (
+            <Link
+              href={`/admin/tournaments/${t.id}/social`}
+              className="px-3 py-1.5 rounded-sm transition-opacity hover:opacity-90"
+              style={{ border: '1px solid var(--clay)', color: 'var(--clay)', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
+            >
+              Social
+            </Link>
+          )}
         </div>
       </div>
     </div>
