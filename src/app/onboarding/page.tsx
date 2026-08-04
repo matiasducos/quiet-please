@@ -6,7 +6,7 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import HowItWorksDemo from '@/components/HowItWorksDemo'
 
-export const metadata: Metadata = { title: 'Get Started | Quiet Please' }
+export const metadata: Metadata = { title: 'Get Started' }
 
 // ── Onboarding page — shown to new users after signup ───────────────────────
 // Also accessible any time via /onboarding (linked from the nav)

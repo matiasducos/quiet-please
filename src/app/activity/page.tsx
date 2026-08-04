@@ -6,7 +6,7 @@ import ActivityFeed from '@/components/ActivityFeed'
 import { getNavProfile } from '@/lib/supabase/profile'
 import { getActivity } from '@/lib/friends/activity'
 
-export const metadata: Metadata = { title: 'Activity | Quiet Please' }
+export const metadata: Metadata = { title: 'Activity' }
 
 /**
  * The full activity feed — where "See all activities" on the dashboard goes.

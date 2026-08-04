@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 import { EMAIL_PREF_KEYS, EMAIL_PREF_LABELS, type EmailPrefKey } from '@/lib/email-preferences'
 
 export const metadata: Metadata = {
-  title: 'Unsubscribed — Quiet Please',
+  title: 'Unsubscribed',
 }
 
 export default async function UnsubscribedPage({

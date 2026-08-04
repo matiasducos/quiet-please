@@ -9,7 +9,7 @@ import CancelButton from './CancelButton'
 import { formatPoints } from '@/lib/utils/format'
 import { PAST_CHALLENGE_STATUSES, NON_EVENT_CHALLENGE_STATUSES } from '@/lib/challenges/status'
 
-export const metadata: Metadata = { title: 'Challenges | Quiet Please' }
+export const metadata: Metadata = { title: 'Challenges' }
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()

@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 import { TERMS_LAST_UPDATED_LABEL } from '@/lib/legal/terms'
 
 export const metadata: Metadata = {
-  title: 'Terms of Service — Quiet Please',
+  title: 'Terms of Service',
 }
 
 export default function TermsOfService() {

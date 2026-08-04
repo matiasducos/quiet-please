@@ -36,7 +36,7 @@ const getLiveTournaments = unstable_cache(
   { revalidate: 300 },
 )
 
-export const metadata: Metadata = { title: 'Invite a friend | Quiet Please' }
+export const metadata: Metadata = { title: 'Invite a friend' }
 
 export default async function InvitePage() {
   const { user, profile } = await getNavProfile()
