@@ -7,7 +7,7 @@ import HowItWorksDemo from '@/components/HowItWorksDemo'
 import { getLiveTournaments } from '@/lib/tournaments/cached'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { ALL_SLAMS, type SlamConfig } from '@/lib/slams/config'
-import { estimateNextEdition, type SlamEditions, type SlamTournament } from '@/lib/slams/data'
+import { estimateNextEdition, getSlamPerformers, type SlamEditions, type SlamTournament } from '@/lib/slams/data'
 import { buildSlamJsonLd } from '@/lib/slams/jsonLd'
 
 /** "the US Open" -> "The US Open", for use at the start of a sentence. */
@@ -64,13 +64,17 @@ export default async function SlamLanding({
   const draws = [editions.atp, editions.wta].filter(Boolean) as SlamTournament[]
   const isPlayable = editions.phase === 'open' || editions.phase === 'live'
 
-  // Engagement counts only matter when there is something to enter.
-  const engagement = draws.length > 0 ? await getTournamentEngagement(draws.map(d => d.id)) : {}
+  // Both short-circuit to an empty result when there is no edition to describe.
+  // Performers feed the structured data, not the UI, so they ride along here.
+  const [engagement, performers] = await Promise.all([
+    getTournamentEngagement(draws.map(d => d.id)),
+    getSlamPerformers(editions),
+  ])
 
   // In the off-season the page still needs somewhere to send people.
   const liveElsewhere = isPlayable ? [] : await getLiveTournaments(2)
 
-  const jsonLd = buildSlamJsonLd(config, editions)
+  const jsonLd = buildSlamJsonLd(config, editions, performers)
   const otherSlams = ALL_SLAMS.filter(s => s.slug !== config.slug)
 
   const primaryCta = isPlayable && editions.atp

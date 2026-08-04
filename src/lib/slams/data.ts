@@ -1,5 +1,6 @@
 import { unstable_cache } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { BracketData } from '@/lib/tournaments/series'
 import type { SlamConfig } from './config'
 
 const TOURNAMENT_FIELDS =
@@ -128,6 +129,49 @@ export async function getSlamEditions(config: SlamConfig): Promise<SlamEditions>
     nextStartsAt: activeSorted[0].starts_at,
     lastCompleted,
   }
+}
+
+/**
+ * Named players in the current edition's draws, for the page's SportsEvent
+ * `performer`.
+ *
+ * Capped hard: a slam is a 128-draw per tour and this JSON-LD ships inline in
+ * every byte of the HTML, so the whole field would cost more than the rich
+ * result it unlocks. Players the draw snapshot could not name are dropped
+ * rather than resolved through the player registry — a second round trip to
+ * name entrants nobody will read, on a page whose point is the CTA.
+ */
+const MAX_PERFORMERS = 30
+
+export async function getSlamPerformers(editions: SlamEditions): Promise<string[]> {
+  const ids = [editions.atp?.id, editions.wta?.id].filter(Boolean) as string[]
+  if (ids.length === 0) return []
+
+  return unstable_cache(
+    async (): Promise<string[]> => {
+      const supabase = createAdminClient()
+      const { data, error } = await supabase
+        .from('draws')
+        .select('bracket_data')
+        .in('tournament_id', ids)
+      if (error) {
+        console.error('[slams] failed to load draws for performers:', error.message)
+        return []
+      }
+
+      const names = new Set<string>()
+      for (const row of (data ?? []) as { bracket_data: BracketData | null }[]) {
+        for (const match of row.bracket_data?.matches ?? []) {
+          for (const player of [match?.player1, match?.player2]) {
+            if (player?.name) names.add(player.name)
+          }
+        }
+      }
+      return [...names].sort((a, b) => a.localeCompare(b)).slice(0, MAX_PERFORMERS)
+    },
+    ['slam-performers', ...ids],
+    { revalidate: 300, tags: ['tournament-detail', 'tournament-list'] },
+  )()
 }
 
 /**
