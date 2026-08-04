@@ -19,6 +19,13 @@
 - Latest migration: `075_acquisition_attribution.sql` (remember to bump this file when you add a new migration)
 - Migration numbers must reflect the order they were APPLIED, not written. 066/067 are a permanent gap — those numbers were never applied to any database.
 
+### Cookies & consent
+- **Any new non-essential cookie MUST be gated on `canStore` in `middleware.ts`.** Only auth, `username_is_set` and `qp_consent` are exempt (strictly necessary).
+- The banner is shown to EEA/UK visitors only, decided from `x-vercel-ip-country` and **failing closed** — no header means ask. `src/lib/consent.ts` owns that rule.
+- PostHog persistence follows consent: `localStorage+cookie` when allowed, `memory` otherwise. Never hardcode it back.
+- Adding a new purpose or processor → bump `CONSENT_VERSION` so stored decisions are re-asked, and update the cookie table in `/privacy`.
+- Accept and Decline must stay the same size, shape and one click each. Unequal prominence is the most commonly enforced banner defect.
+
 ### Notifications
 - When adding a new notification type, update 4 places:
   1. DB constraint migration (CHECK type IN ...)

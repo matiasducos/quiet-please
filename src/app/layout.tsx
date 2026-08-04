@@ -3,6 +3,7 @@ import { DM_Serif_Display, DM_Mono, DM_Sans } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Suspense } from 'react'
 import PostHogProvider from '@/components/PostHogProvider'
+import ConsentBanner from '@/components/ConsentBanner'
 import { SITE_URL, SITE_NAME } from '@/lib/site'
 import './globals.css'
 
@@ -96,6 +97,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {children}
           </PostHogProvider>
         </Suspense>
+        {/* Outside the PostHogProvider Suspense boundary: the banner governs
+            what PostHog is allowed to store, so it must never be waiting on
+            PostHog to render. */}
+        <ConsentBanner />
         <Analytics />
       </body>
     </html>
