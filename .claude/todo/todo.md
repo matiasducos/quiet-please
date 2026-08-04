@@ -6,6 +6,36 @@
 
 ## In Progress / Next Up
 
+### Canadian Open 2026 draw is half entered (found 2026-08-04)
+`ce10940c-7a0e-4e7e-beee-c9d90d75a9b9` — National Bank Open, Montreal, `in_progress`.
+Measured against production:
+
+| round | matches | slots filled | empty |
+|---|---|---|---|
+| R128 | 64 | **96** | 32 |
+| R64 | 32 | **0** | 64 |
+| R32 | 16 | **0** | 32 |
+| R16 → F | 15 | **0** | 30 |
+
+- 32 R128 slots were never named — the qualifier slots. The page header says
+  "128-PLAYER DRAW" while the panel below reads "96 players"
+- 46 of 64 R128 matches have results; 18 are outstanding
+- **This is why the tournament shows no upcoming matches** — there is nothing in the
+  stored draw past R128 to display. `sync-draws` is idle by design (draws are entered
+  by hand), so nothing fills this automatically
+- **Open question before the fix:** does the bracket view derive later rounds from
+  `match_results`, or read them from the stored draw? If the latter, R64+ needs
+  filling by hand as results land. Worth confirming — it changes the amount of work
+- Unrelated but surfaced alongside: 3 picks on this draw name `qualifier-N`
+  placeholders (R128 matches 027, 058, 059). Per migration 064 these can never score
+  and cannot be repaired — the pre-resolution draw is not retained
+- A report of every player rendering as "Qualifier" on this tournament could **not** be
+  reproduced: `buildMyTournament` against live data returns correct names and the exact
+  headline figures. `displayName()` falls back to `'Qualifier'` for the whole list at once
+  when the bracket carries no names, so the symptom fits a render from before the draw
+  was populated. Re-open if it recurs on a hard refresh
+
+
 ### Mobile responsiveness audit — NO side-scrolling anywhere
 - Priority page: `/leaderboard` — user must NEVER have to side-scroll on mobile
 - Audit all pages at 375px for horizontal overflow. Currently the leaderboard table is wrapped in `overflow-x-auto` which permits side-scroll as an escape hatch — the real fix is to redesign the row layout so it fits natively at 375px
