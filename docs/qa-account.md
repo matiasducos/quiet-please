@@ -60,13 +60,18 @@ id printed by `status` to `ADMIN_USER_IDS`.
 ## Seeding a bracket
 
 The panel worth verifying needs a bracket with results behind it. Rather than
-clicking through 127 matches:
+clicking through 127 matches, Admin → **Auto-Predict** → enable for `qabot`,
+then **Run Auto-Predict Now**.
 
-1. Admin → **Auto-Predict** → enable for `qabot`
-2. **Run Auto-Predict Now**
+**That button is not scoped to one user.** It triggers the cron, which processes
+every enabled account — 111 of them as of 2026-08-04, all real. It is the right
+tool when you want the cron exercised, and the wrong one when you only want the
+bot to have a bracket. For the narrow case, have the bot fill a bracket through
+`/predict` like any user would.
 
-That fills and locks a bracket in one step. Points then land the next time
-award-points runs.
+Either way the artifacts are real: a locked prediction, ledger rows, and a
+leaderboard entry. Seed the bot when a change genuinely needs a populated
+account, not reflexively.
 
 **The bot is visible on the public leaderboard.** There is no bot filter on the
 ranking queries (`src/app/leaderboard/page.tsx`,
