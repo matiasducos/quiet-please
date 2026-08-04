@@ -120,13 +120,40 @@ what remains, roughly in impact order.
 - "Bring 3 friends to your league and unlock X"
 - Future growth iteration
 
-### Email Capture for Anonymous Users
+### Email Capture for Anonymous Users — **next up after PR #101**
 - On anonymous challenge completion: "Save your score — enter your email"
 - Re-engagement path for users who play without signing up
+- Scoped by the 2026-08-04 funnel review: `/c/[code]` is where someone fills out an
+  entire bracket from a friend's link — the highest-intent moment in the product — and
+  the payoff is one small grey outlined link at the very bottom
+  (`ChallengeView.tsx`, the "Create a free account →" block). The anonymous
+  `AnonymousCreateFlow` CTA has the same weak treatment
+- The email is the other half: with no address captured, there is no way to tell an
+  anonymous player they won when results land, which is the natural moment to earn
+  the account
+- Note `/challenges/[id]` (the signed-in view) now redirects anonymous visitors to
+  `/signup?next=…` rather than a bare `/login` — PR #101 fixed the arrival, not the ask
 
 ---
 
 ## Shipped
+
+### ✅ Acquisition funnel: attribution, consent, signup page (2026-08-04, PR #99)
+- **The finding that drove it:** PostHog ran `persistence: 'memory'` to avoid a cookie banner, so the anonymous `distinct_id` was reminted on every full page load. `/` reported 21 persons across 21 sessions; `/admin`, a one-person page, reported 25. Sessions, bounce rate, retention and every multi-step funnel were meaningless
+- Server-side first-touch attribution: middleware stamps `qp_attr`, `setUsername()` banks it onto the user row and `signup_completed`. Migration 075. Precedence is `utm_source` → paid click id (`gclid` etc.) → referring domain → direct
+- Cookie consent for EEA/UK, failing closed on a missing geo header. Gates `qp_attr` + `qp_ref`; consent unlocks full PostHog persistence — **verified in production that `distinct_id` now survives a full page load**
+- Signup page: value panel now shows on mobile (was `hidden lg:flex`), Google above the email form, and the primary CTA no longer renders disabled until consent is ticked
+- Privacy policy rewritten — it listed 2 of 6 cookies and omitted PostHog, Sentry and `qp_ref` entirely
+- Nav "Get started" wrapped in `TrackedCTA`; `cta_clicked` had never fired once because the busiest path to `/signup` was the only untracked one
+
+### ✅ Duplicate title suffix on 15 pages (2026-08-04, PR #100)
+- Root layout's `%s | Quiet Please` template was being doubled by pages that also spelled the suffix out — `Tournaments | Quiet Please | Quiet Please`. 7 of the 15 are crawlable
+
+### ✅ Intent preserved through auth (2026-08-04, PR #101)
+- Every gate was a bare `redirect('/login')`; middleware set a `redirectTo` param that `/login` never read
+- `next` now survives gate → `/login` or `/signup` → OAuth or the confirmation link → `/auth/callback` → `/setup-username` → destination. The two hops that silently dropped it were the `/setup-username` bounce (fires only for brand-new accounts) and `/signup` hardcoding `next=/dashboard` into the confirmation email
+- Content surfaces (predict, shared challenge, tournament leaderboard) now send signed-out visitors to `/signup` rather than `/login`; both pages cross-link carrying `next`
+- Open-redirect guard moved to `src/lib/auth-redirect.ts` and now governs every hop
 
 ### ✅ Admin social cards for Instagram (2026-08-03, PR #91)
 - `/admin/tournaments/[id]/social` — draw published / round recap / champion, each as IG story (1080×1920) and square (1080×1080), downloaded as a real PNG
