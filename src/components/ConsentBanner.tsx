@@ -123,10 +123,17 @@ export default function ConsentBanner() {
       style={{ background: 'var(--chalk)', borderColor: 'var(--chalk-dim)', boxShadow: '0 -2px 12px rgba(0,0,0,0.06)' }}
     >
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-4 flex flex-col md:flex-row md:items-center gap-3 md:gap-6">
+        {/* Names both categories and what each is for. Vagueness reads as
+            safer but is the opposite: consent has to be *informed*, so
+            "we use cookies to improve your experience" is weaker ground than
+            saying plainly that the optional ones are analytics. The mention
+            of changing your choice is not decoration either — withdrawal
+            being as easy as consent is a requirement, and this is where
+            people look for it. */}
         <p className="flex-1" style={{ fontSize: '0.8rem', color: 'var(--muted)', lineHeight: 1.6 }}>
-          We use a couple of cookies to understand how people find Quiet Please, so we know which
-          tournaments and pages are worth building on. Decline and we&apos;ll only keep what&apos;s needed to
-          sign you in.{' '}
+          We use essential cookies to run this site, and optional analytics cookies to understand
+          how it&apos;s used. Declining keeps only the essential ones. You can change your choice at any
+          time.{' '}
           <Link href="/privacy" style={{ color: 'var(--court)', textDecoration: 'underline' }}>
             Privacy Policy
           </Link>
