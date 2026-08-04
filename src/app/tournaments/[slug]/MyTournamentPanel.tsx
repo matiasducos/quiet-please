@@ -110,8 +110,22 @@ export default function MyTournamentPanel({
   const ridingRest  = stillToCome.length - ridingShown.length
   // Players backed more than once who returned nothing — the inverse of the
   // earners list, and where the interesting information actually is.
+  //
+  // Only players who are actually out. Someone still in the draw has not failed
+  // yet, however many picks are riding on them, and listing them under "never
+  // paid off" passes a verdict the tournament has not delivered. Once it is
+  // over, everyone but the champion is out — `active` then only means their
+  // defeat was never recorded (a withdrawal, or a missing result), so the flag
+  // stops being a reason to exclude them.
   const busts = players
-    .filter(p => p.points === 0 && p.picks >= 2)
+    .filter(p =>
+      p.points === 0 &&
+      p.picks >= 2 &&
+      (isComplete || !p.active) &&
+      // Guard against the window between a tournament flipping to `completed`
+      // and the points cron running: the champion would briefly show 0 points.
+      p.externalId !== championExternalId,
+    )
     .sort((a, b) => b.picks - a.picks)
     .slice(0, 3)
 

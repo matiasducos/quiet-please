@@ -9,11 +9,12 @@ import Nav from '@/components/Nav'
 import TournamentMatchList from '@/components/TournamentMatchList'
 import BracketPredictor from '../predict/BracketPredictor'
 import MyTournamentPanel from '../MyTournamentPanel'
-import { buildMyTournament } from '@/lib/tennis/my-tournament'
+import { buildMyTournament, eliminationRounds, ROUND_LABEL } from '@/lib/tennis/my-tournament'
 import type { MyTournament, DrawMatch } from '@/lib/tennis/my-tournament'
+import { nameToFlag } from '@/app/admin/countries'
 import { parseEditionYear } from '@/lib/tournaments/slug'
 import { getEdition, isEditionIndexable } from '@/lib/tournaments/series'
-import type { EditionDetail, EditionPage } from '@/lib/tournaments/series'
+import type { DrawPlayer, EditionDetail, EditionPage } from '@/lib/tournaments/series'
 import { buildEditionMetadata, buildEditionJsonLd } from '@/lib/tournaments/seo'
 import { TIER, SURFACE_COLORS, STATUS_STYLES, formatDateRange, roundPoints, toRenderDraw } from '../tournament-ui'
 
@@ -189,6 +190,9 @@ async function TourSection({
     detail.results.map(r => [r.external_match_id, r.winner_external_id]),
   )
 
+  // Same derivation the "Your tournament" panel uses, over the same rows.
+  const eliminatedIn = eliminationRounds(detail.results)
+
   return (
     <section className="mb-12">
       <div className="rounded-sm border bg-white overflow-hidden mb-8" style={{ borderColor: 'var(--chalk-dim)' }}>
@@ -281,14 +285,19 @@ async function TourSection({
           <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)', marginBottom: '1rem' }}>
             {detail.participants.length} players
           </p>
-          <ul className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1.5" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1.5" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {detail.participants.map(p => (
-              <li key={p.externalId} style={{ fontSize: '0.85rem' }}>
-                {p.name}
-                {p.country ? (
-                  <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}> · {p.country}</span>
-                ) : null}
-              </li>
+              <ParticipantRow
+                key={p.externalId}
+                player={p}
+                outRound={eliminatedIn.get(p.externalId) ?? null}
+                isChampion={isDone && p.externalId === detail.champion?.externalId}
+                /* Before the first result every player is simply "in the draw",
+                   which is 96 rows saying nothing. The column earns its space
+                   only once matches have been played. */
+                showStatus={detail.results.length > 0}
+                isDone={isDone}
+              />
             ))}
           </ul>
         </div>
@@ -326,6 +335,10 @@ async function TourSection({
             matchResults={resultsByMatch}
             readOnly
             hideSaveButtons
+            // The bracket is embedded in the tournament page, so "← Back to
+            // tournament" points at the page it is already on. The link only
+            // makes sense on /predict, where the bracket is the whole route.
+            hideBackLink
             drawResultsMode
           />
         </div>
@@ -350,6 +363,73 @@ async function TourSection({
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────
+
+/**
+ * One player in the field, with the flag standing in for the country name.
+ *
+ * The name was the only thing here worth reading; spelling out "· Australia"
+ * cost a third of the row to repeat what a flag says in one glyph, and the
+ * space it frees is what lets the status fit without a second line.
+ */
+function ParticipantRow({
+  player,
+  outRound,
+  isChampion,
+  showStatus,
+  isDone,
+}: {
+  player: DrawPlayer
+  outRound: string | null
+  isChampion: boolean
+  showStatus: boolean
+  isDone: boolean
+}) {
+  const flag = nameToFlag(player.country)
+
+  // Four states, and the awkward one is last: a player with no recorded loss on
+  // a finished tournament who is not the champion. Their defeat went unrecorded
+  // — a withdrawal, or a missing result — and only one player can still be
+  // standing, so "out" is the honest answer even without a round to name.
+  const status = !showStatus
+    ? null
+    : isChampion
+      ? { label: 'champion', color: '#1a6b3c', weight: 600 }
+      : outRound
+        ? { label: `lost ${ROUND_LABEL[outRound] ?? outRound}`, color: 'var(--muted)', weight: 400 }
+        : isDone
+          ? { label: 'out', color: 'var(--muted)', weight: 400 }
+          : { label: 'in draw', color: '#1a6b3c', weight: 400 }
+
+  return (
+    <li className="flex items-baseline justify-between gap-2" style={{ fontSize: '0.85rem' }}>
+      <span className="flex items-baseline gap-1.5 min-w-0">
+        {/* Fixed width so names line up whether or not the country resolved to a
+            flag — `nameToFlag` returns null for unmapped countries and for the
+            "World" placeholder. */}
+        <span aria-hidden="true" style={{ width: '1.15em', flexShrink: 0, textAlign: 'center' }}>
+          {flag ?? ''}
+        </span>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {player.name}
+        </span>
+      </span>
+      {status && (
+        <span
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: '0.62rem',
+            color: status.color,
+            fontWeight: status.weight,
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}
+        >
+          {status.label}
+        </span>
+      )}
+    </li>
+  )
+}
 
 function PointsPerRound({ category }: { category: string }) {
   const rows = roundPoints(category)
