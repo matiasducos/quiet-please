@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect, notFound } from 'next/navigation'
+import { gateRedirect } from '@/lib/auth-redirect'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { formatPoints } from '@/lib/utils/format'
@@ -17,9 +18,13 @@ export default async function ChallengeDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { user, profile } = await getNavProfile()
-  if (!user) redirect('/login')
 
   const { id } = await params
+  // Someone landing here is usually following a challenge link from a friend,
+  // so they are more likely to need an account than to have one — and
+  // arriving on a bare "Welcome back" with no mention of the challenge was
+  // the worst version of this.
+  if (!user) redirect(gateRedirect(`/challenges/${id}`, 'new'))
   const admin = createAdminClient()
 
   const { data: challenge } = await admin

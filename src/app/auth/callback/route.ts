@@ -5,17 +5,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { processReferralSignup, REFERRAL_COOKIE_NAME } from '@/lib/referrals'
 import { parseAcceptedVersion } from '@/lib/legal/terms'
 import { trackServerEvent } from '@/lib/posthog/server'
-
-/** Validate that a redirect target is a safe relative path (prevent open redirect) */
-function getSafeRedirectPath(next: string | null): string {
-  const fallback = '/dashboard'
-  if (!next) return fallback
-  // Must start with exactly one slash (not // which browsers treat as protocol-relative)
-  if (!next.startsWith('/') || next.startsWith('//')) return fallback
-  // Block embedded protocol schemes (e.g. /\evil.com, javascript:, data:)
-  if (/^\/\\/.test(next) || /^[a-z]+:/i.test(next)) return fallback
-  return next
-}
+// Shared with /login, /signup, /setup-username and middleware so one
+// definition of "a safe redirect target" governs the whole round trip.
+import { getSafeRedirectPath } from '@/lib/auth-redirect'
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)

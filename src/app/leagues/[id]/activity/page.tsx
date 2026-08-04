@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect, notFound } from 'next/navigation'
+import { gateRedirect } from '@/lib/auth-redirect'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 
@@ -18,9 +19,9 @@ function timeAgo(dateStr: string): string {
 
 export default async function LeagueActivityPage({ params }: { params: Promise<{ id: string }> }) {
   const { user, profile } = await getNavProfile()
-  if (!user) redirect('/login')
 
   const { id } = await params
+  if (!user) redirect(gateRedirect(`/leagues/${id}/activity`))
   const supabase = await createClient()
   const admin = createAdminClient()
 

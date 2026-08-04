@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect, notFound } from 'next/navigation'
+import { gateRedirect } from '@/lib/auth-redirect'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import InviteCodeCard from './InviteCodeCard'
@@ -45,9 +46,9 @@ export default async function LeagueDetailPage({
   searchParams: Promise<{ tab?: string }>
 }) {
   const { user, profile } = await getNavProfile()
-  if (!user) redirect('/login')
 
   const { id } = await params
+  if (!user) redirect(gateRedirect(`/leagues/${id}`))
   const { tab } = await searchParams
   const activeTab = tab === 'chat' ? 'chat' : 'leaderboard'
   const supabase = await createClient()

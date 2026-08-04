@@ -7,6 +7,7 @@ import {
   isLandingCandidate,
   serializeAttribution,
 } from '@/lib/attribution'
+import { DEFAULT_LANDING, NEXT_PARAM } from '@/lib/auth-redirect'
 import {
   CONSENT_COOKIE_NAME,
   CONSENT_COOKIE_MAX_AGE,
@@ -132,7 +133,12 @@ export async function updateSession(request: NextRequest) {
   if (isProtectedRoute && !user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    url.searchParams.set('redirectTo', pathname)
+    // Was `redirectTo`, which /login never read. Renamed to `next` so the one
+    // param name travels the whole round trip — gate, auth page, OAuth,
+    // /auth/callback, /setup-username — instead of being silently dropped
+    // here at the first hop.
+    url.searchParams.delete('redirectTo')
+    url.searchParams.set(NEXT_PARAM, pathname)
     return withAttribution(NextResponse.redirect(url))
   }
 
@@ -158,6 +164,12 @@ export async function updateSession(request: NextRequest) {
       if (profile && profile.username_is_set === false) {
         const url = request.nextUrl.clone()
         url.pathname = '/setup-username'
+        // The last hop where intent can be lost, and the one that matters
+        // most: this fires for brand-new accounts, who are the people most
+        // likely to have signed up *because* of the page they were denied.
+        // /auth/callback has already redirected to the target by now, so the
+        // target is the current pathname.
+        if (pathname !== DEFAULT_LANDING) url.searchParams.set(NEXT_PARAM, pathname)
         return NextResponse.redirect(url)
       }
 

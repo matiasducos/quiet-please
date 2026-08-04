@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { getSafeRedirectPath } from '@/lib/auth-redirect'
 import { setUsername } from './actions'
 
 export default function SetupUsernamePage() {
@@ -10,6 +11,10 @@ export default function SetupUsernamePage() {
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  // Middleware puts the page this account was created for here. Falls back to
+  // the dashboard, which is what everyone who arrived without an errand gets.
+  const next = getSafeRedirectPath(searchParams.get('next'))
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -19,7 +24,7 @@ export default function SetupUsernamePage() {
       if (result.error) {
         setError(result.error)
       } else {
-        router.push('/dashboard')
+        router.push(next)
         router.refresh()
       }
     })

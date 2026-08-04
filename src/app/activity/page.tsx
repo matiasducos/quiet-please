@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
+import { gateRedirect } from '@/lib/auth-redirect'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import ActivityFeed from '@/components/ActivityFeed'
@@ -25,7 +26,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function ActivityPage() {
   const { user, profile } = await getNavProfile()
-  if (!user) redirect('/login')
+  if (!user) redirect(gateRedirect('/activity'))
 
   const activity = await getActivity(user.id, FEED_LIMIT)
 
