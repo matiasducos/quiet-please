@@ -5,6 +5,7 @@ import type {
   EditionPage,
   SeriesHub,
   SeriesRow,
+  Tour,
   TournamentStatus,
 } from './series'
 import { isEditionIndexable, isSeriesIndexable } from './series'
@@ -68,20 +69,20 @@ function formatRange(startsAt: string | null, endsAt: string | null): string | n
 
 // ── Titles & descriptions ────────────────────────────────────────────────────
 
-export function buildEditionMetadata(page: EditionPage): Metadata {
+/**
+ * Prose summary of an edition, shared by the meta description and the
+ * SportsEvent `description`.
+ *
+ * One function rather than two so the two can't drift: Google compares the
+ * structured data against what the page actually says, and a description that
+ * contradicts the meta tag is worse than none at all.
+ */
+export function editionDescription(page: EditionPage): string {
   const { series, year } = page
   const detail = page.tours[0]
-  const name = seriesLabel(series, true)
-  const path = `/tournaments/${series.slug}/${year}`
-  const url = `${SITE_URL}${path}`
 
   const isDone = page.tours.every(t => t.tournament.status === 'completed')
   const champion = page.tours.find(t => t.champion?.name)?.champion?.name ?? null
-
-  // The title promises only what the page actually contains.
-  const title = isDone
-    ? `${name} ${year} — Results & Full Draw`
-    : `${name} ${year} — Draw, Schedule & Results`
 
   const venue = seriesVenue(series, detail)
   const dates = formatRange(detail?.tournament.starts_at ?? null, detail?.tournament.ends_at ?? null)
@@ -107,11 +108,35 @@ export function buildEditionMetadata(page: EditionPage): Metadata {
     sentences.push('Draw, schedule and results as they happen, plus a free bracket you can fill in.')
   }
 
+  return sentences.join(' ')
+}
+
+export function buildEditionMetadata(page: EditionPage): Metadata {
+  const { series, year } = page
+  const name = seriesLabel(series, true)
+  const path = `/tournaments/${series.slug}/${year}`
+  const url = `${SITE_URL}${path}`
+
+  const isDone = page.tours.every(t => t.tournament.status === 'completed')
+
+  // The title promises only what the page actually contains.
+  const title = isDone
+    ? `${name} ${year} — Results & Full Draw`
+    : `${name} ${year} — Draw, Schedule & Results`
+
+  const description = editionDescription(page)
   const indexable = isEditionIndexable(page)
+
+  // Pointed at explicitly because the `opengraph-image` file convention does
+  // not cascade: it applies to the segment it sits in and not to that segment's
+  // children, unlike a layout. The file is on [slug], so without this the year
+  // pages — the ones actually built to be indexed and shared — ship no card at
+  // all, and the SportsEvent `image` below would contradict the page's tags.
+  const image = seriesImage(series)
 
   return {
     title: { absolute: `${title} | ${SITE_NAME}` },
-    description: sentences.join(' ').slice(0, 300),
+    description: description.slice(0, 300),
     alternates: { canonical: path },
     // Unreviewed slugs are auto-created by the sync cron; publishing one would
     // mint a permanent URL from a machine guess.
@@ -121,9 +146,15 @@ export function buildEditionMetadata(page: EditionPage): Metadata {
       url,
       siteName: SITE_NAME,
       title,
-      description: sentences.join(' ').slice(0, 200),
+      description: description.slice(0, 200),
+      images: [{ url: image, width: 1200, height: 630, type: 'image/png' }],
     },
-    twitter: { card: 'summary_large_image', title, description: sentences.join(' ').slice(0, 200) },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description: description.slice(0, 200),
+      images: [image],
+    },
   }
 }
 
@@ -185,6 +216,30 @@ const EVENT_STATUS: Record<TournamentStatus, string> = {
   completed: 'https://schema.org/EventScheduled',
 }
 
+/**
+ * Sanctioning body per tour, with the website URL Google's Event parser wants
+ * on `organizer`.
+ *
+ * The tour, not the local organising committee: the committee differs per event
+ * and we don't store it, whereas the tour that sanctions the draw is exactly
+ * what `tournaments.tour` records.
+ */
+const TOUR_ORGANIZER: Record<Tour, { name: string; url: string }> = {
+  ATP: { name: 'ATP Tour', url: 'https://www.atptour.com' },
+  WTA: { name: 'WTA', url: 'https://www.wtatennis.com' },
+}
+
+/**
+ * The page's own social card, reused as the Event `image`.
+ *
+ * Next serves the `opengraph-image` file convention at this path — the `?<hash>`
+ * it appends in the meta tag is a cache-buster, not part of the route. The file
+ * lives on the [slug] segment, so every edition under a series shares this URL.
+ */
+function seriesImage(series: SeriesRow): string {
+  return `${SITE_URL}/tournaments/${series.slug}/opengraph-image`
+}
+
 function placeNode(location: string | null, series: SeriesRow) {
   const label = location ?? seriesVenue(series)
   if (!label) return undefined
@@ -203,14 +258,19 @@ function placeNode(location: string | null, series: SeriesRow) {
 /**
  * SportsEvent for one edition, plus breadcrumbs.
  *
- * `competitor` is capped: a 128-draw would otherwise add ~128 nodes of JSON to
- * every page's HTML for no additional rich-result eligibility.
+ * The player list is capped: a 128-draw would otherwise add ~128 nodes of JSON
+ * to every page's HTML for no additional rich-result eligibility — and it is
+ * emitted twice, so the cap counts double.
  */
 const MAX_COMPETITORS = 30
 
 export function buildEditionJsonLd(page: EditionPage): Record<string, unknown> {
   const { series, year } = page
   const pageUrl = `${SITE_URL}/tournaments/${series.slug}/${year}`
+  // Same image the page advertises as its own social card, so the structured
+  // data and the meta tags agree.
+  const description = editionDescription(page)
+  const image = seriesImage(series)
   const graph: Record<string, unknown>[] = []
 
   for (const detail of page.tours) {
@@ -219,7 +279,7 @@ export function buildEditionJsonLd(page: EditionPage): Record<string, unknown> {
     // better than emitting one with an invented date.
     if (!t.starts_at) continue
 
-    const competitors = detail.participants
+    const players = detail.participants
       .slice(0, MAX_COMPETITORS)
       .map(p => ({
         '@type': 'Person',
@@ -232,14 +292,20 @@ export function buildEditionJsonLd(page: EditionPage): Record<string, unknown> {
       '@id': `${pageUrl}#event-${t.tour.toLowerCase()}`,
       name: `${series.name} ${year}${page.tours.length > 1 ? ` — ${t.tour}` : ''}`,
       url: pageUrl,
+      description,
+      image: [image],
       startDate: t.starts_at,
       ...(t.ends_at ? { endDate: t.ends_at } : {}),
       eventStatus: EVENT_STATUS[t.status],
       eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
       sport: 'Tennis',
       ...(placeNode(t.location, series) ? { location: placeNode(t.location, series) } : {}),
-      ...(competitors.length > 0 ? { competitor: competitors } : {}),
-      organizer: { '@type': 'Organization', name: t.tour === 'ATP' ? 'ATP Tour' : 'WTA' },
+      // The same people under both names on purpose. `competitor` is the
+      // precise SportsEvent property; `performer` is the one Google's Event
+      // parser reads, and it reports a missing field when only the former is
+      // present. For a tennis draw the two are the same set.
+      ...(players.length > 0 ? { competitor: players, performer: players } : {}),
+      organizer: { '@type': 'Organization', ...TOUR_ORGANIZER[t.tour] },
     })
   }
 

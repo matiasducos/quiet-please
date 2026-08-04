@@ -47,6 +47,13 @@ export type SlamConfig = {
   city: string
   country: string
   flagEmoji: string
+  /**
+   * Body that stages the event, for the page's SportsEvent structured data.
+   * Google's Event parser wants a name *and* a URL on `organizer`, and unlike
+   * the tour-level pages a major is run by its national federation rather than
+   * by the ATP or WTA — so this can't be derived from the tournament row.
+   */
+  organizer: { name: string; url: string }
   /** Human phrase for when the event runs, used in off-season copy. */
   seasonWindow: string
   /** Calendar month the event usually starts, 1-indexed. Drives next-edition estimates. */
@@ -88,6 +95,7 @@ export const SLAMS: Record<SlamSlug, SlamConfig> = {
     city: 'London',
     country: 'United Kingdom',
     flagEmoji: '🇬🇧',
+    organizer: { name: 'The All England Lawn Tennis Club', url: 'https://www.wimbledon.com' },
     seasonWindow: 'late June to mid July',
     startMonth: 6,
     title: 'Wimbledon Bracket Challenge — Free Predictions',
@@ -144,6 +152,7 @@ export const SLAMS: Record<SlamSlug, SlamConfig> = {
     city: 'Paris',
     country: 'France',
     flagEmoji: '🇫🇷',
+    organizer: { name: 'Fédération Française de Tennis', url: 'https://www.fft.fr' },
     seasonWindow: 'late May to early June',
     startMonth: 5,
     title: 'French Open Bracket Challenge — Roland-Garros Predictions',
@@ -200,6 +209,7 @@ export const SLAMS: Record<SlamSlug, SlamConfig> = {
     city: 'New York',
     country: 'United States',
     flagEmoji: '🇺🇸',
+    organizer: { name: 'United States Tennis Association', url: 'https://www.usta.com' },
     seasonWindow: 'late August to early September',
     startMonth: 8,
     title: 'US Open Tennis Bracket — Free Predictions & Challenge',
@@ -256,6 +266,7 @@ export const SLAMS: Record<SlamSlug, SlamConfig> = {
     city: 'Melbourne',
     country: 'Australia',
     flagEmoji: '🇦🇺',
+    organizer: { name: 'Tennis Australia', url: 'https://www.tennis.com.au' },
     seasonWindow: 'mid to late January',
     startMonth: 1,
     title: 'Australian Open Bracket Challenge — Free Predictions',

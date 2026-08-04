@@ -11,8 +11,15 @@ import type { SlamEditions } from './data'
  * added only when a real edition with a start date exists — emitting an event
  * with invented dates would be worse than emitting none.
  */
-export function buildSlamJsonLd(config: SlamConfig, editions: SlamEditions) {
+export function buildSlamJsonLd(
+  config: SlamConfig,
+  editions: SlamEditions,
+  performers: string[] = [],
+) {
   const pageUrl = `${SITE_URL}${config.route}`
+  // Next serves the route's `opengraph-image` file convention at this path; the
+  // `?<hash>` it appends in the meta tag is a cache-buster, not part of the URL.
+  const image = `${pageUrl}/opengraph-image`
 
   const graph: Record<string, unknown>[] = [
     {
@@ -21,6 +28,7 @@ export function buildSlamJsonLd(config: SlamConfig, editions: SlamEditions) {
       url: pageUrl,
       name: config.title,
       description: config.description,
+      image,
       isPartOf: { '@type': 'WebSite', name: SITE_NAME, url: SITE_URL },
     },
     {
@@ -36,10 +44,14 @@ export function buildSlamJsonLd(config: SlamConfig, editions: SlamEditions) {
 
   const edition = editions.atp ?? editions.wta
   if (edition?.starts_at) {
+    const people = performers.map(name => ({ '@type': 'Person', name }))
     graph.push({
       '@type': 'SportsEvent',
       '@id': `${pageUrl}#event`,
       name: `${config.name}${editions.year ? ` ${editions.year}` : ''}`,
+      url: pageUrl,
+      description: config.description,
+      image: [image],
       startDate: edition.starts_at,
       ...(edition.ends_at ? { endDate: edition.ends_at } : {}),
       eventStatus: 'https://schema.org/EventScheduled',
@@ -50,6 +62,12 @@ export function buildSlamJsonLd(config: SlamConfig, editions: SlamEditions) {
         name: `${config.city}, ${config.country}`,
         address: { '@type': 'PostalAddress', addressLocality: config.city, addressCountry: config.country },
       },
+      // Same set under both names: `competitor` is the precise SportsEvent
+      // property, `performer` is the one Google's Event parser reads. Empty
+      // before the draw is published, and the properties are then omitted
+      // rather than filled with guesses at who will enter.
+      ...(people.length > 0 ? { competitor: people, performer: people } : {}),
+      organizer: { '@type': 'Organization', ...config.organizer },
     })
   }
 
