@@ -3,8 +3,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { cookies } from 'next/headers'
 import { rateLimit } from '@/lib/rate-limit'
 import { trackServerEvent } from '@/lib/posthog/server'
+import { ATTRIBUTION_COOKIE_NAME, parseAttribution } from '@/lib/attribution'
 
 export async function setUsername(username: string): Promise<{ error?: string }> {
   const supabase = await createClient()
@@ -34,9 +36,27 @@ export async function setUsername(username: string): Promise<{ error?: string }>
   // with it. Stamping it here would credit an acceptance to anyone who reached
   // this screen — including Google sign-ups started from /login, who are never
   // shown the checkbox at all.
+  // Acquisition attribution rides in on a first-touch cookie stamped by
+  // middleware on the landing request. This is the only place it can be
+  // banked: PostHog's cookieless client has already lost the anonymous
+  // identity by now (see lib/attribution.ts), and this screen is the one
+  // moment every account passes through exactly once.
+  const cookieStore = await cookies()
+  const attribution = parseAttribution(cookieStore.get(ATTRIBUTION_COOKIE_NAME)?.value)
+
   const { error } = await admin
     .from('users')
-    .update({ username: clean, username_is_set: true })
+    .update({
+      username: clean,
+      username_is_set: true,
+      ...(attribution && {
+        acq_source: attribution.source,
+        acq_medium: attribution.medium,
+        acq_campaign: attribution.campaign,
+        acq_referrer: attribution.referrer,
+        acq_landing_path: attribution.landingPath,
+      }),
+    })
     .eq('id', user.id)
 
   if (error) return { error: error.message }
@@ -53,7 +73,17 @@ export async function setUsername(username: string): Promise<{ error?: string }>
     // reach here after clicking the confirmation link. Distinguishing them
     // shows which route actually converts.
     provider: user.app_metadata?.provider ?? 'email',
+    // Attribution goes on the event as well as the row so channel performance
+    // is answerable in PostHog directly, without exporting the users table.
+    acq_source: attribution?.source ?? 'unattributed',
+    acq_medium: attribution?.medium ?? null,
+    acq_campaign: attribution?.campaign ?? null,
+    acq_landing_path: attribution?.landingPath ?? null,
   })
+
+  // Spent — clearing it keeps a later account created on the same device from
+  // inheriting the first visitor's campaign.
+  cookieStore.delete(ATTRIBUTION_COOKIE_NAME)
 
   revalidatePath('/dashboard')
   return {}

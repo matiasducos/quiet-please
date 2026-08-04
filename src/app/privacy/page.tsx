@@ -91,6 +91,8 @@ export default function PrivacyPolicy() {
             <ul>
               <li><strong>Supabase</strong> (database and authentication hosting) — processes your account data and activity data</li>
               <li><strong>Vercel</strong> (website hosting and analytics) — processes page-view analytics and request metadata</li>
+              <li><strong>PostHog</strong> (product analytics, EU-hosted) — processes your IP address and how you use the site, so we can see which features are used and where people get stuck</li>
+              <li><strong>Sentry</strong> (error monitoring, EU-hosted) — processes technical details of errors, including your IP address and the page you were on, so we can fix crashes</li>
               <li><strong>Resend</strong> (email delivery) — processes your email address when we send notifications</li>
               <li><strong>Google</strong> (OAuth authentication) — receives and sends your email and name if you choose to sign in with Google</li>
               <li><strong>Facebook / Meta</strong> (OAuth authentication) — receives and sends your email and name if you choose to sign in with Facebook</li>
@@ -99,14 +101,30 @@ export default function PrivacyPolicy() {
           </Section>
 
           <Section title="6. Cookies">
-            <p>We use a small number of cookies:</p>
+            <p>
+              All of our cookies are first-party. We set no third-party advertising or
+              cross-site tracking cookies, and we never sell or share your data with advertisers.
+            </p>
+            <p><strong>Essential</strong> — always set, because the site cannot work without them:</p>
             <ul>
-              <li><strong>Authentication cookies</strong> (essential) — managed by Supabase to keep you signed in</li>
-              <li><strong>Session cookie</strong> (essential) — a cookie that tracks whether your username has been set, used to route you correctly after signup</li>
+              <li><strong>Authentication cookies</strong> — managed by Supabase to keep you signed in</li>
+              <li><strong>username_is_set</strong> — records that you have chosen a username, so we route you to the right page after signup</li>
+              <li><strong>qp_consent</strong> — remembers the choice you made about the cookies below, so we don&apos;t ask again on every page</li>
+            </ul>
+            <p><strong>Analytics</strong> — only set if you accept, and removed if you decline:</p>
+            <ul>
+              <li><strong>qp_attr</strong> (6 months) — records how you first found us (for example, a search campaign or a link from another site) so we can tell which of our pages are worth improving</li>
+              <li><strong>qp_ref</strong> (30 days) — if you arrived through a friend&apos;s invite link, records who invited you so they get credit when you sign up</li>
+              <li><strong>PostHog</strong> — product analytics. If you accept, PostHog stores an identifier so we can see how many separate people use the site and where they get stuck. If you decline, PostHog runs without storing anything on your device.</li>
             </ul>
             <p>
-              We use Vercel Analytics for basic page-view metrics. Vercel Analytics is privacy-focused
-              and does not use cookies for tracking. No third-party advertising or tracking cookies are set.
+              If you are in the EU, EEA or UK we ask before setting any of the analytics cookies.
+              You can change your mind at any time using the <strong>Cookie settings</strong> link in
+              the footer of any page — declining removes the cookies listed above.
+            </p>
+            <p>
+              We also use Vercel Analytics for basic page-view metrics. It is privacy-focused and
+              sets no cookies at all.
             </p>
           </Section>
 

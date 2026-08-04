@@ -1,5 +1,20 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import {
+  ATTRIBUTION_COOKIE_NAME,
+  ATTRIBUTION_COOKIE_MAX_AGE,
+  deriveAttribution,
+  isLandingCandidate,
+  serializeAttribution,
+} from '@/lib/attribution'
+import {
+  CONSENT_COOKIE_NAME,
+  CONSENT_COOKIE_MAX_AGE,
+  CONSENT_REQUIRED_COOKIE_NAME,
+  isConsentRequired,
+  mayStoreNonEssential,
+  parseConsent,
+} from '@/lib/consent'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -30,11 +45,35 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
 
+  // ── Cookie consent ──────────────────────────────────────────────────────
+  // Everything below this point that writes a non-essential cookie is gated
+  // on `canStore`. The Supabase auth cookies and `username_is_set` are not —
+  // they are strictly necessary to deliver the service, which is the one
+  // ePrivacy exemption.
+  //
+  // The geo answer is mirrored into a readable cookie so the banner can
+  // decide whether to show itself without the root layout calling headers(),
+  // which would opt the whole marketing site out of static rendering.
+  const consentRequired = isConsentRequired(request.headers.get('x-vercel-ip-country'))
+  const consentDecision = parseConsent(request.cookies.get(CONSENT_COOKIE_NAME)?.value)
+  const canStore = mayStoreNonEssential(consentDecision, consentRequired)
+
+  const consentRequiredFlag = consentRequired ? '1' : '0'
+  if (request.cookies.get(CONSENT_REQUIRED_COOKIE_NAME)?.value !== consentRequiredFlag) {
+    supabaseResponse.cookies.set(CONSENT_REQUIRED_COOKIE_NAME, consentRequiredFlag, {
+      path: '/',
+      httpOnly: false, // the banner reads it
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: CONSENT_COOKIE_MAX_AGE,
+    })
+  }
+
   // ── Referral attribution ────────────────────────────────────────────────
   // When a visitor lands on /invite/<username>, stash a 30-day cookie so the
   // referral survives the signup round-trip. Only set for guests — logged-in
   // users don't need attribution (the landing page redirects them anyway).
-  if (!user && pathname.startsWith('/invite/')) {
+  if (canStore && !user && pathname.startsWith('/invite/')) {
     const code = pathname.slice('/invite/'.length).split('/')[0]
     if (code && code.length <= 40 && /^[a-zA-Z0-9_-]+$/.test(code)) {
       if (request.cookies.get('qp_ref')?.value !== code) {
@@ -49,6 +88,42 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
+  // ── Acquisition attribution ─────────────────────────────────────────────
+  // First-touch only: written once, when a guest has no cookie yet, so the
+  // campaign that earned the visit keeps the credit through the whole signup
+  // round trip. setUsername() reads it. See lib/attribution.ts for why this
+  // cannot be left to the PostHog browser client.
+  //
+  // Guests only — a logged-in user browsing is not an acquisition — and never
+  // on machine endpoints or /auth/*, whose referrer is the OAuth provider.
+  //
+  // Applied through a helper rather than written straight onto
+  // supabaseResponse: the guest redirect below returns a *different* response
+  // object, and a cookie set only on supabaseResponse would be silently
+  // dropped for exactly the visitor who arrived on a deep link from an ad.
+  //
+  // When consent is required and not yet given this writes nothing, so a
+  // visitor who accepts the banner has already lost their landing request.
+  // POST /api/consent re-derives it from the page they accepted on — see
+  // that route for why the first grant cannot be handled here.
+  const attribution =
+    canStore && !user && !request.cookies.has(ATTRIBUTION_COOKIE_NAME) && isLandingCandidate(pathname)
+      ? deriveAttribution(request.nextUrl, request.headers.get('referer'))
+      : null
+
+  function withAttribution<T extends NextResponse>(response: T): T {
+    if (attribution) {
+      response.cookies.set(ATTRIBUTION_COOKIE_NAME, serializeAttribution(attribution), {
+        path: '/',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: ATTRIBUTION_COOKIE_MAX_AGE,
+      })
+    }
+    return response
+  }
+
   // Protect routes that require authentication — fast middleware redirect
   // Note: /challenges and /leagues root pages handle anonymous visitors themselves
   const protectedRoutes = ['/dashboard', '/profile', '/predict', '/friends', '/notifications', '/admin', '/leagues/browse', '/leagues/new', '/leagues/join', '/challenges/new', '/messages']
@@ -58,7 +133,7 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('redirectTo', pathname)
-    return NextResponse.redirect(url)
+    return withAttribution(NextResponse.redirect(url))
   }
 
   // For authenticated users on page routes (not API/assets), redirect to
@@ -99,5 +174,5 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  return supabaseResponse
+  return withAttribution(supabaseResponse)
 }

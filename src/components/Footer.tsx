@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ALL_SLAMS } from '@/lib/slams/config'
+import CookieSettingsLink from '@/components/CookieSettingsLink'
 
 export default function Footer() {
   return (
@@ -33,9 +34,10 @@ export default function Footer() {
           </p>
           {/* min-h-[44px] keeps these tappable on a phone — at their 0.75rem font
               size the natural hit area is only ~18px tall. */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center flex-wrap gap-2">
             <Link href="/terms" className="inline-flex items-center min-h-[44px] px-2" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Terms</Link>
             <Link href="/privacy" className="inline-flex items-center min-h-[44px] px-2" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Privacy</Link>
+            <CookieSettingsLink />
             <a href="mailto:support@quietplease.app" className="inline-flex items-center min-h-[44px] px-2" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Contact</a>
           </div>
         </div>
