@@ -1,8 +1,9 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { authUrl, getSafeRedirectPath, withNext } from '@/lib/auth-redirect'
 import posthog from 'posthog-js'
 
 /**
@@ -23,6 +24,12 @@ function trackLoggedIn() {
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  // Where this visitor was heading before the gate stopped them. Validated on
+  // read as well as on use — it comes from the query string, so it is
+  // attacker-supplied until proven otherwise.
+  const rawNext = searchParams.get('next')
+  const next = getSafeRedirectPath(rawNext)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -35,17 +42,19 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) { setError(error.message); setLoading(false); return }
     trackLoggedIn()
-    router.push('/dashboard'); router.refresh()
+    router.push(next); router.refresh()
   }
 
   async function handleGoogleLogin() {
     const supabase = createClient()
-    await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${window.location.origin}/auth/callback` } })
+    // The OAuth round trip leaves our origin entirely, so the target has to
+    // travel on the callback URL — there is no client state to come back to.
+    await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: withNext(`${window.location.origin}/auth/callback`, rawNext) } })
   }
 
   async function handleFacebookLogin() {
     const supabase = createClient()
-    await supabase.auth.signInWithOAuth({ provider: 'facebook', options: { redirectTo: `${window.location.origin}/auth/callback` } })
+    await supabase.auth.signInWithOAuth({ provider: 'facebook', options: { redirectTo: withNext(`${window.location.origin}/auth/callback`, rawNext) } })
   }
 
   return (
@@ -62,7 +71,9 @@ export default function LoginPage() {
           <Link href="/" className="lg:hidden mb-8 block" style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem' }}>Quiet Please</Link>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', letterSpacing: '-0.02em', marginBottom: '0.5rem' }}>Welcome back</h2>
           <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginBottom: '2rem' }}>
-            Don't have an account?{' '}<Link href="/signup" style={{ color: 'var(--court)' }}>Sign up</Link>
+            {/* Carries `next` across, so guessing wrong about whether someone
+                already has an account never costs them their destination. */}
+            Don't have an account?{' '}<Link href={authUrl('/signup', rawNext)} style={{ color: 'var(--court)' }}>Sign up</Link>
           </p>
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">

@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect, notFound } from 'next/navigation'
+import { gateRedirect } from '@/lib/auth-redirect'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import TournamentResultsTable from '@/components/TournamentResultsTable'
@@ -20,9 +21,9 @@ export default async function GlobalTournamentResultsPage({
   searchParams: Promise<{ scope?: string; country?: string; city?: string }>
 }) {
   const { user, profile } = await getNavProfile()
-  if (!user) redirect('/login')
 
   const { tournamentId } = await params
+  if (!user) redirect(gateRedirect(`/leaderboard/tournaments/${tournamentId}`, 'new'))
   const sp = await searchParams
   const scope: Scope = (sp.scope as Scope | undefined) ?? 'worldwide'
   const supabase = await createClient()

@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
+import { gateRedirect } from '@/lib/auth-redirect'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { PAST_CHALLENGE_STATUSES } from '@/lib/challenges/status'
@@ -18,7 +19,7 @@ function timeAgo(dateStr: string): string {
 
 export default async function PastChallengesPage() {
   const { user, profile } = await getNavProfile()
-  if (!user) redirect('/login')
+  if (!user) redirect(gateRedirect('/challenges/past'))
 
   const admin = createAdminClient()
 

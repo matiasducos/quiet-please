@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect, notFound } from 'next/navigation'
+import { gateRedirect } from '@/lib/auth-redirect'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import TournamentResultsTable from '@/components/TournamentResultsTable'
@@ -10,9 +11,9 @@ import LeagueTournamentSelector from '../../LeagueTournamentSelector'
 
 export default async function LeagueTournamentResultsPage({ params }: { params: Promise<{ id: string; tournamentId: string }> }) {
   const { user, profile } = await getNavProfile()
-  if (!user) redirect('/login')
 
   const { id: leagueId, tournamentId } = await params
+  if (!user) redirect(gateRedirect(`/leagues/${leagueId}/tournaments/${tournamentId}`))
   const supabase = await createClient()
   const admin = createAdminClient()
 

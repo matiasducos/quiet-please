@@ -1,8 +1,9 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { authUrl, getSafeRedirectPath, withNext } from '@/lib/auth-redirect'
 import { TERMS_VERSION } from '@/lib/legal/terms'
 import posthog from 'posthog-js'
 
@@ -32,6 +33,9 @@ const VALUE_PROPS = ['Free to play', 'ATP & WTA tournaments', 'Private leagues &
 
 export default function SignupPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const rawNext = searchParams.get('next')
+  const next = getSafeRedirectPath(rawNext)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [consented, setConsented] = useState(false)
@@ -60,7 +64,10 @@ export default function SignupPage() {
     // The accepted version rides along on the confirmation link so /auth/callback can
     // record it. It can't be written here: with email confirmation on, signUp returns
     // a null session, so there is no authenticated context yet.
-    const { data: signUpData, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard&consent=${TERMS_VERSION}` } })
+    // `next` rides on the confirmation link because the visitor may open it
+    // hours later, in a different tab or on a different device — nothing
+    // client-side survives that gap.
+    const { data: signUpData, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}&consent=${TERMS_VERSION}` } })
     if (error) { setError(error.message); setLoading(false); return }
     // If email confirmation is required, session will be null — show check-email page
     if (!signUpData.session) {
@@ -68,20 +75,20 @@ export default function SignupPage() {
       return
     }
     // No confirmation needed → middleware redirects to /setup-username (username_is_set = false)
-    router.push('/dashboard'); router.refresh()
+    router.push(next); router.refresh()
   }
 
   async function handleGoogleSignup() {
     if (blockedByConsent()) return
     trackSignupStarted('google')
     const supabase = createClient()
-    await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${window.location.origin}/auth/callback?consent=${TERMS_VERSION}` } })
+    await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: withNext(`${window.location.origin}/auth/callback?consent=${TERMS_VERSION}`, rawNext) } })
   }
 
   async function handleFacebookSignup() {
     if (blockedByConsent()) return
     const supabase = createClient()
-    await supabase.auth.signInWithOAuth({ provider: 'facebook', options: { redirectTo: `${window.location.origin}/auth/callback?consent=${TERMS_VERSION}` } })
+    await supabase.auth.signInWithOAuth({ provider: 'facebook', options: { redirectTo: withNext(`${window.location.origin}/auth/callback?consent=${TERMS_VERSION}`, rawNext) } })
   }
 
   return (
@@ -105,7 +112,7 @@ export default function SignupPage() {
           <Link href="/" className="lg:hidden mb-8 block" style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem' }}>Quiet Please</Link>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', letterSpacing: '-0.02em', marginBottom: '0.5rem' }}>Create account</h2>
           <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
-            Already have an account?{' '}<Link href="/login" style={{ color: 'var(--court)' }}>Sign in</Link>
+            Already have an account?{' '}<Link href={authUrl('/login', rawNext)} style={{ color: 'var(--court)' }}>Sign in</Link>
           </p>
 
           {/* Mobile-only echo of the desktop side panel. */}

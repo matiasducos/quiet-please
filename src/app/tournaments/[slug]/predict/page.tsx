@@ -6,9 +6,10 @@ import { TEST_EXTERNAL_ID } from '@/app/test-tournaments/constants'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
 import { canPredictForStatus, isManualLockMode } from '@/lib/app-settings'
 import { resolveTournamentParam } from '@/lib/tournaments/series'
+import { gateRedirect } from '@/lib/auth-redirect'
 
-// An app surface, not a landing page: it redirects signed-out visitors to
-// /login, so there is nothing here for a crawler. `follow` still lets link
+// An app surface, not a landing page: it sends signed-out visitors to sign
+// up, so there is nothing here for a crawler. `follow` still lets link
 // equity pass back to the edition page.
 export const metadata = { robots: { index: false, follow: true } }
 
@@ -21,10 +22,20 @@ export default async function PredictPage({
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
 
+  // Params are resolved before the gate so the redirect can name the bracket
+  // this visitor asked for.
   const { slug: routeParam } = await params
   const { challenge: challengeId } = await searchParams
+
+  // 'new' rather than 'returning': this page is reached by clicking Predict
+  // on a public tournament page, which is the single most likely moment for
+  // someone without an account to hit a wall. Showing them "Welcome back" is
+  // the wrong ask — and /signup links to /login carrying the same target.
+  if (!user) {
+    const target = `/tournaments/${routeParam}/predict${challengeId ? `?challenge=${encodeURIComponent(challengeId)}` : ''}`
+    redirect(gateRedirect(target, 'new'))
+  }
 
   // Accepts a series slug or a legacy tournament UUID — see
   // resolveTournamentParam. Every existing in-app link passes the UUID.
