@@ -25,6 +25,27 @@ export const ROUND_LABEL: Record<string, string> = {
   QF: 'Quarterfinal', SF: 'Semifinal', F: 'Final',
 }
 
+/**
+ * external_id → the round that player lost in. Absent from the map means they
+ * never lost: still in the draw while the tournament runs, and the champion
+ * once it is over.
+ *
+ * First loss wins, so a stray duplicate result can't move someone's exit later
+ * than it happened. Shared with the public participants list, which asks the
+ * same question of the same rows without any of the per-user machinery.
+ */
+export function eliminationRounds(
+  results: Pick<MatchResultRow, 'loser_external_id' | 'round'>[],
+): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const r of results) {
+    if (r.loser_external_id && !out.has(r.loser_external_id)) {
+      out.set(r.loser_external_id, r.round)
+    }
+  }
+  return out
+}
+
 export interface DrawPlayer { name?: string | null; country?: string | null; externalId?: string | null }
 export interface DrawMatch { matchId: string; round: string; player1?: DrawPlayer | null; player2?: DrawPlayer | null }
 
@@ -155,13 +176,7 @@ export function buildMyTournament(input: MyTournamentInput): MyTournament {
   const championExternalId = results.find(r => r.round === 'F')?.winner_external_id ?? null
 
   // ── Per player ────────────────────────────────────────────────────────────
-  // A player is out once they appear as the loser of any played match.
-  const eliminatedIn = new Map<string, string>()
-  for (const r of results) {
-    if (r.loser_external_id && !eliminatedIn.has(r.loser_external_id)) {
-      eliminatedIn.set(r.loser_external_id, r.round)
-    }
-  }
+  const eliminatedIn = eliminationRounds(results)
 
   const pickCount: Record<string, number> = {}
   const riding: Record<string, number> = {}
