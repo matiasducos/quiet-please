@@ -119,15 +119,24 @@ async function loginLink() {
   const { data, error } = await admin.auth.admin.generateLink({
     type: 'magiclink',
     email: QA_EMAIL,
-    options: { redirectTo: `${redirectOrigin}/auth/callback?next=/dashboard` },
   })
   if (error) throw new Error(`generateLink failed: ${error.message}`)
 
+  // The hashed_token, not the action_link. action_link goes through Supabase's
+  // own /verify endpoint, which enforces the project's redirect allow-list —
+  // localhost is not on it, so every local target silently falls back to the
+  // production Site URL and the session lands on the wrong origin. /auth/confirm
+  // redeems the token server-side instead, which the allow-list never sees.
+  const link = new URL('/auth/confirm', redirectOrigin)
+  link.searchParams.set('token_hash', data.properties.hashed_token)
+  link.searchParams.set('next', '/dashboard')
+
   console.log('One-time sign-in link (expires, single use):')
   console.log()
-  console.log(data.properties.action_link)
+  console.log(link.toString())
   console.log()
   console.log(`Open it in the Browser pane. It lands on ${redirectOrigin}/dashboard signed in as ${QA_USERNAME}.`)
+  console.log('/auth/confirm is development-only — it 404s anywhere else.')
 }
 
 const command = process.argv[2] ?? 'status'

@@ -20,6 +20,7 @@ export default function robots(): MetadataRoute.Robots {
           '/ingest/',
           '/admin',
           '/dashboard',
+          '/activity',
           '/notifications',
           '/messages',
           '/friends',
