@@ -3,6 +3,7 @@ import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
+import { PAST_CHALLENGE_STATUSES } from '@/lib/challenges/status'
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -25,7 +26,7 @@ export default async function PastChallengesPage() {
     .from('challenges')
     .select('id, challenger_id, challenged_id, tournament_id, status, challenger_points, challenged_points, winner_id, created_at')
     .or(`challenger_id.eq.${user.id},challenged_id.eq.${user.id}`)
-    .in('status', ['completed', 'declined', 'expired', 'cancelled'])
+    .in('status', PAST_CHALLENGE_STATUSES as readonly string[])
     .order('created_at', { ascending: false })
 
   const tournamentIds = [...new Set((rawChallenges ?? []).map(c => c.tournament_id))]
