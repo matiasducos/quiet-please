@@ -1,5 +1,12 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import {
+  ATTRIBUTION_COOKIE_NAME,
+  ATTRIBUTION_COOKIE_MAX_AGE,
+  deriveAttribution,
+  isLandingCandidate,
+  serializeAttribution,
+} from '@/lib/attribution'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -49,6 +56,37 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
+  // ── Acquisition attribution ─────────────────────────────────────────────
+  // First-touch only: written once, when a guest has no cookie yet, so the
+  // campaign that earned the visit keeps the credit through the whole signup
+  // round trip. setUsername() reads it. See lib/attribution.ts for why this
+  // cannot be left to the PostHog browser client.
+  //
+  // Guests only — a logged-in user browsing is not an acquisition — and never
+  // on machine endpoints or /auth/*, whose referrer is the OAuth provider.
+  //
+  // Applied through a helper rather than written straight onto
+  // supabaseResponse: the guest redirect below returns a *different* response
+  // object, and a cookie set only on supabaseResponse would be silently
+  // dropped for exactly the visitor who arrived on a deep link from an ad.
+  const attribution =
+    !user && !request.cookies.has(ATTRIBUTION_COOKIE_NAME) && isLandingCandidate(pathname)
+      ? deriveAttribution(request.nextUrl, request.headers.get('referer'))
+      : null
+
+  function withAttribution<T extends NextResponse>(response: T): T {
+    if (attribution) {
+      response.cookies.set(ATTRIBUTION_COOKIE_NAME, serializeAttribution(attribution), {
+        path: '/',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: ATTRIBUTION_COOKIE_MAX_AGE,
+      })
+    }
+    return response
+  }
+
   // Protect routes that require authentication — fast middleware redirect
   // Note: /challenges and /leagues root pages handle anonymous visitors themselves
   const protectedRoutes = ['/dashboard', '/profile', '/predict', '/friends', '/notifications', '/admin', '/leagues/browse', '/leagues/new', '/leagues/join', '/challenges/new', '/messages']
@@ -58,7 +96,7 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('redirectTo', pathname)
-    return NextResponse.redirect(url)
+    return withAttribution(NextResponse.redirect(url))
   }
 
   // For authenticated users on page routes (not API/assets), redirect to
@@ -99,5 +137,5 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  return supabaseResponse
+  return withAttribution(supabaseResponse)
 }

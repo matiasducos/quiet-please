@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import TrackedCTA from '@/components/TrackedCTA'
 
 /**
  * Nav for logged-out marketing surfaces (homepage, slam landing pages).
@@ -30,9 +31,13 @@ export default function MarketingNav() {
           <Link href="/login" className="inline-flex items-center min-h-[44px] px-2" style={{ color: 'var(--muted)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
             Sign in
           </Link>
-          <Link href="/signup" className="inline-flex items-center justify-center min-h-[44px] px-4 text-xs md:text-sm text-white rounded-sm hover:opacity-90 whitespace-nowrap" style={{ background: 'var(--court)' }}>
+          {/* Tracked like the in-page CTAs: this is the one signup control
+              present on every marketing surface and at every scroll depth, so
+              leaving it as a bare Link left the busiest path to /signup as the
+              only untracked one. */}
+          <TrackedCTA href="/signup" location="nav" className="inline-flex items-center justify-center min-h-[44px] px-4 text-xs md:text-sm text-white rounded-sm hover:opacity-90 whitespace-nowrap" style={{ background: 'var(--court)' }}>
             Get started
-          </Link>
+          </TrackedCTA>
         </div>
       </div>
     </nav>
