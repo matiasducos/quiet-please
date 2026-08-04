@@ -20,16 +20,31 @@ const ICON: Record<ActivityItem['type'], string> = {
  *
  * `viewerId` is what turns a username into "You", so it has to be the signed-in
  * user and not the profile being looked at.
+ *
+ * `maxHeight` turns the feed into its own scroll area — used on the dashboard,
+ * where more rows are worth showing than there is room for. Deliberately left
+ * off on /activity, which is the full-page view and should scroll with the page.
  */
 export default function ActivityFeed({
   items,
   viewerId,
+  maxHeight,
 }: {
   items: ActivityItem[]
   viewerId: string
+  maxHeight?: string
 }) {
+  const scrollable = maxHeight !== undefined
   return (
-    <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+    <div
+      className={`bg-white rounded-sm border ${scrollable ? '' : 'overflow-hidden'}`}
+      style={{
+        borderColor: 'var(--chalk-dim)',
+        ...(scrollable ? { maxHeight, overflowY: 'auto' as const, overflowX: 'hidden' as const } : {}),
+      }}
+      // A scroll container is unreachable by keyboard unless it can take focus.
+      {...(scrollable ? { tabIndex: 0, role: 'region', 'aria-label': 'Activity feed' } : {})}
+    >
       {items.map((item, i) => {
         const isMe = item.user_id === viewerId
         // Tints reuse the two the homepage feature grid already uses, so the
