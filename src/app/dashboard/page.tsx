@@ -79,7 +79,15 @@ export default async function DashboardPage() {
     { label: 'Global rank',    value: `#${globalRank}` },
   ]
 
-  const activity = await getActivity(user.id, 8)
+  const activity = await getActivity(user.id, 15)
+
+  // A line about *this* moment rather than a restatement of the page. When
+  // something is running the dashboard's job is to point at it; when nothing is,
+  // it points at the one panel that's still worth reading.
+  const headliner = enrichedLive[0]
+  const subtitle = headliner
+    ? `${headliner.flag_emoji ? `${headliner.flag_emoji} ` : ''}${headliner.location ?? headliner.name} is under way — every result moves your bracket.`
+    : 'Nothing on court right now. Good moment to look back at your record.'
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
@@ -90,7 +98,7 @@ export default async function DashboardPage() {
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', marginBottom: '0.5rem' }}>
             Welcome back{profile?.username ? `, ${profile.username}` : ''}
           </h1>
-          <p style={{ color: 'var(--muted)', fontSize: '1rem' }}>Your predictions. Your points. Your season.</p>
+          <p style={{ color: 'var(--muted)', fontSize: '1rem' }}>{subtitle}</p>
         </div>
 
         {/* Stats */}
@@ -114,7 +122,9 @@ export default async function DashboardPage() {
               <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.01em' }}>Activity</h2>
               <Link href="/activity" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>See all activities →</Link>
             </div>
-            <ActivityFeed items={activity} viewerId={user.id} />
+            {/* Cuts mid-row on purpose: a half-visible row is the clearest
+                signal that the list keeps going. */}
+            <ActivityFeed items={activity} viewerId={user.id} maxHeight="26rem" />
           </div>
         )}
 

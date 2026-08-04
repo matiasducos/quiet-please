@@ -7,6 +7,7 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import CancelButton from './CancelButton'
 import { formatPoints } from '@/lib/utils/format'
+import { PAST_CHALLENGE_STATUSES, NON_EVENT_CHALLENGE_STATUSES } from '@/lib/challenges/status'
 
 export const metadata: Metadata = { title: 'Challenges | Quiet Please' }
 
@@ -147,7 +148,7 @@ export default async function ChallengesPage() {
   const needsAction = challenges.filter(c => c.status === 'pending' && !c.isChallenger)
   const active      = challenges.filter(c => c.status === 'accepted')
   const waiting     = challenges.filter(c => c.status === 'pending' && c.isChallenger)
-  const closed      = challenges.filter(c => ['completed', 'declined', 'expired', 'cancelled'].includes(c.status))
+  const closed      = challenges.filter(c => (PAST_CHALLENGE_STATUSES as readonly string[]).includes(c.status))
 
   // Check if user has any accepted friends
   const { count: friendCount } = await admin
@@ -241,7 +242,10 @@ export default async function ChallengesPage() {
             {[
               { label: 'Active', value: active.length + needsAction.length + waiting.length },
               { label: 'Won', value: challenges.filter(c => c.isWinner).length },
-              { label: 'Total', value: challenges.filter(c => c.status !== 'cancelled').length },
+              // Cancelled and expired challenges never got played, so they don't
+              // count towards the total — the same reason expired ones are kept
+              // out of the list below.
+              { label: 'Total', value: challenges.filter(c => !(NON_EVENT_CHALLENGE_STATUSES as readonly string[]).includes(c.status)).length },
             ].map((stat, i) => (
               <div key={i} className="bg-white rounded-sm border p-3 md:p-6 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>
