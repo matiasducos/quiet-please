@@ -17,7 +17,7 @@ import { formatPoints } from '@/lib/utils/format'
 import { getLiveStatuses } from '@/lib/tennis/live-status'
 import { ROUND_LABEL } from '@/lib/tennis/my-tournament'
 
-export const metadata: Metadata = { title: 'Dashboard | Quiet Please' }
+export const metadata: Metadata = { title: 'Dashboard' }
 
 export default async function DashboardPage() {
   const { user, profile } = await getNavProfile()

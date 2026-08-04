@@ -6,7 +6,7 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { formatPoints } from '@/lib/utils/format'
 
-export const metadata: Metadata = { title: 'Leagues | Quiet Please' }
+export const metadata: Metadata = { title: 'Leagues' }
 
 export default async function LeaguesPage() {
   const { user, profile } = await getNavProfile()

@@ -10,7 +10,7 @@ import { AcceptButton, DeclineButton } from './FriendActionButton'
 import { getFriendActivity, timeAgo } from '@/lib/friends/activity'
 import StartChatButton from './StartChatButton'
 
-export const metadata: Metadata = { title: 'Friends | Quiet Please' }
+export const metadata: Metadata = { title: 'Friends' }
 
 export default async function FriendsPage({
   searchParams,

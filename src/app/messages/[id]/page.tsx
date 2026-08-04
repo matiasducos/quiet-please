@@ -6,7 +6,7 @@ import ChatView from './ChatView'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Chat | Quiet Please',
+  title: 'Chat',
 }
 
 export default async function ChatPage({ params }: { params: Promise<{ id: string }> }) {

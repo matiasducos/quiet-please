@@ -5,7 +5,7 @@ import ConversationList from './ConversationList'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Messages | Quiet Please',
+  title: 'Messages',
 }
 
 export default async function MessagesPage() {
