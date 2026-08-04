@@ -1,4 +1,24 @@
-# QA — Prediction Mode Toggle
+# QA — pending checks
+
+## Auth intent preservation (PR #101, 2026-08-04)
+
+One path could not be verified automatically: the QA account is magic-link only
+(`scripts/qa-user.mjs` never sets a password), so `router.push(next)` after a
+**password** sign-in is the single untested line. Everything either side of it —
+the parsed target, the rendered links, the OAuth and confirmation-link paths, and
+`/auth/callback` — was verified.
+
+1. Signed out, open `/tournaments/<any-slug>/predict`
+   - [ ] Lands on `/signup?next=…` showing "Create account", not "Welcome back"
+   - [ ] The "Sign in" link carries the same `next`
+2. From that `/login?next=…`, sign in **with email and password**
+   - [ ] Lands on the bracket, not `/dashboard`
+3. Same again with **Continue with Google**
+   - [ ] Lands on the bracket
+4. Brand-new account (email signup → confirmation link → username screen)
+   - [ ] After setting a username, lands on the page that prompted the signup
+
+## QA — Prediction Mode Toggle
 
 ## QA Checklist
 
