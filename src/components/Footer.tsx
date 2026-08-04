@@ -29,9 +29,16 @@ export default function Footer() {
         </div>
 
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t pt-4" style={{ borderColor: 'var(--chalk-dim)' }}>
-          <p style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-            © {new Date().getFullYear()} Quiet Please
-          </p>
+          {/* The name is the umpire's call. Nothing else on the site explains
+              it, and unexplained it just reads as an odd two-word brand. */}
+          <div className="flex flex-col items-center sm:items-start gap-1">
+            <p style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+              © {new Date().getFullYear()} Quiet Please
+            </p>
+            <p style={{ fontSize: '0.7rem', color: 'var(--muted)', fontStyle: 'italic' }}>
+              “Quiet please” — the umpire’s call before every point.
+            </p>
+          </div>
           {/* min-h-[44px] keeps these tappable on a phone — at their 0.75rem font
               size the natural hit area is only ~18px tall. */}
           <div className="flex items-center flex-wrap gap-2">
