@@ -654,27 +654,44 @@ export interface SeriesSeoUpdate {
   country: string
   surface: 'hard' | 'clay' | 'grass' | null
   category: 'grand_slam' | 'masters_1000' | '500' | '250' | null
-  /**
-   * Only honoured while the series is still unreviewed. Ignored otherwise —
-   * see the comment in updateSeriesSeo.
-   */
   slug?: string
   slugReviewed: boolean
+  /**
+   * Explicit acknowledgement that a PUBLISHED URL is being moved.
+   *
+   * Required rather than inferred: the whole point of the lock is that no
+   * routine save can move a live URL by accident, so the override has to be a
+   * separate deliberate act the admin performed in the UI.
+   */
+  confirmSlugChange?: boolean
 }
 
 const VALID_CATEGORIES = ['grand_slam', 'masters_1000', '500', '250'] as const
 
 /**
- * Rename a series and, while it is still unpublished, fix its URL.
+ * Rename a series, and move its URL when that is genuinely safe.
  *
- * The slug rule is the reason this is one action rather than two. A slug is
- * permanent ONCE PUBLISHED — that is what `tournament_series.slug` exists for,
- * and moving one throws away every backlink and every crawler's record of it.
- * But `slug_reviewed = false` means the opposite is true: those pages are
- * noindex and excluded from the sitemap, so nothing outside this database has
- * ever seen the URL and there is nothing to break. That window is exactly when
- * a machine-guessed slug from the sync cron can still be corrected, so the slug
- * is editable there and frozen the moment it is published.
+ * The slug rule is the reason this is one action rather than two:
+ *
+ *   - `slug_reviewed = false` — the page is noindex and out of the sitemap, so
+ *     nothing outside this database has ever seen the URL. Freely editable;
+ *     this is the window in which the sync cron's machine-guessed slugs get
+ *     corrected.
+ *   - `slug_reviewed = true` — published. Locked by default, because moving it
+ *     hands back whatever ranking the URL has accumulated and 404s every
+ *     external link to it.
+ *
+ * The lock is a guard rail rather than a wall, because "published" is not the
+ * same as "indexed": a URL published last week may not be in any index yet, and
+ * only a human looking at Search Console can tell. So an explicit
+ * `confirmSlugChange` overrides it.
+ *
+ * What that override does NOT break is worth stating, since it is the reason
+ * this is defensible at all: every in-app link — notifications, emails, the
+ * activity feed — addresses tournaments by UUID (`/tournaments/<id>`), and
+ * `legacy-redirect.ts` resolves that to the CURRENT slug per request. Internal
+ * navigation therefore follows a rename automatically. The exposure is limited
+ * to external references: search results, shared links, bookmarks.
  */
 export async function updateSeriesSeo(
   seriesId: string,
@@ -731,12 +748,12 @@ export async function updateSeriesSeo(
   // client sent: a stale form open since before the series was published must
   // not be able to move a live URL.
   const wantsSlugChange = data.slug !== undefined && data.slug.trim() !== current.slug
-  if (wantsSlugChange && current.slug_reviewed) {
+  if (wantsSlugChange && current.slug_reviewed && !data.confirmSlugChange) {
     return {
       ok: false,
       error:
-        'This URL is published and cannot be changed — every existing link to it would 404. ' +
-        'Only the display names are editable.',
+        'This URL is published. Unlock it first if you are sure it is not indexed yet — ' +
+        'moving an indexed URL 404s every external link to it.',
     }
   }
 
