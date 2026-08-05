@@ -6,36 +6,6 @@
 
 ## In Progress / Next Up
 
-### Canadian Open 2026 draw is half entered (found 2026-08-04)
-`ce10940c-7a0e-4e7e-beee-c9d90d75a9b9` — National Bank Open, Montreal, `in_progress`.
-Measured against production:
-
-| round | matches | slots filled | empty |
-|---|---|---|---|
-| R128 | 64 | **96** | 32 |
-| R64 | 32 | **0** | 64 |
-| R32 | 16 | **0** | 32 |
-| R16 → F | 15 | **0** | 30 |
-
-- 32 R128 slots were never named — the qualifier slots. The page header says
-  "128-PLAYER DRAW" while the panel below reads "96 players"
-- 46 of 64 R128 matches have results; 18 are outstanding
-- **This is why the tournament shows no upcoming matches** — there is nothing in the
-  stored draw past R128 to display. `sync-draws` is idle by design (draws are entered
-  by hand), so nothing fills this automatically
-- **Open question before the fix:** does the bracket view derive later rounds from
-  `match_results`, or read them from the stored draw? If the latter, R64+ needs
-  filling by hand as results land. Worth confirming — it changes the amount of work
-- Unrelated but surfaced alongside: 3 picks on this draw name `qualifier-N`
-  placeholders (R128 matches 027, 058, 059). Per migration 064 these can never score
-  and cannot be repaired — the pre-resolution draw is not retained
-- A report of every player rendering as "Qualifier" on this tournament could **not** be
-  reproduced: `buildMyTournament` against live data returns correct names and the exact
-  headline figures. `displayName()` falls back to `'Qualifier'` for the whole list at once
-  when the bracket carries no names, so the symptom fits a render from before the draw
-  was populated. Re-open if it recurs on a hard refresh
-
-
 ### Mobile responsiveness audit — NO side-scrolling anywhere
 - Priority page: `/leaderboard` — user must NEVER have to side-scroll on mobile
 - Audit all pages at 375px for horizontal overflow. Currently the leaderboard table is wrapped in `overflow-x-auto` which permits side-scroll as an escape hatch — the real fix is to redesign the row layout so it fits natively at 375px
@@ -48,20 +18,6 @@ Measured against production:
 - **TODO:** Enable Facebook Login product, set redirect URI: `https://<project>.supabase.co/auth/v1/callback`
 - **TODO:** Copy App ID + App Secret → Supabase Dashboard → Auth → Providers → Facebook → Enable + paste
 - **TODO:** Set Facebook app to **Live mode** (not development)
-
-### Automated Match Result Syncing
-- Sync match results from api-tennis into the DB automatically
-- Previous attempt (10 commits) rolled back 2026-03-24 — issues with player name matching, round normalization, and API field mapping
-- Needs: reliable player matching strategy, proper round mapping, robust error handling
-
----
-
-### Internationalization (i18n / Translation)
-- ~139 files with hardcoded English strings, zero i18n infrastructure today
-- Recommended library: `next-intl` (built for App Router, TypeScript support, locale routing)
-- Scope: 90–150 hours for full extraction + infrastructure + first language
-- Strategy: defer until international expansion is closer; then extract in a single 2–4 week sprint
-- Dynamic content adds complexity: status labels, notification templates, `timeAgo()`, pluralization
 
 ---
 
@@ -104,13 +60,18 @@ what remains, roughly in impact order.
 - `--muted` (#6b6b6b) on `--chalk` is 4.76:1 — passes AA but with almost no margin, and most
   body copy sits at 0.875–0.9rem. Darkening to ~#5a5a5a costs nothing
 
-### Copy
-- "Built for every tennis fan!" — the only exclamation mark on the page; undercuts the
-  restrained editorial tone everything else establishes
-- Streak multiplier is explained three separate times (bracket section, how-it-works,
-  features #04). "Start predicting" appears 4×
-- The name is never explained — "Quiet Please" is the umpire's call. A one-line nod would
-  add charm and make the brand stick
+### ✅ Copy (2026-08-04)
+- Exclamation mark dropped from "Built for every tennis fan"
+- Streak multiplier now told once on the page — the `HowItWorksDemo` table, which shows
+  the actual +10 → +90 → +540 progression rather than describing it. The bracket-preview
+  paragraph lost its trailing streak sentence; features #04 keeps a one-line version.
+  **The FAQ JSON-LD copy was left alone on purpose** — it is the answer Google lifts into
+  a rich result, where it stands alone and has to be self-contained
+- Three "Start predicting" CTAs cut to one. The bracket-preview button now reads
+  "See open draws →", which also fixes a label/destination mismatch (it links to
+  `/tournaments`, not to a bracket); the final CTA reads "Make your first picks — free"
+- Name explained in `Footer.tsx` — "Quiet please" is the umpire's call. Site-wide, not
+  just the landing page
 
 ### Canonical host hygiene (low priority — canonical tags already mitigate)
 - `quiet-please.vercel.app` serves Production, returns 200 and a crawlable `Allow: /`
@@ -122,11 +83,6 @@ what remains, roughly in impact order.
 - Vercel shows "DNS Change Recommended" on the apex. Site resolves and serves fine
   (`76.76.21.21`, HTTP 200) — do NOT act on this if it means moving nameservers to Vercel;
   DNS is deliberately at Hostinger
-
-### Leaderboard teaser exposes real usernames
-- Rows 4–5 are visually blurred with `filter: blur(5px)` but the real usernames sit in the
-  DOM in plain text, readable in DevTools. Either render placeholders server-side or accept
-  it deliberately
 
 ---
 
@@ -195,4 +151,3 @@ what remains, roughly in impact order.
 - User-reported bug: picking a QUALIFIER placeholder showed "Your pick eliminated" after the draw resolved, and no points were awarded
 - sync-draws now remaps picks (incl. downstream rounds) when a qualifier slot resolves to a real player
 - Admin → Award Points: per-tournament "Re-run points" (erase ledger/rankings/leagues/trophies, reopen challenges, re-score) — always silent (`?silent=1` on award-points cron, no notifications/emails)
-- One-off repair for pre-fix broken picks: `scripts/backfill-qualifier-picks.mjs` (dry-run default) — **still to run for the affected tournament, then silent re-run from admin**

@@ -299,14 +299,16 @@ export default async function HomePage() {
                 Fill out your bracket before the draw closes
               </h2>
               <p style={{ color: 'var(--muted)', lineHeight: 1.7, fontSize: '0.9rem' }}>
-                The moment the official draw is published, your window opens. Pick the winner of every match — round by round — and lock in your predictions before each match starts. Back a player all the way to the title and earn compound bonus points through the streak multiplier.
+                The moment the official draw is published, your window opens. Pick the winner of every match — round by round — and lock in your predictions before each match starts.
               </p>
+              {/* Label matches the destination: this goes to the tournament list,
+                  not straight into a bracket. */}
               <Link
                 href="/tournaments"
                 className="inline-block mt-6 px-6 py-3 text-sm font-medium text-white rounded-sm hover:opacity-90"
                 style={{ background: 'var(--court)' }}
               >
-                Start predicting →
+                See open draws →
               </Link>
             </div>
             <div className="rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
@@ -435,7 +437,7 @@ export default async function HomePage() {
               Everything in one place
             </div>
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.75rem, 4vw, 2.5rem)', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-              Built for every tennis fan!
+              Built for every tennis fan
             </h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-px" style={{ background: 'var(--chalk-dim)', border: '1px solid var(--chalk-dim)' }}>
@@ -458,7 +460,7 @@ export default async function HomePage() {
               {
                 n: '04',
                 label: 'Streak multiplier',
-                desc: 'Back a player across consecutive rounds and earn compound bonus points. Predict any player through 5 straight rounds correctly and the multiplier stacks on top.',
+                desc: 'Back the same player round after round and your points compound. Ride one through five straight rounds and the multiplier stacks on top of that.',
               },
               {
                 n: '05',
@@ -586,7 +588,7 @@ export default async function HomePage() {
             className="inline-block px-8 py-4 text-sm font-medium text-white rounded-sm hover:opacity-90"
             style={{ background: 'var(--court)' }}
           >
-            Start predicting — it&apos;s free
+            Make your first picks — free
           </TrackedCTA>
         </div>
       </section>
