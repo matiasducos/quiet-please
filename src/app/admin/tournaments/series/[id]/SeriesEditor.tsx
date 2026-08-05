@@ -47,11 +47,15 @@ export default function SeriesEditor({ series }: { series: AdminSeriesRow }) {
 
   const [status, setStatus] = useState<{ type: 'idle' | 'loading' | 'error' | 'success'; message?: string }>({ type: 'idle' })
 
-  // A published slug is frozen. The server re-checks this against the database
-  // rather than trusting the form, but disabling the input is what stops an
-  // admin composing an edit that can only be rejected.
-  const slugLocked = series.slug_reviewed
-  const slugProblem = !slugLocked && slug !== series.slug ? slugErrorMessage(slug) : null
+  // A published slug is locked by DEFAULT, not permanently: "published" is not
+  // the same as "indexed", and only a human with Search Console open can tell
+  // the difference. Unlocking is a deliberate act, and the server requires the
+  // same acknowledgement rather than inferring it.
+  const [slugUnlocked, setSlugUnlocked] = useState(false)
+  const slugLocked = series.slug_reviewed && !slugUnlocked
+  const slugEditable = !series.slug_reviewed || slugUnlocked
+  const slugProblem = slugEditable && slug !== series.slug ? slugErrorMessage(slug) : null
+  const movingLiveUrl = series.slug_reviewed && slugUnlocked && slug.trim() !== series.slug
 
   // Previewed against the same functions the pages ship, so what is shown here
   // is what Google gets.
@@ -84,8 +88,9 @@ export default function SeriesEditor({ series }: { series: AdminSeriesRow }) {
         country: country.trim(),
         surface: surface || null,
         category: category || null,
-        slug: slugLocked ? undefined : slug.trim(),
+        slug: slugEditable ? slug.trim() : undefined,
         slugReviewed,
+        confirmSlugChange: slugUnlocked,
       })
       if (!ok) {
         setStatus({ type: 'error', message: error ?? 'Failed to update series' })
@@ -216,7 +221,12 @@ export default function SeriesEditor({ series }: { series: AdminSeriesRow }) {
             <SlugField
               slug={slug}
               setSlug={setSlug}
+              originalSlug={series.slug}
               locked={slugLocked}
+              unlocked={slugUnlocked}
+              onUnlock={() => setSlugUnlocked(true)}
+              onRelock={() => { setSlugUnlocked(false); setSlug(series.slug) }}
+              movingLiveUrl={movingLiveUrl}
               problem={slugProblem}
               suggestion={slugify(name)}
               reviewed={slugReviewed}
@@ -281,15 +291,25 @@ function PreviewRow({ label, value, budget = false }: { label: string; value: st
  * The URL, which behaves differently depending on whether it has been published.
  *
  * Before publishing, the page is noindex and out of the sitemap, so nothing
- * outside the database has ever seen this URL and it is safe to correct. After,
- * it is the permanent address every backlink points at.
+ * outside the database has ever seen this URL and it is safe to correct.
+ *
+ * After publishing it is locked by default — but only by default. "Published"
+ * is not "indexed": a URL published recently may be in no index at all, and the
+ * only way to know is to look it up in Search Console. So the lock opens on an
+ * explicit unlock, with the check to perform stated up front.
  */
 function SlugField({
-  slug, setSlug, locked, problem, suggestion, reviewed, setReviewed, wasReviewed, editionCount,
+  slug, setSlug, originalSlug, locked, unlocked, onUnlock, onRelock, movingLiveUrl,
+  problem, suggestion, reviewed, setReviewed, wasReviewed, editionCount,
 }: {
   slug: string
   setSlug: (v: string) => void
+  originalSlug: string
   locked: boolean
+  unlocked: boolean
+  onUnlock: () => void
+  onRelock: () => void
+  movingLiveUrl: boolean
   problem: string | null
   suggestion: string
   reviewed: boolean
@@ -297,8 +317,15 @@ function SlugField({
   wasReviewed: boolean
   editionCount: number
 }) {
+  const danger = movingLiveUrl
   return (
-    <div className="rounded-sm border p-4" style={{ borderColor: locked ? 'var(--chalk-dim)' : '#fcd34d', background: locked ? 'var(--chalk)' : '#fffbeb' }}>
+    <div
+      className="rounded-sm border p-4"
+      style={{
+        borderColor: danger ? '#fca5a5' : locked ? 'var(--chalk-dim)' : '#fcd34d',
+        background: danger ? '#fef2f2' : locked ? 'var(--chalk)' : '#fffbeb',
+      }}
+    >
       <label style={labelStyle}>URL slug</label>
       <div className="flex items-center gap-1 flex-wrap">
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--muted)' }}>
@@ -314,12 +341,54 @@ function SlugField({
       </div>
 
       {locked ? (
-        <p style={hintStyle}>
-          <strong>Locked.</strong> This URL is published and indexed. Changing it
-          would 404 every existing link and hand back the ranking it has built.
-          The display name above is free to change — the URL does not have to
-          match it.
-        </p>
+        <>
+          <p style={hintStyle}>
+            <strong>Locked.</strong> This URL is published. Moving an indexed URL
+            404s every external link to it and hands back the ranking it has
+            built. The display name above is free to change — the URL does not
+            have to match it.
+          </p>
+          <button
+            type="button"
+            onClick={onUnlock}
+            className="mt-2"
+            style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--court)', textDecoration: 'underline', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+          >
+            Unlock — this page is not indexed yet
+          </button>
+        </>
+      ) : unlocked ? (
+        <>
+          <p style={{ ...hintStyle, color: '#991b1b' }}>
+            <strong>Unlocked.</strong> Check Search Console for{' '}
+            <code style={{ fontFamily: 'var(--font-mono)' }}>/tournaments/{originalSlug}</code>{' '}
+            first — if it is indexed, leave it alone and change only the display
+            name.
+          </p>
+          <p style={hintStyle}>
+            Links inside the app are safe either way: notifications, emails and
+            the activity feed address tournaments by id and follow the rename
+            automatically. What breaks is external — search results, shared
+            links, bookmarks.
+          </p>
+          {problem && (
+            <p style={{ fontSize: '0.75rem', color: '#b91c1c', marginTop: '5px' }}>{problem}</p>
+          )}
+          {movingLiveUrl && !problem && (
+            <p style={{ fontSize: '0.78rem', color: '#991b1b', marginTop: '6px', lineHeight: 1.5 }}>
+              On save, <code style={{ fontFamily: 'var(--font-mono)' }}>/tournaments/{originalSlug}</code>{' '}
+              starts returning 404.
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={onRelock}
+            className="mt-2"
+            style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)', textDecoration: 'underline', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+          >
+            Cancel — restore {originalSlug}
+          </button>
+        </>
       ) : (
         <>
           {problem && (
