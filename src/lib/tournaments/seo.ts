@@ -9,6 +9,9 @@ import type {
   TournamentStatus,
 } from './series'
 import { isEditionIndexable, isSeriesIndexable } from './series'
+// Pure title formatting lives in a leaf module so the admin naming editor — a
+// client component — can preview the exact strings this file ships.
+import { editionTitle, hubTitle } from './titles'
 
 /**
  * Metadata and structured data for the public tournament pages.
@@ -30,11 +33,6 @@ const SURFACE_LABEL: Record<string, string> = {
   hard: 'hard court',
   clay: 'clay',
   grass: 'grass',
-}
-
-/** Display name for a series, preferring the compact form in title tags. */
-export function seriesLabel(series: SeriesRow, compact = false): string {
-  return (compact ? series.short_name : null) ?? series.name
 }
 
 export function seriesVenue(series: SeriesRow, edition?: EditionDetail): string | null {
@@ -113,16 +111,12 @@ export function editionDescription(page: EditionPage): string {
 
 export function buildEditionMetadata(page: EditionPage): Metadata {
   const { series, year } = page
-  const name = seriesLabel(series, true)
   const path = `/tournaments/${series.slug}/${year}`
   const url = `${SITE_URL}${path}`
 
   const isDone = page.tours.every(t => t.tournament.status === 'completed')
 
-  // The title promises only what the page actually contains.
-  const title = isDone
-    ? `${name} ${year} — Results & Full Draw`
-    : `${name} ${year} — Draw, Schedule & Results`
+  const title = editionTitle(series, year, isDone)
 
   const description = editionDescription(page)
   const indexable = isEditionIndexable(page)
@@ -168,7 +162,7 @@ export function buildHubMetadata(hub: SeriesHub): Metadata {
   const venue = seriesVenue(series)
   const category = series.category ? CATEGORY_LABEL[series.category] : null
 
-  const title = `${seriesLabel(series, true)} — Draw, Results & Past Winners`
+  const title = hubTitle(series)
 
   const description = [
     [name, category ? `is an ${category} event` : null, venue ? `in ${venue}` : null]

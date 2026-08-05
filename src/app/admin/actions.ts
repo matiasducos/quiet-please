@@ -566,6 +566,206 @@ export async function listTournamentSeries(): Promise<AdminSeriesOption[]> {
   }))
 }
 
+// ── Series SEO editing ────────────────────────────────────────────────────────
+//
+// A series carries the public naming for every edition under it: `name` is the
+// H1, the breadcrumb and the SportsEvent JSON-LD, `short_name` is the <title>.
+// Which of the two candidate names is the searched one is a per-series call and
+// not a rule — "Bucharest Open" beats "Romanian Open", "Umag" beats "Croatia
+// Open Umag", but no Grand Slam wants its city. That judgement can only be made
+// (and revised) by a human looking at search behaviour, so it needs a form.
+
+export interface AdminSeriesRow {
+  id: string
+  slug: string
+  name: string
+  short_name: string | null
+  city: string | null
+  country: string | null
+  flag_emoji: string | null
+  surface: 'hard' | 'clay' | 'grass' | null
+  category: 'grand_slam' | 'masters_1000' | '500' | '250' | null
+  slug_reviewed: boolean
+  /** Editions attached, newest first — drives the "what this affects" count. */
+  years: number[]
+}
+
+const ADMIN_SERIES_FIELDS =
+  'id, slug, name, short_name, city, country, flag_emoji, surface, category, slug_reviewed, tournaments(starts_year)'
+
+type RawAdminSeries = Omit<AdminSeriesRow, 'years'> & {
+  tournaments?: { starts_year: number | null }[] | null
+}
+
+function toAdminSeries(row: RawAdminSeries): AdminSeriesRow {
+  const { tournaments, ...series } = row
+  return {
+    ...series,
+    years: [...new Set((tournaments ?? []).map(t => t.starts_year).filter((y): y is number => y != null))]
+      .sort((a, b) => b - a),
+  }
+}
+
+/** Every series, for the SEO naming list. Unreviewed first — those are noindex. */
+export async function listSeriesForAdmin(): Promise<AdminSeriesRow[]> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  const { data, error } = await admin
+    .from('tournament_series')
+    .select(ADMIN_SERIES_FIELDS)
+    .order('name', { ascending: true })
+    .limit(500)
+
+  if (error) {
+    console.error('[admin] listSeriesForAdmin failed:', error.message)
+    return []
+  }
+
+  const rows = (data ?? []) as RawAdminSeries[]
+  // Unreviewed series are noindex and absent from the sitemap, so they are the
+  // ones actually costing traffic. Surface them before the settled ones.
+  return rows
+    .map(toAdminSeries)
+    .sort((a, b) => Number(a.slug_reviewed) - Number(b.slug_reviewed) || a.name.localeCompare(b.name))
+}
+
+export async function getSeriesForAdmin(id: string): Promise<AdminSeriesRow | null> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  const { data, error } = await admin
+    .from('tournament_series')
+    .select(ADMIN_SERIES_FIELDS)
+    .eq('id', id)
+    .maybeSingle()
+
+  if (error) {
+    console.error('[admin] getSeriesForAdmin failed:', error.message)
+    return null
+  }
+  return data ? toAdminSeries(data as RawAdminSeries) : null
+}
+
+export interface SeriesSeoUpdate {
+  name: string
+  shortName: string
+  city: string
+  country: string
+  surface: 'hard' | 'clay' | 'grass' | null
+  category: 'grand_slam' | 'masters_1000' | '500' | '250' | null
+  /**
+   * Only honoured while the series is still unreviewed. Ignored otherwise —
+   * see the comment in updateSeriesSeo.
+   */
+  slug?: string
+  slugReviewed: boolean
+}
+
+const VALID_CATEGORIES = ['grand_slam', 'masters_1000', '500', '250'] as const
+
+/**
+ * Rename a series and, while it is still unpublished, fix its URL.
+ *
+ * The slug rule is the reason this is one action rather than two. A slug is
+ * permanent ONCE PUBLISHED — that is what `tournament_series.slug` exists for,
+ * and moving one throws away every backlink and every crawler's record of it.
+ * But `slug_reviewed = false` means the opposite is true: those pages are
+ * noindex and excluded from the sitemap, so nothing outside this database has
+ * ever seen the URL and there is nothing to break. That window is exactly when
+ * a machine-guessed slug from the sync cron can still be corrected, so the slug
+ * is editable there and frozen the moment it is published.
+ */
+export async function updateSeriesSeo(
+  seriesId: string,
+  data: SeriesSeoUpdate,
+): Promise<{ ok: boolean; error?: string; slug?: string }> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  const name = data.name.trim()
+  if (!name) return { ok: false, error: 'Display name cannot be empty.' }
+
+  const { data: currentRow, error: readError } = await admin
+    .from('tournament_series')
+    .select('slug, slug_reviewed, flag_emoji')
+    .eq('id', seriesId)
+    .maybeSingle()
+
+  if (readError) return { ok: false, error: readError.message }
+  if (!currentRow) return { ok: false, error: 'That series no longer exists.' }
+  const current = currentRow as { slug: string; slug_reviewed: boolean; flag_emoji: string | null }
+
+  if (data.category && !VALID_CATEGORIES.includes(data.category)) {
+    return { ok: false, error: `Invalid category "${data.category}"` }
+  }
+  if (data.surface && !VALID_SURFACES.includes(data.surface)) {
+    return { ok: false, error: `Invalid surface "${data.surface}"` }
+  }
+
+  const country = data.country.trim()
+
+  // Clearing the country clears the flag; otherwise the flag is only REPLACED
+  // when the name actually resolves to one. A failed lookup keeps what is
+  // already stored rather than nulling it — `country` was populated by
+  // splitting `tournaments.location` in migration 073 and is not guaranteed to
+  // match the COUNTRIES list forever, and silently dropping a flag while
+  // saving an unrelated rename is the kind of loss nobody goes looking for.
+  // Tournament references carry the flag everywhere, so it is not cosmetic.
+  const flag = !country ? null : flagForCountry(country) ?? current.flag_emoji
+
+  const update: Record<string, unknown> = {
+    name,
+    // Empty means "no compact form" — fall back to the full name in <title>
+    // rather than storing '', which seriesLabel would happily render as blank.
+    short_name: data.shortName.trim() || null,
+    city: data.city.trim() || null,
+    country: country || null,
+    flag_emoji: flag,
+    surface: data.surface,
+    category: data.category,
+    slug_reviewed: data.slugReviewed,
+  }
+
+  // Re-checked against the DATABASE's current state, not against a flag the
+  // client sent: a stale form open since before the series was published must
+  // not be able to move a live URL.
+  const wantsSlugChange = data.slug !== undefined && data.slug.trim() !== current.slug
+  if (wantsSlugChange && current.slug_reviewed) {
+    return {
+      ok: false,
+      error:
+        'This URL is published and cannot be changed — every existing link to it would 404. ' +
+        'Only the display names are editable.',
+    }
+  }
+
+  let nextSlug = current.slug
+  if (wantsSlugChange) {
+    const slug = data.slug!.trim()
+    const problem = slugErrorMessage(slug)
+    if (problem) return { ok: false, error: `URL slug: ${problem}` }
+    update.slug = slug
+    nextSlug = slug
+  }
+
+  const { error } = await admin.from('tournament_series').update(update).eq('id', seriesId)
+
+  if (error) {
+    if (error.code === '23505') {
+      return { ok: false, error: `The URL slug "${nextSlug}" is already taken. Pick another.` }
+    }
+    return { ok: false, error: error.message }
+  }
+
+  // These fields are the <title>, H1, meta description and JSON-LD of the hub
+  // and of every edition under it. Without busting the tag the corrected name
+  // sits behind the 5-minute ISR window while crawlers keep the old one.
+  revalidateTag('tournament-detail', 'default')
+  revalidateTag('tournament-list', 'default')
+  return { ok: true, slug: nextSlug }
+}
+
 /**
  * How the new tournament attaches to a series.
  *
@@ -1319,6 +1519,12 @@ export async function updateTournament(
     .eq('id', tournamentId)
 
   if (error) return { ok: false, error: error.message }
+
+  // Same reason as updateTournamentDetails: name, location and dates are all
+  // rendered into the public edition page and its social card, so an edit that
+  // does not bust the tag leaves the corrected value behind the ISR window.
+  revalidateTag('tournament-detail', 'default')
+  revalidateTag('tournament-list', 'default')
   return { ok: true }
 }
 
