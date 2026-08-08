@@ -319,12 +319,12 @@ function RecapArt({ card, size, showUsernames }: { card: RecapCard; size: CardSi
           style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: story ? 34 : 24,
+            gap: story ? 34 : 16,
             flex: 1,
             justifyContent: 'center',
           }}
         >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 22 : 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 22 : 14 }}>
           {matches.map((m, i) => (
             <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -346,15 +346,27 @@ function RecapArt({ card, size, showUsernames }: { card: RecapCard; size: CardSi
         </div>
 
         {hasPodium && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 22 : 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 22 : 12 }}>
             <Rule />
             <Podium entries={card.podium} showUsernames={showUsernames} story={story} />
           </div>
         )}
         </div>
 
+        {/* The square's group above fills its box exactly, so this line would sit
+            flush against "3rd place" without a margin of its own — two different
+            facts reading as one wrapped sentence. Story gets its separation free
+            from the centred group's slack. */}
         {card.bracketCount > 0 && (
-          <div style={{ display: 'flex', fontFamily: BODY, fontSize: story ? 28 : 24, color: C.muted }}>
+          <div
+            style={{
+              display: 'flex',
+              marginTop: story ? 0 : 14,
+              fontFamily: BODY,
+              fontSize: story ? 28 : 24,
+              color: C.muted,
+            }}
+          >
             {card.bracketCount.toLocaleString('en-GB')} brackets in play
           </div>
         )}

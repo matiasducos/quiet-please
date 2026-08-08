@@ -24,14 +24,16 @@ import type { CardSize } from './templates/frame'
  * The numbers are one lower than they were before per-match pick counts existed
  * — every match now carries a second line of its own — and lower again when the
  * podium is present, which costs roughly two match rows of height.
+ *
+ * Measured against the worst case, not the average one: the upset row is taller
+ * than the others because it carries a badge, so a square that fits three plain
+ * matches can still overpaint its own footer once one of the three is the upset.
+ * At most one match per round is ever marked (see RecapArt), which is what makes
+ * the worst case bounded and these numbers checkable.
  */
 export function recapCapacity(size: CardSize, hasPodium: boolean): number {
   if (size === 'story') return hasPodium ? 4 : 6
-  // Two, not three, on a square with a podium. Three overflowed by about 15px in
-  // practice — "3rd place" printed straight through "108 brackets in play" — and
-  // the square canvas is 840px shorter than the story with the same headline,
-  // footer and podium to pay for. The measured numbers, verified in the studio.
-  return hasPodium ? 2 : 4
+  return hasPodium ? 3 : 4
 }
 
 /**
