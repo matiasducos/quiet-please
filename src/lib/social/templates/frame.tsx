@@ -42,7 +42,12 @@ export { DISPLAY, BODY, MONO }
  */
 const SAFE: Record<CardSize, { top: number; bottom: number; x: number }> = {
   story: { top: 250, bottom: 230, x: 80 },
-  square: { top: 72, bottom: 72, x: 72 },
+  // The square's bottom is optical margin, not a reserve for someone else's UI,
+  // so it is the cheapest space on the card to buy back — and a footer that ends
+  // in a rule reads fine closer to the edge than a bare headline would. Story
+  // keeps 230: that band is under Instagram's reply bar, and tightening it would
+  // put the CTA behind a control rather than merely near an edge.
+  square: { top: 72, bottom: 52, x: 72 },
 }
 
 export function formatDates(t: CardTournament): string {
@@ -205,17 +210,18 @@ export function Frame({
       </div>
 
       {/* Body — flex:1 so templates fill whatever the headline leaves */}
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, marginTop: story ? 56 : 36 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, marginTop: story ? 56 : 28 }}>
         {children}
       </div>
 
-      {/* Footer */}
-      <div style={{ display: 'flex', flexDirection: 'column', marginTop: 24 }}>
+      {/* Footer — tighter on the square, which has 840px less to spend on the
+          same chrome and is the only size where the recap runs out of room. */}
+      <div style={{ display: 'flex', flexDirection: 'column', marginTop: story ? 24 : 16 }}>
         <Rule />
         <div
           style={{
             display: 'flex',
-            marginTop: 22,
+            marginTop: story ? 22 : 16,
             alignItems: 'center',
             justifyContent: 'space-between',
           }}

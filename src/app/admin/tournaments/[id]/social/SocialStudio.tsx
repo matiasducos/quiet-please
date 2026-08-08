@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { recapCapacity, pickedLabel } from '@/lib/social/layout'
+import { listRecapMatches, type RecapMatchList } from './actions'
 
 type Kind = 'draw' | 'recap' | 'complete'
 type Size = 'story' | 'square'
@@ -53,12 +55,73 @@ export default function SocialStudio({
   const [round, setRound] = useState<string>(rounds[rounds.length - 1]?.round ?? '')
   const [showNames, setShowNames] = useState(false)
 
+  // ── Match picker ────────────────────────────────────────────────────────────
+  // `null` means "no selection" — the card takes the round from the top, which is
+  // what it did before this control existed. An array (including an empty one) is
+  // a deliberate choice and is sent to the renderer verbatim.
+  const [selected, setSelected] = useState<string[] | null>(null)
+  const [matchList, setMatchList] = useState<{ forRound: string; data?: RecapMatchList; error?: string } | null>(null)
+
+  const needsMatches = kind === 'recap' && !!round
+  const matchesLoading = needsMatches && matchList?.forRound !== round
+
+  useEffect(() => {
+    if (kind !== 'recap' || !round) return
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const res = await listRecapMatches(tournamentId, round)
+        if (cancelled) return
+        setMatchList(res.ok ? { forRound: round, data: res.data } : { forRound: round, error: res.error })
+      } catch (e) {
+        if (!cancelled) {
+          setMatchList({ forRound: round, error: e instanceof Error ? e.message : 'Could not load matches' })
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [tournamentId, kind, round])
+
+  // Memoised because the `[]` branch is a fresh array each render, which would
+  // otherwise invalidate every downstream useMemo on every keystroke.
+  const roundMatches = useMemo(
+    () => (matchList?.forRound === round ? (matchList.data?.matches ?? []) : []),
+    [matchList, round],
+  )
+  const capacity = recapCapacity(size, matchList?.data?.hasPodium ?? false)
+
+  // The single source of truth for what the card will show — the checkboxes read
+  // from it and the preview URL is built from it, so the ticked boxes and the PNG
+  // cannot disagree. Deriving it (rather than trimming `selected` in an effect)
+  // also means switching format re-slices to the new capacity for free.
+  const chosenIds = useMemo(() => {
+    const pool = selected === null ? roundMatches : roundMatches.filter(m => selected.includes(m.id))
+    return pool.map(m => m.id).slice(0, capacity)
+  }, [roundMatches, selected, capacity])
+
+  const toggleMatch = useCallback(
+    (id: string) => {
+      // Built from what is on screen, not from `selected`, so a match trimmed by
+      // a capacity change does not come back from the dead on the next click.
+      setSelected(chosenIds.includes(id) ? chosenIds.filter(x => x !== id) : [...chosenIds, id])
+    },
+    [chosenIds],
+  )
+
   const src = useMemo(() => {
     const p = new URLSearchParams({ kind, size })
     if (kind === 'recap' && round) p.set('round', round)
+    // Omitted while `selected` is null so the first render matches the server's
+    // own default instead of re-fetching an identical image once the match list
+    // arrives.
+    if (kind === 'recap' && selected !== null) p.set('matches', chosenIds.join(','))
     if (showNames) p.set('names', '1')
     return `/admin/tournaments/${tournamentId}/social/image?${p}`
-  }, [tournamentId, kind, size, round, showNames])
+  }, [tournamentId, kind, size, round, showNames, selected, chosenIds])
 
   // The preview and the download share one fetch of one render. Pointing an
   // <img> straight at the route would be simpler, but then a failed render shows
@@ -178,7 +241,12 @@ export default function SocialStudio({
             <Field label="Round">
               <select
                 value={round}
-                onChange={e => setRound(e.target.value)}
+                onChange={e => {
+                  setRound(e.target.value)
+                  // A selection is a set of match ids from the old round; keeping
+                  // it across the switch would select nothing in the new one.
+                  setSelected(null)
+                }}
                 className="w-full px-3 py-2 text-xs rounded-sm border bg-white"
                 style={{ fontFamily: 'var(--font-mono)', borderColor: 'var(--chalk-dim)', color: 'var(--ink)' }}
               >
@@ -188,6 +256,100 @@ export default function SocialStudio({
                   </option>
                 ))}
               </select>
+            </Field>
+          )}
+
+          {/* The count joins the label only once there is a list behind it —
+              "0/6" while loading reads as an empty selection rather than an
+              unanswered question, and the 6 is wrong too, since capacity depends
+              on a podium the fetch has not reported yet. */}
+          {needsMatches && (
+            <Field label={matchesLoading || matchList?.error ? 'Matches' : `Matches — ${chosenIds.length}/${capacity}`}>
+              {matchesLoading ? (
+                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
+                  Loading matches…
+                </p>
+              ) : matchList?.error ? (
+                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--clay)' }}>
+                  {matchList.error}
+                </p>
+              ) : (
+                <>
+                  <div
+                    className="flex flex-col gap-1 overflow-y-auto rounded-sm border bg-white p-1"
+                    style={{ borderColor: 'var(--chalk-dim)', maxHeight: '17rem' }}
+                  >
+                    {roundMatches.map(m => {
+                      const checked = chosenIds.includes(m.id)
+                      // At capacity the unticked rows lock rather than silently
+                      // dropping off the card: the count in the label and the
+                      // preview stay the same thing.
+                      const full = !checked && chosenIds.length >= capacity
+                      const count = pickedLabel(m.pickedCount, m.pickedPct)
+                      return (
+                        <label
+                          key={m.id}
+                          className="flex items-start gap-2 px-2 py-1.5 rounded-sm"
+                          style={{
+                            cursor: full ? 'not-allowed' : 'pointer',
+                            opacity: full ? 0.4 : 1,
+                            background: checked ? 'var(--chalk)' : 'transparent',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={full}
+                            onChange={() => toggleMatch(m.id)}
+                            className="mt-0.5 flex-shrink-0"
+                          />
+                          <span className="min-w-0 flex flex-col">
+                            <span
+                              className="truncate"
+                              style={{ fontFamily: 'var(--font-body)', fontSize: '0.75rem', color: 'var(--ink)' }}
+                            >
+                              {m.winner} <span style={{ color: 'var(--muted)' }}>d.</span> {m.loser}
+                            </span>
+                            <span
+                              style={{
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: '0.6rem',
+                                color: m.isUpset ? 'var(--clay)' : 'var(--muted)',
+                              }}
+                            >
+                              {[m.score, m.isUpset ? 'UPSET' : null, count].filter(Boolean).join('  ·  ')}
+                            </span>
+                          </span>
+                        </label>
+                      )
+                    })}
+                    {roundMatches.length === 0 && (
+                      <p
+                        className="px-2 py-1.5"
+                        style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}
+                      >
+                        No matches in this round.
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setSelected(null)}
+                      className="text-left"
+                      style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--court)' }}
+                    >
+                      Reset to first {capacity}
+                    </button>
+                    <button
+                      onClick={() => setSelected([])}
+                      className="text-left"
+                      style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </>
+              )}
             </Field>
           )}
 

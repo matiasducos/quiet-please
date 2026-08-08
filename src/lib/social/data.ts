@@ -61,9 +61,16 @@ export interface DrawCard {
 }
 
 export interface RecapMatch {
+  /** match_results.id — the handle the admin's match picker selects on. */
+  id: string
   winner: CardPlayer
   loser: CardPlayer
   score: string
+  /**
+   * Global brackets that called it. null means *unknown* — the lookup failed, or
+   * there are no brackets to count — and must never be shown as 0. See pct().
+   */
+  pickedCount: number | null
   /** Share of global brackets that called it, 0–100. null when nothing is scored yet. */
   pickedPct: number | null
   isUpset: boolean
@@ -76,7 +83,15 @@ export interface RecapCard {
   roundLabel: string
   /** Rounds that have results, for the admin's round picker. */
   availableRounds: Array<{ round: string; label: string }>
+  /**
+   * Every match in the round, in draw order — not just the ones on the card.
+   * The studio lists these for the admin to choose from, and the template shows
+   * whichever ones `selectedIds` names, so the picker and the render agree by
+   * construction rather than by two matching slices.
+   */
   matches: RecapMatch[]
+  /** Ids the admin chose to feature. null means "whatever fits, from the top". */
+  selectedIds: string[] | null
   bracketCount: number
   podium: PodiumEntry[]
 }
@@ -164,7 +179,7 @@ function isQualifierSlot(p: RawDrawPlayer | null | undefined): boolean {
 export async function getSocialCard(
   tournamentId: string,
   kind: CardKind,
-  opts: { round?: string } = {},
+  opts: { round?: string; matchIds?: string[] } = {},
 ): Promise<{ ok: true; card: SocialCard } | { ok: false; error: string }> {
   const admin = createAdminClient()
 
@@ -327,12 +342,23 @@ export async function getSocialCard(
     const pickCounts = await loadPickCounts(admin, tournamentId, rows.map(r => r.id))
 
     const matches: RecapMatch[] = rows.map(r => ({
+      id: r.id,
       winner: player(r.winner_external_id),
       loser: player(r.loser_external_id),
       score: r.score ?? '',
+      pickedCount: count(pickCounts, r.id, bracketCount),
       pickedPct: pct(pickCounts, r.id, bracketCount),
       isUpset: false,
     }))
+
+    // An id that is not in this round is dropped rather than honoured: the param
+    // is user-supplied, and a stale one (the admin switched rounds with a
+    // selection still in the URL) would otherwise select nothing and render an
+    // empty card. Draw order is preserved — the admin picks *which* matches
+    // appear, not what order they read in.
+    const inRound = new Set(matches.map(m => m.id))
+    const requested = (opts.matchIds ?? []).filter(id => inRound.has(id))
+    const selectedIds = opts.matchIds ? requested : null
 
     // "Upset" is measured against the rest of the round, never against a fixed
     // percentage. Pick rates fall structurally as a tournament progresses — to
@@ -343,6 +369,11 @@ export async function getSocialCard(
     //
     // Comparing to the round's own median self-normalises: it asks "was this
     // match unusual *for this stage*", which is the actual claim being made.
+    //
+    // Note this runs over the whole round, before the admin's selection is
+    // applied. The claim is about the round, so narrowing the sample to the
+    // three matches someone chose to feature would make the badge mean something
+    // different depending on what else was ticked.
     const scored = matches.filter(m => m.pickedPct != null)
     if (scored.length >= 3) {
       const rates = scored.map(m => m.pickedPct as number).sort((a, b) => a - b)
@@ -366,6 +397,7 @@ export async function getSocialCard(
         roundLabel: ROUND_LABEL[round] ?? round,
         availableRounds,
         matches,
+        selectedIds,
         bracketCount,
         podium,
       },
@@ -413,6 +445,24 @@ const MIN_SAMPLE = 10
 function pct(counts: Map<string, number> | null, matchId: string, total: number): number | null {
   if (!counts || total < MIN_SAMPLE) return null
   return Math.round(((counts.get(matchId) ?? 0) / total) * 100)
+}
+
+/**
+ * The raw head count behind pct(), which every featured match now prints.
+ *
+ * MIN_SAMPLE deliberately does *not* apply. "0% of 3 brackets" is a statistic
+ * with no sample behind it, which is why pct() suppresses it; "1 bracket called
+ * it" is a head count, and a head count is exactly as true at three brackets as
+ * at three thousand.
+ *
+ * The two conditions that do suppress it are the ones where the number is
+ * unknown rather than small: a failed lookup (null map), and a tournament with
+ * no global brackets at all — there, "No bracket called it" would imply a field
+ * that got it wrong instead of a field that does not exist.
+ */
+function count(counts: Map<string, number> | null, matchId: string, total: number): number | null {
+  if (!counts || total === 0) return null
+  return counts.get(matchId) ?? 0
 }
 
 type Admin = ReturnType<typeof createAdminClient>
