@@ -47,7 +47,17 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const sizeParam = (url.searchParams.get('size') ?? 'story') as CardSize
   if (!SIZES.includes(sizeParam)) return fail(`Unknown size "${sizeParam}"`, 400)
 
-  const result = await getSocialCard(id, kindParam, { round: url.searchParams.get('round') ?? undefined })
+  // `matches` absent means "no selection" (the card takes the round from the
+  // top); `matches=` present but empty means the admin unticked everything, and
+  // an empty card is the honest preview of that rather than a silent fallback to
+  // the default five.
+  const matchesParam = url.searchParams.get('matches')
+  const matchIds = matchesParam == null ? undefined : matchesParam.split(',').filter(Boolean)
+
+  const result = await getSocialCard(id, kindParam, {
+    round: url.searchParams.get('round') ?? undefined,
+    matchIds,
+  })
   if (!result.ok) return fail(result.error, 422)
 
   const fonts = await loadSocialFonts()

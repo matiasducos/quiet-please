@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react'
-import type { CardPlayer, DrawCard, RecapCard, CompleteCard, SocialCard, PodiumEntry } from '../data'
+import type { CardPlayer, DrawCard, RecapCard, RecapMatch, CompleteCard, SocialCard, PodiumEntry } from '../data'
+import { recapCapacity, pickedLabel } from '../layout'
 import { Frame, Eyebrow, Rule, C, DISPLAY, BODY, MONO, type CardSize } from './frame'
 
 /**
@@ -243,13 +244,69 @@ function DrawArt({ card, size }: { card: DrawCard; size: CardSize }): ReactEleme
 
 // ── Round recap ───────────────────────────────────────────────────────────────
 
+/**
+ * "412 brackets called it" under a match, in clay with an UPSET badge when the
+ * match was the round's standout and muted otherwise.
+ *
+ * Every featured match carries this line now, not just the upset. A recap whose
+ * only numbers were on the one match nobody called read as a highlight reel; the
+ * interesting comparison is between the matches the field got right and the one
+ * it didn't, and that needs both sides printed.
+ */
+function PickCount({ match, story }: { match: RecapMatch; story: boolean }) {
+  const label = pickedLabel(match.pickedCount, match.pickedPct)
+  if (!label) return null
+  const upset = match.isUpset
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      {upset && (
+        <div
+          style={{
+            display: 'flex',
+            fontFamily: MONO,
+            fontWeight: 500,
+            fontSize: story ? 20 : 18,
+            letterSpacing: 2,
+            textTransform: 'uppercase',
+            color: C.chalk,
+            backgroundColor: C.clay,
+            paddingTop: 4,
+            paddingBottom: 4,
+            paddingLeft: 12,
+            paddingRight: 12,
+            borderRadius: 5,
+          }}
+        >
+          Upset
+        </div>
+      )}
+      <div
+        style={{
+          display: 'flex',
+          fontFamily: BODY,
+          fontSize: story ? 24 : 21,
+          color: upset ? C.clay : C.muted,
+        }}
+      >
+        {label}
+      </div>
+    </div>
+  )
+}
+
 function RecapArt({ card, size, showUsernames }: { card: RecapCard; size: CardSize; showUsernames: boolean }): ReactElement {
   const story = size === 'story'
   // The podium costs roughly two match rows of height, so the match list shrinks
   // when it is present rather than letting the card overflow its fixed canvas.
   const hasPodium = card.podium.length > 0
-  const maxMatches = story ? (hasPodium ? 5 : 8) : hasPodium ? 3 : 5
-  const matches = card.matches.slice(0, maxMatches)
+  const maxMatches = recapCapacity(size, hasPodium)
+  // An explicit selection wins; without one the card takes the round from the
+  // top, which is what it always did. The cap applies either way — the studio
+  // stops the admin at the same number, so hitting it here means a hand-edited
+  // URL rather than a surprise.
+  const selected = card.selectedIds
+  const matches = (selected ? card.matches.filter(m => selected.includes(m.id)) : card.matches).slice(0, maxMatches)
   const hidden = card.matches.length - matches.length
 
   return (
@@ -278,32 +335,7 @@ function RecapArt({ card, size, showUsernames }: { card: RecapCard; size: CardSi
                 </div>
                 <ScorePill score={m.score} size={story ? 24 : 20} />
               </div>
-              {m.isUpset && m.pickedPct != null && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      fontFamily: MONO,
-                      fontWeight: 500,
-                      fontSize: story ? 20 : 18,
-                      letterSpacing: 2,
-                      textTransform: 'uppercase',
-                      color: C.chalk,
-                      backgroundColor: C.clay,
-                      paddingTop: 4,
-                      paddingBottom: 4,
-                      paddingLeft: 12,
-                      paddingRight: 12,
-                      borderRadius: 5,
-                    }}
-                  >
-                    Upset
-                  </div>
-                  <div style={{ display: 'flex', fontFamily: BODY, fontSize: story ? 26 : 22, color: C.clay }}>
-                    only {m.pickedPct}% of brackets called it
-                  </div>
-                </div>
-              )}
+              <PickCount match={m} story={story} />
             </div>
           ))}
           {hidden > 0 && (
@@ -378,8 +410,11 @@ function CompleteArt({ card, size, showUsernames }: { card: CompleteCard; size: 
 
         {/* Falls back to the bracket count so the card always carries one hero
             figure — the pick rate is absent whenever the sample is too small to
-            mean anything, or the lookup did not succeed. */}
-        {card.championPickedPct != null ? (
+            mean anything, or the lookup did not succeed.
+            Zero falls back too: "0%" set in 78px display type is a rounding
+            artefact wearing a headline's clothes, and the bracket count says
+            something true at the same size. */}
+        {card.championPickedPct ? (
           // Precise wording: the ledger counts brackets that had this player
           // winning the final, not brackets that merely liked them.
           <StatBlock value={`${card.championPickedPct}%`} label="of brackets called the final" story={story} />
@@ -394,7 +429,7 @@ function CompleteArt({ card, size, showUsernames }: { card: CompleteCard; size: 
           </div>
         )}
 
-        {card.championPickedPct != null && card.bracketCount > 0 && (
+        {!!card.championPickedPct && card.bracketCount > 0 && (
           <div style={{ display: 'flex', fontFamily: BODY, fontSize: story ? 28 : 24, color: C.muted }}>
             from {card.bracketCount.toLocaleString('en-GB')} brackets played
           </div>
