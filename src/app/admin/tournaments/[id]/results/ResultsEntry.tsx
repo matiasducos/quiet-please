@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
-import { saveMatchResult, clearMatchResult, setTournamentStatus, revertTournamentCompletion, lockMatches, unlockMatches, lockRound } from '../../../actions'
+import { saveMatchResult, clearMatchResult, setTournamentStatus, revertTournamentCompletion, rebuildTournamentRecap, lockMatches, unlockMatches, lockRound } from '../../../actions'
 import { nameToFlag } from '@/app/admin/countries'
 import type { PredictionMode } from '@/lib/app-settings'
 
@@ -66,6 +66,9 @@ export default function ResultsEntry({
   const [results, setResults] = useState<MatchResult[]>(initialResults)
   const [savingMatch, setSavingMatch] = useState<string | null>(null)
   const [completeStatus, setCompleteStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error'; message?: string }>({ type: 'idle' })
+  // Separate from completeStatus so a rebuild does not clear the message from a
+  // completion that just happened, and vice versa.
+  const [recapStatus, setRecapStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error'; message?: string }>({ type: 'idle' })
   // Local mirror of the prop so completing / un-completing swaps the controls
   // without a round trip. The server action is the source of truth; this only
   // moves after it succeeds.
@@ -287,6 +290,17 @@ export default function ResultsEntry({
     } else {
       setCompleteStatus({ type: 'error', message: error ?? 'Failed' })
     }
+  }
+
+  // Rebuild is manual because the cron deliberately never revisits a recap it
+  // has already built: the numbers only change when the results do. This is the
+  // path for when they DO change — a score corrected weeks after the fact.
+  async function handleRebuildRecap() {
+    setRecapStatus({ type: 'loading' })
+    const { ok, error } = await rebuildTournamentRecap(tournamentId)
+    setRecapStatus(ok
+      ? { type: 'success', message: 'Recap rebuilt from the current results' }
+      : { type: 'error', message: error ?? 'Failed' })
   }
 
   async function handleRevertComplete() {
@@ -658,6 +672,18 @@ export default function ResultsEntry({
                 {completeStatus.type === 'loading' ? 'Completing...' : 'Mark Tournament as Completed'}
               </button>
             )}
+            {/* Only once completed: the recap reports settled points, and
+                before the tournament is over there is nothing to settle. */}
+            {status === 'completed' && (
+              <button
+                onClick={handleRebuildRecap}
+                disabled={recapStatus.type === 'loading'}
+                className="px-6 py-2 text-sm font-medium rounded-sm border transition-opacity hover:opacity-90 disabled:opacity-40"
+                style={{ background: 'white', color: 'var(--ink)', borderColor: 'var(--chalk-dim)' }}
+              >
+                {recapStatus.type === 'loading' ? 'Building...' : 'Rebuild recap'}
+              </button>
+            )}
             <span
               style={{
                 fontFamily: 'var(--font-mono)',
@@ -671,6 +697,11 @@ export default function ResultsEntry({
               {totalResultsEntered}/{totalMatches} results
             </span>
           </div>
+          {recapStatus.message && (
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: recapStatus.type === 'error' ? '#991b1b' : '#166534', marginTop: '8px' }}>
+              {recapStatus.message}
+            </p>
+          )}
           {completeStatus.message && (
             <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: completeStatus.type === 'error' ? '#991b1b' : '#166534', marginTop: '8px' }}>
               {completeStatus.message}

@@ -11,9 +11,13 @@ import { ROUND_LABEL, ROUND_ORDER } from '@/lib/tennis/my-tournament'
 import { checkTournamentTrophies, checkCronAchievements, checkChallengeAchievements, checkPerfectPrediction } from '@/lib/achievements/check'
 import { notifyAchievements } from '@/lib/achievements/notify'
 import { withCronLogging } from '@/lib/cron-logger'
+import { buildAndStoreRecap } from '@/lib/tournaments/recap'
 
 // Allow up to 60 s — heavy scoring + ranking recalculation needs headroom.
 export const maxDuration = 60
+
+/** Recaps built per cron run — see step 14 for why this is capped. */
+const RECAPS_PER_RUN = 3
 
 function isAuthorized(request: Request): boolean {
   if (process.env.NODE_ENV === 'development') return true
@@ -872,6 +876,72 @@ export async function GET(request: Request) {
       Sentry.captureException(achErr)
     }
 
+    // ── 14. Build end-of-tournament recaps ────────────────────────────────
+    //
+    // Last, and in the cron rather than at the moment an admin flips the
+    // status, because the recap reports settled numbers: points_machine, the
+    // podium and points_awarded all read predictions.points_earned and the
+    // ledger. An admin marking a tournament completed seconds after entering
+    // the final result would produce a recap whose podium predates the final's
+    // own points. Building here means every point this run could award has
+    // already been written.
+    //
+    // Capped per run. A recap expands every global bracket's picks, so a
+    // backlog — the first run after this ships sees every completed tournament
+    // at once — would blow through maxDuration and get killed mid-flight,
+    // leaving the "Stale: timed out" row that makes every later run look
+    // broken. Three per run drains the backlog over a few minutes instead.
+    let recapsBuilt = 0
+    try {
+      // Newest first, and only a window of them. Two reasons for the cap:
+      // every id here goes into an `.in()` filter below, and a few hundred
+      // UUIDs overflow the request URL — the failure mode is a truncated
+      // result set with no error. A season is ~120 events across both tours,
+      // so 50 comfortably covers everything that could plausibly be missing a
+      // recap, and the homepage only ever shows the newest three.
+      const { data: completedRows, error: completedErr } = await supabase
+        .from('tournaments')
+        .select('id, name')
+        .eq('status', 'completed')
+        .order('ends_at', { ascending: false, nullsFirst: false })
+        .limit(50)
+      if (completedErr) throw new Error(completedErr.message)
+
+      const completedIds = (completedRows ?? []).map(t => t.id)
+      if (completedIds.length > 0) {
+        // Which already have one. Destructured and checked: a failure here
+        // returning an empty list would look like "none are built" and send the
+        // run off to rebuild every recap in the database.
+        const { data: existing, error: existingErr } = await supabase
+          .from('tournament_recaps')
+          .select('tournament_id')
+          .in('tournament_id', completedIds)
+        if (existingErr) throw new Error(existingErr.message)
+
+        const have = new Set((existing ?? []).map(r => r.tournament_id))
+        const missing = (completedRows ?? []).filter(t => !have.has(t.id)).slice(0, RECAPS_PER_RUN)
+
+        for (const t of missing) {
+          const { ok, error } = await buildAndStoreRecap(t.id, supabase)
+          if (ok) {
+            recapsBuilt++
+            console.log(`[award-points] recap built for ${t.name}`)
+          } else {
+            // A tournament completed with no results entered has nothing to
+            // summarise. Expected, not an error — log and move on, but do not
+            // count it, so the next run tries again if results arrive later.
+            console.log(`[award-points] recap skipped for ${t.name}: ${error}`)
+          }
+        }
+      }
+    } catch (recapErr) {
+      // Never fails the run. Points, rankings and achievements are all already
+      // written by this point, and a broken recap must not roll back or mask a
+      // successful scoring pass.
+      console.error('[award-points] recap build error:', recapErr)
+      Sentry.captureException(recapErr)
+    }
+
     // The public hub and edition pages render results, champions and status,
     // all of which this run can change. Bust the tags rather than leaving the
     // pages to the 5-minute ISR window — a finished final should show a
@@ -882,6 +952,16 @@ export async function GET(request: Request) {
     if (newResultIds.length > 0 || ledgerRows.length > 0) {
       revalidateTag('tournament-detail', 'default')
       revalidateTag('tournament-list', 'default')
+    }
+
+    // Separate condition: a recap is usually built on a run that scored nothing
+    // new — the tournament finished, the points settled on an earlier pass, and
+    // this run only noticed it was missing a recap. Folding it into the check
+    // above would leave the homepage's Recent results section unaware of the
+    // recap it exists to show.
+    if (recapsBuilt > 0) {
+      revalidateTag('tournament-recaps', 'default')
+      revalidateTag('tournament-detail', 'default')
     }
 
     return {
@@ -901,6 +981,7 @@ export async function GET(request: Request) {
         challenges_expired: challengesExpired,
         anonymous_challenges_scored: anonChallengesScored,
         achievements_awarded: achievementsAwarded,
+        recaps_built: recapsBuilt,
       },
     }
   })

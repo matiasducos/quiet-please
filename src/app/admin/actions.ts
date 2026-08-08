@@ -4,6 +4,7 @@ import { revalidateTag } from 'next/cache'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient, listAllUsers } from '@/lib/supabase/admin'
 import { announceDrawOpen } from '@/lib/announce-draw-open'
+import { buildAndStoreRecap, deleteRecap } from '@/lib/tournaments/recap'
 import { slugErrorMessage } from '@/lib/tournaments/slug'
 import { COUNTRIES, codeToFlag } from './countries'
 
@@ -1297,9 +1298,38 @@ export async function rerunTournamentPoints(
     challengesReopened: (friendsReopened?.length ?? 0) + (anonReopened?.length ?? 0),
   }
 
+  // ── 7b. Drop the recap so the re-run rebuilds it ──────────────────────────
+  // The recap was computed from the ledger this function just deleted, so its
+  // podium and points figures now describe scoring that no longer exists.
+  // Deleting it is also what schedules the rebuild: the cron's step 14 builds
+  // recaps for completed tournaments that have none, and step 8 below is a cron
+  // run — so the corrected recap lands in the same pass as the corrected points.
+  await deleteRecap(tournamentId, admin)
+  revalidateTag('tournament-recaps', 'default')
+
   // ── 8. Re-score everything via the existing cron — silent (no notifications) ──
   const { ok, data } = await triggerCron('award-points', { silent: '1' })
   return { ok, erased, rerun: data, ...(ok ? {} : { error: 'Erase succeeded but award-points re-run failed — run it manually from this tab.' }) }
+}
+
+// ── Rebuild a tournament recap on demand ──────────────────────────────────────
+// The cron builds a recap once and never revisits it, which is right: the
+// numbers only change when the results do. When they DO change — a mis-entered
+// score corrected weeks later — nothing else would notice, because the recap
+// row still exists and step 14 only fills in missing ones. This is the manual
+// override for that case, and for previewing a recap before the next cron run.
+export async function rebuildTournamentRecap(
+  tournamentId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  const result = await buildAndStoreRecap(tournamentId, admin)
+  if (!result.ok) return result
+
+  revalidateTag('tournament-detail', 'default')
+  revalidateTag('tournament-recaps', 'default')
+  return { ok: true }
 }
 
 // ── Revert a premature "completed" ────────────────────────────────────────────
@@ -1438,8 +1468,16 @@ export async function revertTournamentCompletion(
     .select('id')
   if (expErr) return { ok: false, error: `challenge invites restore: ${expErr.message}` }
 
+  // ── 6. Drop the recap ─────────────────────────────────────────────────────
+  // It names a champion, a podium and a "biggest bust" — every one of which is
+  // a claim that the tournament is over. Leaving it behind would keep making
+  // that claim on the homepage after the admin decided it was not. The cron
+  // rebuilds it if and when the tournament completes for real.
+  await deleteRecap(tournamentId, admin)
+
   revalidateTag('tournament-detail', 'default')
   revalidateTag('tournament-list', 'default')
+  revalidateTag('tournament-recaps', 'default')
 
   return {
     ok: true,

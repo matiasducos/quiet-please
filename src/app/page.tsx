@@ -8,6 +8,8 @@ import CountryFlag from '@/components/CountryFlag'
 import Footer from '@/components/Footer'
 import HowItWorksDemo from '@/components/HowItWorksDemo'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
+import { getRecentCompleted } from '@/lib/tournaments/recap'
+import { cardHighlights } from '@/lib/tournaments/recap-types'
 import { formatPoints } from '@/lib/utils/format'
 import { SITE_URL, SITE_NAME } from '@/lib/site'
 
@@ -38,10 +40,25 @@ const getHomepageData = unstable_cache(
       challenge_count: engagement[t.id]?.challenges ?? 0,
     }))
 
-    return { liveTournaments: enrichedLive, topPlayers: top ?? [] }
+    // Recently finished tournaments, with their stored recap. One extra query
+    // for the tournaments and one for the recap rows — the aggregation itself
+    // already happened at completion (migration 076), so this stays O(1) in the
+    // number of users no matter how many brackets a tournament drew.
+    const recent = await getRecentCompleted(3)
+    const recentTournaments = recent.map(t => ({
+      ...t,
+      // Formatted here, on the server: the cards are rendered by client
+      // components elsewhere, and the raw payload has no business in a bundle.
+      recap_highlights: cardHighlights(t.recap),
+    }))
+
+    return { liveTournaments: enrichedLive, topPlayers: top ?? [], recentTournaments }
   },
   ['homepage-data'],
-  { revalidate: 300 }
+  // Tagged so a completion, a revert or an admin rebuild drops this cache
+  // rather than leaving a finished tournament missing from the homepage for
+  // five minutes — or worse, a reverted one still claiming a champion.
+  { revalidate: 300, tags: ['tournament-list', 'tournament-recaps'] }
 )
 
 // ── Static bracket mock ─────────────────────────────────────────────────────
@@ -205,7 +222,7 @@ const homepageJsonLd = {
 }
 
 export default async function HomePage() {
-  const { liveTournaments, topPlayers } = await getHomepageData()
+  const { liveTournaments, topPlayers, recentTournaments } = await getHomepageData()
 
   return (
     <main className="min-h-screen flex flex-col" style={{ background: 'var(--chalk)' }}>
@@ -281,6 +298,45 @@ export default async function HomePage() {
             <div className={`grid gap-3 ${liveTournaments.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
               {liveTournaments.map(t => (
                 <TournamentCard key={t.id} t={t} />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── Recent results ─────────────────────────────────────────── */}
+      {/* Not windowed to "this week" — tennis has quiet weeks and a long
+          off-season, and a section that disappears for months teaches
+          visitors the app is dormant. Each card carries its own dates, so
+          showing the last three finished events overclaims nothing. */}
+      {recentTournaments.length > 0 && (
+        <section className="py-8 md:py-12 border-b" style={{ borderColor: 'var(--chalk-dim)', background: 'white' }}>
+          <div className="max-w-5xl mx-auto px-4 md:px-8">
+            <div className="flex items-center justify-between gap-3 mb-5">
+              <div>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                  Recent results
+                </span>
+                <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginTop: '4px', lineHeight: 1.4 }}>
+                  How the crowd did when the dust settled.
+                </p>
+              </div>
+              <Link href="/tournaments?status=completed" className="inline-flex items-center min-h-[44px] shrink-0" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>
+                See all →
+              </Link>
+            </div>
+            {/* One column on mobile by default — three recap cards side by side
+                at 375px would each be ~100px wide. */}
+            <div className="grid gap-3 grid-cols-1 md:grid-cols-3">
+              {recentTournaments.map(t => (
+                <TournamentCard
+                  key={t.id}
+                  t={t}
+                  // A tournament with no series has no canonical edition URL, so
+                  // it falls back to the card's default /tournaments/<uuid>
+                  // redirect rather than linking to a 404.
+                  href={t.slug && t.year ? `/tournaments/${t.slug}/${t.year}/recap` : undefined}
+                />
               ))}
             </div>
           </div>
