@@ -1,5 +1,6 @@
 import React from 'react'
 import Link from 'next/link'
+import type { Highlight } from '@/lib/tournaments/recap-types'
 
 // ── Tier stripe: tour + category → brand colour + display label ────────────
 const TIER: Record<string, { label: string; bg: string; text: string }> = {
@@ -63,9 +64,16 @@ export interface TournamentCardData {
   flag_emoji?: string | null
   prediction_count?: number
   challenge_count?: number
+  /**
+   * End-of-tournament stats, already formatted. Plain data rather than the raw
+   * recap payload: this component is rendered by two CLIENT components, and
+   * passing formatted lines keeps the formatting logic (and the country table
+   * it reads) out of their bundles.
+   */
+  recap_highlights?: Highlight[]
 }
 
-export default function TournamentCard({ t, disableLink, action, footer, predictableStatuses }: { t: TournamentCardData; disableLink?: boolean; action?: React.ReactNode; footer?: React.ReactNode; predictableStatuses?: string[] }) {
+export default function TournamentCard({ t, disableLink, action, footer, href, predictableStatuses }: { t: TournamentCardData; disableLink?: boolean; action?: React.ReactNode; footer?: React.ReactNode; href?: string; predictableStatuses?: string[] }) {
   const tierKey = `${t.tour}|${t.category}`
   const tier    = TIER[tierKey] ?? { label: t.tour, bg: '#4a5568', text: '#fff' }
   const surface = SURFACE_COLORS[(t.surface as keyof typeof SURFACE_COLORS) ?? 'hard']
@@ -82,12 +90,18 @@ export default function TournamentCard({ t, disableLink, action, footer, predict
     : null
   const displayLocation = t.location ?? fallbackLocation
 
+  const highlights = t.recap_highlights ?? []
+  const hasRecap = isCompleted && highlights.length > 0
+
   const Wrapper = disableLink ? 'div' : Link
   const cardBg = isCompleted ? '#f7f5f0' : 'white'
   const cardBorder = isCompleted ? '#e0dbd2' : 'var(--chalk-dim)'
   const wrapperProps = disableLink
     ? { className: 'block rounded-sm border overflow-hidden', style: { borderColor: cardBorder, background: cardBg } }
-    : { href: `/tournaments/${t.id}`, className: 'tournament-card block rounded-sm border overflow-hidden', style: { borderColor: cardBorder, background: cardBg, textDecoration: 'none' } }
+    // `href` lets a caller point the card somewhere other than the tournament —
+    // the homepage's Recent results section sends completed cards straight to
+    // the recap. The default still redirects through /tournaments/<uuid>.
+    : { href: href ?? `/tournaments/${t.id}`, className: 'tournament-card block rounded-sm border overflow-hidden', style: { borderColor: cardBorder, background: cardBg, textDecoration: 'none' } }
 
   return (
     <Wrapper {...wrapperProps as any}>
@@ -210,6 +224,70 @@ export default function TournamentCard({ t, disableLink, action, footer, predict
             </span>
           )}
         </div>
+
+        {/* ── Recap: what happened, once the tournament is over ───────── */}
+        {hasRecap && (
+          <div
+            style={{
+              marginTop: '12px',
+              paddingTop: '12px',
+              borderTop: '1px solid var(--chalk-dim)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+            }}
+          >
+            {highlights.map(h => (
+              <div key={h.label}>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '0.55rem',
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                    color: 'var(--muted)',
+                    marginBottom: '2px',
+                  }}
+                >
+                  {h.label}
+                </div>
+                {/* Player names are long and the card is 343px wide on a
+                    375px screen, so this wraps rather than truncating —
+                    a clipped "Carlos Alcar…" reads as a bug. */}
+                <div
+                  style={{
+                    fontSize: '0.85rem',
+                    fontWeight: 500,
+                    color: 'var(--ink)',
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {h.value}
+                </div>
+                {h.detail && (
+                  <div
+                    style={{
+                      fontSize: '0.68rem',
+                      color: 'var(--muted)',
+                      lineHeight: 1.4,
+                      marginTop: '1px',
+                    }}
+                  >
+                    {h.detail}
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* A span, not a Link: the whole card is already an anchor, and
+                nesting one inside another is invalid HTML that React will
+                hydrate into a broken DOM. Callers point the card at the recap
+                via the `href` prop instead. */}
+            <span style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--court)' }}>
+              Full recap →
+            </span>
+          </div>
+        )}
 
         {/* CTA when predictions are open */}
         {canPredict && (
