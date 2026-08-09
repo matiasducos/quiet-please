@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
 import { redirect, notFound } from 'next/navigation'
@@ -11,6 +12,25 @@ import { respondToChallenge as _respondToChallenge } from './actions'
 const respondToChallenge = async (formData: FormData) => { 'use server'; await _respondToChallenge(formData) }
 import CancelButton from '../CancelButton'
 import ChallengePicksTabs from './ChallengePicksTabs'
+
+/**
+ * A challenge is a private bracket contest between friends, addressed by UUID.
+ * Nobody searches for one, and the page is a 200 for anyone with the link — so
+ * it is noindex rather than left to chance.
+ *
+ * noindex here, NOT `Disallow: /challenges/` in robots.txt: that pattern would
+ * also block /challenges/create, which is listed in the sitemap, and a
+ * sitemapped URL blocked by robots is its own Search Console defect.
+ *
+ * This route is also still a soft 404 for a bogus id — it has its own
+ * loading.tsx, and any Suspense boundary above a page swallows notFound()'s
+ * status (see src/app/layout.tsx). Deliberately left: the skeleton is worth
+ * more on a signed-in surface than the status code, and noindex removes the
+ * only consequence that mattered.
+ */
+export const metadata: Metadata = {
+  robots: { index: false, follow: true },
+}
 
 export default async function ChallengeDetailPage({
   params,

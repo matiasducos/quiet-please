@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -140,20 +141,69 @@ export default async function EditionPage({ params }: { params: Promise<RoutePar
           <span style={{ color: 'var(--ink)' }}>{year}</span>
         </nav>
 
-        {page.tours.map(detail => (
-          <TourSection
-            key={detail.tournament.id}
-            page={page}
-            detail={detail}
-            userId={user?.id ?? null}
-            username={profile?.username ?? null}
-            showTourLabel={page.tours.length > 1}
-          />
-        ))}
+        {/* Streamed, and the boundary is deliberately HERE rather than in a
+            loading.tsx: everything above has already resolved, and crucially
+            notFound() above has already had its chance to set a 404. A
+            loading.tsx on this segment would sit above the existence check and
+            turn every bogus edition URL back into a 200 — see the note in
+            src/app/layout.tsx.
 
-        <OtherEditions page={page} />
+            Worth streaming because the section is the expensive half: the
+            edition data itself is ~7ms cached, while this awaits the
+            prediction-status setting, a recap lookup, and for signed-in
+            visitors an uncacheable per-user bracket, then renders a draw of up
+            to 128 players. */}
+        <Suspense fallback={<EditionSkeleton tours={page.tours.length} />}>
+          {page.tours.map(detail => (
+            <TourSection
+              key={detail.tournament.id}
+              page={page}
+              detail={detail}
+              userId={user?.id ?? null}
+              username={profile?.username ?? null}
+              showTourLabel={page.tours.length > 1}
+            />
+          ))}
+
+          <OtherEditions page={page} />
+        </Suspense>
       </div>
     </main>
+  )
+}
+
+/**
+ * Fallback for the streamed section. Shaped to match TourSection's real
+ * output — tier bar, then the title card — so the swap does not jump.
+ */
+function EditionSkeleton({ tours }: { tours: number }) {
+  return (
+    <>
+      {Array.from({ length: Math.max(tours, 1) }).map((_, i) => (
+        <section key={i} className="mb-12">
+          <div className="rounded-sm border bg-white overflow-hidden mb-8" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <div style={{ background: 'var(--chalk-dim)', padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div className="skeleton h-3 w-24" />
+              <div className="skeleton h-3 w-16" />
+            </div>
+            <div style={{ padding: '24px 20px 20px' }}>
+              <div className="skeleton h-9 w-64 mb-3" />
+              <div className="skeleton h-4 w-56 mb-5" />
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="skeleton h-6 w-16 rounded-sm" />
+                <div className="skeleton h-6 w-28 rounded-sm" />
+                <div className="skeleton h-7 w-40 rounded-sm" />
+              </div>
+            </div>
+          </div>
+          <div className="rounded-sm border bg-white p-5 mb-8" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <div className="skeleton h-5 w-48 mb-4" />
+            <div className="skeleton h-4 w-full mb-2" />
+            <div className="skeleton h-4 w-2/3" />
+          </div>
+        </section>
+      ))}
+    </>
   )
 }
 
