@@ -1,7 +1,15 @@
+import type { Metadata } from 'next'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
+
+// Listed in the sitemap, so it needs its own canonical — see src/app/layout.tsx.
+export const metadata: Metadata = {
+  title: 'Create a Challenge',
+  description: 'Set up a private bracket challenge for any ATP or WTA tournament and invite your friends with a link.',
+  alternates: { canonical: '/challenges/create' },
+}
 
 // Challenges are always open for accepting_predictions + in_progress regardless of prediction mode toggle
 const CHALLENGE_STATUSES = ['accepting_predictions', 'in_progress']

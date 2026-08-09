@@ -8,7 +8,12 @@ import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { withRecaps } from '@/lib/tournaments/recap'
 import { getPredictableStatuses } from '@/lib/app-settings'
 
-export const metadata: Metadata = { title: 'Tournaments' }
+// Self-referencing canonical, like every indexable page — see the note in
+// src/app/layout.tsx for why this cannot be inherited from the root.
+export const metadata: Metadata = {
+  title: 'Tournaments',
+  alternates: { canonical: '/tournaments' },
+}
 
 const VALID_STATUSES = ['upcoming', 'draw_published', 'accepting_predictions', 'in_progress', 'completed'] as const
 

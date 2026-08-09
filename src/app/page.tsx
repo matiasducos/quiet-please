@@ -10,7 +10,19 @@ import HowItWorksDemo from '@/components/HowItWorksDemo'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { getRecentCompleted, withRecaps } from '@/lib/tournaments/recap'
 import { formatPoints } from '@/lib/utils/format'
-import { SITE_URL, SITE_NAME } from '@/lib/site'
+import { SITE_URL, SITE_NAME, DEFAULT_OG } from '@/lib/site'
+import type { Metadata } from 'next'
+
+// The homepage's own canonical. It used to live on the root layout, from where
+// it cascaded onto every other page — see the note there.
+//
+// openGraph is restated in full rather than inherited only because `url` has to
+// be added, and Next replaces the parent's openGraph instead of merging into
+// it. DEFAULT_OG keeps the copy identical to the layout's fallback card.
+export const metadata: Metadata = {
+  alternates: { canonical: '/' },
+  openGraph: { ...DEFAULT_OG, url: '/' },
+}
 
 // ── Cached homepage data: live tournaments + top players ──────────────────
 const getHomepageData = unstable_cache(

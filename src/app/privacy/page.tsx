@@ -4,6 +4,7 @@ import { TERMS_LAST_UPDATED_LABEL } from '@/lib/legal/terms'
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
+  alternates: { canonical: '/privacy' },
 }
 
 export default function PrivacyPolicy() {

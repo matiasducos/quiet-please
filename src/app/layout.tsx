@@ -4,7 +4,7 @@ import { Analytics } from '@vercel/analytics/next'
 import { Suspense } from 'react'
 import PostHogProvider from '@/components/PostHogProvider'
 import ConsentBanner from '@/components/ConsentBanner'
-import { SITE_URL, SITE_NAME } from '@/lib/site'
+import { SITE_URL, DEFAULT_OG } from '@/lib/site'
 import './globals.css'
 
 const dmSerifDisplay = DM_Serif_Display({
@@ -51,17 +51,25 @@ export const metadata: Metadata = {
     'tennis pick em',
     'tennis draw predictions',
   ],
-  alternates: {
-    canonical: '/',
-  },
-  openGraph: {
-    type: 'website',
-    siteName: SITE_NAME,
-    url: '/',
-    title: 'Free Tennis Bracket Challenge — ATP & WTA',
-    description:
-      'Fill out the bracket for any ATP or WTA tournament, earn points for every correct pick, and compete with friends across the full season.',
-  },
+  // NO `alternates.canonical` here, and no `openGraph.url`. Metadata cascades
+  // down the route tree, so a canonical on the root layout is not "the
+  // homepage's canonical" — it is the default for every page that does not set
+  // its own. `canonical: '/'` here had ten public URLs (/tournaments,
+  // /leaderboard, /terms, /privacy, /signup, /login, /challenges/create …) all
+  // declaring the homepage as their canonical. Google can see they are not
+  // duplicates of the homepage, so it discarded the declaration and reported
+  // "Duplicate, Google chose different canonical than user" against each one.
+  //
+  // Every indexable page therefore declares its own self-referencing canonical.
+  //
+  // `og:url` has the same problem and cannot be fixed the same way: Next
+  // shallow-merges metadata, so a page setting `openGraph: { url }` replaces
+  // this whole object rather than adding to it, losing the site defaults. So
+  // the default carries no `url`, and each page that needs one sets a complete
+  // openGraph block — the slam pages, the tournament hub and edition pages,
+  // and the homepage (src/app/page.tsx), which reuses the copy below via
+  // DEFAULT_OG.
+  openGraph: { ...DEFAULT_OG },
   twitter: {
     card: 'summary_large_image',
     title: 'Free Tennis Bracket Challenge — ATP & WTA',
