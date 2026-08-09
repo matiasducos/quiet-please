@@ -16,8 +16,21 @@ import DashboardTour from '@/components/DashboardTour'
 import { formatPoints } from '@/lib/utils/format'
 import { getLiveStatuses } from '@/lib/tennis/live-status'
 import { ROUND_LABEL } from '@/lib/tennis/my-tournament'
+import { getRecentResultsForUser, withRecaps } from '@/lib/tournaments/recap'
 
 export const metadata: Metadata = { title: 'Dashboard' }
+
+/** 1st, 2nd, 3rd, 4th… — 11th–13th are the exceptions the naive rule gets wrong. */
+function ordinal(n: number): string {
+  const rem100 = n % 100
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`
+  switch (n % 10) {
+    case 1: return `${n}st`
+    case 2: return `${n}nd`
+    case 3: return `${n}rd`
+    default: return `${n}th`
+  }
+}
 
 export default async function DashboardPage() {
   const { user, profile } = await getNavProfile()
@@ -80,6 +93,9 @@ export default async function DashboardPage() {
   ]
 
   const activity = await getActivity(user.id, 15)
+
+  // Every recent finish, with this user's own result attached where they played.
+  const recentResults = await withRecaps(await getRecentResultsForUser(user.id, 2))
 
   // A line about *this* moment rather than a restatement of the page. When
   // something is running the dashboard's job is to point at it; when nothing is,
@@ -176,6 +192,50 @@ export default async function DashboardPage() {
                   />
                 )
               })}
+            </div>
+          </div>
+        )}
+
+        {/* ─── Recent results ──────────────────────────────────────────────
+            Shown for every recent tournament, entered or not. An active user
+            who never opens the homepage would otherwise never see a recap, and
+            the recap is the engaging part — worth reading about an event you
+            skipped. Where they did play, their own finish rides on top as the
+            card footer, the same slot "Live right now" uses for standings. */}
+        {recentResults.length > 0 && (
+          <div className="mb-12">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.01em' }}>
+                Recent results
+              </h2>
+              <Link href="/tournaments?status=completed" className="shrink-0" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>
+                All results →
+              </Link>
+            </div>
+            <div className={`grid gap-3 ${recentResults.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+              {recentResults.map(t => (
+                <TournamentCard
+                  key={t.id}
+                  t={t}
+                  footer={
+                    t.mine ? (
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', lineHeight: 1.6 }}>
+                        <span style={{ color: 'var(--ink)' }}>
+                          You · {formatPoints(t.mine.points)} pts
+                          {/* The field is only quoted when it is known: a recap
+                              that failed to load leaves it at 0, and "3rd of 0"
+                              is worse than no denominator at all. */}
+                          {t.mine.field > 0 && (
+                            <span style={{ color: 'var(--muted)' }}>
+                              {' '}· finished {ordinal(t.mine.rank)} of {formatPoints(t.mine.field)}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    ) : undefined
+                  }
+                />
+              ))}
             </div>
           </div>
         )}

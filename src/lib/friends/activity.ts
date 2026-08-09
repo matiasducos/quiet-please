@@ -157,9 +157,9 @@ async function fetchTournamentEvents(
     R16: 'R16', QF: 'Quarterfinals', SF: 'Semifinals', F: 'Final',
   }
 
-  const [{ data: tournaments }, { data: recentResults }, { data: viewerPreds, error: viewerPredsError }] = await Promise.all([
+  const [{ data: tournaments }, { data: recentResults }, { data: viewerPreds, error: viewerPredsError }, { data: recapRows }] = await Promise.all([
     admin.from('tournaments')
-      .select('id, name, location, flag_emoji, status, starts_at, ends_at')
+      .select('id, name, location, flag_emoji, status, starts_at, ends_at, starts_year, tournament_series(slug)')
       .in('id', tournamentIds)
       .in('status', ['accepting_predictions', 'draw_published', 'in_progress', 'completed']),
     admin.from('match_results')
@@ -180,6 +180,12 @@ async function fetchTournamentEvents(
       .select('id, tournament_id, picks, locked_picks')
       .eq('user_id', viewerId)
       .is('challenge_id', null)
+      .in('tournament_id', tournamentIds),
+    // Which of these have a stored recap. "Tournament completed" is a dead end
+    // when it lands on the edition page — the recap is what the reader actually
+    // wants at that moment, and this is the cheapest way to know it exists.
+    admin.from('tournament_recaps')
+      .select('tournament_id')
       .in('tournament_id', tournamentIds),
   ])
 
@@ -224,6 +230,14 @@ async function fetchTournamentEvents(
     for (const row of paidRows ?? []) paidMatchIds.add(row.match_result_id)
   }
 
+  const recapIds = new Set((recapRows ?? []).map(r => r.tournament_id))
+
+  /** PostgREST types an embedded to-one relation as object-or-array; flatten both. */
+  const seriesSlug = (t: { tournament_series?: { slug: string } | { slug: string }[] | null }): string | null => {
+    const embedded = t.tournament_series
+    return (Array.isArray(embedded) ? embedded[0]?.slug : embedded?.slug) ?? null
+  }
+
   const events: ActivityItem[] = []
   for (const t of tournaments ?? []) {
     const flag = t.flag_emoji ? `${t.flag_emoji} ` : ''
@@ -251,11 +265,20 @@ async function fetchTournamentEvents(
     }
 
     if (t.status === 'completed' && t.ends_at && t.ends_at >= since) {
+      // Point at the recap when one exists. "Tournament completed" landing on
+      // the edition page is a dead end — the reader already knows it finished,
+      // and what they want next is what happened. Falls back to the edition
+      // page while the recap is still pending (the cron builds it on a later
+      // pass) and for tournaments with no series, which have no recap URL.
+      const slug = seriesSlug(t)
+      const recapHref = recapIds.has(t.id) && slug && t.starts_year != null
+        ? `/tournaments/${slug}/${t.starts_year}/recap`
+        : null
       events.push({
         type: 'tournament', user_id: null, username: null,
-        label: `${displayName} — tournament completed`,
+        label: recapHref ? `${displayName} — recap is up` : `${displayName} — tournament completed`,
         date: t.ends_at,
-        href: `/tournaments/${t.id}`,
+        href: recapHref ?? `/tournaments/${t.id}`,
       })
     }
   }

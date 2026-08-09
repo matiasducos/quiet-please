@@ -208,6 +208,79 @@ export async function withRecaps<T extends { id: string; status: string; slug?: 
   })
 }
 
+export interface MyResult {
+  /** The viewer's total for that tournament. */
+  points: number
+  /** 1-based finishing position among global brackets. */
+  rank: number
+  /** How many global brackets there were, from the stored recap. */
+  field: number
+}
+
+/**
+ * Recently completed tournaments, with the viewer's own finish where they have
+ * one.
+ *
+ * Every recent tournament is returned, entered or not. An active user who never
+ * visits the homepage would otherwise see none of this — and the recap is the
+ * engaging part, worth reading about an event you skipped. `mine` is the
+ * personal overlay on top, not the filter: absent simply means they did not
+ * play that one.
+ *
+ * Cost is bounded by `limit`, not by the user base: one query for the viewer's
+ * predictions, then one head-count per tournament they actually entered. The
+ * field size is read off the stored recap rather than counted again — it is the
+ * same number `participation.brackets` already holds.
+ */
+export async function getRecentResultsForUser(
+  userId: string,
+  limit = 3,
+): Promise<Array<RecentTournament & { mine?: MyResult }>> {
+  const recent = await getRecentCompleted(limit)
+  if (recent.length === 0) return []
+
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('predictions')
+    .select('tournament_id, points_earned')
+    .eq('user_id', userId)
+    .is('challenge_id', null)
+    .in('tournament_id', recent.map(t => t.id))
+
+  if (error) {
+    // The recap cards are the point of the section; the personal line is a
+    // bonus. A failed lookup drops the overlay rather than the whole section.
+    console.error('[recap] getRecentResultsForUser predictions failed:', error.message)
+    return recent
+  }
+
+  const entered = new Map((data ?? []).map(p => [p.tournament_id, p.points_earned ?? 0]))
+
+  return Promise.all(
+    recent.map(async t => {
+      if (!entered.has(t.id)) return t
+      const points = entered.get(t.id) ?? 0
+
+      // A head count, so this does not grow with the number of entrants.
+      const { count, error: rankErr } = await admin
+        .from('predictions')
+        .select('id', { count: 'exact', head: true })
+        .eq('tournament_id', t.id)
+        .is('challenge_id', null)
+        .gt('points_earned', points)
+
+      if (rankErr) {
+        console.error('[recap] rank count failed:', rankErr.message)
+        return t
+      }
+      return {
+        ...t,
+        mine: { points, rank: (count ?? 0) + 1, field: t.recap?.participation?.brackets ?? 0 },
+      }
+    }),
+  )
+}
+
 // ── Writes ───────────────────────────────────────────────────────────────────
 
 /**
