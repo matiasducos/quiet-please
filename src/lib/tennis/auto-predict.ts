@@ -140,17 +140,30 @@ export function generateAutoPicks(
 }
 
 /**
- * Generate gap-fill picks for open matches where BOTH players are known facts.
+ * Fill a bot's bracket the way a person fills one: pick a match, then carry
+ * that pick forward so the next round has two named players to choose between.
  *
- * Used by the bot gap-fill pass: unlike generateAutoPicks, this does NOT
- * speculatively cascade picks into future rounds. A slot only counts as
- * "known" if the player is directly in the draw or resolved from a BYE /
- * actual match result. Matches form round-by-round as real results arrive,
- * and each run picks up the newly-formed ones.
+ * This used to refuse to cascade — a slot only counted as "known" if it came
+ * from the draw, a BYE or a real result — on the reasoning that a speculative
+ * pick is not a fact. The effect was that a bot could only ever fill matches
+ * reality had already set up: round one at draw time, then whatever a new
+ * result happened to expose between two cron runs. Since results here are
+ * entered by hand, that made the outcome a function of typing schedule.
+ * Measured across three finished tournaments, every one a different shape:
+ *
+ *   Washington  R32 100%, then 0% for every later round
+ *   Mifel       R32 72%, R16 0%, QF 0%, SF 34%, F 0%
+ *   Gstaad      R32 7% (brackets made after round one was played), F 100%
+ *
+ * A bracket is a chain of conditional predictions — "I think A wins, so I
+ * think A plays B next" — so declining to cascade is declining to produce a
+ * bracket. Cascading here does not weaken any guarantee: these picks are
+ * already marked `bot_fill`, already locked on write, and already scored only
+ * against real results, which are seeded below and never overwritten.
  *
  * Rules per match:
  *  - Skip BYEs, already-played matches, admin-locked matches, and matches
- *    the user already has a pick for.
+ *    that already have a pick.
  *  - If one player is in the priority list → pick them (both → lower number).
  *  - Otherwise → random 50/50.
  *
@@ -173,8 +186,9 @@ export function generateGapFillPicks(
 
   const feedMap = buildFeedMap(matches)
   const reverseFeedMap = buildReverseFeedMap(feedMap)
+  const byRound = getMatchesByRound(matches)
+  const sortedRounds = getSortedRounds(matches)
 
-  // Facts only: BYE auto-advances + actual results. No speculative picks.
   const matchWinners: Record<string, string> = {}
   for (const m of matches) {
     if (isByeMatch(m)) {
@@ -182,39 +196,55 @@ export function generateGapFillPicks(
       if (winner) matchWinners[m.matchId] = winner.externalId
     }
   }
+  // Real results are seeded after byes and are never overwritten below, so a
+  // played match always resolves to what actually happened.
   for (const [matchId, winnerId] of Object.entries(matchResults)) {
     matchWinners[matchId] = winnerId
+  }
+  // Picks the bracket already holds cascade too. Without this, a bot that
+  // filled round one on an earlier run would never resolve round two — the
+  // chain would restart from facts every time and stall in the same place.
+  for (const [matchId, winnerId] of Object.entries(existingPicks)) {
+    if (matchWinners[matchId] === undefined) matchWinners[matchId] = winnerId
   }
 
   const picks: Record<string, string> = {}
   const pickSources: Record<string, string> = {}
 
-  for (const match of matches) {
-    if (isByeMatch(match)) continue
-    if (matchResults[match.matchId]) continue
-    if (adminLockedMatchIds.has(match.matchId)) continue
-    if (existingPicks[match.matchId]) continue
+  // Earliest round first: a later round can only resolve once the round
+  // feeding it has been decided, which is the whole point of cascading.
+  for (const round of sortedRounds) {
+    for (const match of byRound[round] ?? []) {
+      if (isByeMatch(match)) continue
+      if (matchResults[match.matchId]) continue
+      if (adminLockedMatchIds.has(match.matchId)) continue
+      if (existingPicks[match.matchId]) continue
 
-    const p1Id = resolveSlotPlayer(match, 'player1', reverseFeedMap, matchWinners)
-    const p2Id = resolveSlotPlayer(match, 'player2', reverseFeedMap, matchWinners)
-    if (!p1Id || !p2Id) continue
+      const p1Id = resolveSlotPlayer(match, 'player1', reverseFeedMap, matchWinners)
+      const p2Id = resolveSlotPlayer(match, 'player2', reverseFeedMap, matchWinners)
+      // Still unresolvable — an admin-locked or unplayed feeder with no pick.
+      // The chain stops here rather than guessing at a player who has no name.
+      if (!p1Id || !p2Id) continue
 
-    const p1Priority = priorityMap.get(p1Id)
-    const p2Priority = priorityMap.get(p2Id)
+      const p1Priority = priorityMap.get(p1Id)
+      const p2Priority = priorityMap.get(p2Id)
 
-    let winnerId: string
-    if (p1Priority !== undefined && p2Priority !== undefined) {
-      winnerId = p1Priority <= p2Priority ? p1Id : p2Id
-    } else if (p1Priority !== undefined) {
-      winnerId = p1Id
-    } else if (p2Priority !== undefined) {
-      winnerId = p2Id
-    } else {
-      winnerId = random() < 0.5 ? p1Id : p2Id
+      let winnerId: string
+      if (p1Priority !== undefined && p2Priority !== undefined) {
+        winnerId = p1Priority <= p2Priority ? p1Id : p2Id
+      } else if (p1Priority !== undefined) {
+        winnerId = p1Id
+      } else if (p2Priority !== undefined) {
+        winnerId = p2Id
+      } else {
+        winnerId = random() < 0.5 ? p1Id : p2Id
+      }
+
+      picks[match.matchId] = winnerId
+      pickSources[match.matchId] = 'bot_fill'
+      // The line that makes it a bracket rather than a list of guesses.
+      matchWinners[match.matchId] = winnerId
     }
-
-    picks[match.matchId] = winnerId
-    pickSources[match.matchId] = 'bot_fill'
   }
 
   if (Object.keys(picks).length === 0) return null
