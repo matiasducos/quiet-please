@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { getSafeRedirectPath } from '@/lib/auth-redirect'
 import { setUsername } from './actions'
 
-export default function SetupUsernamePage() {
+function SetupUsernameForm() {
   const [username, setUsernameValue] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -109,5 +109,18 @@ export default function SetupUsernamePage() {
         </div>
       </div>
     </div>
+  )
+}
+
+// useSearchParams() requires a Suspense boundary. That boundary used to come
+// from the root layout, which wrapped the entire app — and an app-wide boundary
+// is what turned every notFound() in the product into a 200 (see the note in
+// src/app/layout.tsx). It belongs here instead, around the one component that
+// actually needs it.
+export default function SetupUsernamePage() {
+  return (
+    <Suspense fallback={null}>
+      <SetupUsernameForm />
+    </Suspense>
   )
 }

@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -31,7 +31,7 @@ const CONSENT_REQUIRED = 'Please accept the Terms of Service and Privacy Policy 
  */
 const VALUE_PROPS = ['Free to play', 'ATP & WTA tournaments', 'Private leagues & challenges']
 
-export default function SignupPage() {
+function SignupForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const rawNext = searchParams.get('next')
@@ -179,5 +179,18 @@ export default function SignupPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+// useSearchParams() requires a Suspense boundary. That boundary used to come
+// from the root layout, which wrapped the entire app — and an app-wide boundary
+// is what turned every notFound() in the product into a 200 (see the note in
+// src/app/layout.tsx). It belongs here instead, around the one component that
+// actually needs it.
+export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupForm />
+    </Suspense>
   )
 }

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { DM_Serif_Display, DM_Mono, DM_Sans } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Suspense } from 'react'
-import PostHogProvider from '@/components/PostHogProvider'
+import PostHogPageviews from '@/components/PostHogPageviews'
 import ConsentBanner from '@/components/ConsentBanner'
 import { SITE_URL, DEFAULT_OG } from '@/lib/site'
 import './globals.css'
@@ -100,14 +100,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${dmSerifDisplay.variable} ${dmMono.variable} ${dmSans.variable}`} suppressHydrationWarning>
       <body className="min-h-screen" style={{ background: 'var(--chalk)', color: 'var(--ink)' }}>
+        {/* The Suspense boundary wraps ONLY the analytics hook, never {children}.
+            PostHogPageviews calls useSearchParams(), which requires a boundary,
+            and it used to take {children} — putting a Suspense boundary around
+            the whole app.
+
+            That silently broke every 404 in the product. notFound() throws, and
+            Next turns the throw into a 404 status only if it reaches the
+            document root; an intervening Suspense boundary catches it and
+            renders the not-found UI inside the boundary, leaving the response at
+            200. All nineteen notFound() call sites were soft 404s — a made-up
+            tournament, league or challenge URL answered "200 OK, real page",
+            which is how Google ends up indexing infinite thin pages.
+
+            So: nothing that renders the page tree may sit inside a Suspense
+            boundary here. Keep {children} a direct child of <body>. */}
         <Suspense fallback={null}>
-          <PostHogProvider>
-            {children}
-          </PostHogProvider>
+          <PostHogPageviews />
         </Suspense>
-        {/* Outside the PostHogProvider Suspense boundary: the banner governs
-            what PostHog is allowed to store, so it must never be waiting on
-            PostHog to render. */}
+        {children}
+        {/* Outside the analytics boundary: the banner governs what PostHog is
+            allowed to store, so it must never be waiting on PostHog to render. */}
         <ConsentBanner />
         <Analytics />
       </body>
