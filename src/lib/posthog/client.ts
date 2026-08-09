@@ -71,7 +71,7 @@ export function applyConsentToPostHog(decision: ConsentDecision) {
 export { isConsentRequired }
 
 /**
- * Initialize PostHog client-side. Called once in the PostHogProvider.
+ * Initialize PostHog client-side. Called once in PostHogPageviews.
  *
  * Persistence follows consent: cookieless for anyone in a consent region who
  * has not agreed, full persistence otherwise. Capture itself is not gated —
