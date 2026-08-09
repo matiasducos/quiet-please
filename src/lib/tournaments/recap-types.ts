@@ -185,8 +185,18 @@ export function cardHighlights(payload: RecapPayload | null | undefined, max = 3
   // filled past the first round simply falls through to the stats that do have
   // a sample — points machine, upsets, accuracy — rather than printing a
   // confident percentage drawn from three brackets. Fewer lines beats wrong ones.
+  const bust = payload.biggest_bust
+  const showBust = canQuotePct(bust) && !!bust && bust.backers > 0
+
+  // The two can name the same player, and often do: the most-backed champion
+  // who fell short IS the most-backed champion whenever the favourite lost.
+  // Printing both then reads as a bug ("Crowd's pick: Kopriva / Biggest bust:
+  // Kopriva") when it is really one fact told twice. The bust line strictly
+  // dominates — same backing figure, plus where the run ended — so it wins.
   const cf = payload.crowd_favourite
-  if (canQuotePct(cf) && cf) {
+  const bustIsFavourite = showBust && !!cf && bust.player.id === cf.player.id
+
+  if (canQuotePct(cf) && cf && !bustIsFavourite) {
     out.push({
       label: "Crowd's pick",
       value: playerLabel(cf.player),
@@ -194,8 +204,7 @@ export function cardHighlights(payload: RecapPayload | null | undefined, max = 3
     })
   }
 
-  const bust = payload.biggest_bust
-  if (canQuotePct(bust) && bust && bust.backers > 0) {
+  if (showBust && bust) {
     out.push({
       label: 'Biggest bust',
       value: playerLabel(bust.player),

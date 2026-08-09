@@ -5,14 +5,18 @@ import Link from 'next/link'
 import { recapCapacity, pickedLabel } from '@/lib/social/layout'
 import { listRecapMatches, type RecapMatchList } from './actions'
 
-type Kind = 'draw' | 'recap' | 'complete'
+type Kind = 'draw' | 'recap' | 'complete' | 'stats'
 type Size = 'story' | 'square'
 
 const KIND_LABEL: Record<Kind, string> = {
   draw: 'Draw published',
   recap: 'Round recap',
   complete: 'Champion',
+  stats: 'Tournament recap',
 }
+
+/** Every kind, in the order a tournament reaches them. */
+const ALL_KINDS: Kind[] = ['draw', 'recap', 'complete', 'stats']
 
 const SIZE_LABEL: Record<Size, string> = {
   story: 'Story 9:16',
@@ -26,6 +30,8 @@ interface Props {
   hasDraw: boolean
   rounds: Array<{ round: string; label: string }>
   hasFinal: boolean
+  /** A stored recap exists, so the tournament-recap card will render. */
+  hasRecap: boolean
 }
 
 function slugify(name: string): string {
@@ -39,14 +45,16 @@ export default function SocialStudio({
   hasDraw,
   rounds,
   hasFinal,
+  hasRecap,
 }: Props) {
   const available = useMemo<Kind[]>(() => {
     const k: Kind[] = []
     if (hasDraw) k.push('draw')
     if (rounds.length) k.push('recap')
     if (hasFinal) k.push('complete')
+    if (hasRecap) k.push('stats')
     return k
-  }, [hasDraw, rounds.length, hasFinal])
+  }, [hasDraw, rounds.length, hasFinal, hasRecap])
 
   // Open on the most newsworthy card the tournament currently supports, which is
   // the latest stage it has reached.
@@ -194,7 +202,7 @@ export default function SocialStudio({
         <div className="flex flex-col gap-6 md:w-72 md:flex-shrink-0">
           <Field label="Card">
             <div className="flex flex-wrap gap-2">
-              {(['draw', 'recap', 'complete'] as Kind[]).map(k => {
+              {ALL_KINDS.map(k => {
                 const enabled = available.includes(k)
                 return (
                   <button

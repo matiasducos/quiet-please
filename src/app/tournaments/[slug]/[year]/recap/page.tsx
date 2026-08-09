@@ -141,6 +141,10 @@ function RecapSection({
   // never on the tournament's entry count. Most brackets stop after the first
   // round, so a 91-entry tournament can have four people who picked a champion
   // — and "67% backed them" from three of those four is a fabrication.
+  const showBust = canQuotePct(recap.biggest_bust) && (recap.biggest_bust?.backers ?? 0) > 0
+  const bustIsFavourite =
+    showBust && !!recap.crowd_favourite && recap.biggest_bust!.player.id === recap.crowd_favourite.player.id
+
   return (
     <section className="mb-14">
       {showTourLabel && (
@@ -165,7 +169,9 @@ function RecapSection({
       {/* ── Players ───────────────────────────────────────────────────── */}
       <Heading>The players</Heading>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-10">
-        {canQuotePct(recap.crowd_favourite) && recap.crowd_favourite && (
+        {/* Suppressed when the bust names the same player — see cardHighlights
+            for why the two collide, and why the bust is the one that stays. */}
+        {canQuotePct(recap.crowd_favourite) && recap.crowd_favourite && !bustIsFavourite && (
           <Card
             label="The crowd's champion"
             headline={playerLabel(recap.crowd_favourite.player)}
@@ -175,7 +181,7 @@ function RecapSection({
           />
         )}
 
-        {canQuotePct(recap.biggest_bust) && recap.biggest_bust && (
+        {showBust && recap.biggest_bust && (
           <Card
             label="Biggest bust"
             headline={playerLabel(recap.biggest_bust.player)}

@@ -5,6 +5,7 @@ import { getNavProfile } from '@/lib/supabase/profile'
 import Nav from '@/components/Nav'
 import TournamentsClientList from '@/components/TournamentsClientList'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
+import { withRecaps } from '@/lib/tournaments/recap'
 import { getPredictableStatuses } from '@/lib/app-settings'
 
 export const metadata: Metadata = { title: 'Tournaments' }
@@ -17,9 +18,15 @@ function getTournaments(tour: string, status: string) {
   return unstable_cache(
     async () => {
       const supabase = createAdminClient()
-      let q = supabase.from('tournaments').select('*').eq('tour', tour).order('starts_at', { ascending: true, nullsFirst: false })
+      // The series slug rides along so completed cards can link to their recap
+      // — /tournaments/<slug>/<year>/recap is the only route that resolves one.
+      let q = supabase.from('tournaments').select('*, tournament_series(slug)').eq('tour', tour).order('starts_at', { ascending: true, nullsFirst: false })
       if (status !== 'all') q = (q as any).eq('status', status)
-      const { data } = await q
+      const { data, error } = await q
+      if (error) {
+        console.error('[tournaments] list query failed:', error.message)
+        return []
+      }
       return data ?? []
     },
     ['tournament-list', tour, status],
@@ -55,13 +62,30 @@ export default async function TournamentsPage({ searchParams }: { searchParams: 
   )]
   const engagement = await getEngagement(engageableIds)
 
-  // Enrich tournaments with engagement counts
+  // Enrich tournaments with engagement counts, then with recap stats.
+  //
+  // The series relation arrives embedded (and PostgREST types it as either an
+  // object or an array depending on the join), so it is flattened to slug/year
+  // here — that is the shape withRecaps() needs to build a recap link.
   const enrich = (list: typeof tournaments) =>
-    list.map(t => ({
-      ...t,
-      prediction_count: engagement[t.id]?.predictions ?? 0,
-      challenge_count: engagement[t.id]?.challenges ?? 0,
-    }))
+    list.map(t => {
+      const embedded = t.tournament_series
+      const slug = Array.isArray(embedded) ? embedded[0]?.slug ?? null : embedded?.slug ?? null
+      return {
+        ...t,
+        slug,
+        year: t.starts_year ?? null,
+        prediction_count: engagement[t.id]?.predictions ?? 0,
+        challenge_count: engagement[t.id]?.challenges ?? 0,
+      }
+    })
+
+  // One recap lookup for both lists: the live list holds nothing completed, but
+  // passing them together keeps this to a single round trip.
+  const [enrichedList, enrichedLive] = await Promise.all([
+    withRecaps(enrich(tournaments)),
+    withRecaps(enrich(liveTournaments)),
+  ])
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
@@ -69,8 +93,8 @@ export default async function TournamentsPage({ searchParams }: { searchParams: 
 
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
         <TournamentsClientList
-          tournaments={enrich(tournaments)}
-          liveTournaments={enrich(liveTournaments)}
+          tournaments={enrichedList}
+          liveTournaments={enrichedLive}
           activeTour={activeTour}
           activeStatus={activeStatus}
           predictableStatuses={predictableStatuses}

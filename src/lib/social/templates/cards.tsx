@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
-import type { CardPlayer, DrawCard, RecapCard, RecapMatch, CompleteCard, SocialCard, PodiumEntry } from '../data'
-import { recapCapacity, pickedLabel } from '../layout'
+import type { CardPlayer, DrawCard, RecapCard, RecapMatch, CompleteCard, StatsCard, SocialCard, PodiumEntry } from '../data'
+import type { Highlight } from '@/lib/tournaments/recap-types'
+import { recapCapacity, statsCapacity, pickedLabel } from '../layout'
 import { Frame, Eyebrow, Rule, C, DISPLAY, BODY, MONO, type CardSize } from './frame'
 
 /**
@@ -451,6 +452,83 @@ function CompleteArt({ card, size, showUsernames }: { card: CompleteCard; size: 
   )
 }
 
+// ── Tournament recap (stats) ──────────────────────────────────────────────────
+
+/**
+ * One stat: a small label, the answer in display type, the evidence beneath.
+ *
+ * The detail line is what keeps the card honest — "Only 12% backed them" means
+ * nothing without "reached the semifinals" under it — so it is part of the row
+ * rather than an optional flourish.
+ */
+function StatRow({ line, story }: { line: Highlight; story: boolean }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 6 : 4 }}>
+      <Eyebrow color={C.muted} size={story ? 22 : 19}>
+        {line.label}
+      </Eyebrow>
+      <div
+        style={{
+          display: 'flex',
+          fontFamily: DISPLAY,
+          fontSize: story ? 52 : 40,
+          color: C.ink,
+          lineHeight: 1.1,
+        }}
+      >
+        {line.value}
+      </div>
+      {line.detail ? (
+        <div style={{ display: 'flex', fontFamily: BODY, fontSize: story ? 28 : 23, color: C.muted, lineHeight: 1.3 }}>
+          {line.detail}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function StatsArt({ card, size, showUsernames }: { card: StatsCard; size: CardSize; showUsernames: boolean }): ReactElement {
+  const story = size === 'story'
+  // The podium is dropped from the square before the stats are: the stats are
+  // the reason this card exists, and the `complete` card already carries a
+  // podium for anyone who wants one.
+  const hasPodium = story && card.podium.length > 0
+  const lines = card.lines.slice(0, statsCapacity(size, hasPodium))
+
+  return (
+    <Frame size={size} eyebrow="Tournament recap" tournament={card.tournament} cta="Full recap at quietplease.app">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 40 : 26, flex: 1, justifyContent: 'center' }}>
+        {/* The hero figure is participation, not a percentage: it is the one
+            number that is always available and always large, and it frames
+            every stat under it with the sample they came from. */}
+        {card.bracketCount > 0 && (
+          <StatBlock
+            value={card.bracketCount.toLocaleString('en-GB')}
+            label="brackets played"
+            story={story}
+            note={card.picksMade > 0 ? `${card.picksMade.toLocaleString('en-GB')} picks` : undefined}
+          />
+        )}
+
+        {lines.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 34 : 22 }}>
+            {lines.map(l => (
+              <StatRow key={l.label} line={l} story={story} />
+            ))}
+          </div>
+        )}
+
+        {hasPodium && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 22 : 16 }}>
+            <Rule />
+            <Podium entries={card.podium} showUsernames={showUsernames} story={story} />
+          </div>
+        )}
+      </div>
+    </Frame>
+  )
+}
+
 // ── Dispatcher ────────────────────────────────────────────────────────────────
 
 export function renderCard(card: SocialCard, { size, showUsernames }: CardOptions): ReactElement {
@@ -461,5 +539,7 @@ export function renderCard(card: SocialCard, { size, showUsernames }: CardOption
       return <RecapArt card={card} size={size} showUsernames={showUsernames} />
     case 'complete':
       return <CompleteArt card={card} size={size} showUsernames={showUsernames} />
+    case 'stats':
+      return <StatsArt card={card} size={size} showUsernames={showUsernames} />
   }
 }
