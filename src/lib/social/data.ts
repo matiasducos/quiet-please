@@ -1,6 +1,9 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ROUND_ORDER, ROUND_LABEL } from '@/lib/tennis/my-tournament'
 import { COUNTRIES, ALIASES } from '@/app/admin/countries'
+import { getRecap } from '@/lib/tournaments/recap'
+import { cardHighlights } from '@/lib/tournaments/recap-types'
+import type { Highlight } from '@/lib/tournaments/recap-types'
 
 /**
  * Data behind the admin social cards.
@@ -12,13 +15,14 @@ import { COUNTRIES, ALIASES } from '@/app/admin/countries'
 
 // ── Card kinds ────────────────────────────────────────────────────────────────
 
-export const CARD_KINDS = ['draw', 'recap', 'complete'] as const
+export const CARD_KINDS = ['draw', 'recap', 'complete', 'stats'] as const
 export type CardKind = (typeof CARD_KINDS)[number]
 
 export const CARD_LABEL: Record<CardKind, string> = {
   draw: 'Draw published',
   recap: 'Round recap',
   complete: 'Champion',
+  stats: 'Tournament recap',
 }
 
 // ── Shapes ────────────────────────────────────────────────────────────────────
@@ -113,7 +117,31 @@ export interface CompleteCard {
   bracketCount: number
 }
 
-export type SocialCard = DrawCard | RecapCard | CompleteCard
+/**
+ * The end-of-tournament stats card.
+ *
+ * Reads the STORED recap (migration 076) rather than recomputing anything. Two
+ * reasons, and the second is the important one: the aggregation expands every
+ * bracket's picks and has no business running behind an image request — but
+ * more than that, a card built from a second implementation could contradict
+ * the recap page it is advertising. Same row, same numbers.
+ *
+ * `lines` comes from `cardHighlights()`, which is also what the web cards
+ * render. That is deliberate: every percentage it emits has already passed the
+ * sample check, so this card cannot publish "67% backed them" off three
+ * brackets — the failure mode that matters most on something posted publicly.
+ */
+export interface StatsCard {
+  kind: 'stats'
+  tournament: CardTournament
+  /** Pre-formatted, pre-gated stat lines, most newsworthy first. */
+  lines: Highlight[]
+  bracketCount: number
+  picksMade: number
+  podium: PodiumEntry[]
+}
+
+export type SocialCard = DrawCard | RecapCard | CompleteCard | StatsCard
 
 // ── Country → flag emoji ──────────────────────────────────────────────────────
 
@@ -221,6 +249,35 @@ export async function getSocialCard(
   const resultRows = ((results ?? []) as ResultRow[]).filter(
     r => !isByeId(r.winner_external_id) && !isByeId(r.loser_external_id),
   )
+
+  // The stats card returns here, before the player resolution below.
+  //
+  // It needs none of it: every name it prints is already baked into the stored
+  // payload, resolved against the registry at build time. Falling through would
+  // mean up to seven `.in()` lookups to decorate players this card never names.
+  if (kind === 'stats') {
+    const recap = await getRecap(tournamentId)
+    if (!recap) {
+      return {
+        ok: false,
+        error: 'No recap stored yet. It is built when the tournament completes — use "Rebuild recap" on the results page to build one now.',
+      }
+    }
+    const p = recap.payload
+    return {
+      ok: true,
+      card: {
+        kind: 'stats',
+        tournament,
+        // Four rather than the web card's three: a 1080-wide canvas has room,
+        // and gating means a thin tournament simply yields fewer.
+        lines: cardHighlights(p, 4),
+        bracketCount: p.participation?.brackets ?? 0,
+        picksMade: p.participation?.picks_made ?? 0,
+        podium: (p.podium ?? []).map(e => ({ username: e.username, points: e.points })),
+      },
+    }
+  }
 
   // Player identity comes from the draw snapshot, which is authoritative for the
   // names as they were seeded. Qualifiers and lucky losers entered later have no

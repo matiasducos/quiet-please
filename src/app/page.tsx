@@ -8,8 +8,7 @@ import CountryFlag from '@/components/CountryFlag'
 import Footer from '@/components/Footer'
 import HowItWorksDemo from '@/components/HowItWorksDemo'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
-import { getRecentCompleted } from '@/lib/tournaments/recap'
-import { cardHighlights } from '@/lib/tournaments/recap-types'
+import { getRecentCompleted, withRecaps } from '@/lib/tournaments/recap'
 import { formatPoints } from '@/lib/utils/format'
 import { SITE_URL, SITE_NAME } from '@/lib/site'
 
@@ -44,13 +43,9 @@ const getHomepageData = unstable_cache(
     // for the tournaments and one for the recap rows — the aggregation itself
     // already happened at completion (migration 076), so this stays O(1) in the
     // number of users no matter how many brackets a tournament drew.
-    const recent = await getRecentCompleted(3)
-    const recentTournaments = recent.map(t => ({
-      ...t,
-      // Formatted here, on the server: the cards are rendered by client
-      // components elsewhere, and the raw payload has no business in a bundle.
-      recap_highlights: cardHighlights(t.recap),
-    }))
+    // Formatted on the server: the cards are rendered by client components
+    // elsewhere, and the raw payload has no business in a bundle.
+    const recentTournaments = await withRecaps(await getRecentCompleted(3))
 
     return { liveTournaments: enrichedLive, topPlayers: top ?? [], recentTournaments }
   },
@@ -329,14 +324,7 @@ export default async function HomePage() {
                 at 375px would each be ~100px wide. */}
             <div className="grid gap-3 grid-cols-1 md:grid-cols-3">
               {recentTournaments.map(t => (
-                <TournamentCard
-                  key={t.id}
-                  t={t}
-                  // A tournament with no series has no canonical edition URL, so
-                  // it falls back to the card's default /tournaments/<uuid>
-                  // redirect rather than linking to a 404.
-                  href={t.slug && t.year ? `/tournaments/${t.slug}/${t.year}/recap` : undefined}
-                />
+                <TournamentCard key={t.id} t={t} />
               ))}
             </div>
           </div>

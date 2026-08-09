@@ -16,6 +16,7 @@ import { parseEditionYear } from '@/lib/tournaments/slug'
 import { getEdition, isEditionIndexable } from '@/lib/tournaments/series'
 import type { DrawPlayer, EditionDetail, EditionPage } from '@/lib/tournaments/series'
 import { buildEditionMetadata, buildEditionJsonLd } from '@/lib/tournaments/seo'
+import { getRecap } from '@/lib/tournaments/recap'
 import { TIER, SURFACE_COLORS, STATUS_STYLES, formatDateRange, roundPoints, toRenderDraw } from '../tournament-ui'
 
 /**
@@ -182,6 +183,10 @@ async function TourSection({
 
   const statusAllowed = await canPredictForStatus(t.status)
 
+  // Only completed editions can have one, so the lookup is skipped entirely
+  // for live and upcoming ones rather than querying for a guaranteed miss.
+  const hasRecap = isDone && (await getRecap(t.id)) !== null
+
   // User-specific data is read per request, never from the shared cache — a
   // cached bracket would show players as still active after they had lost.
   const myTournament = userId ? await loadMyTournament(t.id, userId, detail) : null
@@ -245,6 +250,19 @@ async function TourSection({
                 style={{ background: 'white', color: 'var(--ink)', textDecoration: 'none', border: '1px solid var(--chalk-dim)' }}
               >
                 Leaderboard
+              </Link>
+            )}
+            {/* Rendered only when a recap is actually stored. The recap route
+                404s without one, and a finished edition can sit for a cron
+                cycle or two before its recap is built — so the presence of the
+                row, not the completed status, is what gates the link. */}
+            {hasRecap && (
+              <Link
+                href={`/tournaments/${series.slug}/${year}/recap`}
+                className="px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
+                style={{ background: 'white', color: 'var(--court)', textDecoration: 'none', border: '1px solid var(--court)' }}
+              >
+                Read the recap →
               </Link>
             )}
           </div>

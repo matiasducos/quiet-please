@@ -71,9 +71,17 @@ export interface TournamentCardData {
    * it reads) out of their bundles.
    */
   recap_highlights?: Highlight[]
+  /**
+   * Where "Full recap →" goes. Carried on the data rather than passed as a
+   * prop so it flows through `TournamentsClientList`, which spreads whole
+   * tournament objects and would otherwise need the link threaded separately.
+   * Absent when no recap is stored, or when the tournament has no series and
+   * therefore no canonical edition URL.
+   */
+  recap_href?: string | null
 }
 
-export default function TournamentCard({ t, disableLink, action, footer, href, predictableStatuses }: { t: TournamentCardData; disableLink?: boolean; action?: React.ReactNode; footer?: React.ReactNode; href?: string; predictableStatuses?: string[] }) {
+export default function TournamentCard({ t, disableLink, action, footer, predictableStatuses }: { t: TournamentCardData; disableLink?: boolean; action?: React.ReactNode; footer?: React.ReactNode; predictableStatuses?: string[] }) {
   const tierKey = `${t.tour}|${t.category}`
   const tier    = TIER[tierKey] ?? { label: t.tour, bg: '#4a5568', text: '#fff' }
   const surface = SURFACE_COLORS[(t.surface as keyof typeof SURFACE_COLORS) ?? 'hard']
@@ -92,16 +100,19 @@ export default function TournamentCard({ t, disableLink, action, footer, href, p
 
   const highlights = t.recap_highlights ?? []
   const hasRecap = isCompleted && highlights.length > 0
+  // Only a card that actually shows recap stats sends you to the recap. A
+  // completed card with no stats linking to a recap page would be a promise
+  // the destination does not keep.
+  const recapHref = hasRecap ? t.recap_href ?? null : null
 
   const Wrapper = disableLink ? 'div' : Link
   const cardBg = isCompleted ? '#f7f5f0' : 'white'
   const cardBorder = isCompleted ? '#e0dbd2' : 'var(--chalk-dim)'
   const wrapperProps = disableLink
     ? { className: 'block rounded-sm border overflow-hidden', style: { borderColor: cardBorder, background: cardBg } }
-    // `href` lets a caller point the card somewhere other than the tournament —
-    // the homepage's Recent results section sends completed cards straight to
-    // the recap. The default still redirects through /tournaments/<uuid>.
-    : { href: href ?? `/tournaments/${t.id}`, className: 'tournament-card block rounded-sm border overflow-hidden', style: { borderColor: cardBorder, background: cardBg, textDecoration: 'none' } }
+    // A card showing recap stats links to the recap; everything else keeps the
+    // /tournaments/<uuid> redirect to the edition page.
+    : { href: recapHref ?? `/tournaments/${t.id}`, className: 'tournament-card block rounded-sm border overflow-hidden', style: { borderColor: cardBorder, background: cardBg, textDecoration: 'none' } }
 
   return (
     <Wrapper {...wrapperProps as any}>

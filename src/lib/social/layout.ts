@@ -37,6 +37,26 @@ export function recapCapacity(size: CardSize, hasPodium: boolean): number {
 }
 
 /**
+ * How many stat rows fit on the tournament-recap card.
+ *
+ * Same reasoning as recapCapacity above, with one extra trap. The stats column
+ * is centred vertically, so overflow does not simply clip at the bottom — it
+ * spills from BOTH ends, and the first symptom is the tournament subtitle
+ * disappearing under the hero block at the top. Measured, not estimated: at
+ * three rows plus a podium the story card overpainted its own header and its
+ * footer simultaneously.
+ *
+ * Budgeted against the worst case, which is a two-line tournament title
+ * ("Mubadala Citi DC Open" wraps at story size) — that costs ~200px before the
+ * content column starts. The square is half the height but carries a
+ * single-line title and no podium, so it lands on the same figure.
+ */
+export function statsCapacity(size: CardSize, hasPodium: boolean): number {
+  if (size === 'story') return hasPodium ? 2 : 3
+  return 2
+}
+
+/**
  * "How many brackets called this match", as it reads on the card.
  *
  * `count` is null when the number is not known — the pick-count lookup failed,

@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { RecapPayload } from './recap-types'
+import { cardHighlights } from './recap-types'
+import type { Highlight, RecapPayload } from './recap-types'
 
 /**
  * The end-of-tournament recap — read and write side.
@@ -164,6 +165,45 @@ export async function getRecentCompleted(limit = 3): Promise<RecentTournament[]>
       slug,
       year: r.starts_year,
       recap: recaps.get(r.id)?.payload ?? null,
+    }
+  })
+}
+
+/**
+ * The recap URL for an edition, or null when there is nowhere to send people.
+ *
+ * A tournament with no series has no canonical `/tournaments/<slug>/<year>`
+ * URL, so there is no recap route either — linking one would 404. Every caller
+ * that renders a recap link goes through here rather than building the path
+ * inline, so that check cannot be forgotten in one place and not another.
+ */
+export function recapHref(slug: string | null, year: number | null): string | null {
+  if (!slug || year == null) return null
+  return `/tournaments/${slug}/${year}/recap`
+}
+
+/**
+ * Attach formatted recap lines and a link to a list of tournaments.
+ *
+ * Shared by the homepage and the tournaments list so the two cannot drift into
+ * showing different stats for the same tournament. Only completed tournaments
+ * are looked up — nothing else can have a recap — which also keeps the `.in()`
+ * filter down to the rows that could match.
+ */
+export async function withRecaps<T extends { id: string; status: string; slug?: string | null; year?: number | null }>(
+  tournaments: T[],
+): Promise<Array<T & { recap_highlights: Highlight[]; recap_href: string | null }>> {
+  const completedIds = tournaments.filter(t => t.status === 'completed').map(t => t.id)
+  const recaps = await getRecaps(completedIds)
+
+  return tournaments.map(t => {
+    const payload = recaps.get(t.id)?.payload ?? null
+    const highlights = cardHighlights(payload)
+    return {
+      ...t,
+      recap_highlights: highlights,
+      // No stats means no link: see the matching guard in TournamentCard.
+      recap_href: highlights.length > 0 ? recapHref(t.slug ?? null, t.year ?? null) : null,
     }
   })
 }
