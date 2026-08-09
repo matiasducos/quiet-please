@@ -20,6 +20,13 @@ export default function robots(): MetadataRoute.Robots {
           '/ingest/',
           '/admin',
           '/dashboard',
+          // Profiles 307 to /login for signed-out visitors, and Googlebot is
+          // always signed out. They are linked from the public leaderboard and
+          // the public results tables, so every one Google discovered was
+          // crawled, redirected, and filed under "Page with redirect". If
+          // profiles are ever made publicly viewable, drop this line — a page
+          // per active user is the best long-tail inventory the app has.
+          '/profile',
           '/activity',
           '/notifications',
           '/messages',

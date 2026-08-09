@@ -19,3 +19,24 @@ export const SITE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://quietplease
 export const IS_PRODUCTION_DEPLOY = process.env.VERCEL_ENV === 'production'
 
 export const SITE_NAME = 'Quiet Please'
+
+/**
+ * Site-default Open Graph copy.
+ *
+ * Lives here rather than inline in the root layout because two places need the
+ * exact same strings: the layout, which supplies them as the fallback card for
+ * pages that define no openGraph of their own, and the homepage, which has to
+ * restate the whole block just to add `url`. Next shallow-merges metadata — a
+ * page that sets `openGraph` replaces the parent's object outright instead of
+ * merging field by field — so the homepage cannot simply add `url` on top.
+ *
+ * Deliberately carries no `url`: as a cascading default it would be wrong on
+ * every page but the homepage. See the note in src/app/layout.tsx.
+ */
+export const DEFAULT_OG = {
+  type: 'website',
+  siteName: SITE_NAME,
+  title: 'Free Tennis Bracket Challenge — ATP & WTA',
+  description:
+    'Fill out the bracket for any ATP or WTA tournament, earn points for every correct pick, and compete with friends across the full season.',
+} as const

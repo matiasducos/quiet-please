@@ -11,7 +11,10 @@ import ScopeSegmented from './ScopeSegmented'
 import CountryFlag from '@/components/CountryFlag'
 import { formatPoints } from '@/lib/utils/format'
 
-export const metadata: Metadata = { title: 'Leaderboard' }
+export const metadata: Metadata = {
+  title: 'Leaderboard',
+  alternates: { canonical: '/leaderboard' },
+}
 
 type Scope   = 'worldwide' | 'country' | 'city' | 'community'
 type Circuit = 'both' | 'atp' | 'wta'
