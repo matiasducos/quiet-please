@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
@@ -11,6 +12,16 @@ import LeagueTournamentSelector from './LeagueTournamentSelector'
 import TournamentCard from '@/components/TournamentCard'
 import LeagueChat from './LeagueChat'
 import { formatPoints } from '@/lib/utils/format'
+
+/**
+ * Leagues are private standings groups addressed by UUID — same reasoning as
+ * src/app/challenges/[id]/page.tsx: noindex on the page rather than a robots
+ * pattern that would catch /leagues/browse and friends, and the soft 404 from
+ * this segment's loading.tsx is deliberately left in place.
+ */
+export const metadata: Metadata = {
+  robots: { index: false, follow: true },
+}
 
 const TYPE_LABELS: Record<string, string> = {
   grand_slam: 'Grand Slams',
