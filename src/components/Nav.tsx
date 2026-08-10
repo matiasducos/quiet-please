@@ -266,19 +266,35 @@ export default function Nav({ username, activePage, userId, deletionRequestedAt 
         </div>
       </div>
 
-      {/* Mobile nav links — scrollable row, hidden on md+ */}
+      {/*
+        Mobile nav links — four tabs sharing the width, hidden on md+.
+
+        This was a horizontal scroller of `flex-shrink-0` tabs at `px-5`, which
+        came to roughly 440px of content in a 375px viewport: the last tab read
+        "Ch" on every page of the site, and `scrollbarWidth: none` meant nothing
+        indicated it could be scrolled. Primary navigation is the worst place to
+        hide a destination.
+
+        `flex-1` divides the row four ways instead (~93px each at 375px), which
+        fits every label whole at this size. The truncation styles below are a
+        backstop for narrower phones and for a fifth link later — if the labels
+        ever genuinely stop fitting they will ellipsise rather than reintroduce
+        a scroller, and that is the signal to rethink this row rather than to
+        shave another pixel off the padding.
+      */}
       <div
-        className="md:hidden flex border-t overflow-x-auto max-w-5xl mx-auto"
-        style={{ borderColor: 'var(--chalk-dim)', scrollbarWidth: 'none' }}
+        className="md:hidden flex border-t max-w-5xl mx-auto"
+        style={{ borderColor: 'var(--chalk-dim)' }}
       >
         {NAV_LINKS.map(link => (
           <Link
             key={link.page}
             href={link.href}
-            className="flex-shrink-0 px-5 py-2.5 text-xs border-b-2 transition-colors"
+            className="flex-1 min-w-0 px-1 py-2.5 text-center border-b-2 transition-colors overflow-hidden text-ellipsis whitespace-nowrap"
             style={{
               fontFamily: 'var(--font-mono)',
-              letterSpacing: '0.04em',
+              fontSize: '0.7rem',
+              letterSpacing: '0.02em',
               borderBottomColor: activePage === link.page ? 'var(--court)' : 'transparent',
               color: activePage === link.page ? 'var(--court)' : 'var(--muted)',
               fontWeight: activePage === link.page ? 600 : 400,
