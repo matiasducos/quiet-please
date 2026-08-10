@@ -58,11 +58,23 @@ export default function LeaderboardTable({
 
   return (
     <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
-      <div className="overflow-x-auto">
-      <div className="min-w-[500px]">
-      <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
-        <div className="col-span-1"  style={hStyle}>RANK</div>
-        <div className="col-span-4"  style={hStyle}>PLAYER</div>
+      {/*
+        No horizontal scroller here on purpose.
+
+        This used to be `overflow-x-auto` wrapping `min-w-[500px]`, which at 375px
+        offered 159px of side-scroll that revealed nothing at all: PLAYED,
+        ACCURACY and STREAK POWER are hidden below `sm:`, and grid drops
+        display:none items from placement entirely, so the surviving cells
+        collapsed into 7 of the 12 columns while the track stayed pinned at
+        500px. Everything past x=305 was blank.
+
+        The fix is to let the three remaining cells own the full width at mobile
+        and hand the hidden stats to a caption under the name, so the row fits
+        natively instead of being scrolled through.
+      */}
+      <div className="grid grid-cols-12 px-4 sm:px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
+        <div className="col-span-2 sm:col-span-1"  style={hStyle}>RANK</div>
+        <div className="col-span-7 sm:col-span-4"  style={hStyle}>PLAYER</div>
         <div className="col-span-1 text-right hidden sm:block" style={hStyle}>PLAYED</div>
         <div className="col-span-2 text-right hidden sm:block" style={hStyle}>ACCURACY</div>
         <div className="col-span-2 text-right hidden sm:block" style={hStyle}>
@@ -70,11 +82,11 @@ export default function LeaderboardTable({
             <span style={{ cursor: 'help', borderBottom: '1px dotted var(--muted)' }}>STREAK POWER</span>
           </Tooltip>
         </div>
-        <div className="col-span-2 text-right" style={hStyle}>POINTS</div>
+        <div className="col-span-3 sm:col-span-2 text-right" style={hStyle}>POINTS</div>
       </div>
 
       {users.length === 0 ? (
-        <div className="px-5 py-12 text-center" style={{ color: 'var(--muted)' }}>
+        <div className="px-4 sm:px-5 py-12 text-center" style={{ color: 'var(--muted)' }}>
           <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem' }}>No players yet</p>
           <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
             {scope === 'city' || scope === 'country'
@@ -96,7 +108,7 @@ export default function LeaderboardTable({
           return (
             <div key={u.id}>
               <div
-                className="grid grid-cols-12 px-5 py-4 border-b last:border-0"
+                className="grid grid-cols-12 px-4 sm:px-5 py-4 border-b last:border-0"
                 style={{
                   borderColor: 'var(--chalk-dim)',
                   background: isMe ? '#edf4fc' : 'white',
@@ -108,7 +120,7 @@ export default function LeaderboardTable({
                   }
                 }}
               >
-                <div className="col-span-1 flex items-center">
+                <div className="col-span-2 sm:col-span-1 flex items-center">
                   {medal ? (
                     <span style={{ fontSize: '1rem' }}>{medal}</span>
                   ) : (
@@ -117,40 +129,78 @@ export default function LeaderboardTable({
                     </span>
                   )}
                 </div>
-                <div className="col-span-4 flex items-center gap-2 min-w-0">
-                  <Link
-                    href={`/profile/${u.username}`}
-                    onClick={e => e.stopPropagation()}
-                    style={{
-                      fontFamily: 'var(--font-display)',
-                      fontSize: '1rem',
-                      color: isMe ? '#1e4e8c' : 'var(--ink)',
-                      fontWeight: isMe ? 500 : 400,
-                      textDecoration: 'none',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {u.username}
-                  </Link>
-                  {isMe && (
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#1e4e8c', background: '#dbeafe', padding: '1px 6px', borderRadius: '2px', flexShrink: 0 }}>
-                      you
-                    </span>
-                  )}
-                  {scope === 'worldwide' && u.country && (
-                    <CountryFlag country={u.country} size={16} />
-                  )}
-                  {breakdown.length > 0 && (
-                    <span style={{
-                      fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)',
-                      transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                      transition: 'transform 0.15s ease',
-                      flexShrink: 0,
-                    }}>
-                      ▾
-                    </span>
+                <div className="col-span-7 sm:col-span-4 flex flex-col justify-center min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Link
+                      href={`/profile/${u.username}`}
+                      onClick={e => e.stopPropagation()}
+                      style={{
+                        fontFamily: 'var(--font-display)',
+                        fontSize: '1rem',
+                        color: isMe ? '#1e4e8c' : 'var(--ink)',
+                        fontWeight: isMe ? 500 : 400,
+                        textDecoration: 'none',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {u.username}
+                    </Link>
+                    {isMe && (
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#1e4e8c', background: '#dbeafe', padding: '1px 6px', borderRadius: '2px', flexShrink: 0 }}>
+                        you
+                      </span>
+                    )}
+                    {scope === 'worldwide' && u.country && (
+                      <CountryFlag country={u.country} size={16} />
+                    )}
+                    {breakdown.length > 0 && (
+                      <span style={{
+                        fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)',
+                        transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                        transition: 'transform 0.15s ease',
+                        flexShrink: 0,
+                      }}>
+                        ▾
+                      </span>
+                    )}
+                  </div>
+
+                  {/*
+                    Mobile only. The three stat columns are hidden below `sm:`,
+                    and before this they were simply unreachable on a phone —
+                    the side-scroll they lived behind led to blank space, not to
+                    them. A caption is the honest way to fit them: same numbers,
+                    one line, no scrolling.
+                  */}
+                  {stats && (stats.tournaments > 0 || accuracy !== null) && (
+                    <div
+                      className="flex sm:hidden items-center gap-1.5 flex-wrap"
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '0.62rem',
+                        color: 'var(--muted)',
+                        letterSpacing: '0.02em',
+                        marginTop: '3px',
+                      }}
+                    >
+                      <span>{stats.tournaments} played</span>
+                      {accuracy !== null && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span style={{ color: accuracy >= 50 ? '#166534' : 'var(--muted)' }}>{accuracy}%</span>
+                        </>
+                      )}
+                      {stats.streakPower > 1 && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span style={{ color: stats.streakPower >= 1.5 ? '#166534' : 'var(--muted)' }}>
+                            {stats.streakPower.toFixed(1)}× streak
+                          </span>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div className="col-span-1 hidden sm:flex items-center justify-end">
@@ -178,7 +228,7 @@ export default function LeaderboardTable({
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>—</span>
                   )}
                 </div>
-                <div className="col-span-2 flex items-center justify-end">
+                <div className="col-span-3 sm:col-span-2 flex items-center justify-end">
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: u.points > 0 ? 'var(--ink)' : 'var(--muted)' }}>
                     {formatPoints(u.points)}
                   </span>
@@ -196,10 +246,10 @@ export default function LeaderboardTable({
                     return (
                       <div
                         key={bi}
-                        className="grid grid-cols-12 px-5 py-1.5 items-center"
+                        className="grid grid-cols-12 px-4 sm:px-5 py-1.5 items-center"
                       >
                         {/* Tournament name sits under PLAYER (col 2-5), indented via col-start */}
-                        <div className="col-span-12 sm:col-start-2 sm:col-span-4 flex items-center gap-2 flex-wrap min-w-0">
+                        <div className="col-span-8 sm:col-start-2 sm:col-span-4 flex items-center gap-2 flex-wrap min-w-0">
                           <Link
                             href={`/leaderboard/tournaments/${b.tournament_id}`}
                             onClick={e => e.stopPropagation()}
@@ -248,7 +298,7 @@ export default function LeaderboardTable({
                           )}
                         </div>
                         {/* POINTS */}
-                        <div className="col-span-12 sm:col-span-2 flex items-center justify-end">
+                        <div className="col-span-3 sm:col-span-2 flex items-center justify-end">
                           <span style={{
                             fontFamily: 'var(--font-mono)',
                             fontSize: '0.75rem',
@@ -290,8 +340,6 @@ export default function LeaderboardTable({
           )
         })
       )}
-    </div>
-    </div>
     </div>
   )
 }
