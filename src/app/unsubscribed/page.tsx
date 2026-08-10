@@ -18,15 +18,31 @@ export default async function UnsubscribedPage({
     ? (sp.type as EmailPrefKey)
     : null
 
+  // An anonymous challenge player has no account, so neither of the copy blocks
+  // below applies: there is no preference to re-enable and no profile to do it
+  // on. Their address was deleted rather than suppressed, and the page should
+  // say the thing that is actually true for them.
+  const isAnonymous = sp.type === 'anonymous'
+
   return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--chalk)' }}>
       <div className="max-w-sm text-center px-4">
         <p className="mb-4" style={{ fontSize: '2rem' }}>✓</p>
         <h1 className="mb-2" style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.02em' }}>
-          {type ? 'Unsubscribed from these emails' : 'You’ve been unsubscribed'}
+          {isAnonymous
+            ? 'Your email address is deleted'
+            : type
+              ? 'Unsubscribed from these emails'
+              : 'You’ve been unsubscribed'}
         </h1>
         <p className="mb-6" style={{ color: 'var(--muted)', fontSize: '0.9rem', lineHeight: 1.6 }}>
-          {type ? (
+          {isAnonymous ? (
+            <>
+              We&apos;ve removed the address you left on your challenge, so we won&apos;t
+              email you again. Your bracket and its result are still there if you
+              want to look &mdash; nothing else about it has changed.
+            </>
+          ) : type ? (
             <>
               You won&apos;t receive <strong style={{ color: 'var(--ink)' }}>“{EMAIL_PREF_LABELS[type].label}”</strong>{' '}
               emails any more &mdash; {EMAIL_PREF_LABELS[type].description.toLowerCase()}.

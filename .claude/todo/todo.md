@@ -106,23 +106,39 @@ what remains, roughly in impact order.
 - "Bring 3 friends to your league and unlock X"
 - Future growth iteration
 
-### Email Capture for Anonymous Users — **next up after PR #101**
-- On anonymous challenge completion: "Save your score — enter your email"
-- Re-engagement path for users who play without signing up
-- Scoped by the 2026-08-04 funnel review: `/c/[code]` is where someone fills out an
-  entire bracket from a friend's link — the highest-intent moment in the product — and
-  the payoff is one small grey outlined link at the very bottom
-  (`ChallengeView.tsx`, the "Create a free account →" block). The anonymous
-  `AnonymousCreateFlow` CTA has the same weak treatment
-- The email is the other half: with no address captured, there is no way to tell an
-  anonymous player they won when results land, which is the natural moment to earn
-  the account
-- Note `/challenges/[id]` (the signed-in view) now redirects anonymous visitors to
-  `/signup?next=…` rather than a bare `/login` — PR #101 fixed the arrival, not the ask
+### Anonymous player follow-ups (after the email capture below)
+- **Nothing tells the creator their opponent has accepted.** They leave an address, then
+  hear nothing until the tournament ends. A second email at "your opponent submitted,
+  the race is on" is the obvious next one, but it breaks the "one email, nothing else"
+  promise the capture form makes — changing that promise means changing the copy in
+  `AnonymousConversion.tsx`, `/privacy` §7 and the footer in `anonymousFooter()` together
+- Measure before adding: the result email carries `?next=/c/<code>` into `/signup`, so
+  attribution already distinguishes these signups. Wait for a real conversion rate
 
 ---
 
 ## Shipped
+
+### ✅ Anonymous → account conversion + email capture (2026-08-10)
+- **Why now:** the US Open opens 2026-08-30 and signups were 2 in the preceding 30 days.
+  The infrastructure to attract that traffic already existed (slam pages, social cards,
+  recaps); the step that turns it into accounts did not
+- The ask on `/c/[code]` and the create flow's share step was a small grey outlined link.
+  Replaced by one shared block, `src/components/AnonymousConversion.tsx`, used at all
+  three anonymous moments: challenge created, opponent submitted, result standing
+- Email capture is the point: with no address there was **no way to tell an anonymous
+  player they won**, which is the moment that earns the account. Migration `078`;
+  `saveAnonymousEmail()` in `src/app/c/actions.ts`
+- Purpose-limited by design — one email, and the send **erases the address** in the same
+  write that stamps `*_result_emailed_at`. Opt-out is `/api/unsubscribe/anonymous`, which
+  erases rather than suppresses (the account unsubscribe route can't serve someone with
+  no user row). `/privacy` §2, §3, §7 and §8 updated to match
+- Sent from a dedicated retryable pass in `award-points` (§12b) rather than inline with
+  scoring, so a Resend failure retries instead of losing the email permanently
+- **Also closed a leak this depended on:** `/c/[code]` shipped both raw challenge tokens
+  in its RSC payload. Harmless while they only picked which bracket to highlight, not
+  harmless once one authorises writing an email address — the page now gets SHA-256
+  digests (`src/lib/challenge-token.ts`) and only the raw token reaches server actions
 
 ### ✅ Acquisition funnel: attribution, consent, signup page (2026-08-04, PR #99)
 - **The finding that drove it:** PostHog ran `persistence: 'memory'` to avoid a cookie banner, so the anonymous `distinct_id` was reminted on every full page load. `/` reported 21 persons across 21 sessions; `/admin`, a one-person page, reported 25. Sessions, bounce rate, retention and every multi-step funnel were meaningless

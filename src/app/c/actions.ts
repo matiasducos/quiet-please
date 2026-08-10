@@ -1,16 +1,28 @@
 'use server'
 
+import { createHash } from 'node:crypto'
 import { headers } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateShareCode } from '@/lib/share-code'
 import { rateLimit } from '@/lib/rate-limit'
 import { isManualLockMode } from '@/lib/app-settings'
+import { isBotEmail } from '@/lib/email'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 async function getClientIp(): Promise<string> {
   const h = await headers()
   return h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
+}
+
+/**
+ * Server half of the challenge-token digest — see `src/lib/challenge-token.ts`
+ * for why the page gets a hash rather than the token. Deliberately not
+ * exported: in a `'use server'` module every export is a callable endpoint, and
+ * this one has no business being reachable from the browser.
+ */
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex')
 }
 
 // ── Create anonymous challenge ──────────────────────────────────────────────
@@ -187,19 +199,115 @@ export async function submitOpponentPicks(data: {
   return { ok: true }
 }
 
+// ── Save an email for the result ────────────────────────────────────────────
+
+/**
+ * Basic shape check only. Deliverability is not knowable here and a strict
+ * pattern rejects addresses that are perfectly valid, so this filters obvious
+ * typos and nothing more — the send itself is the real test.
+ */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+
+/**
+ * Store the address an anonymous player left so we can tell them the result.
+ *
+ * The caller proves which side of the challenge they are by presenting the
+ * token they were given when they submitted their picks — the same token the
+ * UI already keeps in localStorage to decide whose bracket to show. Without it
+ * anyone holding a share code could write an address into either slot, which
+ * would turn a public link into a way to sign strangers up for mail.
+ */
+export async function saveAnonymousEmail(data: {
+  shareCode: string
+  token: string
+  email: string
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ip = await getClientIp()
+  const rl = rateLimit(`anon-email:${ip}`, { maxRequests: 10, windowMs: 3_600_000 })
+  if (rl.limited) return { ok: false, error: `Too many attempts. Try again in ${rl.retryAfter}s.` }
+
+  const email = data.email.trim().toLowerCase()
+  if (!email || email.length > 254 || !EMAIL_RE.test(email)) {
+    return { ok: false, error: 'That does not look like an email address.' }
+  }
+  if (isBotEmail(email)) {
+    return { ok: false, error: 'That address cannot be used.' }
+  }
+
+  const admin = createAdminClient()
+
+  const { data: challenge, error: readErr } = await admin
+    .from('challenges')
+    .select('id, creator_token, opponent_token')
+    .eq('share_code', data.shareCode)
+    .eq('is_anonymous', true)
+    .single()
+
+  if (readErr || !challenge) return { ok: false, error: 'Challenge not found.' }
+
+  const side =
+    data.token && data.token === challenge.creator_token ? 'creator' :
+    data.token && data.token === challenge.opponent_token ? 'opponent' :
+    null
+
+  if (!side) return { ok: false, error: 'Only a player in this challenge can do that.' }
+
+  // Minted here rather than defaulted in the schema so a row with no address
+  // never carries a live unsubscribe token.
+  const { error } = await admin
+    .from('challenges')
+    .update({
+      [`${side}_email`]: email,
+      [`${side}_email_token`]: crypto.randomUUID(),
+      // Re-entering an address after a send should get the next result, not a
+      // duplicate of the one already delivered; the guard stays as it was.
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', challenge.id)
+
+  if (error) {
+    console.error('[saveAnonymousEmail] update error:', error)
+    return { ok: false, error: 'Could not save that address.' }
+  }
+
+  return { ok: true }
+}
+
 // ── Fetch anonymous challenge (read-only) ───────────────────────────────────
 
 export async function getAnonymousChallenge(shareCode: string) {
   const admin = createAdminClient()
 
-  const { data: challenge } = await admin
+  const { data: challenge, error: challengeErr } = await admin
     .from('challenges')
-    .select('id, tournament_id, status, is_anonymous, share_code, creator_name, opponent_name, creator_picks, opponent_picks, creator_token, opponent_token, creator_pick_locks, opponent_pick_locks, challenger_points, challenged_points, winner_id, created_at, updated_at')
+    .select('id, tournament_id, status, is_anonymous, share_code, creator_name, opponent_name, creator_picks, opponent_picks, creator_token, opponent_token, creator_pick_locks, opponent_pick_locks, challenger_points, challenged_points, winner_id, creator_email, opponent_email, created_at, updated_at')
     .eq('share_code', shareCode)
     .eq('is_anonymous', true)
     .single()
 
-  if (!challenge) return null
+  if (challengeErr || !challenge) return null
+
+  // Strip both secrets before this object reaches the browser.
+  //
+  // The page needs to answer "is the visitor holding this token the creator,
+  // the opponent, or a bystander?", and the token lives in their localStorage,
+  // so the comparison has to happen client-side. Shipping the raw tokens made
+  // that work but put them in the RSC payload of a deliberately public URL —
+  // fine while they only decided which bracket to highlight, not fine now that
+  // one of them authorises writing an email address. A digest answers the same
+  // question without handing anyone the credential.
+  //
+  // The addresses never leave the server at all: the page only needs to know
+  // whether a side has already left one, and returning the address itself
+  // would let anyone holding a share code read their opponent's email.
+  const { creator_token, opponent_token, creator_email, opponent_email, ...rest } = challenge
+  const safeChallenge = {
+    ...rest,
+    creator_token_hash: creator_token ? hashToken(creator_token) : null,
+    opponent_token_hash: opponent_token ? hashToken(opponent_token) : null,
+    creator_has_email: Boolean(creator_email),
+    opponent_has_email: Boolean(opponent_email),
+  }
 
   // Fetch tournament + draw + match results in parallel
   const [{ data: tournament }, { data: drawData }, { data: matchResults }] = await Promise.all([
@@ -209,7 +317,7 @@ export async function getAnonymousChallenge(shareCode: string) {
   ])
 
   return {
-    challenge,
+    challenge: safeChallenge,
     tournament,
     draw: drawData?.bracket_data ?? null,
     lockedMatches: (drawData?.locked_matches as Record<string, string>) ?? {},

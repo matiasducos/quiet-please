@@ -49,6 +49,14 @@ export default function PrivacyPolicy() {
               <li>Country and city (if you choose to add them)</li>
             </ul>
 
+            <h4>If you play without an account (optional)</h4>
+            <ul>
+              <li>
+                An email address, only if you choose to leave one on an anonymous challenge so
+                that we can send you the final result. See section 7.
+              </li>
+            </ul>
+
             <h4>Activity data</h4>
             <ul>
               <li>Bracket predictions you make</li>
@@ -70,6 +78,10 @@ export default function PrivacyPolicy() {
             <ul>
               <li>Provide and operate the Service (authentication, predictions, leaderboards, leagues, challenges)</li>
               <li>Send you email notifications about tournament draws and points earned (you can opt out at any time)</li>
+              <li>
+                Send you the result of an anonymous challenge, if you asked us to — a single
+                email, after which your address is deleted
+              </li>
               <li>Prevent abuse through rate limiting</li>
               <li>Calculate rankings and display leaderboards</li>
             </ul>
@@ -136,6 +148,21 @@ export default function PrivacyPolicy() {
               your browser&apos;s local storage to identify you as the creator or opponent of a challenge.
             </p>
             <p>
+              You may optionally leave an email address so that we can tell you how the challenge
+              finished. This is never required to play. If you leave one:
+            </p>
+            <ul>
+              <li>It is used for exactly one email — the final result, sent once the tournament ends.</li>
+              <li>
+                It is stored on that challenge alone. It is not added to any mailing list, is not
+                used for marketing, and is not linked to an account, because you do not have one.
+              </li>
+              <li>
+                We delete it at the moment that email is sent. You can also delete it at any point
+                before then using the link in the email, or by emailing us.
+              </li>
+            </ul>
+            <p>
               Your IP address is used temporarily for rate limiting but is not saved to our database.
             </p>
           </Section>
@@ -148,6 +175,8 @@ export default function PrivacyPolicy() {
             </p>
             <p>
               Anonymous challenge data is retained indefinitely as it is not linked to a personal account.
+              The one exception is an email address left on an anonymous challenge: that is deleted as
+              soon as the result email is sent, or immediately if you ask us to before then.
             </p>
           </Section>
 

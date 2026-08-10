@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import BracketPredictor from '@/app/tournaments/[slug]/predict/BracketPredictor'
 import { createAnonymousChallenge } from '@/app/c/actions'
+import AnonymousConversion from '@/components/AnonymousConversion'
 
 type Step = 'name' | 'picks' | 'submitting' | 'share'
 
@@ -23,6 +24,9 @@ export default function AnonymousCreateFlow({
   const [name, setName] = useState('')
   const [picks, setPicks] = useState<Record<string, string>>({})
   const [shareCode, setShareCode] = useState<string | null>(null)
+  /** Kept after creation so the share step can prove to the server that this
+   *  visitor is the creator when they leave an email address. */
+  const [creatorToken, setCreatorToken] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -44,13 +48,13 @@ export default function AnonymousCreateFlow({
     setError(null)
 
     // Generate creator token
-    const creatorToken = crypto.randomUUID()
+    const token = crypto.randomUUID()
 
     const result = await createAnonymousChallenge({
       tournamentId: tournament.id,
       creatorName: name.trim() || `Player ${Math.floor(Math.random() * 9000) + 1000}`,
       creatorPicks: picks,
-      creatorToken,
+      creatorToken: token,
     })
 
     if (!result.ok) {
@@ -61,12 +65,13 @@ export default function AnonymousCreateFlow({
 
     // Store creator token in localStorage
     try {
-      localStorage.setItem(`qp_challenge_${result.shareCode}`, creatorToken)
+      localStorage.setItem(`qp_challenge_${result.shareCode}`, token)
     } catch {
       // localStorage unavailable — user won't be recognized as creator on return
     }
 
     setShareCode(result.shareCode)
+    setCreatorToken(token)
     setStep('share')
   }
 
@@ -241,19 +246,14 @@ export default function AnonymousCreateFlow({
           </div>
         </div>
 
-        {/* CTA */}
-        <div className="bg-white rounded-sm border p-5 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
-          <p style={{ fontSize: '0.85rem', color: 'var(--muted)', marginBottom: '0.75rem' }}>
-            Want to track your stats, join leagues, and compete on the global leaderboard?
-          </p>
-          <a
-            href="/signup"
-            className="inline-block px-5 py-2 text-sm rounded-sm border"
-            style={{ borderColor: 'var(--chalk-dim)', color: 'var(--court)', textDecoration: 'none' }}
-          >
-            Create a free account →
-          </a>
-        </div>
+        {/* The bracket is locked and the link is copied — from here the creator
+            has nothing left to do, and no way to be told how it went. */}
+        <AnonymousConversion
+          shareCode={shareCode!}
+          token={creatorToken}
+          resultAlreadyIn={tournament.status === 'completed'}
+          context="created"
+        />
       </div>
     )
   }
