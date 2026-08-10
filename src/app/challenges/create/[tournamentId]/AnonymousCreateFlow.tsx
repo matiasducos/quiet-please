@@ -251,7 +251,7 @@ export default function AnonymousCreateFlow({
         <AnonymousConversion
           shareCode={shareCode!}
           token={creatorToken}
-          tournamentCompleted={tournament.status === 'completed'}
+          resultAlreadyIn={tournament.status === 'completed'}
           context="created"
         />
       </div>

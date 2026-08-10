@@ -48,7 +48,7 @@ function SubmitButton() {
 export default function AnonymousConversion({
   shareCode,
   token,
-  tournamentCompleted = false,
+  resultAlreadyIn = false,
   alreadySaved = false,
   context,
 }: {
@@ -56,7 +56,11 @@ export default function AnonymousConversion({
   /** The player's own token from localStorage. Without one they are a bystander
    *  viewing a shared link, not a player, and have no result to be told about. */
   token: string | null
-  tournamentCompleted?: boolean
+  /** True when there is no result still to come, so there is nothing to promise.
+   *  Callers reach that conclusion by different routes — a finished tournament
+   *  before both brackets are in, a finished challenge after — which is why this
+   *  is phrased as the question being asked rather than as either answer. */
+  resultAlreadyIn?: boolean
   alreadySaved?: boolean
   context: Context
 }) {
@@ -65,10 +69,10 @@ export default function AnonymousConversion({
 
   const signupHref = authUrl('/signup', `/c/${shareCode}`)
 
-  // A finished tournament has no result left to promise, and a bystander has no
-  // claim on one. Both still get the account CTA — it is the only ask that
+  // Nothing left to promise once the result is in, and a bystander has no claim
+  // on one anyway. Both still get the account CTA — it is the only ask that
   // still means something.
-  const canOfferEmail = Boolean(token) && !tournamentCompleted
+  const canOfferEmail = Boolean(token) && !resultAlreadyIn
 
   async function handleSubmit(formData: FormData) {
     setError(null)
@@ -163,7 +167,12 @@ export default function AnonymousConversion({
         <p style={{ fontSize: '0.85rem', color: 'var(--muted)', marginBottom: '0.75rem', lineHeight: 1.5 }}>
           {saved
             ? 'With an account your brackets are saved for the whole season — points, ranking, leagues and every tournament, not just this one.'
-            : 'Or keep every bracket you make: points, a global ranking, leagues with friends, and the whole season in one place.'}
+            : canOfferEmail
+              // "Or" only makes sense as the second of two asks. On a finished
+              // challenge the email form is gone and this is the only thing on
+              // screen, so the conjunction would dangle.
+              ? 'Or keep every bracket you make: points, a global ranking, leagues with friends, and the whole season in one place.'
+              : 'Keep every bracket you make: points, a global ranking, leagues with friends, and the whole season in one place.'}
         </p>
         <a
           href={signupHref}

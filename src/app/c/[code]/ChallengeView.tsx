@@ -204,7 +204,7 @@ export default function ChallengeView({
         <AnonymousConversion
           shareCode={shareCode}
           token={myToken}
-          tournamentCompleted={tournament?.status === 'completed'}
+          resultAlreadyIn={tournament?.status === 'completed'}
           alreadySaved={challenge.creator_has_email ?? false}
           context="created"
         />
@@ -461,7 +461,7 @@ export default function ChallengeView({
         <AnonymousConversion
           shareCode={shareCode}
           token={myToken}
-          tournamentCompleted={isCompleted}
+          resultAlreadyIn={isCompleted}
           alreadySaved={
             (role === 'creator' ? challenge.creator_has_email : challenge.opponent_has_email) ?? false
           }
