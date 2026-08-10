@@ -20,11 +20,17 @@ export default function LeagueLeaderboard({ members, leagueId }: { members: Memb
 
   return (
     <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
-      <div className="overflow-x-auto">
-      <div className="min-w-[500px]">
-      <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
-        <div className="col-span-1" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>RANK</div>
-        <div className="col-span-8" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>PLAYER</div>
+      {/*
+        No horizontal scroller — see LeaderboardTable for the same fix. This
+        table is the simpler case of it: all three columns are always visible
+        and already sum to 12, so `min-w-[500px]` was buying a 159px side-scroll
+        at 375px with nothing behind it but the same three columns, stretched.
+        Rank gives up a column to the name at mobile so a medal and a two-digit
+        position both still fit.
+      */}
+      <div className="grid grid-cols-12 px-4 sm:px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
+        <div className="col-span-2 sm:col-span-1" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>RANK</div>
+        <div className="col-span-7 sm:col-span-8" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>PLAYER</div>
         <div className="col-span-3 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>POINTS</div>
       </div>
 
@@ -36,15 +42,15 @@ export default function LeagueLeaderboard({ members, leagueId }: { members: Memb
         return (
           <div key={m.user_id} className="border-b last:border-0" style={{ borderColor: 'var(--chalk-dim)' }}>
             <div
-              className="grid grid-cols-12 px-5 py-4"
+              className="grid grid-cols-12 px-4 sm:px-5 py-4"
               style={{ background: m.isMe ? '#edf4fc' : 'white', cursor: hasBreakdown ? 'pointer' : 'default' }}
               onClick={() => hasBreakdown && setExpandedUser(isExpanded ? null : m.user_id)}
             >
-              <div className="col-span-1 flex items-center">
+              <div className="col-span-2 sm:col-span-1 flex items-center">
                 {medal ? <span style={{ fontSize: '1rem' }}>{medal}</span>
                   : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{i + 1}</span>}
               </div>
-              <div className="col-span-8 flex items-center gap-2">
+              <div className="col-span-7 sm:col-span-8 flex items-center gap-2 min-w-0">
                 <Link href={`/profile/${m.username}`} onClick={e => e.stopPropagation()} style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: m.isMe ? '#1e4e8c' : 'var(--ink)', textDecoration: 'none' }}>{m.username}</Link>
                 {m.isMe && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#1e4e8c', background: '#dbeafe', padding: '1px 6px', borderRadius: '2px' }}>you</span>}
                 {m.isLeagueOwner && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', background: 'var(--chalk-dim)', padding: '1px 6px', borderRadius: '2px' }}>owner</span>}
@@ -58,7 +64,7 @@ export default function LeagueLeaderboard({ members, leagueId }: { members: Memb
             </div>
 
             {isExpanded && m.breakdown.length > 0 && (
-              <div className="px-5 pb-3" style={{ paddingLeft: '52px', background: '#fafaf8' }}>
+              <div className="px-4 sm:px-5 pb-3" style={{ paddingLeft: '52px', background: '#fafaf8' }}>
                 {m.breakdown.map((b, bi) => (
                   <div key={bi} className="flex items-center justify-between py-1.5" style={{ fontSize: '0.8rem' }}>
                     <div className="flex items-center gap-2">
@@ -92,8 +98,6 @@ export default function LeagueLeaderboard({ members, leagueId }: { members: Memb
           </div>
         )
       })}
-    </div>
-    </div>
     </div>
   )
 }

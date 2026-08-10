@@ -13,22 +13,29 @@ export interface ScopeItem {
 
 /**
  * Segmented control for leaderboard scope selection (Worldwide / Country /
- * City / My community). Four connected cells with a single outer border and
- * thin dividers — one active cell is filled green, others stay transparent.
+ * City / My community). Connected cells with a single outer border and thin
+ * dividers — one active cell is filled green, the others stay white.
  *
- * Responsive: falls back to horizontal scroll on screens narrow enough that
- * all four labels don't fit. Accepts a bare-text label like "My community"
- * without truncation — we'd rather scroll than cut it mid-word.
+ * Responsive: a single row from `sm:` up, a 2×2 grid below it. It used to be a
+ * horizontal scroller instead, on the reasoning that scrolling beat cutting a
+ * label like "My community" mid-word. It ended up doing both: at 375px the
+ * fourth cell rendered as "My c", and `scrollbarWidth: none` removed the only
+ * hint that there was anything to scroll to. Wrapping keeps every label whole,
+ * which was the actual goal, and costs one row of height.
+ *
+ * Dividers come from a 1px grid gap over a chalk-dim background rather than
+ * per-cell borders. Border-side logic has to know each cell's position, which
+ * is knowable in a row and awkward in a wrapping grid; the gap draws correct
+ * dividers in both layouts without the cells knowing anything.
  */
 export default function ScopeSegmented({ items }: { items: ScopeItem[] }) {
   return (
-    <div className="overflow-x-auto -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+    <div>
       <div
-        className="inline-flex rounded-sm border overflow-hidden"
-        style={{ borderColor: 'var(--chalk-dim)', background: 'white' }}
+        className="grid grid-cols-2 sm:inline-flex rounded-sm border overflow-hidden"
+        style={{ borderColor: 'var(--chalk-dim)', background: 'var(--chalk-dim)', gap: '1px' }}
       >
-        {items.map((item, i) => {
-          const isLast = i === items.length - 1
+        {items.map((item) => {
           const baseStyle: React.CSSProperties = {
             fontFamily: 'var(--font-mono)',
             fontSize: '0.72rem',
@@ -36,11 +43,11 @@ export default function ScopeSegmented({ items }: { items: ScopeItem[] }) {
             padding: '8px 14px',
             textDecoration: 'none',
             whiteSpace: 'nowrap',
-            borderRight: isLast ? 'none' : '1px solid var(--chalk-dim)',
             transition: 'background 0.12s ease, color 0.12s ease',
             userSelect: 'none',
             display: 'inline-flex',
             alignItems: 'center',
+            justifyContent: 'center',
             gap: '6px',
             lineHeight: 1,
           }
@@ -86,7 +93,7 @@ export default function ScopeSegmented({ items }: { items: ScopeItem[] }) {
                 style={{
                   ...baseStyle,
                   color: 'var(--chalk-dim)',
-                  background: 'transparent',
+                  background: 'white',
                   cursor: 'not-allowed',
                 }}
               >
@@ -103,7 +110,7 @@ export default function ScopeSegmented({ items }: { items: ScopeItem[] }) {
               style={{
                 ...baseStyle,
                 color: 'var(--muted)',
-                background: 'transparent',
+                background: 'white',
               }}
             >
               {item.icon && iconWrap(item.icon, false)}
