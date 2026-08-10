@@ -561,3 +561,110 @@ export async function sendNotificationEmail<T extends { to: string; unsubscribeT
     console.error('[email] notification email error:', e)
   }
 }
+
+// ── Anonymous challenge result ──────────────────────────────────────────────
+
+/**
+ * Footer for mail to someone who has no account.
+ *
+ * The account footer is wrong here in both directions: it tells the reader they
+ * received this "because you have an account on Quiet Please", which is untrue
+ * and reads as spam, and it points at `users.unsubscribe_token`, which they do
+ * not have. It also offers per-type preferences they cannot hold.
+ *
+ * The opt-out is a deletion rather than a suppression — this address was given
+ * for exactly one message, so there is nothing left to suppress once it has
+ * been sent, and keeping it would be holding data we have no use for. The send
+ * itself erases the address, which is what the copy below states; the link is
+ * still worth having because "we deleted it" is a claim, and a link that
+ * confirms it is evidence. It is idempotent either way.
+ */
+function anonymousFooter(emailToken: string) {
+  const url = `${BASE_URL}/api/unsubscribe/anonymous?token=${emailToken}`
+  return `
+    <div style="margin-top:40px;padding-top:20px;border-top:1px solid #e8e3d8;">
+      <p style="font-size:11px;color:#999;line-height:1.5;">
+        You're getting this once because you asked to be told how your bracket
+        finished. You don't have an account with us, and we deleted your address
+        when we sent this — it was the only thing we collected it for.<br/>
+        <a href="${url}" style="color:#999;text-decoration:underline;">Confirm removal</a>.
+      </p>
+    </div>`
+}
+
+export interface AnonymousChallengeResultEmail {
+  to: string
+  /** The recipient's own name, as they entered it. */
+  yourName: string
+  opponentName: string
+  yourPoints: number
+  opponentPoints: number
+  tournamentName: string
+  tournamentFlagEmoji: string | null
+  shareCode: string
+  emailToken: string
+}
+
+export async function sendAnonymousChallengeResultEmail(o: AnonymousChallengeResultEmail) {
+  if (!canSend()) return
+
+  const won = o.yourPoints > o.opponentPoints
+  const tied = o.yourPoints === o.opponentPoints
+  const flag = o.tournamentFlagEmoji ? `${o.tournamentFlagEmoji} ` : ''
+
+  const subject = tied
+    ? `Dead heat — you and ${o.opponentName} tied`
+    : won
+      ? `You beat ${o.opponentName} 🎾`
+      : `${o.opponentName} beat you`
+
+  const headline = tied ? 'A dead heat.' : won ? 'You won.' : `${o.opponentName} won.`
+
+  // The account pitch is the point of this email, so it carries the reader back
+  // to the bracket they already built rather than dropping them on a cold
+  // signup form.
+  const signupUrl = `${BASE_URL}/signup?next=${encodeURIComponent(`/c/${o.shareCode}`)}`
+
+  await resend!.emails.send({
+    from: FROM,
+    replyTo: REPLY_TO,
+    to: o.to,
+    subject,
+    html: `
+      <div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#f5f2eb;">
+        <p style="font-size:12px;letter-spacing:0.08em;color:#6b6b6b;text-transform:uppercase;margin-bottom:24px;">Quiet Please</p>
+        <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 12px;">${headline}</h1>
+        <p style="color:#6b6b6b;font-size:16px;margin:0 0 24px;">${flag}${o.tournamentName} is over. Here's how your bracket finished.</p>
+
+        <table style="width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #e8e3d8;border-radius:2px;margin-bottom:28px;">
+          <tr>
+            <td style="padding:14px 16px;font-size:15px;color:#0d0d0d;">${o.yourName}</td>
+            <td style="padding:14px 16px;font-size:15px;text-align:right;color:${won ? '#1a6b3c' : '#0d0d0d'};font-weight:bold;">${o.yourPoints}</td>
+          </tr>
+          <tr>
+            <td style="padding:14px 16px;font-size:15px;color:#0d0d0d;border-top:1px solid #e8e3d8;">${o.opponentName}</td>
+            <td style="padding:14px 16px;font-size:15px;text-align:right;color:${!won && !tied ? '#1a6b3c' : '#0d0d0d'};font-weight:bold;border-top:1px solid #e8e3d8;">${o.opponentPoints}</td>
+          </tr>
+        </table>
+
+        <p style="color:#6b6b6b;font-size:15px;margin:0 0 20px;">
+          That bracket disappears with your browser. With a free account they're
+          all kept — points, a global ranking, leagues with friends, and every
+          tournament of the season.
+        </p>
+
+        <div>
+          <a href="${signupUrl}"
+             style="display:inline-block;background:#1a6b3c;color:white;text-decoration:none;padding:12px 24px;font-size:14px;border-radius:2px;">
+            Create a free account →
+          </a>
+        </div>
+
+        <p style="margin-top:20px;">
+          <a href="${BASE_URL}/c/${o.shareCode}" style="color:#6b6b6b;font-size:14px;">See the full brackets →</a>
+        </p>
+
+        ${anonymousFooter(o.emailToken)}
+      </div>`,
+  })
+}

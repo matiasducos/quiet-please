@@ -765,6 +765,120 @@ export async function GET(request: Request) {
       Sentry.captureException(anonErr)
     }
 
+    // ── 12b. Tell anonymous players how their challenge finished ──────────
+    //
+    // Deliberately a separate pass rather than a send inside the loop above.
+    // That loop only sees `status = 'active'` challenges and flips them to
+    // 'completed' — so a send wired into it would get exactly one attempt, and
+    // a Resend blip or a timeout would lose the email permanently with the row
+    // already marked finished.
+    //
+    // Driving it off "completed, has an address, not yet emailed" instead makes
+    // the send idempotent and self-healing: a failure simply leaves the guard
+    // NULL and the next run picks it up again.
+    let anonResultEmails = 0
+    if (!silent) {
+      try {
+        const { data: pendingEmails, error: pendingErr } = await supabase
+          .from('challenges')
+          .select('id, tournament_id, share_code, creator_name, opponent_name, challenger_points, challenged_points, creator_email, opponent_email, creator_email_token, opponent_email_token, creator_result_emailed_at, opponent_result_emailed_at')
+          .eq('is_anonymous', true)
+          .eq('status', 'completed')
+          .or('and(creator_email.not.is.null,creator_result_emailed_at.is.null),and(opponent_email.not.is.null,opponent_result_emailed_at.is.null)')
+          .limit(200)
+
+        if (pendingErr) throw pendingErr
+
+        if (pendingEmails?.length) {
+          const { sendAnonymousChallengeResultEmail, isBotEmail } = await import('@/lib/email')
+
+          // One lookup for the whole batch. The id set is bounded by the LIMIT
+          // above and is normally a handful of tournaments, so this stays well
+          // clear of the URL length that .in() starts to overflow at.
+          const tournamentIds = [...new Set(pendingEmails.map(c => c.tournament_id))]
+          const { data: tRows } = await supabase
+            .from('tournaments')
+            .select('id, name, location, flag_emoji')
+            .in('id', tournamentIds)
+          const tById = new Map((tRows ?? []).map(t => [t.id, t]))
+
+          for (const c of pendingEmails) {
+            const t = tById.get(c.tournament_id)
+            if (!t) continue
+
+            const sides = [
+              {
+                key: 'creator' as const,
+                email: c.creator_email,
+                token: c.creator_email_token,
+                sent: c.creator_result_emailed_at,
+                yourName: c.creator_name ?? 'You',
+                opponentName: c.opponent_name ?? 'Your opponent',
+                yourPoints: c.challenger_points ?? 0,
+                opponentPoints: c.challenged_points ?? 0,
+              },
+              {
+                key: 'opponent' as const,
+                email: c.opponent_email,
+                token: c.opponent_email_token,
+                sent: c.opponent_result_emailed_at,
+                yourName: c.opponent_name ?? 'You',
+                opponentName: c.creator_name ?? 'Your opponent',
+                yourPoints: c.challenged_points ?? 0,
+                opponentPoints: c.challenger_points ?? 0,
+              },
+            ]
+
+            for (const side of sides) {
+              if (!side.email || side.sent) continue
+              if (isBotEmail(side.email)) continue
+
+              try {
+                await sendAnonymousChallengeResultEmail({
+                  to: side.email,
+                  yourName: side.yourName,
+                  opponentName: side.opponentName,
+                  yourPoints: side.yourPoints,
+                  opponentPoints: side.opponentPoints,
+                  tournamentName: t.location ?? t.name,
+                  tournamentFlagEmoji: t.flag_emoji,
+                  shareCode: c.share_code,
+                  emailToken: side.token ?? '',
+                })
+
+                // Only claimed after the send returns. Claiming first would
+                // turn a transient Resend failure into a permanently missing
+                // email, which is the exact outcome this pass exists to avoid.
+                //
+                // The address is erased in the same write. It was collected for
+                // this one message, that message has now gone, and the
+                // timestamp alone is enough to stop a second one — so there is
+                // nothing left for it to do but sit in the database being a
+                // liability.
+                await supabase
+                  .from('challenges')
+                  .update({
+                    [`${side.key}_result_emailed_at`]: new Date().toISOString(),
+                    [`${side.key}_email`]: null,
+                    [`${side.key}_email_token`]: null,
+                  })
+                  .eq('id', c.id)
+
+                anonResultEmails++
+              } catch (sendErr) {
+                // Left unclaimed on purpose so the next run retries this one.
+                console.error(`[award-points] anon result email failed (${c.id}/${side.key}):`, sendErr)
+                Sentry.captureException(sendErr)
+              }
+            }
+          }
+        }
+      } catch (emailErr) {
+        console.error('[award-points] anonymous result email error:', emailErr)
+        Sentry.captureException(emailErr)
+      }
+    }
+
     // ── 13. Achievement checks ─────────────────────────────────────────
     let achievementsAwarded = 0
     // Silent mode still AWARDS achievements (data correctness) but skips the
@@ -980,6 +1094,7 @@ export async function GET(request: Request) {
         challenges_scored: challengesScored,
         challenges_expired: challengesExpired,
         anonymous_challenges_scored: anonChallengesScored,
+        anonymous_result_emails: anonResultEmails,
         achievements_awarded: achievementsAwarded,
         recaps_built: recapsBuilt,
       },

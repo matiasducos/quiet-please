@@ -5,6 +5,8 @@ import Link from 'next/link'
 import BracketPredictor from '@/app/tournaments/[slug]/predict/BracketPredictor'
 import { submitOpponentPicks } from '../actions'
 import { scoreAnonymousPicks } from '@/lib/tennis/anonymous-scoring'
+import { hashTokenInBrowser } from '@/lib/challenge-token'
+import AnonymousConversion from '@/components/AnonymousConversion'
 import type { Round, TournamentCategory, DrawMatch } from '@/lib/tennis/types'
 
 interface MatchResultEntry {
@@ -32,6 +34,9 @@ export default function ChallengeView({
   adminLockedMatches?: Record<string, string>
 }) {
   const [role, setRole] = useState<'creator' | 'opponent' | 'viewer'>('viewer')
+  /** The visitor's own token, kept so it can be presented to server actions.
+   *  Never rendered — the page only ever ships the digest of it. */
+  const [myToken, setMyToken] = useState<string | null>(null)
   const [opponentName, setOpponentName] = useState('')
   const [opponentPicks, setOpponentPicks] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
@@ -40,19 +45,40 @@ export default function ChallengeView({
   const [copied, setCopied] = useState(false)
   const [bracketTab, setBracketTab] = useState<'creator' | 'opponent'>('creator')
 
-  // Check localStorage for tokens on mount
+  // Check localStorage for a token on mount and work out which player it makes
+  // the visitor. The comparison is against a digest rather than the token
+  // itself — see src/lib/challenge-token.ts — so it is async.
   useEffect(() => {
-    try {
-      const storedToken = localStorage.getItem(`qp_challenge_${shareCode}`)
-      if (storedToken && storedToken === challenge.creator_token) {
-        setRole('creator')
-      } else if (storedToken && storedToken === challenge.opponent_token) {
-        setRole('opponent')
+    let cancelled = false
+
+    ;(async () => {
+      let storedToken: string | null = null
+      try {
+        storedToken = localStorage.getItem(`qp_challenge_${shareCode}`)
+      } catch {
+        return // localStorage unavailable — stay a viewer
       }
-    } catch {
-      // localStorage unavailable
-    }
-  }, [shareCode, challenge.creator_token, challenge.opponent_token])
+      if (!storedToken) return
+
+      let digest: string
+      try {
+        digest = await hashTokenInBrowser(storedToken)
+      } catch {
+        return // no WebCrypto (insecure context) — stay a viewer
+      }
+      if (cancelled) return
+
+      if (digest === challenge.creator_token_hash) {
+        setRole('creator')
+        setMyToken(storedToken)
+      } else if (digest === challenge.opponent_token_hash) {
+        setRole('opponent')
+        setMyToken(storedToken)
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [shareCode, challenge.creator_token_hash, challenge.opponent_token_hash])
 
   const handlePicksChange = useCallback((newPicks: Record<string, string>) => {
     setOpponentPicks(newPicks)
@@ -90,6 +116,7 @@ export default function ChallengeView({
     setSubmitted(true)
     setSubmitting(false)
     setRole('opponent')
+    setMyToken(opToken)
   }
 
   const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/c/${shareCode}` : ''
@@ -171,6 +198,16 @@ export default function ChallengeView({
             </a>
           </div>
         </div>
+
+        {/* The creator has just built a full bracket and has nothing to do but
+            wait — the natural moment to ask how they want to hear about it. */}
+        <AnonymousConversion
+          shareCode={shareCode}
+          token={myToken}
+          tournamentCompleted={tournament?.status === 'completed'}
+          alreadySaved={challenge.creator_has_email ?? false}
+          context="created"
+        />
 
         {/* Show creator's own picks (read-only) */}
         <div className="mb-4">
@@ -419,19 +456,17 @@ export default function ChallengeView({
           </div>
         )}
 
-        {/* CTA for non-logged-in users */}
-        <div className="bg-white rounded-sm border p-5 mb-6 text-center" style={{ borderColor: 'var(--chalk-dim)' }}>
-          <p style={{ fontSize: '0.85rem', color: 'var(--muted)', marginBottom: '0.75rem' }}>
-            Want to track your stats, join leagues, and compete on the global leaderboard?
-          </p>
-          <a
-            href="/signup"
-            className="inline-block px-5 py-2 text-sm rounded-sm border"
-            style={{ borderColor: 'var(--chalk-dim)', color: 'var(--court)', textDecoration: 'none' }}
-          >
-            Create a free account →
-          </a>
-        </div>
+        {/* Both brackets are in and the scoreboard is live but undecided — the
+            highest-intent moment the anonymous flow has. */}
+        <AnonymousConversion
+          shareCode={shareCode}
+          token={myToken}
+          tournamentCompleted={isCompleted}
+          alreadySaved={
+            (role === 'creator' ? challenge.creator_has_email : challenge.opponent_has_email) ?? false
+          }
+          context={submitted ? 'submitted' : 'result'}
+        />
       </div>
     )
   }
