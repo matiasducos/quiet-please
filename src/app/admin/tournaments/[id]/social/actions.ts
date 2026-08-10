@@ -1,7 +1,8 @@
 'use server'
 
 import { assertAdmin } from '@/app/admin/auth'
-import { getSocialCard, type RecapMatch } from '@/lib/social/data'
+import { getSocialCard, type RecapMatch, type UpcomingMatch } from '@/lib/social/data'
+import { favouriteLabel } from '@/lib/social/layout'
 
 export interface RecapMatchOption {
   id: string
@@ -59,6 +60,62 @@ export async function listRecapMatches(
     data: {
       matches: result.card.matches.map(toOption),
       hasPodium: result.card.podium.length > 0,
+    },
+  }
+}
+
+export interface UpcomingMatchOption {
+  id: string
+  a: string
+  b: string
+  /** Pre-formatted crowd line, or null when no bracket has picked the tie. */
+  favourite: string | null
+}
+
+export interface UpcomingMatchList {
+  matches: UpcomingMatchOption[]
+  /**
+   * Rounds that still have a playable match, and which one the card is showing.
+   *
+   * Unlike the recap's rounds, these cannot come from the studio page's props:
+   * "which rounds are still to be played" is derived by walking results forward
+   * through the draw's feed map (see `pendingMatches`), not by listing the rounds
+   * that have results. Returning it with the matches keeps that derivation in one
+   * place instead of repeating it on the page.
+   */
+  rounds: Array<{ round: string; label: string }>
+  round: string
+}
+
+/**
+ * The next round's matches, for the studio's picker. See listRecapMatches above
+ * for why this goes through `getSocialCard` rather than querying directly.
+ */
+export async function listUpcomingMatches(
+  tournamentId: string,
+  round?: string,
+): Promise<{ ok: true; data: UpcomingMatchList } | { ok: false; error: string }> {
+  await assertAdmin()
+
+  const result = await getSocialCard(tournamentId, 'upcoming', { round })
+  if (!result.ok) return { ok: false, error: result.error }
+  if (result.card.kind !== 'upcoming') return { ok: false, error: 'Not an upcoming card' }
+
+  // The crowd line is formatted here, with the same helper the PNG uses, so the
+  // admin ticks a box next to the exact sentence that will be published.
+  const toOption = (m: UpcomingMatch): UpcomingMatchOption => ({
+    id: m.id,
+    a: m.a.name,
+    b: m.b.name,
+    favourite: m.favourite ? favouriteLabel(m.favourite.player.name, m.favourite.count, m.favourite.pct) : null,
+  })
+
+  return {
+    ok: true,
+    data: {
+      matches: result.card.matches.map(toOption),
+      rounds: result.card.availableRounds,
+      round: result.card.round,
     },
   }
 }

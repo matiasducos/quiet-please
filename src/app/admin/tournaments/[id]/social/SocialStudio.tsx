@@ -2,21 +2,22 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { recapCapacity, pickedLabel } from '@/lib/social/layout'
-import { listRecapMatches, type RecapMatchList } from './actions'
+import { recapCapacity, upcomingCapacity, pickedLabel } from '@/lib/social/layout'
+import { listRecapMatches, listUpcomingMatches, type RecapMatchList, type UpcomingMatchList } from './actions'
 
-type Kind = 'draw' | 'recap' | 'complete' | 'stats'
+type Kind = 'draw' | 'upcoming' | 'recap' | 'complete' | 'stats'
 type Size = 'story' | 'square'
 
 const KIND_LABEL: Record<Kind, string> = {
   draw: 'Draw published',
+  upcoming: 'Up next',
   recap: 'Round recap',
   complete: 'Champion',
   stats: 'Tournament recap',
 }
 
 /** Every kind, in the order a tournament reaches them. */
-const ALL_KINDS: Kind[] = ['draw', 'recap', 'complete', 'stats']
+const ALL_KINDS: Kind[] = ['draw', 'upcoming', 'recap', 'complete', 'stats']
 
 const SIZE_LABEL: Record<Size, string> = {
   story: 'Story 9:16',
@@ -28,6 +29,8 @@ interface Props {
   tournamentName: string
   flagEmoji: string
   hasDraw: boolean
+  /** At least one tie has two known players and no result — see `pendingMatches`. */
+  hasUpcoming: boolean
   rounds: Array<{ round: string; label: string }>
   hasFinal: boolean
   /** A stored recap exists, so the tournament-recap card will render. */
@@ -43,6 +46,7 @@ export default function SocialStudio({
   tournamentName,
   flagEmoji,
   hasDraw,
+  hasUpcoming,
   rounds,
   hasFinal,
   hasRecap,
@@ -50,11 +54,12 @@ export default function SocialStudio({
   const available = useMemo<Kind[]>(() => {
     const k: Kind[] = []
     if (hasDraw) k.push('draw')
+    if (hasUpcoming) k.push('upcoming')
     if (rounds.length) k.push('recap')
     if (hasFinal) k.push('complete')
     if (hasRecap) k.push('stats')
     return k
-  }, [hasDraw, rounds.length, hasFinal, hasRecap])
+  }, [hasDraw, hasUpcoming, rounds.length, hasFinal, hasRecap])
 
   // Open on the most newsworthy card the tournament currently supports, which is
   // the latest stage it has reached.
@@ -120,6 +125,59 @@ export default function SocialStudio({
     [chosenIds],
   )
 
+  // ── Up next ─────────────────────────────────────────────────────────────────
+  // Empty means "whichever round the server considers next". Which rounds exist
+  // is derived from the draw rather than from the results table (see
+  // `pendingMatches`), so unlike the recap's list it arrives with the matches
+  // instead of as a prop — and the effective round is DERIVED from the response
+  // rather than synced into state, so the select has a value on first paint
+  // without a render pass that writes what it just read.
+  const [upRound, setUpRound] = useState('')
+  const [upSelected, setUpSelected] = useState<string[] | null>(null)
+  const [upList, setUpList] = useState<{ forRound: string; data?: UpcomingMatchList; error?: string } | null>(null)
+
+  const upLoading = kind === 'upcoming' && upList?.forRound !== upRound
+  const upRoundEffective = upRound || upList?.data?.round || ''
+
+  useEffect(() => {
+    if (kind !== 'upcoming') return
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const res = await listUpcomingMatches(tournamentId, upRound || undefined)
+        if (cancelled) return
+        setUpList(res.ok ? { forRound: upRound, data: res.data } : { forRound: upRound, error: res.error })
+      } catch (e) {
+        if (!cancelled) {
+          setUpList({ forRound: upRound, error: e instanceof Error ? e.message : 'Could not load matches' })
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [tournamentId, kind, upRound])
+
+  const upMatches = useMemo(
+    () => (upList?.forRound === upRound ? (upList.data?.matches ?? []) : []),
+    [upList, upRound],
+  )
+  const upCapacity = upcomingCapacity(size)
+
+  const upChosenIds = useMemo(() => {
+    const pool = upSelected === null ? upMatches : upMatches.filter(m => upSelected.includes(m.id))
+    return pool.map(m => m.id).slice(0, upCapacity)
+  }, [upMatches, upSelected, upCapacity])
+
+  const toggleUpMatch = useCallback(
+    (id: string) => {
+      setUpSelected(upChosenIds.includes(id) ? upChosenIds.filter(x => x !== id) : [...upChosenIds, id])
+    },
+    [upChosenIds],
+  )
+
   const src = useMemo(() => {
     const p = new URLSearchParams({ kind, size })
     if (kind === 'recap' && round) p.set('round', round)
@@ -127,9 +185,15 @@ export default function SocialStudio({
     // own default instead of re-fetching an identical image once the match list
     // arrives.
     if (kind === 'recap' && selected !== null) p.set('matches', chosenIds.join(','))
+    // Same two omissions for "up next", and the round one matters more here: the
+    // studio does not know which round is next until the list comes back, so
+    // sending `upRoundEffective` would render the default, then re-render the
+    // identical card the moment the fetch resolves.
+    if (kind === 'upcoming' && upRound) p.set('round', upRound)
+    if (kind === 'upcoming' && upSelected !== null) p.set('matches', upChosenIds.join(','))
     if (showNames) p.set('names', '1')
     return `/admin/tournaments/${tournamentId}/social/image?${p}`
-  }, [tournamentId, kind, size, round, showNames, selected, chosenIds])
+  }, [tournamentId, kind, size, round, showNames, selected, chosenIds, upRound, upSelected, upChosenIds])
 
   // The preview and the download share one fetch of one render. Pointing an
   // <img> straight at the route would be simpler, but then a failed render shows
@@ -177,7 +241,9 @@ export default function SocialStudio({
     }
   }, [])
 
-  const filename = `qp-${slugify(tournamentName)}-${kind}${kind === 'recap' && round ? `-${round.toLowerCase()}` : ''}-${size}.png`
+  const roundSuffix =
+    kind === 'recap' ? round : kind === 'upcoming' ? upRoundEffective : ''
+  const filename = `qp-${slugify(tournamentName)}-${kind}${roundSuffix ? `-${roundSuffix.toLowerCase()}` : ''}-${size}.png`
   const aspect = size === 'story' ? 1080 / 1920 : 1
   const previewWidth = size === 'story' ? 300 : 380
 
@@ -267,101 +333,93 @@ export default function SocialStudio({
             </Field>
           )}
 
+          {kind === 'upcoming' && (
+            <Field label="Round">
+              {/* Disabled rather than hidden while the first list is in flight:
+                  the rounds come back with the matches, and a control that
+                  appears late shifts everything under it. */}
+              <select
+                value={upRoundEffective}
+                disabled={!upList?.data}
+                onChange={e => {
+                  setUpRound(e.target.value)
+                  setUpSelected(null)
+                }}
+                className="w-full px-3 py-2 text-xs rounded-sm border bg-white disabled:opacity-50"
+                style={{ fontFamily: 'var(--font-mono)', borderColor: 'var(--chalk-dim)', color: 'var(--ink)' }}
+              >
+                {upList?.data ? (
+                  upList.data.rounds.map(r => (
+                    <option key={r.round} value={r.round}>
+                      {r.label}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">Loading…</option>
+                )}
+              </select>
+            </Field>
+          )}
+
           {/* The count joins the label only once there is a list behind it —
               "0/6" while loading reads as an empty selection rather than an
               unanswered question, and the 6 is wrong too, since capacity depends
               on a podium the fetch has not reported yet. */}
           {needsMatches && (
             <Field label={matchesLoading || matchList?.error ? 'Matches' : `Matches — ${chosenIds.length}/${capacity}`}>
-              {matchesLoading ? (
-                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
-                  Loading matches…
-                </p>
-              ) : matchList?.error ? (
-                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--clay)' }}>
-                  {matchList.error}
-                </p>
-              ) : (
-                <>
-                  <div
-                    className="flex flex-col gap-1 overflow-y-auto rounded-sm border bg-white p-1"
-                    style={{ borderColor: 'var(--chalk-dim)', maxHeight: '17rem' }}
-                  >
-                    {roundMatches.map(m => {
-                      const checked = chosenIds.includes(m.id)
-                      // At capacity the unticked rows lock rather than silently
-                      // dropping off the card: the count in the label and the
-                      // preview stay the same thing.
-                      const full = !checked && chosenIds.length >= capacity
-                      const count = pickedLabel(m.pickedCount, m.pickedPct)
-                      return (
-                        <label
-                          key={m.id}
-                          className="flex items-start gap-2 px-2 py-1.5 rounded-sm"
-                          style={{
-                            cursor: full ? 'not-allowed' : 'pointer',
-                            opacity: full ? 0.4 : 1,
-                            background: checked ? 'var(--chalk)' : 'transparent',
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={full}
-                            onChange={() => toggleMatch(m.id)}
-                            className="mt-0.5 flex-shrink-0"
-                          />
-                          <span className="min-w-0 flex flex-col">
-                            <span
-                              className="truncate"
-                              style={{ fontFamily: 'var(--font-body)', fontSize: '0.75rem', color: 'var(--ink)' }}
-                            >
-                              {m.winner} <span style={{ color: 'var(--muted)' }}>d.</span> {m.loser}
-                            </span>
-                            <span
-                              style={{
-                                fontFamily: 'var(--font-mono)',
-                                fontSize: '0.6rem',
-                                color: m.isUpset ? 'var(--clay)' : 'var(--muted)',
-                              }}
-                            >
-                              {[m.score, m.isUpset ? 'UPSET' : null, count].filter(Boolean).join('  ·  ')}
-                            </span>
-                          </span>
-                        </label>
-                      )
-                    })}
-                    {roundMatches.length === 0 && (
-                      <p
-                        className="px-2 py-1.5"
-                        style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}
-                      >
-                        No matches in this round.
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => setSelected(null)}
-                      className="text-left"
-                      style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--court)' }}
-                    >
-                      Reset to first {capacity}
-                    </button>
-                    <button
-                      onClick={() => setSelected([])}
-                      className="text-left"
-                      style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </>
-              )}
+              <MatchPicker
+                loading={matchesLoading}
+                error={matchList?.error}
+                capacity={capacity}
+                chosenIds={chosenIds}
+                onToggle={toggleMatch}
+                onReset={() => setSelected(null)}
+                onClear={() => setSelected([])}
+                empty="No matches in this round."
+                rows={roundMatches.map(m => ({
+                  id: m.id,
+                  title: (
+                    <>
+                      {m.winner} <span style={{ color: 'var(--muted)' }}>d.</span> {m.loser}
+                    </>
+                  ),
+                  subtitle: [m.score, m.isUpset ? 'UPSET' : null, pickedLabel(m.pickedCount, m.pickedPct)]
+                    .filter(Boolean)
+                    .join('  ·  '),
+                  alert: m.isUpset,
+                }))}
+              />
             </Field>
           )}
 
-          {kind !== 'draw' && (
+          {kind === 'upcoming' && (
+            <Field label={upLoading || upList?.error ? 'Matches' : `Matches — ${upChosenIds.length}/${upCapacity}`}>
+              <MatchPicker
+                loading={upLoading}
+                error={upList?.error}
+                capacity={upCapacity}
+                chosenIds={upChosenIds}
+                onToggle={toggleUpMatch}
+                onReset={() => setUpSelected(null)}
+                onClear={() => setUpSelected([])}
+                empty="No matches left to play in this round."
+                rows={upMatches.map(m => ({
+                  id: m.id,
+                  title: (
+                    <>
+                      {m.a} <span style={{ color: 'var(--muted)' }}>v</span> {m.b}
+                    </>
+                  ),
+                  // Spelled out rather than left blank: an empty line reads as a
+                  // failed lookup, and "no bracket has picked it" is a fact about
+                  // a round the field has not reached yet.
+                  subtitle: m.favourite ?? 'No bracket has picked this tie',
+                }))}
+              />
+            </Field>
+          )}
+
+          {kind !== 'draw' && kind !== 'upcoming' && (
             <Field label="Usernames">
               <label className="flex items-start gap-2 cursor-pointer">
                 <input
@@ -449,6 +507,129 @@ export default function SocialStudio({
         </div>
       </div>
     </main>
+  )
+}
+
+interface PickerRow {
+  id: string
+  /** The matchup. A node, so the recap can mute its "d." and this one its "v". */
+  title: React.ReactNode
+  /** The evidence line under it. */
+  subtitle: string
+  /** Renders the subtitle in clay — the recap's upset badge. */
+  alert?: boolean
+}
+
+/**
+ * The checkbox list behind both match pickers.
+ *
+ * Shared rather than written twice because the two lists have to behave
+ * identically to be trustworthy: ticking past capacity must lock in both, and
+ * "Reset to first N" has to mean the same thing on a recap as on an up-next
+ * card. The rows differ only in what each line says, which is why that is the
+ * one thing the caller supplies.
+ */
+function MatchPicker({
+  loading,
+  error,
+  capacity,
+  chosenIds,
+  rows,
+  empty,
+  onToggle,
+  onReset,
+  onClear,
+}: {
+  loading: boolean
+  error?: string
+  capacity: number
+  chosenIds: string[]
+  rows: PickerRow[]
+  empty: string
+  onToggle: (id: string) => void
+  onReset: () => void
+  onClear: () => void
+}) {
+  if (loading) {
+    return (
+      <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>Loading matches…</p>
+    )
+  }
+  if (error) {
+    return <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--clay)' }}>{error}</p>
+  }
+
+  return (
+    <>
+      <div
+        className="flex flex-col gap-1 overflow-y-auto rounded-sm border bg-white p-1"
+        style={{ borderColor: 'var(--chalk-dim)', maxHeight: '17rem' }}
+      >
+        {rows.map(r => {
+          const checked = chosenIds.includes(r.id)
+          // At capacity the unticked rows lock rather than silently dropping off
+          // the card: the count in the label and the preview stay the same thing.
+          const full = !checked && chosenIds.length >= capacity
+          return (
+            <label
+              key={r.id}
+              className="flex items-start gap-2 px-2 py-1.5 rounded-sm"
+              style={{
+                cursor: full ? 'not-allowed' : 'pointer',
+                opacity: full ? 0.4 : 1,
+                background: checked ? 'var(--chalk)' : 'transparent',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={full}
+                onChange={() => onToggle(r.id)}
+                className="mt-0.5 flex-shrink-0"
+              />
+              <span className="min-w-0 flex flex-col">
+                <span
+                  className="truncate"
+                  style={{ fontFamily: 'var(--font-body)', fontSize: '0.75rem', color: 'var(--ink)' }}
+                >
+                  {r.title}
+                </span>
+                <span
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '0.6rem',
+                    color: r.alert ? 'var(--clay)' : 'var(--muted)',
+                  }}
+                >
+                  {r.subtitle}
+                </span>
+              </span>
+            </label>
+          )
+        })}
+        {rows.length === 0 && (
+          <p className="px-2 py-1.5" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
+            {empty}
+          </p>
+        )}
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onReset}
+          className="text-left"
+          style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--court)' }}
+        >
+          Reset to first {capacity}
+        </button>
+        <button
+          onClick={onClear}
+          className="text-left"
+          style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}
+        >
+          Clear
+        </button>
+      </div>
+    </>
   )
 }
 

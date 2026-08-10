@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
-import type { CardPlayer, DrawCard, RecapCard, RecapMatch, CompleteCard, StatsCard, SocialCard, PodiumEntry } from '../data'
+import type { CardPlayer, DrawCard, UpcomingCard, RecapCard, RecapMatch, CompleteCard, StatsCard, SocialCard, PodiumEntry } from '../data'
 import type { Highlight } from '@/lib/tournaments/recap-types'
-import { recapCapacity, statsCapacity, pickedLabel } from '../layout'
+import { recapCapacity, upcomingCapacity, statsCapacity, pickedLabel, favouriteLabel } from '../layout'
 import { Frame, Eyebrow, Rule, C, DISPLAY, BODY, MONO, type CardSize } from './frame'
 
 /**
@@ -238,6 +238,126 @@ function DrawArt({ card, size }: { card: DrawCard; size: CardSize }): ReactEleme
         >
           Predictions are open — pick every round before play starts.
         </div>
+      </div>
+    </Frame>
+  )
+}
+
+// ── Up next ───────────────────────────────────────────────────────────────────
+
+/**
+ * How much bigger the type gets when the round does not fill the card.
+ *
+ * A semifinal is two rows on a canvas budgeted for six, and centring that leaves
+ * two thirds of a story empty. Scaling the rows up spends the space on the thing
+ * the card is actually about.
+ *
+ * The catch is that the free space is VERTICAL and the binding constraint is
+ * HORIZONTAL. Satori cannot measure text — which is why `short()` trims to a
+ * character count up front rather than reflowing — so the row width has to be
+ * budgeted rather than discovered. Measured at story size, the worst case (two
+ * seed badges, two names trimmed to 16) runs to about 840 of the 920px between
+ * the safe margins. That is only ~1.09x of headroom, so any scale beyond it has
+ * to come out of the trim, and the two move together for that reason: scale up,
+ * trim down, worst-case width stays put.
+ *
+ * The trim is the cost, and it is why this tops out well short of what the
+ * vertical space alone would allow. Names in this registry come in two shapes —
+ * "Sinner, Jannik", which `short()` can initial down to "Sinner, J.", and
+ * "D. Merida Aguilar", which it can only cut — and the second shape is what
+ * production actually stores. Every character off the trim is taken directly out
+ * of those.
+ */
+function upcomingType(size: CardSize, count: number): { scale: number; max: number } {
+  const steps =
+    size === 'story'
+      ? [
+          { upTo: 2, scale: 1.34 },
+          { upTo: 3, scale: 1.22 },
+          { upTo: 4, scale: 1.11 },
+        ]
+      : [
+          { upTo: 2, scale: 1.26 },
+          { upTo: 3, scale: 1.12 },
+        ]
+  const scale = steps.find(s => count <= s.upTo)?.scale ?? 1
+  return { scale, max: Math.round(16 / scale) }
+}
+
+function UpcomingArt({ card, size }: { card: UpcomingCard; size: CardSize }): ReactElement {
+  const story = size === 'story'
+  // Same contract as RecapArt: an explicit selection wins, otherwise the round is
+  // taken from the top, and the cap applies either way.
+  const selected = card.selectedIds
+  const matches = (selected ? card.matches.filter(m => selected.includes(m.id)) : card.matches).slice(
+    0,
+    upcomingCapacity(size),
+  )
+  const hidden = card.matches.length - matches.length
+
+  // Driven by what is ON the card, not by the round's size: a six-match
+  // quarterfinal narrowed to two by the admin is a two-row card and should read
+  // like one.
+  const { scale, max } = upcomingType(size, matches.length)
+  const px = (base: number) => Math.round(base * scale)
+  const nameSize = px(story ? 36 : 29)
+  const crowdSize = px(story ? 24 : 21)
+  const matchGap = px(story ? 30 : 18)
+
+  return (
+    <Frame
+      size={size}
+      eyebrow={`${card.roundLabel} — up next`}
+      tournament={card.tournament}
+      cta="Lock your picks — quietplease.app"
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+        {/* Centred so a two-match semifinal does not strand the top half of a
+            story empty — see the same note on RecapArt. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: matchGap, flex: 1, justifyContent: 'center' }}>
+          {matches.map(m => (
+            <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: px(8) }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: px(16) }}>
+                {m.a.seed != null && <SeedBadge seed={m.a.seed} size={px(story ? 40 : 34)} />}
+                <PlayerLine player={m.a} size={nameSize} max={max} />
+                <div style={{ display: 'flex', fontFamily: DISPLAY, fontSize: px(story ? 30 : 25), color: C.clay }}>
+                  v
+                </div>
+                {m.b.seed != null && <SeedBadge seed={m.b.seed} size={px(story ? 40 : 34)} />}
+                <PlayerLine player={m.b} size={nameSize} max={max} />
+              </div>
+              {/* Absent when no bracket has picked the tie. The row then carries
+                  the fixture alone, which is the honest rendering of silence —
+                  see UpcomingMatch.favourite. */}
+              {m.favourite && (
+                <div style={{ display: 'flex', fontFamily: BODY, fontSize: crowdSize, color: C.muted }}>
+                  {favouriteLabel(m.favourite.player.name, m.favourite.count, m.favourite.pct)}
+                </div>
+              )}
+            </div>
+          ))}
+          {hidden > 0 && (
+            <div style={{ display: 'flex', fontFamily: BODY, fontSize: story ? 26 : 22, color: C.muted }}>
+              + {hidden} more {hidden === 1 ? 'match' : 'matches'}
+            </div>
+          )}
+        </div>
+
+        {/* The square's group above fills its box exactly, hence the margin —
+            same fix as RecapArt's footer. */}
+        {card.bracketCount > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              marginTop: story ? 0 : 14,
+              fontFamily: BODY,
+              fontSize: story ? 28 : 24,
+              color: C.muted,
+            }}
+          >
+            {card.bracketCount.toLocaleString('en-GB')} brackets in play
+          </div>
+        )}
       </div>
     </Frame>
   )
@@ -535,6 +655,8 @@ export function renderCard(card: SocialCard, { size, showUsernames }: CardOption
   switch (card.kind) {
     case 'draw':
       return <DrawArt card={card} size={size} />
+    case 'upcoming':
+      return <UpcomingArt card={card} size={size} />
     case 'recap':
       return <RecapArt card={card} size={size} showUsernames={showUsernames} />
     case 'complete':
