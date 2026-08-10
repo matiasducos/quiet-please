@@ -1,5 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ROUND_ORDER, ROUND_LABEL } from '@/lib/tennis/my-tournament'
+import { buildFeedMap, buildReverseFeedMap, getFeederMatchId, isByeMatch } from '@/lib/tennis/bracket'
+import type { DrawMatch } from '@/lib/tennis/types'
 import { COUNTRIES, ALIASES } from '@/app/admin/countries'
 import { getRecap } from '@/lib/tournaments/recap'
 import { cardHighlights } from '@/lib/tournaments/recap-types'
@@ -15,11 +17,13 @@ import type { Highlight } from '@/lib/tournaments/recap-types'
 
 // ── Card kinds ────────────────────────────────────────────────────────────────
 
-export const CARD_KINDS = ['draw', 'recap', 'complete', 'stats'] as const
+/** In the order a tournament reaches them. */
+export const CARD_KINDS = ['draw', 'upcoming', 'recap', 'complete', 'stats'] as const
 export type CardKind = (typeof CARD_KINDS)[number]
 
 export const CARD_LABEL: Record<CardKind, string> = {
   draw: 'Draw published',
+  upcoming: 'Up next',
   recap: 'Round recap',
   complete: 'Champion',
   stats: 'Tournament recap',
@@ -62,6 +66,57 @@ export interface DrawCard {
    * available proxy — match 1 is the top of the sheet.
    */
   opening: Array<{ a: CardPlayer; b: CardPlayer }>
+}
+
+/**
+ * A tie that has not been played yet, with what the field makes of it.
+ *
+ * `sample` is the number of brackets carrying a pick on THIS match, and it is
+ * the denominator behind `pickedPct` — never the tournament's bracket count. The
+ * two are not close: brackets are abandoned round by round, so a quarterfinal
+ * routinely has an order of magnitude fewer picks than the tournament has
+ * entries. See migration 077, and `canQuotePct` in recap-types for the same
+ * discipline applied to the recap.
+ */
+export interface UpcomingMatch {
+  /**
+   * The draw's `matchId` — the handle the admin's match picker selects on.
+   *
+   * Note this is NOT a match_results id like RecapMatch.id: the match has no
+   * result row yet, by definition. It is the same string that keys
+   * `predictions.picks`, which is what makes the pick lookup possible at all.
+   */
+  id: string
+  a: CardPlayer
+  b: CardPlayer
+  /**
+   * The side more brackets are on. null when no bracket has picked this match —
+   * which is the normal state for a round the field has not reached yet, and
+   * must read as silence rather than as a 0% for either player.
+   */
+  favourite: {
+    player: CardPlayer
+    /** Brackets on this player. A head count, always safe to print. */
+    count: number
+    /** Their share of `sample`, or null when the sample is too small to quote. */
+    pct: number | null
+  } | null
+  /** Brackets with a pick on this match. */
+  sample: number
+}
+
+export interface UpcomingCard {
+  kind: 'upcoming'
+  tournament: CardTournament
+  round: string
+  roundLabel: string
+  /** Rounds with at least one playable unplayed match, for the admin's picker. */
+  availableRounds: Array<{ round: string; label: string }>
+  /** Every pending match in the round, in draw order — see RecapCard.matches. */
+  matches: UpcomingMatch[]
+  /** Ids the admin chose to feature. null means "whatever fits, from the top". */
+  selectedIds: string[] | null
+  bracketCount: number
 }
 
 export interface RecapMatch {
@@ -141,7 +196,7 @@ export interface StatsCard {
   podium: PodiumEntry[]
 }
 
-export type SocialCard = DrawCard | RecapCard | CompleteCard | StatsCard
+export type SocialCard = DrawCard | UpcomingCard | RecapCard | CompleteCard | StatsCard
 
 // ── Country → flag emoji ──────────────────────────────────────────────────────
 
@@ -168,10 +223,16 @@ export function countryToFlag(nameOrCode: string | null | undefined): string {
 // ── Internal draw shapes ──────────────────────────────────────────────────────
 
 interface RawDrawPlayer { externalId?: string; name?: string; country?: string; seed?: number }
-interface RawDrawMatch { matchId: string; round: string; player1: RawDrawPlayer | null; player2: RawDrawPlayer | null }
+export interface RawDrawMatch { matchId: string; round: string; player1: RawDrawPlayer | null; player2: RawDrawPlayer | null }
 
 interface ResultRow {
   id: string
+  /**
+   * The draw's matchId. `saveMatchResult` writes the two as the same string,
+   * which is what lets a result be traced back to its slot in the bracket —
+   * `pendingMatches` walks winners forward on it.
+   */
+  external_match_id: string | null
   round: string
   winner_external_id: string
   loser_external_id: string
@@ -202,6 +263,94 @@ function isQualifierSlot(p: RawDrawPlayer | null | undefined): boolean {
   return !!p && (p.name === 'Qualifier' || String(p.externalId ?? '').startsWith('qualifier-'))
 }
 
+// ── Pending matches ───────────────────────────────────────────────────────────
+
+/** A tie both of whose players are known and which has no result yet. */
+export interface PendingMatch {
+  /** The draw's matchId. */
+  id: string
+  round: string
+  aId: string
+  bId: string
+}
+
+/** Just enough of a result row to advance a player. */
+export interface WinnerRow {
+  external_match_id: string | null
+  winner_external_id: string | null
+}
+
+/**
+ * Which matches are still to be played, and who is in them.
+ *
+ * Pure, and exported, because two callers need the answer and a second
+ * implementation would drift: `getSocialCard` builds the card from it, and the
+ * studio page decides whether to offer the "Up next" tab at all. Same reasoning
+ * as `listUpcomingMatches` going through `getSocialCard` rather than querying
+ * directly — the tab, the picker and the PNG have to agree about what "up next"
+ * means.
+ *
+ * The work is real rather than a filter, because a draw snapshot does not know
+ * its own future: `bracket_data` is written once when the draw is published, so
+ * every match past round one has two null slots and stays that way forever. Who
+ * plays in a quarterfinal is only derivable by walking results forward through
+ * the positional feed map — the same walk `generateAutoPicks` does, and the same
+ * one a user's bracket does on screen.
+ *
+ * Two sources fill a slot, and both are needed:
+ *  - a bye, which is a draw match with one null slot and advances for free
+ *  - a result, keyed by the draw's matchId (`saveMatchResult` writes
+ *    `external_match_id: matchId`, so the two are the same string)
+ */
+export function pendingMatches(drawMatches: RawDrawMatch[], results: WinnerRow[]): PendingMatch[] {
+  if (!drawMatches.length) return []
+
+  // The bracket helpers are typed against DrawMatch, whose `round` is a narrow
+  // union and whose players carry more fields than the snapshot guarantees. The
+  // shapes agree on everything these functions actually read — matchId, round,
+  // player1/player2 nullness — and the feed map is positional, so it touches no
+  // player field at all.
+  const typed = drawMatches as unknown as DrawMatch[]
+  const reverse = buildReverseFeedMap(buildFeedMap(typed))
+
+  // matchId → whoever came through it.
+  const winners: Record<string, string> = {}
+  for (const m of typed) {
+    if (!isByeMatch(m)) continue
+    const advancing = m.player1 ?? m.player2
+    if (advancing?.externalId) winners[m.matchId] = advancing.externalId
+  }
+  for (const r of results) {
+    // A bye recorded as a result carries the advancing player as its winner, so
+    // it is kept here — unlike the card-facing lists, which drop byes because
+    // "A. Zverev d. bye" is not a match. What must never land in this map is the
+    // literal 'bye' id itself as a winner.
+    if (!r.external_match_id || !r.winner_external_id || isByeId(r.winner_external_id)) continue
+    winners[r.external_match_id] = r.winner_external_id
+  }
+
+  const slot = (m: DrawMatch, which: 'player1' | 'player2'): string | null => {
+    const direct = m[which]
+    if (direct?.externalId) return direct.externalId
+    const feeder = getFeederMatchId(m.matchId, which, reverse)
+    return feeder ? winners[feeder] ?? null : null
+  }
+
+  const out: PendingMatch[] = []
+  for (const m of typed) {
+    // Played, or a bye that resolved itself. Either way there is nothing to come.
+    if (winners[m.matchId]) continue
+    const aId = slot(m, 'player1')
+    const bId = slot(m, 'player2')
+    // A half-known tie ("Sinner v TBD") is dropped rather than shown: the round
+    // below it is still being played, so the card would be advertising a fixture
+    // that does not exist yet.
+    if (!aId || !bId) continue
+    out.push({ id: m.matchId, round: m.round, aId, bId })
+  }
+  return out
+}
+
 // ── Loader ────────────────────────────────────────────────────────────────────
 
 export async function getSocialCard(
@@ -221,7 +370,7 @@ export async function getSocialCard(
       admin.from('draws').select('bracket_data').eq('tournament_id', tournamentId).maybeSingle(),
       admin
         .from('match_results')
-        .select('id, round, winner_external_id, loser_external_id, score')
+        .select('id, external_match_id, round, winner_external_id, loser_external_id, score')
         .eq('tournament_id', tournamentId)
         .limit(500),
     ])
@@ -374,6 +523,87 @@ export async function getSocialCard(
           .filter(m => m.player1 != null && m.player2 != null)
           .slice(0, 6)
           .map(m => ({ a: toCard(m.player1), b: toCard(m.player2) })),
+      },
+    }
+  }
+
+  if (kind === 'upcoming') {
+    // Raw results, not the bye-filtered list: a bye row carries the player who
+    // advanced through it, and dropping it would leave their next match looking
+    // half-empty. pendingMatches guards the literal 'bye' winner id itself.
+    const pending = pendingMatches(drawMatches, (results ?? []) as ResultRow[])
+    if (!pending.length) {
+      return {
+        ok: false,
+        error: drawMatches.length
+          ? 'Every match with two known players has a result. Enter the next round’s draw or wait for results.'
+          : 'No draw has been published for this tournament yet',
+      }
+    }
+
+    const roundsPending: string[] = ROUND_ORDER.filter(r => pending.some(m => m.round === r))
+    // The earliest round still to be played is the default, not the latest: "up
+    // next" means the matches about to happen, and a later round with two known
+    // players only exists because someone got a bye into it.
+    const round = opts.round && roundsPending.includes(opts.round) ? opts.round : roundsPending[0]
+    const rows = pending.filter(m => m.round === round)
+
+    const pickCounts = await loadUpcomingPickCounts(admin, tournamentId, rows.map(m => m.id))
+
+    const matches: UpcomingMatch[] = rows.map(m => {
+      const a = player(m.aId)
+      const b = player(m.bId)
+      const perMatch = pickCounts?.get(m.id)
+      const aCount = perMatch?.get(m.aId) ?? 0
+      const bCount = perMatch?.get(m.bId) ?? 0
+      // Only picks naming one of the two players count. A bracket whose slot
+      // holds someone the draw has since overtaken is a stale pick, not a vote
+      // for either of these two, and including it in the denominator would
+      // shrink both shares by a made-up amount.
+      const sample = aCount + bCount
+
+      // A dead heat is broken by external id rather than left to Map order, so
+      // re-rendering the same card twice cannot swap which player it names.
+      const aLeads = aCount > bCount || (aCount === bCount && m.aId <= m.bId)
+      const count = aLeads ? aCount : bCount
+
+      return {
+        id: m.id,
+        a,
+        b,
+        // No picks at all is silence, not a 50/50: printing "50% have Sinner"
+        // off zero brackets invents a consensus that does not exist.
+        favourite:
+          pickCounts && sample > 0
+            ? {
+                player: aLeads ? a : b,
+                count,
+                // Suppressed below MIN_SAMPLE, exactly as pct() does for played
+                // matches — the head count survives, the percentage does not.
+                pct: sample >= MIN_SAMPLE ? Math.round((count / sample) * 100) : null,
+              }
+            : null,
+        sample,
+      }
+    })
+
+    // Same contract as the recap card: an id that is not in this round is
+    // dropped rather than honoured, since the param is user-supplied and a stale
+    // one would otherwise render an empty card.
+    const inRound = new Set(matches.map(m => m.id))
+    const requested = (opts.matchIds ?? []).filter(id => inRound.has(id))
+
+    return {
+      ok: true,
+      card: {
+        kind: 'upcoming',
+        tournament,
+        round,
+        roundLabel: ROUND_LABEL[round] ?? round,
+        availableRounds: roundsPending.map(r => ({ round: r, label: ROUND_LABEL[r] ?? r })),
+        matches,
+        selectedIds: opts.matchIds ? requested : null,
+        bracketCount: await countBrackets(admin, tournamentId),
       },
     }
   }
@@ -587,6 +817,44 @@ async function loadPickCounts(
   const out = new Map<string, number>()
   for (const row of (data ?? []) as Array<{ match_result_id: string; correct_count: number }>) {
     out.set(row.match_result_id, Number(row.correct_count))
+  }
+  return out
+}
+
+/**
+ * draw matchId → (player externalId → brackets on them). See migration 077.
+ *
+ * Null on failure, for the same reason loadPickCounts is: 077 is a manual
+ * migration like every other one here, and until it is applied the RPC does not
+ * exist. A null map degrades the card to a plain fixture list — players, flags,
+ * seeds — which is honest. An empty map would instead claim that not one bracket
+ * in the field has picked the next round, which is a much louder statement and
+ * would be false.
+ */
+async function loadUpcomingPickCounts(
+  admin: Admin,
+  tournamentId: string,
+  matchIds: string[],
+): Promise<Map<string, Map<string, number>> | null> {
+  if (!matchIds.length) return new Map()
+
+  const { data, error } = await admin.rpc('social_upcoming_pick_counts', {
+    t_id: tournamentId,
+    m_ids: matchIds,
+  })
+  if (error) {
+    console.error('loadUpcomingPickCounts error:', error.message)
+    return null
+  }
+
+  const out = new Map<string, Map<string, number>>()
+  for (const row of (data ?? []) as Array<{ external_match_id: string; picked_id: string; pick_count: number }>) {
+    let byPlayer = out.get(row.external_match_id)
+    if (!byPlayer) {
+      byPlayer = new Map()
+      out.set(row.external_match_id, byPlayer)
+    }
+    byPlayer.set(row.picked_id, Number(row.pick_count))
   }
   return out
 }

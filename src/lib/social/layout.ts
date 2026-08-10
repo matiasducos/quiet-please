@@ -37,6 +37,38 @@ export function recapCapacity(size: CardSize, hasPodium: boolean): number {
 }
 
 /**
+ * How many upcoming ties fit on the "Up next" card.
+ *
+ * Matches recapCapacity's no-podium figures, and for the same reason: the rows
+ * are the same shape — a two-player line with a second line of crowd evidence
+ * under it — and this card carries no podium at any size, so the taller budget
+ * always applies. It has no upset badge either, which is the one thing that made
+ * the recap's worst case taller than its average, so these numbers have slack
+ * the recap's do not.
+ */
+export function upcomingCapacity(size: CardSize): number {
+  return size === 'story' ? 6 : 4
+}
+
+/**
+ * "68% of brackets have Sinner", as it reads on the card and in the picker.
+ *
+ * The percentage is a share of the brackets that picked THIS match — never of
+ * the tournament's entry count. Below MIN_SAMPLE (see ./data) the caller passes
+ * a null pct and the head count carries the line alone: "7 brackets have Sinner"
+ * is a fact at any sample size, where "23%" of seven brackets is not.
+ *
+ * Only the surname is used. The registry stores "Sinner, Jannik", and the full
+ * form turns a five-word line into a nine-word one on a card measured in rows.
+ */
+export function favouriteLabel(name: string, count: number, pct: number | null): string {
+  const surname = name.includes(',') ? name.split(',')[0].trim() : name
+  if (pct != null) return `${pct}% of brackets have ${surname}`
+  const brackets = `${count.toLocaleString('en-GB')} ${count === 1 ? 'bracket has' : 'brackets have'}`
+  return `${brackets} ${surname}`
+}
+
+/**
  * How many stat rows fit on the tournament-recap card.
  *
  * Same reasoning as recapCapacity above, with one extra trap. The stats column
