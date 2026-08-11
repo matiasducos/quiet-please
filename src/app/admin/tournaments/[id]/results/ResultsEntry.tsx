@@ -498,7 +498,19 @@ export default function ResultsEntry({
                           opacity: isBye && !isEditing ? 0.6 : 1,
                         }}
                       >
-                        <div className="flex items-center gap-2">
+                        {/*
+                          Wraps because the action buttons cannot shrink. Lock
+                          is flexShrink: 0 by necessity — a squashed "Lock"/
+                          "Unlock" is unreadable — so in a nowrap row the whole
+                          card pushed past the viewport: at 375px the page
+                          scrolled sideways by 20px and Lock sat at x=396, half
+                          off screen. This is the screen used to enter results
+                          during a live tournament, frequently from a phone.
+
+                          Wrapping drops the actions to a second line only when
+                          they do not fit, so desktop is unchanged.
+                        */}
+                        <div className="flex flex-wrap items-center gap-2">
                           {/* Lock indicator */}
                           {isManualLock && isLocked && !isBye && (
                             <span style={{ fontSize: '0.7rem', flexShrink: 0 }} title="Locked — predictions blocked">
