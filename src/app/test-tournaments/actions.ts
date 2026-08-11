@@ -35,36 +35,32 @@ export async function resetTestTournament() {
   if (existing) {
     tournamentId = existing.id
 
-    // Reverse any points previously awarded for this tournament
+    // Who was affected — needed after the delete, to recompute their totals.
     const { data: ledger } = await supabase
       .from('point_ledger')
-      .select('user_id, points')
+      .select('user_id')
       .eq('tournament_id', tournamentId)
-
-    const userPointsToDeduct: Record<string, number> = {}
-    for (const entry of (ledger ?? [])) {
-      userPointsToDeduct[entry.user_id] = (userPointsToDeduct[entry.user_id] ?? 0) + entry.points
-    }
-
-    for (const [userId, pts] of Object.entries(userPointsToDeduct)) {
-      const { data: userData } = await supabase.from('users').select('total_points').eq('id', userId).single()
-      const newTotal = Math.max(0, (userData?.total_points ?? 0) - pts)
-      await supabase.from('users').update({ total_points: newTotal }).eq('id', userId)
-
-      const { data: memberships } = await supabase
-        .from('league_members').select('league_id, total_points').eq('user_id', userId)
-      for (const m of memberships ?? []) {
-        await supabase.from('league_members')
-          .update({ total_points: Math.max(0, m.total_points - pts) })
-          .eq('league_id', m.league_id).eq('user_id', userId)
-      }
-    }
+    const affectedUserIds = [...new Set((ledger ?? []).map(e => e.user_id))]
 
     // Clear all test data
     await supabase.from('point_ledger').delete().eq('tournament_id', tournamentId)
     await supabase.from('match_results').delete().eq('tournament_id', tournamentId)
     await supabase.from('predictions').delete().eq('tournament_id', tournamentId)
     await supabase.from('tournaments').update({ status: 'accepting_predictions' }).eq('id', tournamentId)
+
+    // Recompute from what's left rather than subtracting a delta. Since
+    // migration 079, recalculate_ranking_points owns users.total_points as the
+    // all-time figure — hand-rolled arithmetic here would be clobbered by the
+    // next real recalculation, and Math.max(0, …) silently hid drift besides.
+    // Runs AFTER the deletes so the functions see the post-reset state.
+    for (const userId of affectedUserIds) {
+      await supabase.rpc('recalculate_ranking_points', { p_user_id: userId })
+      const { data: memberships } = await supabase
+        .from('league_members').select('league_id').eq('user_id', userId)
+      for (const m of memberships ?? []) {
+        await supabase.rpc('recalculate_member_points', { p_league_id: m.league_id, p_user_id: userId })
+      }
+    }
   } else {
     // First run — create the tournament
     const { data: created, error } = await supabase
@@ -166,14 +162,17 @@ export async function simulateResults(tournamentId: string) {
         .eq('id', predId)
     }
 
-    for (const [userId, pts] of Object.entries(userPointsDelta)) {
-      await supabase.rpc('increment_user_points', { user_id: userId, points: pts })
+    // Recompute rather than increment. increment_user_points adds a delta to
+    // users.total_points, which since migration 079 is the all-time total owned
+    // by recalculate_ranking_points — the next real recalculation would
+    // overwrite anything added here. Predictions.points_earned is already
+    // updated above, so recalculating now reads the correct state.
+    for (const userId of Object.keys(userPointsDelta)) {
+      await supabase.rpc('recalculate_ranking_points', { p_user_id: userId })
       const { data: memberships } = await supabase
-        .from('league_members').select('league_id, total_points').eq('user_id', userId)
+        .from('league_members').select('league_id').eq('user_id', userId)
       for (const m of memberships ?? []) {
-        await supabase.from('league_members')
-          .update({ total_points: m.total_points + pts })
-          .eq('league_id', m.league_id).eq('user_id', userId)
+        await supabase.rpc('recalculate_member_points', { p_league_id: m.league_id, p_user_id: userId })
       }
     }
   }

@@ -1,7 +1,17 @@
 # Plan — make the rolling 52-week window actually expire
 
-Status: **proposed**, not started. Written 2026-08-11.
-First real-world deadline: **2027-03-29** (earliest live `expires_at` in prod).
+Written 2026-08-11. First real-world deadline: **2027-03-29** (earliest live
+`expires_at` in prod).
+
+Status:
+- §4 §5 §7 — **done** (branch `feat/leaderboard-points-expiry`). Migration 079 is
+  applied to prod; verified there with a dry run that reports 0 at `now()` and,
+  at `as_of=2027-06-01`, 119 users / 479 predictions matching a recomputation
+  done outside the function.
+- §6 §7b — **done**. Migration 080 (`points_expired` type) is **not yet applied**.
+- §10 (edition-based expiry) — not started. Still needs `tournaments.completed_at`.
+- §8.2 (all-time vs active in the UI) — not started; `total_points` is populated
+  and correct, but still rendered nowhere.
 
 ---
 
