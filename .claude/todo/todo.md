@@ -19,11 +19,19 @@ Fix is a daily `expire-points` cron calling one set-based `apply_point_expiry()`
 Nothing is ever deleted — `point_ledger` and `predictions.points_earned` stay untouched;
 only the derived `users.ranking_points` cache changes.
 
-Decided: expiry is announced by **in-app notification, no email**; expiry follows real
-ATP edition-based semantics (points die when the next edition is played, 52 weeks as
-fallback), **derived** each sweep rather than stamped, so a cancelled or vanished
-tournament needs no manual signal. Needs `tournaments.completed_at` (doesn't exist yet).
-Still open — the Vercel Hobby cron cap.
+Built across three commits on `feat/leaderboard-points-expiry`: the sweep (079, applied),
+the `points_expired` notification + read-surface fixes (080, **pending**), and real ATP
+edition-based expiry (081, **pending**) — points die when the next edition is played,
+52 weeks as fallback, **derived** each night rather than stamped so a cancelled or
+vanished tournament needs no manual signal.
+
+Apply 080 then 081, in that order. Then:
+- **Load the 2027 calendar before 2027-03-29.** 081 is inert until a series has a
+  second edition — prod has 35 tournaments, all 2026. Without 2027 rows the flat
+  364-day fallback fires, which is right only if the event genuinely isn't held.
+- Still open: the Vercel Hobby cron cap (this is the 2nd scheduled cron), and
+  showing all-time vs active points in the UI (`total_points` is populated and
+  correct but rendered nowhere).
 
 ### ✅ Mobile responsiveness audit — no side-scrolling anywhere (2026-08-11)
 Swept at 375px, signed in as the QA account. Seven real defects, all fixed:

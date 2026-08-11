@@ -26,7 +26,10 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const MIGRATION = join(HERE, '..', 'supabase', 'migrations', '079_apply_point_expiry.sql')
+const MIGRATIONS = [
+  '079_apply_point_expiry.sql',
+  '081_edition_based_expiry.sql',
+].map(f => join(HERE, '..', 'supabase', 'migrations', f))
 const CONTAINER = 'qp-expiry-test'
 
 const sh = (cmd) => execSync(cmd, { stdio: 'pipe' }).toString()
@@ -68,8 +71,10 @@ try {
   psql('create role service_role; create role anon; create role authenticated;')
   psql(readFileSync(join(HERE, 'point-expiry', 'fixture.sql'), 'utf8'))
 
-  console.log('· loading migration 079…')
-  psql(readFileSync(MIGRATION, 'utf8'))
+  for (const m of MIGRATIONS) {
+    console.log(`· loading ${m.split('/').pop()}…`)
+    psql(readFileSync(m, 'utf8'))
+  }
 
   console.log('· asserting…\n')
   const out = psql(readFileSync(join(HERE, 'point-expiry', 'assert.sql'), 'utf8'))

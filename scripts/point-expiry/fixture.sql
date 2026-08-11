@@ -8,7 +8,11 @@ create table users (
 );
 create table tournaments (
   id uuid primary key, name text, tour text, category text, surface text,
-  starts_at timestamptz
+  starts_at timestamptz, ends_at timestamptz,
+  status text, starts_year int, series_id uuid, completed_at timestamptz
+);
+create table match_results (
+  id uuid primary key default gen_random_uuid(), tournament_id uuid, scored_at timestamptz
 );
 create table predictions (
   id uuid primary key, user_id uuid, tournament_id uuid, challenge_id uuid,
@@ -23,11 +27,32 @@ create table point_ledger (id uuid primary key default gen_random_uuid(), predic
 
 -- ── Tournaments. as_of for all tests is 2027-06-01.
 --    expires_at = starts_at + 364d, stamped explicitly below.
-insert into tournaments (id, name, tour, category, surface, starts_at) values
- ('11111111-0000-0000-0000-000000000001','Marrakech','ATP','250','clay',        '2026-03-30'), -- exp 2027-03-29 EXPIRED
- ('11111111-0000-0000-0000-000000000002','Roland Garros','ATP','grand_slam','clay','2026-05-24'), -- exp 2027-05-23 EXPIRED
- ('11111111-0000-0000-0000-000000000003','Some WTA grass','WTA','500','grass',  '2026-08-01'), -- exp 2027-07-31 LIVE
- ('11111111-0000-0000-0000-000000000004','Some ATP hard','ATP','masters_1000','hard','2026-09-01'); -- exp 2027-08-31 LIVE
+insert into tournaments (id, name, tour, category, surface, starts_at, ends_at, status, starts_year, series_id) values
+ ('11111111-0000-0000-0000-000000000001','Marrakech','ATP','250','clay',        '2026-03-30','2026-04-06','completed',2026,'55555555-0000-0000-0000-00000000000a'),
+ ('11111111-0000-0000-0000-000000000002','Roland Garros','ATP','grand_slam','clay','2026-05-24','2026-06-07','completed',2026,'55555555-0000-0000-0000-00000000000b'),
+ ('11111111-0000-0000-0000-000000000003','Some WTA grass','WTA','500','grass',  '2026-08-01','2026-08-08','completed',2026,'55555555-0000-0000-0000-00000000000c'),
+ ('11111111-0000-0000-0000-000000000004','Some ATP hard','ATP','masters_1000','hard','2026-09-01','2026-09-08','completed',2026,'55555555-0000-0000-0000-00000000000d');
+
+-- Scored results, so the completed_at backfill has a real timestamp to find.
+insert into match_results (tournament_id, scored_at) values
+ ('11111111-0000-0000-0000-000000000001','2026-04-06T18:00:00Z'),
+ ('11111111-0000-0000-0000-000000000002','2026-06-07T18:00:00Z');
+
+-- ── 2027 editions, one per branch of the derived rule (as_of = 2027-06-01) ──
+insert into tournaments (id, name, tour, category, surface, starts_at, ends_at, status, starts_year, series_id) values
+ -- BRANCH 2 + CAP: a phantom edition parked in 'upcoming' with a far-future end.
+ -- Uncapped this would push Marrakech's expiry to 2027-12-04 and suppress it
+ -- indefinitely; the cap pins it to flat_364 + 60d = 2027-05-28 (still expired).
+ ('11111111-0000-0000-0000-000000000008','Marrakech 2027','ATP','250','clay','2027-03-29','2027-12-01','upcoming',2027,'55555555-0000-0000-0000-00000000000a'),
+ -- BRANCH 2: real edition running later than the anniversary. Points must be
+ -- HELD through it -> 2027-06-06 + 3d = 2027-06-09, past as_of -> RESURRECTED.
+ ('11111111-0000-0000-0000-000000000006','Roland Garros 2027','ATP','grand_slam','clay','2027-05-23','2027-06-06','in_progress',2027,'55555555-0000-0000-0000-00000000000b'),
+ -- BRANCH 1: edition already played, EARLIER than the anniversary. Swap at its
+ -- completion -> 2027-05-10, before as_of -> NEWLY DUE. This is the double-count
+ -- the flat 364-day rule got wrong.
+ ('11111111-0000-0000-0000-000000000007','WTA grass 2027','WTA','500','grass','2027-05-01','2027-05-08','completed',2027,'55555555-0000-0000-0000-00000000000c');
+update tournaments set completed_at = '2027-05-10T12:00:00Z' where id = '11111111-0000-0000-0000-000000000007';
+-- BRANCH 3: series 'd' deliberately has NO 2027 edition -> flat 364 days, unchanged.
 
 insert into users (id, username, ranking_points, atp_ranking_points, wta_ranking_points) values
  ('22222222-0000-0000-0000-000000000001','only_expired', 1000, 1000,   0),

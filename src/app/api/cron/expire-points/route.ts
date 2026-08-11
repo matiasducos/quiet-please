@@ -170,6 +170,30 @@ export async function GET(request: Request) {
     let drained = false
     let firstSample: unknown = null
 
+    // ── 1. Recompute expires_at from the calendar, before sweeping ──────────
+    // Edition-based expiry (migration 081) DERIVES the date rather than storing
+    // a stamp: points die when the next edition of the same tournament is
+    // played, falling back to 52 weeks when there is no next edition. Deriving
+    // it daily is what makes a cancelled or rescheduled tournament need no
+    // manual signal, and it can move a date LATER — which resurrects points a
+    // previous sweep already retired. That has to happen before the sweep, or
+    // the sweep would act on yesterday's calendar.
+    const { data: refreshData, error: refreshError } = await admin.rpc('refresh_point_expiry', {
+      p_as_of: asOf.toISOString(),
+      p_dry_run: dryRun,
+    })
+    // Note for anyone reading a dry-run summary: because the refresh writes
+    // nothing in that mode, the sweep numbers below are computed against the
+    // expires_at values CURRENTLY stored, not the ones the refresh would have
+    // written. The two halves of a dry run therefore describe slightly
+    // different states. That is a reporting nuance, not a bug — a real run
+    // applies the refresh first, so the sweep always sees fresh dates.
+    if (refreshError) throw new Error(`refresh_point_expiry failed: ${refreshError.message}`)
+    const refresh = (Array.isArray(refreshData) ? refreshData[0] : refreshData) as
+      | { rows_updated: number; resurrected: number; newly_due: number; sample: unknown }
+      | undefined
+
+    // ── 2. Sweep whatever is now past its expiry ────────────────────────────
     // Loop so a very large sweep (a Slam's worth of entrants expiring on one
     // day) drains across several batches instead of timing out mid-way and
     // leaving the board half-decayed. expiry_applied_at makes resuming free —
@@ -223,6 +247,12 @@ export async function GET(request: Request) {
         users_updated: usersUpdated,
         predictions_marked: predictionsMarked,
         batches,
+        // Calendar-driven changes to expires_at. `resurrected` is points coming
+        // BACK because a new edition runs later than the old anniversary —
+        // worth watching, since it is the one direction that surprises people.
+        expiry_refreshed: refresh?.rows_updated ?? 0,
+        resurrected: refresh?.resurrected ?? 0,
+        newly_due: refresh?.newly_due ?? 0,
         notified,
         ...(notifyError ? { notify_error: notifyError } : {}),
         // false means the time budget ran out with work still pending; the next

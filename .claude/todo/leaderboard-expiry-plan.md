@@ -9,7 +9,18 @@ Status:
   at `as_of=2027-06-01`, 119 users / 479 predictions matching a recomputation
   done outside the function.
 - §6 §7b — **done**. Migration 080 (`points_expired` type) is **not yet applied**.
-- §10 (edition-based expiry) — not started. Still needs `tournaments.completed_at`.
+- §10 — **done**. Migration 081 adds `tournaments.completed_at` (maintained by
+  trigger, not by the four call sites that write `status = 'completed'`),
+  `refresh_point_expiry()` implementing the derived rule, and refactors
+  `apply_point_expiry` onto a shared helper so the league predicate exists once.
+  **Not yet applied.** Apply 080 before 081.
+  ⚠️ Inert until the 2027 calendar is loaded: prod currently holds 35 tournaments,
+  all 2026, and **zero** series have a second edition — so every prediction falls
+  to branch 3 (flat 364 days) today. The rule only starts to differ once 2027
+  editions exist. Loading the 2027 calendar before **2027-03-29** is therefore an
+  operational requirement, not just a nicety: if the 2027 editions are missing at
+  that point, March 2026's points expire on the flat timer even where the real
+  2027 edition falls later.
 - §8.2 (all-time vs active in the UI) — not started; `total_points` is populated
   and correct, but still rendered nowhere.
 
