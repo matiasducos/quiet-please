@@ -6,6 +6,25 @@
 
 ## In Progress / Next Up
 
+### ⏳ Leaderboard 52-week expiry — points are stamped but never expire (deadline 2027-03-29)
+Plan: [`leaderboard-expiry-plan.md`](./leaderboard-expiry-plan.md). Not started.
+
+`predictions.expires_at` is written correctly, but `recalculate_ranking_points` only ever
+runs for users who *earned points in that cron run* — so a dormant user's `ranking_points`
+is frozen forever and the rolling window is enforced only against people still playing.
+Leagues have the identical freeze. First real expiry lands **2027-03-29**; Roland Garros
+2026 on **2027-05-23**.
+
+Fix is a daily `expire-points` cron calling one set-based `apply_point_expiry()` function.
+Nothing is ever deleted — `point_ledger` and `predictions.points_earned` stay untouched;
+only the derived `users.ranking_points` cache changes.
+
+Decided: expiry is announced by **in-app notification, no email**; expiry follows real
+ATP edition-based semantics (points die when the next edition is played, 52 weeks as
+fallback), **derived** each sweep rather than stamped, so a cancelled or vanished
+tournament needs no manual signal. Needs `tournaments.completed_at` (doesn't exist yet).
+Still open — the Vercel Hobby cron cap.
+
 ### ✅ Mobile responsiveness audit — no side-scrolling anywhere (2026-08-11)
 Swept at 375px, signed in as the QA account. Seven real defects, all fixed:
 
