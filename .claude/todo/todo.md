@@ -6,11 +6,37 @@
 
 ## In Progress / Next Up
 
-### Mobile responsiveness audit — NO side-scrolling anywhere
-- Priority page: `/leaderboard` — user must NEVER have to side-scroll on mobile
-- Audit all pages at 375px for horizontal overflow. Currently the leaderboard table is wrapped in `overflow-x-auto` which permits side-scroll as an escape hatch — the real fix is to redesign the row layout so it fits natively at 375px
-- Candidate approach: stack rank+avatar+username on the primary line, push points/change to a secondary line below at mobile; revert to single-row grid at `md:` and up
-- Check other tables too: `/leagues/[id]`, tournament results, admin tables
+### ✅ Mobile responsiveness audit — no side-scrolling anywhere (2026-08-11)
+Swept at 375px, signed in as the QA account. Seven real defects, all fixed:
+
+| surface | was | PR |
+|---|---|---|
+| `/leaderboard` table | 159px of scroll revealing **blank space** | #117 |
+| `/leaderboard` scope control | 4th cell read "My c" | #117 |
+| `/leagues/[id]` table | `min-w-[500px]` on 3 always-visible columns | #117 |
+| Nav tab strip (site-wide) | ran to x=460; "Challenges" read "Ch" | #118 |
+| `/tournaments` filter chips | 626px in 343px — 3 of 6 filters unreachable | this |
+| `/admin/…/results` match rows | page overflowed 20px; `Lock` at x=396 | this |
+| Round tabs (tournament + predict) | 252px scroll; the **Final** was off screen | this |
+| Predict sticky bar | 383px; "Lock all picks" clipped | this |
+
+Clean at 375px: `/`, `/dashboard`, `/challenges`, `/profile/[username]` (+ `?tab=stats`),
+`/admin`, `/admin/users`.
+
+**Two horizontal scrollers deliberately kept** — the homepage achievements shelf and the
+bracket preview. A bracket is a wide diagram and a shelf is a shelf; scrolling is the
+correct affordance for both, and nothing is hidden or unreachable. The rule is aimed at
+scrollers that hide *functionality* — filters, navigation, table columns — not at wide
+content that announces itself.
+
+**The recurring bug**, worth recognising next time: a container keeps a fixed `min-w-`
+or `flex-shrink-0` children while a media query hides or shrinks what is inside it. The
+two mechanisms disagree, and the result is a scrollbar leading to dead space or to
+content nothing signals is there — every instance above is a variant of it. `scrollbarWidth: 'none'`
+made each one worse by removing the only hint that scrolling was possible.
+
+**Not audited:** `/notifications`, `/friends`, `/leagues` (list), `/c/[code]`, the slam
+landing pages, `/privacy`, `/terms`, `/signup`, `/login`, and the recap page.
 
 ### Facebook OAuth Setup (manual — Matias)
 - Code side done ✅ — button added to login & signup pages

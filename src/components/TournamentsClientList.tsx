@@ -106,7 +106,19 @@ export default function TournamentsClientList({ tournaments, liveTournaments, ac
       </div>
 
       {/* ── Status chips ── */}
-      <div className="flex items-center gap-2 mb-8 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+      {/*
+        Wraps rather than scrolls. Six chips come to 626px against 343px of
+        usable width at 375px, so as a scroller it hid three of the six filters
+        — "Predict now" was cut mid-word and "In progress" and "Completed" were
+        off screen entirely, with `scrollbarWidth: none` removing any hint they
+        existed.
+
+        These are independent pills with gaps between them, not a segmented
+        control, so unlike the leaderboard scope switch they can simply flow
+        onto a second line. `flex-shrink-0` stays: chips should wrap at their
+        natural width rather than squash.
+      */}
+      <div className="flex flex-wrap items-center gap-2 mb-8">
         {STATUSES.map(s => {
           const active = activeStatus === s.key
           const activeColor = (s as any).color ?? 'var(--ink)'

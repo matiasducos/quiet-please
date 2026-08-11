@@ -71,6 +71,19 @@ const ROUND_LABELS: Record<string, string> = {
   R16: 'R16', QF: 'Quarterfinals', SF: 'Semifinals', F: 'Final',
 }
 
+/**
+ * Mobile round labels.
+ *
+ * ROUND_LABELS is inconsistent by design — short codes for the early rounds,
+ * full words for the late ones — and that mix is what made the tab strip
+ * 252px wider than a 375px screen, with "Final" sitting at x=611. Tennis
+ * already has standard shorthand for the three long ones, so the narrow case
+ * uses it rather than truncating or scrolling.
+ */
+const SHORT_ROUND_LABELS: Record<string, string> = {
+  ...ROUND_LABELS, QF: 'QF', SF: 'SF', F: 'F',
+}
+
 // Used in prose descriptions — full "Round of N" wording
 const ROUND_PROSE: Record<string, string> = {
   R128: 'the Round of 128', R64: 'the Round of 64', R32: 'the Round of 32',
@@ -542,13 +555,21 @@ export default function BracketPredictor({
       {/* Nav */}
       {!hideNav && (
       <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
-        <div className="max-w-5xl mx-auto flex items-center justify-between px-4 md:px-6 py-4">
+        {/*
+          Wraps and drops the wordmark below `sm:`. The wordmark plus back link,
+          pick counter, "Save draft" and "Lock all picks" came to 383px against
+          375px, so the primary action on the page was clipped at the right
+          edge. The wordmark is the one element here that is pure decoration —
+          this is a focused task screen reached from elsewhere in the app — so
+          it yields first, and the actions wrap rather than overflow.
+        */}
+        <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-y-2 px-4 md:px-6 py-4">
           {/* Logo */}
-          <Link href="/dashboard" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)', whiteSpace: 'nowrap' }}>
+          <Link href="/dashboard" className="hidden sm:block" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)', whiteSpace: 'nowrap' }}>
             Quiet Please
           </Link>
 
-          <div className="flex items-center gap-2 ml-4">
+          <div className="flex flex-wrap items-center gap-2 sm:ml-4">
             {/* Back link (when editing) */}
             {isEditing && !hideBackLink && (
               <Link
@@ -665,7 +686,15 @@ export default function BracketPredictor({
 
       {/* Round tabs */}
       <div className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
-        <div className="max-w-5xl mx-auto flex overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+        {/*
+          Wraps rather than scrolls. Seven rounds plus their progress badges do
+          not fit 375px on any reasonable label set, and as a scroller the later
+          rounds — including the Final — were simply off screen with nothing to
+          indicate it. Short labels get the read-only case onto one row; the
+          predict view, which adds a "3/8" badge per tab, takes a second row
+          instead of hiding half the tournament.
+        */}
+        <div className="max-w-5xl mx-auto flex flex-wrap">
           {sortedRounds.map(round => {
             const stats = getRoundStats(round)
             const allDone = stats.done === stats.total && stats.total > 0
@@ -673,7 +702,7 @@ export default function BracketPredictor({
               <button
                 key={round}
                 onClick={() => setActiveRound(round)}
-                className="px-5 py-3 text-xs whitespace-nowrap border-b-2 transition-colors flex-shrink-0 flex items-center gap-1.5"
+                className="px-2.5 sm:px-5 py-3 text-xs whitespace-nowrap border-b-2 transition-colors flex-shrink-0 flex items-center gap-1.5"
                 style={{
                   borderBottomColor: activeRound === round ? 'var(--court)' : 'transparent',
                   color: activeRound === round ? 'var(--court)' : 'var(--muted)',
@@ -681,7 +710,8 @@ export default function BracketPredictor({
                   letterSpacing: '0.04em',
                 }}
               >
-                {ROUND_LABELS[round] ?? round}
+                <span className="sm:hidden">{SHORT_ROUND_LABELS[round] ?? round}</span>
+                <span className="hidden sm:inline">{ROUND_LABELS[round] ?? round}</span>
                 {!readOnly && stats.total > 0 && (
                   <span style={{
                     fontSize: '0.55rem',
