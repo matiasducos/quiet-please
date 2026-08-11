@@ -28,6 +28,13 @@ type BreakdownEntry = {
   totalPicks?: number
   correctPicks?: number
   streakPower?: number
+  /**
+   * Past its 52-week window, so it no longer counts toward the rolling total in
+   * the row header. The entry is still listed — expired points are never hidden
+   * or deleted, only labelled. Without this the header would read 0 while the
+   * drawer still showed the tournament that earned 1000.
+   */
+  expired?: boolean
 }
 type UserStats = {
   tournaments: number
@@ -55,6 +62,7 @@ async function buildStats(
   // stats once we've scanned predictions + point_ledger.
   const breakdownByUser: Record<string, BreakdownEntry[]> = {}
   const breakdownIndex: Record<string, Record<string, BreakdownEntry>> = {}
+  const now = Date.now()
   for (const p of userPredictions) {
     const t = p.tournaments as any
     if (!t?.name) continue
@@ -64,6 +72,7 @@ async function buildStats(
       tour: t.tour ?? '',
       points: p.points_earned ?? 0,
       flag: t.flag_emoji ?? null,
+      expired: p.expires_at != null && new Date(p.expires_at).getTime() <= now,
     }
     if (!breakdownByUser[p.user_id]) breakdownByUser[p.user_id] = []
     breakdownByUser[p.user_id].push(entry)
@@ -197,7 +206,7 @@ function getCommunityLeaderboardData(userId: string, pointsField: string) {
       const userIds = (users ?? []).map(u => u.id)
       const { data: userPredictions } = userIds.length > 0
         ? await supabase.from('predictions')
-            .select('user_id, tournament_id, points_earned, tournaments(name, tour, location, flag_emoji)')
+            .select('user_id, tournament_id, points_earned, expires_at, tournaments(name, tour, location, flag_emoji)')
             .in('user_id', userIds).is('challenge_id', null)
             .gt('points_earned', 0).order('points_earned', { ascending: false }).limit(500)
         : { data: [] as any[] }
@@ -232,7 +241,7 @@ function getLeaderboardData(pointsField: string, scope: Scope, scopeCountry: str
       const userIds = (users ?? []).map(u => u.id)
       const { data: userPredictions } = userIds.length > 0
         ? await supabase.from('predictions')
-            .select('user_id, tournament_id, points_earned, tournaments(name, tour, location, flag_emoji)')
+            .select('user_id, tournament_id, points_earned, expires_at, tournaments(name, tour, location, flag_emoji)')
             .in('user_id', userIds).is('challenge_id', null)
             .gt('points_earned', 0).order('points_earned', { ascending: false }).limit(500)
         : { data: [] as any[] }

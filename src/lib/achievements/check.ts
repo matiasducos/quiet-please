@@ -321,12 +321,18 @@ export async function checkCronAchievements(
   const lifetimeKeys = ['points_vault', 'legend', 'hall_of_fame']
   const needsLifetime = lifetimeKeys.some(k => !existing.has(k))
   if (needsLifetime) {
+    // total_points, not ranking_points. ranking_points is the ROLLING 52-week
+    // figure — reading it here worked only for as long as nothing ever expired.
+    // Once the daily sweep (migration 079) starts retiring points, these
+    // thresholds would silently become "rolling peak" and stop matching their
+    // own names. total_points is the all-time sum, maintained by
+    // recalculate_ranking_points.
     const { data: u } = await admin
       .from('users')
-      .select('ranking_points')
+      .select('total_points')
       .eq('id', userId)
       .maybeSingle()
-    const lifetime = u?.ranking_points ?? 0
+    const lifetime = u?.total_points ?? 0
     const lifetimeThresholds = [
       { min: 10000, key: 'points_vault' },
       { min: 25000, key: 'legend' },

@@ -20,6 +20,7 @@ async function markAllRead(userId: string) {
 const TYPE_META: Record<string, { label: string; color: string }> = {
   draw_open:             { label: 'Draw open',          color: '#27500A' },
   points_awarded:        { label: 'Points awarded',     color: '#185FA5' },
+  points_expired:        { label: 'Points expired',     color: '#993C1D' },
   challenge_received:    { label: 'Challenge',           color: '#993C1D' },
   challenge_cancelled:   { label: 'Challenge cancelled', color: '#993C1D' },
   challenge_picks_locked:{ label: 'Challenge update',    color: '#185FA5' },
@@ -52,6 +53,11 @@ function getHref(
   if (n.type === 'auto_predictions_generated' && n.tournament_id) return `/tournaments/${n.tournament_id}/predict`
   if (n.type === 'achievement_earned') {
     return viewerUsername ? `/profile/${viewerUsername}?tab=achievements` : '/leaderboard'
+  }
+  // Their own profile, where the rolling total sits next to the all-time one —
+  // the only place the drop makes sense in context.
+  if (n.type === 'points_expired') {
+    return viewerUsername ? `/profile/${viewerUsername}` : '/leaderboard'
   }
   if (n.type === 'referral_joined') {
     return n.meta.invitee_username ? `/profile/${n.meta.invitee_username}` : '/invite'
@@ -150,6 +156,15 @@ export default async function NotificationsPage() {
                         )}
                         {n.type === 'points_awarded' && (
                           <>You earned <strong>{meta.points ?? 0} pts</strong> for {meta.tournament_flag_emoji && <>{meta.tournament_flag_emoji} </>}{meta.tournament_location ?? meta.tournament_name ?? 'a tournament'}.</>
+                        )}
+                        {n.type === 'points_expired' && (
+                          <>
+                            <strong>{meta.points_expired ?? 0} pts</strong> dropped out of your rolling 52-week ranking
+                            {Number(meta.tournament_count ?? 0) === 1 && (meta.tournament_location || meta.tournament_name)
+                              ? <> — a year has passed since {meta.tournament_flag_emoji && <>{meta.tournament_flag_emoji} </>}<strong>{meta.tournament_location ?? meta.tournament_name}</strong></>
+                              : <> — a year has passed since {meta.tournament_count ?? 0} of your tournaments</>}
+                            . You still have <strong>{meta.points_remaining ?? 0} pts</strong>. Nothing is lost: your full record is on your profile.
+                          </>
                         )}
                         {n.type === 'challenge_received' && (
                           <><strong>{meta.challenger_username ?? 'Someone'}</strong> challenged you for {meta.tournament_flag_emoji && <>{meta.tournament_flag_emoji} </>}<strong>{meta.tournament_location ?? meta.tournament_name ?? 'a tournament'}</strong>.</>

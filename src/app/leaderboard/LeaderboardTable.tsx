@@ -25,6 +25,12 @@ interface TournamentBreakdown {
   totalPicks?: number
   /** Effective streak multiplier for this tournament. 1.0 = no streak bonus. */
   streakPower?: number
+  /**
+   * Outside the rolling 52-week window, so it no longer counts toward the total
+   * in the row header. Still listed — the record is permanent, only the label
+   * changes. Never filter these out.
+   */
+  expired?: boolean
 }
 
 const hStyle: React.CSSProperties = {
@@ -266,6 +272,20 @@ export default function LeaderboardTable({
                           }}>
                             {b.tour}
                           </span>
+                          {b.expired && (
+                            <span
+                              title="Earned more than 52 weeks ago, so it no longer counts toward the ranking total. The result is kept permanently."
+                              className="px-1.5 py-0.5 rounded-sm"
+                              style={{
+                                fontFamily: 'var(--font-mono)', fontSize: '0.55rem',
+                                letterSpacing: '0.06em',
+                                background: '#f0ece6', color: 'var(--muted)',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              EXPIRED
+                            </span>
+                          )}
                         </div>
                         {/* PLAYED: picks made */}
                         <div className="col-span-1 hidden sm:flex items-center justify-end">
@@ -299,14 +319,17 @@ export default function LeaderboardTable({
                         </div>
                         {/* POINTS */}
                         <div className="col-span-3 sm:col-span-2 flex items-center justify-end">
+                          {/* Expired entries keep their number — it is still what
+                              they scored — but drop the "+" and the court green,
+                              which would imply it is contributing to the total. */}
                           <span style={{
                             fontFamily: 'var(--font-mono)',
                             fontSize: '0.75rem',
-                            color: 'var(--court)',
+                            color: b.expired ? 'var(--muted)' : 'var(--court)',
                             fontWeight: 500,
                             whiteSpace: 'nowrap',
                           }}>
-                            +{formatPoints(b.points)}
+                            {b.expired ? '' : '+'}{formatPoints(b.points)}
                           </span>
                         </div>
                         {/* Mobile-only caption: shown below name when sm columns are hidden */}
