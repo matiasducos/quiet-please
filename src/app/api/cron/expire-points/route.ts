@@ -50,6 +50,90 @@ type MarkedRow = {
   tournaments: { name: string | null; location: string | null; flag_emoji: string | null } | null
 }
 
+/** How far ahead to warn that next year's edition is missing. */
+const CALENDAR_WARN_DAYS = 90
+/** Don't re-nag more than once a week while the gap is open. */
+const CALENDAR_RENAG_DAYS = 7
+
+type CalendarGap = {
+  series_name: string
+  tour: string
+  edition_year: number
+  flat_expiry: string
+  affected_predictions: number
+}
+
+/**
+ * Warns admins that a tournament's points are about to expire on the flat
+ * 52-week fallback because next year's edition has not been entered.
+ *
+ * Edition-based expiry is only as good as the calendar behind it. With no later
+ * edition, the derived rule retires the points at starts_at + 364 days — right
+ * for an event that genuinely is not held again, wrong for one we simply have
+ * not loaded. The database cannot tell those apart, so the only defence is
+ * telling a human in time.
+ *
+ * Lives here rather than in its own cron because the Vercel Hobby plan allows
+ * exactly two, and both are already in use (process-deletions, this). It is a
+ * natural fit regardless — this job is already the one that reasons about
+ * expiry dates.
+ *
+ * Never throws: a missed reminder must not fail the sweep.
+ */
+async function remindAdminsOfCalendarGaps(
+  admin: ReturnType<typeof createAdminClient>,
+  asOf: string,
+): Promise<{ reminded: number; gaps: number; error?: string }> {
+  try {
+    const adminIds = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean)
+    if (adminIds.length === 0) return { reminded: 0, gaps: 0 }
+
+    const { data, error } = await admin.rpc('calendar_gaps', {
+      p_as_of: asOf,
+      p_within_days: CALENDAR_WARN_DAYS,
+    })
+    if (error) return { reminded: 0, gaps: 0, error: error.message }
+
+    const gaps = (data ?? []) as CalendarGap[]
+    if (gaps.length === 0) return { reminded: 0, gaps: 0 }
+
+    // Already nagged recently? The gap stays open for weeks by nature — it is
+    // closed by a human entering a calendar — so a daily notification would
+    // train them to ignore it.
+    const since = new Date(Date.parse(asOf) - CALENDAR_RENAG_DAYS * 86_400_000).toISOString()
+    const { data: recent } = await admin
+      .from('notifications')
+      .select('user_id')
+      .eq('type', 'admin_calendar_gap')
+      .in('user_id', adminIds)
+      .gte('created_at', since)
+    const alreadyWarned = new Set((recent ?? []).map(r => r.user_id))
+
+    const targets = adminIds.filter(id => !alreadyWarned.has(id))
+    if (targets.length === 0) return { reminded: 0, gaps: gaps.length }
+
+    const soonest = gaps[0] // calendar_gaps orders by flat_expiry asc
+    const rows = targets.map(userId => ({
+      user_id: userId,
+      type: 'admin_calendar_gap',
+      meta: {
+        gap_count: gaps.length,
+        soonest_series: soonest.series_name,
+        soonest_tour: soonest.tour,
+        soonest_year: soonest.edition_year,
+        soonest_expiry: soonest.flat_expiry,
+        affected_predictions: gaps.reduce((n, g) => n + (g.affected_predictions ?? 0), 0),
+      },
+    }))
+
+    const { error: insErr } = await admin.from('notifications').insert(rows)
+    if (insErr) return { reminded: 0, gaps: gaps.length, error: insErr.message }
+    return { reminded: rows.length, gaps: gaps.length }
+  } catch (err) {
+    return { reminded: 0, gaps: 0, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 /**
  * Tells the affected users their points expired. In-app only — no email.
  *
@@ -238,6 +322,23 @@ export async function GET(request: Request) {
       }
     }
 
+    // ── 4. Warn admins about missing next-year editions ─────────────────────
+    // Independent of whether anything expired today: the whole point is to warn
+    // BEFORE the anniversary arrives.
+    let calendarReminded = 0
+    let calendarGaps = 0
+    let calendarError: string | undefined
+    if (!dryRun) {
+      const res = await remindAdminsOfCalendarGaps(admin, asOf.toISOString())
+      calendarReminded = res.reminded
+      calendarGaps = res.gaps
+      calendarError = res.error
+      if (res.error) {
+        console.error('[expire-points] calendar reminder failed:', res.error)
+        Sentry.captureMessage(`[expire-points] calendar reminder failed: ${res.error}`, 'warning')
+      }
+    }
+
     return {
       status: 200,
       body: {
@@ -255,6 +356,12 @@ export async function GET(request: Request) {
         newly_due: refresh?.newly_due ?? 0,
         notified,
         ...(notifyError ? { notify_error: notifyError } : {}),
+        // Series whose next edition is missing within the warning window, and
+        // how many admins were told. gaps > 0 with reminded = 0 means the weekly
+        // re-nag guard is holding, not that nothing is wrong.
+        calendar_gaps: calendarGaps,
+        calendar_reminded: calendarReminded,
+        ...(calendarError ? { calendar_error: calendarError } : {}),
         // false means the time budget ran out with work still pending; the next
         // scheduled run picks it up. Worth watching in the Cron Runs tab.
         drained,

@@ -29,6 +29,7 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const MIGRATIONS = [
   '079_apply_point_expiry.sql',
   '081_edition_based_expiry.sql',
+  '082_calendar_gap_reminders.sql',
 ].map(f => join(HERE, '..', 'supabase', 'migrations', f))
 const CONTAINER = 'qp-expiry-test'
 

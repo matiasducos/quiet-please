@@ -379,6 +379,29 @@ export default async function ProfilePage({
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', letterSpacing: '0.14em', color: 'rgba(255,255,255,0.55)', marginTop: '2px', textTransform: 'uppercase' }}>
                 Ranking · 52-week rolling
               </div>
+
+              {/* All-time total. The rolling figure above can fall to zero when a
+                  player stops competing; this one never does. Deliberately the
+                  ONLY place total_points is surfaced — the leaderboard, nav and
+                  dashboard all stay on the rolling number, which is the number
+                  people are actually ranked by. */}
+              <div
+                title="Every point you have ever earned. Ranking points expire 52 weeks after the tournament; this total never does."
+                style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.12)' }}
+              >
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', color: 'rgba(255,255,255,0.9)', letterSpacing: '-0.01em' }}>
+                  {formatPoints(profile.total_points ?? 0)} pts
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', letterSpacing: '0.14em', color: 'rgba(255,255,255,0.55)', marginTop: '2px', textTransform: 'uppercase' }}>
+                  {/* Until the first points expire (2027-03-29 at the earliest)
+                      these two figures are identical for everyone. Repeating a
+                      number under two labels reads as a bug, so say WHY they
+                      match rather than leaving the reader to wonder. */}
+                  {(profile.total_points ?? 0) === (profile.ranking_points ?? 0)
+                    ? 'All-time · nothing expired yet'
+                    : 'All-time · never expires'}
+                </div>
+              </div>
             </div>
 
             {/* Right: identity */}

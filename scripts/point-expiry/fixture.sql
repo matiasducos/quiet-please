@@ -23,6 +23,16 @@ create table leagues (
   allowed_tournament_types text[], allowed_surfaces text[]
 );
 create table league_members (league_id uuid, user_id uuid, total_points int not null default 0);
+create table tournament_series (id uuid primary key, name text);
+insert into tournament_series (id, name) values
+ ('55555555-0000-0000-0000-00000000000a','Marrakech'),
+ ('55555555-0000-0000-0000-00000000000b','Roland Garros'),
+ ('55555555-0000-0000-0000-00000000000c','WTA Grass Series'),
+ ('55555555-0000-0000-0000-00000000000d','ATP Hard Series');
+create table notifications (
+  id uuid primary key default gen_random_uuid(), user_id uuid, type text,
+  tournament_id uuid, meta jsonb, read_at timestamptz, created_at timestamptz default now()
+);
 create table point_ledger (id uuid primary key default gen_random_uuid(), prediction_id uuid, points int);
 
 -- ── Tournaments. as_of for all tests is 2027-06-01.

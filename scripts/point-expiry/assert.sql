@@ -208,6 +208,28 @@ do $$ begin
   perform ok('refresh rerun: U5 stable', (select ranking_points from users where username='atp_wta'), 550);
 end $$;
 
+
+-- ══ 11. calendar_gaps — the admin reminder's detection ═══════════════════
+-- Fixture series a/b/c all have a 2027 edition; series d (ATP hard, 2026-09-01,
+-- flat expiry 2027-08-31) deliberately does not.
+do $$ begin
+  -- 90-day window from 2027-06-01 reaches 2027-08-30 — just short of series d.
+  perform ok('gaps: 90d window excludes a gap past the horizon',
+    (select count(*)::int from calendar_gaps('2027-06-01'::timestamptz, 90)), 0);
+  -- 120 days reaches 2027-09-29 and catches it.
+  perform ok('gaps: 120d window catches series d',
+    (select count(*)::int from calendar_gaps('2027-06-01'::timestamptz, 120)), 1);
+  perform ok('gaps: names the series',
+    (select series_name from calendar_gaps('2027-06-01'::timestamptz, 120)), 'ATP Hard Series');
+  -- Two scoring predictions ride on it (U3 400 + U5 150).
+  perform ok('gaps: counts affected predictions',
+    (select affected_predictions from calendar_gaps('2027-06-01'::timestamptz, 120)), 2);
+  -- Series WITH a next edition must never be reported, even in a wide window.
+  perform ok('gaps: series with a next edition excluded',
+    (select count(*)::int from calendar_gaps('2027-01-01'::timestamptz, 400)
+      where series_name <> 'ATP Hard Series'), 0);
+end $$;
+
 select case when count(*)=0 then '=== ALL ASSERTIONS PASSED ==='
             else '=== ' || count(*) || ' FAILURE(S) ===' end as result from _failures;
 select label as failed from _failures;
