@@ -21,6 +21,7 @@ const TYPE_META: Record<string, { label: string; color: string }> = {
   draw_open:             { label: 'Draw open',          color: '#27500A' },
   points_awarded:        { label: 'Points awarded',     color: '#185FA5' },
   points_expired:        { label: 'Points expired',     color: '#993C1D' },
+  admin_calendar_gap:    { label: 'Calendar',           color: '#92400e' },
   challenge_received:    { label: 'Challenge',           color: '#993C1D' },
   challenge_cancelled:   { label: 'Challenge cancelled', color: '#993C1D' },
   challenge_picks_locked:{ label: 'Challenge update',    color: '#185FA5' },
@@ -59,6 +60,8 @@ function getHref(
   if (n.type === 'points_expired') {
     return viewerUsername ? `/profile/${viewerUsername}` : '/leaderboard'
   }
+  // Straight to where the missing edition gets entered.
+  if (n.type === 'admin_calendar_gap') return '/admin/tournaments/new'
   if (n.type === 'referral_joined') {
     return n.meta.invitee_username ? `/profile/${n.meta.invitee_username}` : '/invite'
   }
@@ -164,6 +167,14 @@ export default async function NotificationsPage() {
                               ? <> — a year has passed since {meta.tournament_flag_emoji && <>{meta.tournament_flag_emoji} </>}<strong>{meta.tournament_location ?? meta.tournament_name}</strong></>
                               : <> — a year has passed since {meta.tournament_count ?? 0} of your tournaments</>}
                             . You still have <strong>{meta.points_remaining ?? 0} pts</strong>. Nothing is lost: your full record is on your profile.
+                          </>
+                        )}
+                        {n.type === 'admin_calendar_gap' && (
+                          <>
+                            Next year&apos;s edition is missing for <strong>{meta.gap_count ?? 0} tournament{Number(meta.gap_count ?? 0) === 1 ? '' : 's'}</strong>.
+                            The soonest is <strong>{meta.soonest_series ?? 'a tournament'}</strong> {meta.soonest_tour ? <>({meta.soonest_tour})</> : null}, whose {meta.soonest_year ?? ''} points expire on{' '}
+                            <strong>{meta.soonest_expiry ? String(meta.soonest_expiry).slice(0, 10) : 'soon'}</strong>.
+                            Load the new edition first, or {meta.affected_predictions ?? 0} scoring predictions drop off on the 52-week fallback.
                           </>
                         )}
                         {n.type === 'challenge_received' && (

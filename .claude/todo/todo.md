@@ -29,9 +29,17 @@ Apply 080 then 081, in that order. Then:
 - **Load the 2027 calendar before 2027-03-29.** 081 is inert until a series has a
   second edition — prod has 35 tournaments, all 2026. Without 2027 rows the flat
   364-day fallback fires, which is right only if the event genuinely isn't held.
-- Still open: the Vercel Hobby cron cap (this is the 2nd scheduled cron), and
-  showing all-time vs active points in the UI (`total_points` is populated and
-  correct but rendered nowhere).
+- ✅ Vercel cron cap resolved (2026-08-11): `vercel crons ls` confirms BOTH jobs
+  are registered and active — `/api/cron/expire-points` (0 4 * * *) and
+  `/api/cron/process-deletions` (0 3 * * *). Hobby allows exactly 2, so we are AT
+  THE CAP: a third cron is not possible without upgrading to Pro. Anything new
+  that needs a schedule must fold into one of these two.
+- ✅ All-time points now on the profile page (2026-08-11), and only there — the
+  leaderboard, nav and dashboard deliberately stay on the rolling figure.
+- ✅ Admin calendar-gap reminders (2026-08-11, migration 082, **pending**) — warns
+  90 days ahead when a tournament's points will expire on the flat fallback
+  because next year's edition has not been entered. Folded into `expire-points`
+  because of the cron cap.
 
 ### ✅ Mobile responsiveness audit — no side-scrolling anywhere (2026-08-11)
 Swept at 375px, signed in as the QA account. Seven real defects, all fixed:
