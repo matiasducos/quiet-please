@@ -6,40 +6,44 @@
 
 ## In Progress / Next Up
 
-### ⏳ Leaderboard 52-week expiry — points are stamped but never expire (deadline 2027-03-29)
-Plan: [`leaderboard-expiry-plan.md`](./leaderboard-expiry-plan.md). Not started.
+### ✅ Leaderboard 52-week expiry — shipped 2026-08-11 (PRs #121, #122)
+Plan: [`leaderboard-expiry-plan.md`](./leaderboard-expiry-plan.md).
 
-`predictions.expires_at` is written correctly, but `recalculate_ranking_points` only ever
-runs for users who *earned points in that cron run* — so a dormant user's `ranking_points`
-is frozen forever and the rolling window is enforced only against people still playing.
-Leagues have the identical freeze. First real expiry lands **2027-03-29**; Roland Garros
-2026 on **2027-05-23**.
+`predictions.expires_at` was written correctly, but `recalculate_ranking_points` only
+ever ran for users who *earned points in that cron run* — so a dormant user's
+`ranking_points` was frozen forever and the rolling window was enforced only against
+people still playing. Leagues had the identical freeze.
 
-Fix is a daily `expire-points` cron calling one set-based `apply_point_expiry()` function.
-Nothing is ever deleted — `point_ledger` and `predictions.points_earned` stay untouched;
-only the derived `users.ranking_points` cache changes.
+Shipped: a daily `expire-points` cron; one set-based `apply_point_expiry()`; real ATP
+edition-based expiry **derived** each night rather than stamped, so a cancelled or
+vanished tournament needs no manual signal; a `points_expired` in-app notification;
+all-time points on the profile hero; and admin calendar-gap reminders.
 
-Built across three commits on `feat/leaderboard-points-expiry`: the sweep (079, applied),
-the `points_expired` notification + read-surface fixes (080, **pending**), and real ATP
-edition-based expiry (081, **pending**) — points die when the next edition is played,
-52 weeks as fallback, **derived** each night rather than stamped so a cancelled or
-vanished tournament needs no manual signal.
+Nothing is ever deleted — `point_ledger` and `predictions.points_earned` stay
+untouched; only derived aggregates change. `scripts/verify-point-expiry.mjs` asserts
+that as an invariant (60 assertions, throwaway Postgres).
 
-Apply 080 then 081, in that order. Then:
-- **Load the 2027 calendar before 2027-03-29.** 081 is inert until a series has a
-  second edition — prod has 35 tournaments, all 2026. Without 2027 rows the flat
-  364-day fallback fires, which is right only if the event genuinely isn't held.
-- ✅ Vercel cron cap resolved (2026-08-11): `vercel crons ls` confirms BOTH jobs
-  are registered and active — `/api/cron/expire-points` (0 4 * * *) and
-  `/api/cron/process-deletions` (0 3 * * *). Hobby allows exactly 2, so we are AT
-  THE CAP: a third cron is not possible without upgrading to Pro. Anything new
-  that needs a schedule must fold into one of these two.
-- ✅ All-time points now on the profile page (2026-08-11), and only there — the
-  leaderboard, nav and dashboard deliberately stay on the rolling figure.
-- ✅ Admin calendar-gap reminders (2026-08-11, migration 082, **pending**) — warns
-  90 days ahead when a tournament's points will expire on the flat fallback
-  because next year's edition has not been entered. Folded into `expire-points`
-  because of the cron cap.
+**Migrations 079–082 are all applied to prod.**
+
+⚠️ **Open: the `expire-points` route has never executed against production** — only
+its SQL was verified directly. Dated checklist at the top of
+[`qa-next.md`](./qa-next.md). A cron that never fires looks exactly like a cron with
+nothing to do, and everything here reports zeros until 2027-03-29.
+
+⚠️ **Open: load the 2027 calendar before 2027-03-29.** Edition-based expiry is inert
+until a series has a second edition — prod has 35 tournaments, all 2026, and *all 951*
+scoring predictions currently ride on missing 2027 editions. Without them the flat
+364-day fallback fires, which is correct only if an event genuinely isn't held.
+The first `admin_calendar_gap` reminder is due ~2026-12-29.
+
+Resolved along the way:
+- ✅ Vercel cron cap — `vercel crons ls` confirms both jobs registered and active
+  (`expire-points` 0 4 * * *, `process-deletions` 0 3 * * *). Hobby allows exactly 2,
+  so we are **at the cap**; anything new needing a schedule must fold into one of
+  these two, or upgrade to Pro.
+- ✅ All-time points live on the profile hero **only** — leaderboard, nav and dashboard
+  stay on the rolling figure. (`total_points` in league tables is
+  `league_members.total_points`, an unrelated per-league column.)
 
 ### ✅ Mobile responsiveness audit — no side-scrolling anywhere (2026-08-11)
 Swept at 375px, signed in as the QA account. Seven real defects, all fixed:
