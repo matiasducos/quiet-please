@@ -1,8 +1,44 @@
 'use server'
 
 import { assertAdmin } from '@/app/admin/auth'
-import { getSocialCard, type RecapMatch, type UpcomingMatch } from '@/lib/social/data'
+import { getSocialCard, type DrawMatchOption, type RecapMatch, type UpcomingMatch } from '@/lib/social/data'
 import { favouriteLabel } from '@/lib/social/layout'
+
+export interface DrawMatchListOption {
+  id: string
+  a: string
+  b: string
+  /** Seeds as they read on the card, or null where the draw recorded none. */
+  seeds: [number | null, number | null]
+}
+
+export interface DrawMatchList {
+  matches: DrawMatchListOption[]
+}
+
+/**
+ * The first round's playable ties, for the studio's match picker. See
+ * listRecapMatches below for why this goes through `getSocialCard` rather than
+ * reading `bracket_data` directly.
+ */
+export async function listDrawMatches(
+  tournamentId: string,
+): Promise<{ ok: true; data: DrawMatchList } | { ok: false; error: string }> {
+  await assertAdmin()
+
+  const result = await getSocialCard(tournamentId, 'draw')
+  if (!result.ok) return { ok: false, error: result.error }
+  if (result.card.kind !== 'draw') return { ok: false, error: 'Not a draw card' }
+
+  const toOption = (m: DrawMatchOption): DrawMatchListOption => ({
+    id: m.id,
+    a: m.a.name,
+    b: m.b.name,
+    seeds: [m.a.seed, m.b.seed],
+  })
+
+  return { ok: true, data: { matches: result.card.matches.map(toOption) } }
+}
 
 export interface RecapMatchOption {
   id: string

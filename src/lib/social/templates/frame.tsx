@@ -128,12 +128,28 @@ export function Frame({
   tournament,
   children,
   cta = 'Play free at quietplease.app',
+  ctaLead,
 }: {
   size: CardSize
   eyebrow: string
   tournament: CardTournament
   children: ReactNode
   cta?: string
+  /**
+   * A headline-sized line above the CTA — the ask, set at a size that competes
+   * with the card's own content rather than reading as a credit.
+   *
+   * Only the draw card uses it, and only because that card is the acquisition
+   * one: it is the post a stranger sees before they have an account, so the
+   * instruction has to be the loudest thing in the footer. Everywhere else the
+   * audience already plays and the plain CTA is the right volume.
+   *
+   * It stays a separate line rather than a bigger `cta` because the row also
+   * carries the handle: "Make your picks — quietplease.app" set at 56px runs to
+   * ~1000px of a 920px band, and Satori would neither warn nor wrap it usefully.
+   * Stacking keeps the widest thing on the row at ~400px.
+   */
+  ctaLead?: string
 }) {
   const s = SAFE[size]
   const story = size === 'story'
@@ -226,8 +242,31 @@ export function Frame({
             justifyContent: 'space-between',
           }}
         >
-          <div style={{ display: 'flex', fontFamily: BODY, fontWeight: 700, fontSize: story ? 30 : 26, color: C.court }}>
-            {cta}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: ctaLead ? (story ? 6 : 4) : 0 }}>
+            {ctaLead ? (
+              <div
+                style={{
+                  display: 'flex',
+                  fontFamily: DISPLAY,
+                  fontSize: story ? 56 : 40,
+                  color: C.court,
+                  lineHeight: 1.05,
+                }}
+              >
+                {ctaLead}
+              </div>
+            ) : null}
+            <div
+              style={{
+                display: 'flex',
+                fontFamily: BODY,
+                fontWeight: 700,
+                fontSize: story ? 30 : 26,
+                color: ctaLead ? C.ink : C.court,
+              }}
+            >
+              {cta}
+            </div>
           </div>
           <div style={{ display: 'flex', fontFamily: MONO, fontWeight: 500, fontSize: 24, color: C.muted, letterSpacing: 2 }}>
             @quietplease

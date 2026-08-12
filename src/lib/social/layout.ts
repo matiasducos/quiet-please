@@ -51,6 +51,24 @@ export function upcomingCapacity(size: CardSize): number {
 }
 
 /**
+ * How many highlighted ties fit on the "Draw published" card.
+ *
+ * Lower than upcomingCapacity despite the rows being the same shape, because
+ * this card spends its height on two things that card does not have: the
+ * entrants stat block at the top, and a headline-sized "Predictions are open"
+ * line at the bottom that wraps to two lines by design. Between them they cost
+ * roughly the two rows the difference represents.
+ *
+ * Budgeted against the worst case at story: a two-line tournament title, five
+ * rows each carrying a seed badge, and the closing line wrapping to two. That
+ * leaves ~100px of the 1440px content band unspent, which is the margin for a
+ * name that wraps somewhere unexpected.
+ */
+export function drawCapacity(size: CardSize): number {
+  return size === 'story' ? 5 : 3
+}
+
+/**
  * "68% of brackets have Sinner", as it reads on the card and in the picker.
  *
  * The percentage is a share of the brackets that picked THIS match — never of

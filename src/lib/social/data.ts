@@ -49,6 +49,14 @@ export interface CardPlayer {
   seed: number | null
 }
 
+/** A first-round tie the admin can put on the draw card. */
+export interface DrawMatchOption {
+  /** The draw's `matchId` — the handle the admin's match picker selects on. */
+  id: string
+  a: CardPlayer
+  b: CardPlayer
+}
+
 export interface DrawCard {
   kind: 'draw'
   tournament: CardTournament
@@ -57,15 +65,20 @@ export interface DrawCard {
    * counted. A 64-bracket with 8 byes reports 56.
    */
   entrants: number
-  /** Distinct countries in the draw — the one extra fact a draw always supports. */
-  countries: number
   /**
-   * Opening matches in draw-sheet order. Deliberately not filtered to seeded
-   * players: no draw in this database carries a `seed` (the builder never
-   * collects one), so a seeds-only card renders empty. Draw order is the
-   * available proxy — match 1 is the top of the sheet.
+   * Every playable first-round tie, in draw-sheet order — not just the ones on
+   * the card. See RecapCard.matches for why the whole round travels: the studio
+   * lists these for the admin to choose from and the template shows whichever
+   * ones `selectedIds` names, so the picker and the render agree by construction.
+   *
+   * Deliberately not filtered to seeded players: no draw in this database
+   * carries a `seed` (the builder never collects one), so a seeds-only list
+   * renders empty. Draw order is the available proxy — match 1 is the top of the
+   * sheet, which is what the card falls back to when nothing is selected.
    */
-  opening: Array<{ a: CardPlayer; b: CardPlayer }>
+  matches: DrawMatchOption[]
+  /** Ids the admin chose to feature. null means "whatever fits, from the top". */
+  selectedIds: string[] | null
 }
 
 /**
@@ -508,7 +521,18 @@ export async function getSocialCard(
       }
     }
 
-    const countries = new Set([...byId.values()].map(p => p.flag).filter(Boolean)).size
+    // Only ties that will actually be played — "J. Sinner v Bye" is not a
+    // matchup worth putting on a story, or offering the admin as a choice.
+    const matches: DrawMatchOption[] = firstRoundMatches
+      .filter(m => m.player1 != null && m.player2 != null)
+      .map(m => ({ id: m.matchId, a: toCard(m.player1), b: toCard(m.player2) }))
+
+    // Same contract as the recap and up-next cards: an id that is not in this
+    // draw is dropped rather than honoured, since the param is user-supplied and
+    // a stale one would otherwise render an empty card. Draw order is preserved
+    // — the admin picks *which* matches appear, not what order they read in.
+    const inDraw = new Set(matches.map(m => m.id))
+    const requested = (opts.matchIds ?? []).filter(id => inDraw.has(id))
 
     return {
       ok: true,
@@ -516,13 +540,8 @@ export async function getSocialCard(
         kind: 'draw',
         tournament,
         entrants,
-        countries,
-        // Only ties that will actually be played — "J. Sinner v Bye" is not a
-        // matchup worth putting on a story.
-        opening: firstRoundMatches
-          .filter(m => m.player1 != null && m.player2 != null)
-          .slice(0, 6)
-          .map(m => ({ a: toCard(m.player1), b: toCard(m.player2) })),
+        matches,
+        selectedIds: opts.matchIds ? requested : null,
       },
     }
   }
