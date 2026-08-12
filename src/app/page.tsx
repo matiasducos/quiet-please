@@ -59,7 +59,36 @@ const getHomepageData = unstable_cache(
     // elsewhere, and the raw payload has no business in a bundle.
     const recentTournaments = await withRecaps(await getRecentCompleted(3))
 
-    return { liveTournaments: enrichedLive, topPlayers: top ?? [], recentTournaments }
+    // Credibility figures for the hero.
+    //
+    // Deliberately about coverage rather than crowd. The obvious hero stat is
+    // "N predictions locked in", and it would be a lie: of the 108 predictions
+    // on the current live tournament, 100 are auto-generated bot brackets and 8
+    // belong to real people. Any count of predictions, entrants or players is
+    // inflated the same way, so none of them can go on a marketing page.
+    //
+    // Tournaments covered and matches scored are properties of the product, not
+    // claims about how many people use it, so bots cannot distort them.
+    //
+    // head:true keeps these as COUNT queries — a plain select would silently
+    // stop at PostgREST's 1000-row cap and understate matches scored by ~200.
+    const [{ count: tournamentsScored }, { count: allResults }, { count: byeResults }] =
+      await Promise.all([
+        admin.from('tournaments').select('*', { count: 'exact', head: true }).eq('status', 'completed'),
+        admin.from('match_results').select('*', { count: 'exact', head: true }),
+        admin.from('match_results').select('*', { count: 'exact', head: true }).eq('score', 'BYE'),
+      ])
+
+    return {
+      liveTournaments: enrichedLive,
+      topPlayers: top ?? [],
+      recentTournaments,
+      coverage: {
+        tournamentsScored: tournamentsScored ?? 0,
+        // BYEs are bookkeeping rows, not matches anyone played or predicted.
+        matchesScored: (allResults ?? 0) - (byeResults ?? 0),
+      },
+    }
   },
   ['homepage-data'],
   // Tagged so a completion, a revert or an admin rebuild drops this cache
@@ -169,6 +198,95 @@ function MockBracketPreview() {
   )
 }
 
+/**
+ * Compact bracket fragment for the hero.
+ *
+ * The hero was ~700px of pure typography and the product itself did not appear
+ * until roughly 1,500px down the page, so a visitor decided whether to sign up
+ * having never seen the thing they were signing up for.
+ *
+ * Deliberately not MockBracketPreview. That one is four rounds wide and lives
+ * further down beside the copy explaining how the draw works; repeating it here
+ * would be the same picture twice with the second one squashed. This shows the
+ * single idea the hero needs — you pick a winner, it turns green or red and
+ * pays points — and leaves the full diagram to do its own job below.
+ *
+ * md: and up only. On a phone the hero is already tall, and pushing the live
+ * tournaments further down to make room for a picture of a bracket would cost
+ * more than it gains.
+ */
+function HeroBracketFragment() {
+  const green = 'var(--court)'
+  const dim = 'var(--chalk-dim)'
+  const red = '#b91c1c'
+
+  const rows: { name: string; state: 'correct' | 'wrong' | 'winner' | 'plain' }[][] = [
+    [{ name: 'Alcaraz', state: 'correct' }, { name: 'Djokovic', state: 'plain' }],
+    [{ name: 'Sinner', state: 'wrong' }, { name: 'Medvedev', state: 'winner' }],
+    [{ name: 'Zverev', state: 'correct' }, { name: 'Fritz', state: 'plain' }],
+  ]
+
+  const style = (s: string) =>
+    s === 'wrong'  ? { background: '#fef2f2', color: red,   border: '#fca5a5' }
+  : s === 'winner' ? { background: '#edf7f0', color: green, border: green }
+  : s === 'correct'? { background: '#e8f5e9', color: green, border: green }
+  :                  { background: 'white',   color: 'var(--ink)', border: 'transparent' }
+
+  return (
+    <div aria-hidden="true" className="w-full max-w-[320px] mx-auto md:mx-0 md:ml-auto">
+      <div
+        className="rounded-sm border overflow-hidden"
+        style={{ borderColor: dim, background: 'var(--chalk)', padding: '18px' }}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--muted)', letterSpacing: '2px', textTransform: 'uppercase' }}>
+            Your picks
+          </span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', background: '#eaf3de', color: green, padding: '2px 8px', borderRadius: '2px' }}>
+            +360 pts
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          {rows.map((match, i) => (
+            <div key={i} style={{ border: `1px solid ${dim}`, borderRadius: '3px', overflow: 'hidden', background: 'white' }}>
+              {match.map(p => {
+                const s = style(p.state)
+                return (
+                  <div
+                    key={p.name}
+                    style={{
+                      padding: '6px 9px',
+                      fontSize: '12px',
+                      fontFamily: 'var(--font-body)',
+                      background: s.background,
+                      color: s.color,
+                      borderLeft: `3px solid ${s.border}`,
+                      borderBottom: `1px solid ${dim}`,
+                      fontWeight: p.state === 'plain' ? 400 : 500,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <span>{p.name}</span>
+                    {p.state === 'correct' && <span style={{ opacity: 0.7 }}>✓</span>}
+                    {p.state === 'wrong' && <span style={{ opacity: 0.8 }}>✗</span>}
+                    {p.state === 'winner' && <span style={{ opacity: 0.7 }}>✓</span>}
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+
+        <p style={{ fontFamily: 'var(--font-mono)', fontSize: '9.5px', color: 'var(--muted)', marginTop: '12px', letterSpacing: '0.03em' }}>
+          Green = called it · Red = missed
+        </p>
+      </div>
+    </div>
+  )
+}
+
 // ── Structured data ─────────────────────────────────────────────────────────
 // WebApplication describes the product itself; FAQPage targets the questions
 // people actually type ("is it free", "how does scoring work"), which is how a
@@ -229,7 +347,7 @@ const homepageJsonLd = {
 }
 
 export default async function HomePage() {
-  const { liveTournaments, topPlayers, recentTournaments } = await getHomepageData()
+  const { liveTournaments, topPlayers, recentTournaments, coverage } = await getHomepageData()
 
   return (
     <main className="min-h-screen flex flex-col" style={{ background: 'var(--chalk)' }}>
@@ -245,7 +363,9 @@ export default async function HomePage() {
       <MarketingNav />
 
       {/* ── Hero ──────────────────────────────────────────────────── */}
-      <section className="flex flex-col items-center px-4 md:px-8 text-center pt-12 pb-16 md:pt-20 md:pb-24">
+      <section className="px-4 md:px-8 pt-12 pb-16 md:pt-20 md:pb-24">
+      <div className="max-w-5xl mx-auto grid md:grid-cols-[1fr_auto] gap-12 items-center">
+      <div className="flex flex-col items-center md:items-start text-center md:text-left">
         <div
           className="inline-flex items-center gap-2 px-3 py-1 mb-8 rounded-sm text-xs tracking-widest uppercase"
           style={{ background: 'var(--court-dark)', color: 'rgba(255,255,255,0.7)', fontFamily: 'var(--font-mono)' }}
@@ -284,6 +404,26 @@ export default async function HomePage() {
             Challenge a friend — no signup
           </Link>
         </div>
+
+        {/*
+          Credibility line. Says what the product has actually done, not how
+          many people did it — see the note in getHomepageData for why no count
+          of predictions, entrants or players can appear on a marketing page
+          while bot brackets outnumber real ones roughly twelve to one.
+        */}
+        {coverage.matchesScored > 0 && (
+          <p
+            className="mt-8"
+            style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)', letterSpacing: '0.03em' }}
+          >
+            {coverage.tournamentsScored} tournaments scored this season ·{' '}
+            {coverage.matchesScored.toLocaleString('en-US')} matches settled
+          </p>
+        )}
+      </div>
+
+      <HeroBracketFragment />
+      </div>
       </section>
 
       {/* ── Live Right Now ─────────────────────────────────────────── */}
