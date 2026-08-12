@@ -59,7 +59,7 @@ export default function LeaderboardLoading() {
                 <div className="skeleton h-4 w-6" />
               </div>
               <div className="col-span-8 flex items-center">
-                <div className="skeleton h-4" style={{ width: `${60 + (i % 4) * 20}px` }} />
+                <div className="skeleton h-4 max-w-full min-w-0" style={{ width: `${60 + (i % 4) * 20}px` }} />
               </div>
               <div className="col-span-3 flex items-center justify-end">
                 <div className="skeleton h-4 w-10" />

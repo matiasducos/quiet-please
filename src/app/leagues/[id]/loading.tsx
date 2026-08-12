@@ -70,7 +70,7 @@ export default function LeagueDetailLoading() {
                 <div className="skeleton h-4 w-5" />
               </div>
               <div className="col-span-8 flex items-center">
-                <div className="skeleton h-4" style={{ width: `${80 + (i % 3) * 30}px` }} />
+                <div className="skeleton h-4 max-w-full min-w-0" style={{ width: `${80 + (i % 3) * 30}px` }} />
               </div>
               <div className="col-span-3 flex items-center justify-end">
                 <div className="skeleton h-4 w-10" />
@@ -87,7 +87,7 @@ export default function LeagueDetailLoading() {
               <div key={i} className="flex items-center gap-3 px-5 py-3 border-b last:border-0" style={{ borderColor: 'var(--chalk-dim)' }}>
                 <div className="skeleton h-5 w-5 rounded-full flex-shrink-0" />
                 <div className="flex-1">
-                  <div className="skeleton h-4" style={{ width: `${120 + (i % 4) * 40}px` }} />
+                  <div className="skeleton h-4 max-w-full min-w-0" style={{ width: `${120 + (i % 4) * 40}px` }} />
                 </div>
                 <div className="skeleton h-3 w-10 flex-shrink-0" />
               </div>

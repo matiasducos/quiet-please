@@ -485,14 +485,19 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * Round-by-round accuracy. Wrapped in `overflow-x-auto` with a min-width inner
- * grid: seven rounds of three columns do not fit 375px, and letting the table
- * scroll inside its own box is what stops the page body scrolling sideways.
+ * Round-by-round accuracy.
+ *
+ * This used to be `overflow-x-auto` around a `min-w-[420px]` grid, justified as
+ * "seven rounds of three columns do not fit 375px". The rounds are rows, not
+ * columns, so they never affected the width — it is four columns wide (Round,
+ * Picks, Correct, Accuracy), and the widest cell in any of them is the word
+ * "Accuracy" itself. Measured at 375px the whole table needs ~250px, so the
+ * 420px floor was inventing 77px of scroll to hide nothing.
  */
 function RoundTable({ rounds }: { rounds: NonNullable<RecapPayload['rounds']> }) {
   return (
-    <div className="overflow-x-auto rounded-sm border" style={{ borderColor: 'var(--chalk-dim)', background: 'white' }}>
-      <div className="min-w-[420px]">
+    <div className="rounded-sm border" style={{ borderColor: 'var(--chalk-dim)', background: 'white' }}>
+      <div>
         <div
           className="grid grid-cols-4 gap-2 px-4 py-2 border-b"
           style={{

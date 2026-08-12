@@ -36,9 +36,18 @@ export default function NotificationsLoading() {
         <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
           {[0, 1, 2, 3, 4, 5].map(i => (
             <div key={i} className="flex items-start gap-3 px-5 py-4 border-b last:border-0" style={{ borderColor: 'var(--chalk-dim)' }}>
-              <div className="flex-1">
+              {/*
+                min-w-0 because a flex item defaults to min-width:auto, which
+                means it refuses to shrink below its content — and the content
+                here is a bar with an explicit pixel width. Without it the
+                widest bar (300px) sat in a column that is only ~243px at
+                375px, and pushed the flex-shrink-0 timestamp beside it out to
+                x=397. max-w-full on the bar caps it; min-w-0 here is what lets
+                the cap take effect.
+              */}
+              <div className="flex-1 min-w-0">
                 <div className="skeleton h-3 w-24 mb-2" />
-                <div className="skeleton h-4 mb-1" style={{ width: `${180 + (i % 3) * 60}px` }} />
+                <div className="skeleton h-4 mb-1 max-w-full min-w-0" style={{ width: `${180 + (i % 3) * 60}px` }} />
                 <div className="skeleton h-3 w-16 mt-1" />
               </div>
               <div className="skeleton h-3 w-12 flex-shrink-0" />
