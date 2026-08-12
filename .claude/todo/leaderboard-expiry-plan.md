@@ -21,8 +21,16 @@ Status:
   operational requirement, not just a nicety: if the 2027 editions are missing at
   that point, March 2026's points expire on the flat timer even where the real
   2027 edition falls later.
-- §8.2 (all-time vs active in the UI) — not started; `total_points` is populated
-  and correct, but still rendered nowhere.
+- §8.2 — **done** (PR #122). All-time points render in the profile hero, and
+  deliberately only there: the leaderboard, nav and dashboard stay on the rolling
+  figure. (The `total_points` shown in league tables is
+  `league_members.total_points`, an unrelated per-league column.)
+- Admin calendar-gap reminders — **done** (PR #122, migration 082), folded into
+  `expire-points` because Vercel Hobby allows exactly 2 crons and both are used.
+
+⚠️ **One path remains unverified: the `expire-points` route has never executed
+against production.** Only the SQL was tested directly. See the flagged entry at
+the top of [`qa-next.md`](./qa-next.md).
 
 ---
 
