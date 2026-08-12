@@ -70,7 +70,13 @@ export default async function LeaguesPage() {
         <div className="mb-8">
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>Leagues</h1>
           <p style={{ color: 'var(--muted)', fontSize: '0.875rem', lineHeight: 1.65, marginTop: '0.4rem' }}>Create a private league with friends and track who makes the sharpest calls across the full season. Your picks in any tournament you enter count toward the league standings.</p>
-          <div className="flex gap-3 mt-4">
+          {/*
+            Wraps because the three labels do not fit 375px on one line: every
+            button is whitespace-nowrap, so nothing could give and "Create
+            league" — the primary action, and the only one that starts
+            something — ran to x=416 and was clipped by the viewport edge.
+          */}
+          <div className="flex flex-wrap gap-3 mt-4">
             <Link
               href="/leagues/browse"
               className="px-4 py-2 text-sm rounded-sm border transition-colors whitespace-nowrap"

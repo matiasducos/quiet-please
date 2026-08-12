@@ -56,7 +56,7 @@ export default function ProfileLoading() {
           </div>
           {[0, 1, 2, 3, 4].map(i => (
             <div key={i} className="grid grid-cols-12 px-5 py-4 border-b last:border-0" style={{ borderColor: 'var(--chalk-dim)' }}>
-              <div className="col-span-5"><div className="skeleton h-4" style={{ width: `${80 + (i % 3) * 30}px` }} /></div>
+              <div className="col-span-5"><div className="skeleton h-4 max-w-full min-w-0" style={{ width: `${80 + (i % 3) * 30}px` }} /></div>
               <div className="col-span-2 flex justify-center"><div className="skeleton h-4 w-10" /></div>
               <div className="col-span-2 flex justify-center"><div className="skeleton h-4 w-12" /></div>
               <div className="col-span-3 flex justify-end"><div className="skeleton h-4 w-8" /></div>

@@ -74,8 +74,26 @@ two mechanisms disagree, and the result is a scrollbar leading to dead space or 
 content nothing signals is there — every instance above is a variant of it. `scrollbarWidth: 'none'`
 made each one worse by removing the only hint that scrolling was possible.
 
-**Not audited:** `/notifications`, `/friends`, `/leagues` (list), `/c/[code]`, the slam
-landing pages, `/privacy`, `/terms`, `/signup`, `/login`, and the recap page.
+**Second pass (2026-08-12)** finished the remaining routes. Three more defects:
+
+| surface | was |
+|---|---|
+| `/leagues` action row | "Create league" — the primary action — clipped at x=416 |
+| Loading skeletons (4 files) | hardcoded px bars inside flex columns; `/notifications` overflowed to x=397 |
+| Recap round table | `min-w-[420px]` forcing scroll on a table that needs ~250px |
+
+Clean: `/signup`, `/login`, `/privacy`, `/terms`, `/friends`, `/notifications` (loaded),
+`/us-open-tennis-bracket`, `/tournaments/[slug]/[year]/recap` (page body).
+`/c/[code]` was covered during the anonymous-email work.
+
+**Every defect in both passes was one bug**: a fixed width (`min-w-`, an inline `px`, or
+`flex-shrink-0`) inside a container that a media query shrinks. The two disagree and the
+remainder goes to a scrollbar — or off the edge. When adding a fixed width inside a flex
+or grid child, the question to ask is what happens at 375px, and `min-w-0` on the parent
+is usually the missing half.
+
+**Still not audited:** the other three slam landing pages (the US Open one is clean and
+they share a template), `/activity`, `/onboarding`, `/challenges/[id]`, `/leagues/browse`.
 
 ### Facebook OAuth Setup (manual — Matias)
 - Code side done ✅ — button added to login & signup pages
