@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 import type { CardPlayer, DrawCard, UpcomingCard, RecapCard, RecapMatch, CompleteCard, StatsCard, SocialCard, PodiumEntry } from '../data'
 import type { Highlight } from '@/lib/tournaments/recap-types'
-import { recapCapacity, upcomingCapacity, statsCapacity, pickedLabel, favouriteLabel } from '../layout'
+import { drawCapacity, recapCapacity, upcomingCapacity, statsCapacity, pickedLabel, favouriteLabel } from '../layout'
 import { Frame, Eyebrow, Rule, C, DISPLAY, BODY, MONO, type CardSize } from './frame'
 
 /**
@@ -197,25 +197,35 @@ function StatBlock({
 
 function DrawArt({ card, size }: { card: DrawCard; size: CardSize }): ReactElement {
   const story = size === 'story'
-  const opening = card.opening.slice(0, story ? 5 : 3)
+  // Same contract as RecapArt and UpcomingArt: an explicit selection wins,
+  // otherwise the card takes the draw from the top, and the cap applies either
+  // way. Unlike those two there is no "+ N more" line — the un-shown ties are
+  // the other 59 first-round matches of a 128-draw, which is not news, and the
+  // entrants block above already says how big the field is.
+  const selected = card.selectedIds
+  const matches = (selected ? card.matches.filter(m => selected.includes(m.id)) : card.matches).slice(
+    0,
+    drawCapacity(size),
+  )
 
   return (
-    <Frame size={size} eyebrow="The draw is out" tournament={card.tournament} cta="Make your picks — quietplease.app">
+    <Frame
+      size={size}
+      eyebrow="The draw is out"
+      tournament={card.tournament}
+      ctaLead="Make your picks!"
+      cta="Free to play at quietplease.app"
+    >
       <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 44 : 28, flex: 1 }}>
-        <StatBlock
-          value={String(card.entrants)}
-          label="players in the draw"
-          story={story}
-          note={card.countries > 1 ? `${card.countries} countries` : undefined}
-        />
+        <StatBlock value={String(card.entrants)} label="players in the draw" story={story} />
 
-        {opening.length > 0 && (
+        {matches.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 22 : 15 }}>
             <Eyebrow color={C.muted} size={story ? 22 : 19}>
-              Top of the draw
+              Highlighted matches
             </Eyebrow>
-            {opening.map((m, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            {matches.map(m => (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                 {/* Seed badges appear only where the draw actually recorded one. */}
                 {m.a.seed != null && <SeedBadge seed={m.a.seed} size={story ? 40 : 34} />}
                 <PlayerLine player={m.a} size={story ? 34 : 28} max={16} />
@@ -227,12 +237,19 @@ function DrawArt({ card, size }: { card: DrawCard; size: CardSize }): ReactEleme
           </div>
         )}
 
+        {/* The card's actual message, set at headline weight rather than as a
+            caption. `flexDirection: column` is what lets it wrap: Satori will
+            break the line either way, but a row-direction flex container lays
+            the fragments out side by side and they run off the canvas. */}
         <div
           style={{
             display: 'flex',
+            flexDirection: 'column',
             marginTop: 'auto',
             fontFamily: BODY,
-            fontSize: story ? 30 : 25,
+            fontWeight: 700,
+            fontSize: story ? 60 : 42,
+            lineHeight: 1.15,
             color: C.ink,
           }}
         >

@@ -2,8 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { recapCapacity, upcomingCapacity, pickedLabel } from '@/lib/social/layout'
-import { listRecapMatches, listUpcomingMatches, type RecapMatchList, type UpcomingMatchList } from './actions'
+import { drawCapacity, recapCapacity, upcomingCapacity, pickedLabel } from '@/lib/social/layout'
+import {
+  listDrawMatches,
+  listRecapMatches,
+  listUpcomingMatches,
+  type DrawMatchList,
+  type RecapMatchList,
+  type UpcomingMatchList,
+} from './actions'
 
 type Kind = 'draw' | 'upcoming' | 'recap' | 'complete' | 'stats'
 type Size = 'story' | 'square'
@@ -178,6 +185,49 @@ export default function SocialStudio({
     [upChosenIds],
   )
 
+  // ── Draw published ──────────────────────────────────────────────────────────
+  // The only picker with no round to key on: the draw card is always the first
+  // round, so the list is fetched once per visit to the card rather than per
+  // control change.
+  const [drawSelected, setDrawSelected] = useState<string[] | null>(null)
+  const [drawList, setDrawList] = useState<{ data?: DrawMatchList; error?: string } | null>(null)
+
+  const drawLoading = kind === 'draw' && !drawList
+
+  useEffect(() => {
+    if (kind !== 'draw') return
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const res = await listDrawMatches(tournamentId)
+        if (cancelled) return
+        setDrawList(res.ok ? { data: res.data } : { error: res.error })
+      } catch (e) {
+        if (!cancelled) setDrawList({ error: e instanceof Error ? e.message : 'Could not load matches' })
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [tournamentId, kind])
+
+  const drawMatches = useMemo(() => drawList?.data?.matches ?? [], [drawList])
+  const drawCap = drawCapacity(size)
+
+  const drawChosenIds = useMemo(() => {
+    const pool = drawSelected === null ? drawMatches : drawMatches.filter(m => drawSelected.includes(m.id))
+    return pool.map(m => m.id).slice(0, drawCap)
+  }, [drawMatches, drawSelected, drawCap])
+
+  const toggleDrawMatch = useCallback(
+    (id: string) => {
+      setDrawSelected(drawChosenIds.includes(id) ? drawChosenIds.filter(x => x !== id) : [...drawChosenIds, id])
+    },
+    [drawChosenIds],
+  )
+
   const src = useMemo(() => {
     const p = new URLSearchParams({ kind, size })
     if (kind === 'recap' && round) p.set('round', round)
@@ -191,9 +241,25 @@ export default function SocialStudio({
     // identical card the moment the fetch resolves.
     if (kind === 'upcoming' && upRound) p.set('round', upRound)
     if (kind === 'upcoming' && upSelected !== null) p.set('matches', upChosenIds.join(','))
+    // Same omission again: the draw card's default is "the top of the sheet",
+    // which is exactly what the server renders with no `matches` param at all.
+    if (kind === 'draw' && drawSelected !== null) p.set('matches', drawChosenIds.join(','))
     if (showNames) p.set('names', '1')
     return `/admin/tournaments/${tournamentId}/social/image?${p}`
-  }, [tournamentId, kind, size, round, showNames, selected, chosenIds, upRound, upSelected, upChosenIds])
+  }, [
+    tournamentId,
+    kind,
+    size,
+    round,
+    showNames,
+    selected,
+    chosenIds,
+    upRound,
+    upSelected,
+    upChosenIds,
+    drawSelected,
+    drawChosenIds,
+  ])
 
   // The preview and the download share one fetch of one render. Pointing an
   // <img> straight at the route would be simpler, but then a failed render shows
@@ -358,6 +424,41 @@ export default function SocialStudio({
                   <option value="">Loading…</option>
                 )}
               </select>
+            </Field>
+          )}
+
+          {kind === 'draw' && (
+            <Field
+              label={drawLoading || drawList?.error ? 'Matches' : `Highlighted matches — ${drawChosenIds.length}/${drawCap}`}
+            >
+              <MatchPicker
+                loading={drawLoading}
+                error={drawList?.error}
+                capacity={drawCap}
+                chosenIds={drawChosenIds}
+                onToggle={toggleDrawMatch}
+                onReset={() => setDrawSelected(null)}
+                onClear={() => setDrawSelected([])}
+                empty="No playable first-round ties in this draw."
+                rows={drawMatches.map((m, i) => ({
+                  id: m.id,
+                  title: (
+                    <>
+                      {m.a} <span style={{ color: 'var(--muted)' }}>v</span> {m.b}
+                    </>
+                  ),
+                  // Draw position, because there is nothing else true to say: the
+                  // first round has no results and no picks yet, and no draw in
+                  // this database records a seed (see DrawCard.matches), so the
+                  // seed line is present only on the rare one that does.
+                  subtitle: [
+                    m.seeds.some(s => s != null) ? `Seeds ${m.seeds.map(s => s ?? '—').join(' / ')}` : null,
+                    `${i + 1} of ${drawMatches.length} in draw order`,
+                  ]
+                    .filter(Boolean)
+                    .join('  ·  '),
+                }))}
+              />
             </Field>
           )}
 
