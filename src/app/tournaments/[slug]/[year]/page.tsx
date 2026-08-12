@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Suspense } from 'react'
+import { Fragment, Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -248,6 +248,12 @@ async function TourSection({
   // Same derivation the "Your tournament" panel uses, over the same rows.
   const eliminatedIn = eliminationRounds(detail.results)
 
+  // Who is left. On a live edition this is the one fact a visitor is scanning
+  // the 96-row field list for, so it gets answered above the list instead of
+  // being something you find by eye. Once the tournament is done everyone is
+  // out bar the champion, who already has his own block further up.
+  const stillIn = isDone ? [] : detail.participants.filter(p => !eliminatedIn.has(p.externalId))
+
   return (
     <section className="mb-12">
       <div className="rounded-sm border bg-white overflow-hidden mb-8" style={{ borderColor: 'var(--chalk-dim)' }}>
@@ -350,9 +356,36 @@ async function TourSection({
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.25rem' }}>
             Players in the {series.name} {year} draw
           </h2>
-          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)', marginBottom: '1rem' }}>
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)', marginBottom: stillIn.length > 0 ? '0.6rem' : '1rem' }}>
             {detail.participants.length} players
+            {detail.results.length > 0 && !isDone && (
+              <> · <span style={{ color: '#1a6b3c', fontWeight: 600 }}>{stillIn.length} still in</span></>
+            )}
           </p>
+
+          {/* Naming them is only readable while the field is short. Early on
+              "48 still in" is the whole answer and a list of 48 is just the
+              same grid again, so the names appear once the draw is down to a
+              glanceable size. */}
+          {stillIn.length > 0 && stillIn.length <= 8 && (
+            <p
+              className="mb-4 rounded-sm px-3 py-2"
+              style={{ background: '#eef6f1', fontSize: '0.82rem', lineHeight: 1.6 }}
+            >
+              {stillIn.map((p, i) => (
+                /* The separator sits outside the nowrap span on purpose: it is
+                   the only place the line is allowed to break, and adjacent
+                   JSX elements produce no whitespace of their own. */
+                <Fragment key={p.externalId}>
+                  {i > 0 && <span style={{ color: 'var(--muted)' }}> · </span>}
+                  <span style={{ whiteSpace: 'nowrap' }}>
+                    <span aria-hidden="true">{nameToFlag(p.country) ?? ''} </span>
+                    <strong>{p.name}</strong>
+                  </span>
+                </Fragment>
+              ))}
+            </p>
+          )}
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1.5" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {detail.participants.map(p => (
               <ParticipantRow
@@ -454,6 +487,17 @@ function ParticipantRow({
 }) {
   const flag = nameToFlag(player.country)
 
+  // Out players are the overwhelming majority — 92 of 96 by the quarter-finals,
+  // and all but one on a finished edition. Tinting *them* would paint the whole
+  // list and leave the handful that matter defined by the absence of colour, so
+  // the emphasis runs the other way: the many recede, the few are marked.
+  const isOut = showStatus && !isChampion && (outRound !== null || isDone)
+  const highlight = isChampion
+    ? { bg: '#fdf1e7', rail: 'var(--clay)' }
+    : showStatus && !isOut
+      ? { bg: '#eef6f1', rail: '#1a6b3c' }
+      : null
+
   // Four states, and the awkward one is last: a player with no recorded loss on
   // a finished tournament who is not the champion. Their defeat went unrecorded
   // — a withdrawal, or a missing result — and only one player can still be
@@ -469,15 +513,32 @@ function ParticipantRow({
           : { label: 'in draw', color: '#1a6b3c', weight: 400 }
 
   return (
-    <li className="flex items-baseline justify-between gap-2" style={{ fontSize: '0.85rem' }}>
+    <li
+      className="flex items-baseline justify-between gap-2 rounded-sm px-1.5 -mx-1.5 py-0.5"
+      style={{
+        fontSize: '0.85rem',
+        background: highlight?.bg,
+        // Inset rather than a real border: a left border would shift the name
+        // by 2px on highlighted rows and break the column alignment.
+        boxShadow: highlight ? `inset 2px 0 0 ${highlight.rail}` : undefined,
+      }}
+    >
       <span className="flex items-baseline gap-1.5 min-w-0">
         {/* Fixed width so names line up whether or not the country resolved to a
             flag — `nameToFlag` returns null for unmapped countries and for the
             "World" placeholder. */}
-        <span aria-hidden="true" style={{ width: '1.15em', flexShrink: 0, textAlign: 'center' }}>
+        <span aria-hidden="true" style={{ width: '1.15em', flexShrink: 0, textAlign: 'center', opacity: isOut ? 0.45 : 1 }}>
           {flag ?? ''}
         </span>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span
+          style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            color: isOut ? 'var(--muted)' : undefined,
+            fontWeight: highlight ? 600 : undefined,
+          }}
+        >
           {player.name}
         </span>
       </span>
