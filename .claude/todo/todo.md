@@ -120,17 +120,26 @@ Verified against prod Supabase: the request is well-formed and fails only with
 `"Unsupported provider: provider is not enabled"`. Remaining steps are all in
 external dashboards:
 
-- **TODO:** Create Facebook App at developers.facebook.com (Consumer type)
-- **TODO:** Enable Facebook Login, set redirect URI:
+- ✅ Migration 083 applied to prod (2026-08-13). Signup trigger re-verified live
+  on the bot domain afterwards — `auth.users` → `public.users` still mirrors
+- **TODO:** Create the app at developers.facebook.com → My Apps → Create App.
+  The old **Consumer/Business app-type picker no longer exists** — the flow is
+  now use-case based. Choose **"Authenticate and request data from users with
+  Facebook Login"**. A business portfolio is not required
+- **TODO:** Facebook Login → **Settings** (skip the Quickstart) → paste into
+  **Valid OAuth Redirect URIs**:
   `https://nqmjrwqcqnxoocodgedj.supabase.co/auth/v1/callback`
-- **TODO:** Copy App ID + App Secret → Supabase Dashboard → Auth → Providers →
-  Facebook → Enable + paste
-- **TODO:** Confirm the `email` permission is granted for public users — Facebook
-  gates it behind App Review for anyone who is not an app admin/tester. Without
-  it *every* real signup hits the 083 guard
-- **TODO:** Set Facebook app to **Live mode** (not development)
-- **TODO:** Apply migration 083 in the Supabase dashboard before enabling the
-  provider
+- **TODO:** Use cases → *Authentication and Account Creation* → Edit → confirm
+  **both** `public_profile` and `email` read "Ready for testing"; Add `email` if
+  absent. Without `email` every real signup hits the 083 guard
+- **TODO:** App settings → Basic → copy App ID + App Secret straight into
+  Supabase → Auth → Providers → Facebook → Enable. Never paste the secret into
+  chat or a file
+- **TODO:** Set the app to **Live mode**. This — not App Review — is the gate
+  that matters: `public_profile` + `email` on this use case generally need no
+  review, but in Development mode only accounts with a role on the app can sign
+  in, so it works for you and fails for everyone else. App settings → Basic also
+  wants a Privacy Policy URL before going Live: `https://quietplease.app/privacy`
 
 ---
 
