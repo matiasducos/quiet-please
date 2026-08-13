@@ -479,13 +479,29 @@ export async function GET(request: Request) {
 
     // 9b. Recalculate rankings only for users who got new points this run
     // (targeted instead of scanning all users with points)
-    const rankUserIds = userIds
-    for (let i = 0; i < rankUserIds.length; i += 50) {
-      await Promise.all(
-        rankUserIds.slice(i, i + 50).map(userId =>
-          supabase.rpc('recalculate_ranking_points', { p_user_id: userId })
-        )
-      )
+    //
+    // One set-based call rather than one RPC per user. The per-user function
+    // was the heaviest workload in the database — 3,452 calls and 56.6s of
+    // lifetime execution time, most of it this loop — because scoring 18
+    // users meant 18 round trips and 36 statements to touch 18 rows. 084 does
+    // the same work in a single statement; see it for why the semantics are
+    // identical and why users with no qualifying predictions still get
+    // written rather than skipped.
+    //
+    // Chunked so one enormous run cannot build a single unbounded UPDATE. The
+    // ids travel in the POST body, not the URL, so this is about bounding the
+    // transaction, not the `.in()` overflow that constrains the reads above.
+    for (let i = 0; i < userIds.length; i += 1000) {
+      const { error: rankErr } = await supabase.rpc('recalculate_ranking_points_bulk', {
+        p_user_ids: userIds.slice(i, i + 1000),
+      })
+      if (rankErr) {
+        // Loud, but not fatal: the ledger rows are already written, so the
+        // next run recomputes from them. Swallowing this would leave every
+        // affected user's public ranking silently stale instead.
+        console.error('[award-points] bulk ranking recalculation failed:', rankErr)
+        Sentry.captureException(rankErr)
+      }
     }
 
     // ── 9c. Worldwide rank + movement per tournament, for the points email ──
