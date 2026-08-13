@@ -1263,13 +1263,18 @@ export async function rerunTournamentPoints(
   if (anonErr) return { ok: false, error: `anonymous challenges reopen: ${anonErr.message}` }
 
   // ── 6. Targeted ranking recalc for every previously-affected user ─────────
+  // One set-based call (084) rather than one RPC per user — same reason as
+  // the award-points cron, and this path can affect far more users at once
+  // than a nightly scoring run does.
   const userIds = Array.from(affectedUsers)
-  for (let i = 0; i < userIds.length; i += 50) {
-    await Promise.all(
-      userIds.slice(i, i + 50).map(uid =>
-        admin.rpc('recalculate_ranking_points', { p_user_id: uid })
-      )
-    )
+  for (let i = 0; i < userIds.length; i += 1000) {
+    const { error: rankErr } = await admin.rpc('recalculate_ranking_points_bulk', {
+      p_user_ids: userIds.slice(i, i + 1000),
+    })
+    // Returned, not logged: this runs inside an admin repair flow whose whole
+    // purpose is to leave rankings correct. Reporting success on a failed
+    // recalculation would be worse than the fault it was invoked to fix.
+    if (rankErr) return { ok: false, error: `ranking recalculation: ${rankErr.message}` }
   }
 
   // ── 7. Targeted league recalc for those users' memberships ────────────────

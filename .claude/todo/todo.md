@@ -96,11 +96,50 @@ is usually the missing half.
 they share a template), `/activity`, `/onboarding`, `/challenges/[id]`, `/leagues/browse`.
 
 ### Facebook OAuth Setup (manual — Matias)
-- Code side done ✅ — button added to login & signup pages
-- **TODO:** Create Facebook App at developers.facebook.com (Consumer type)
-- **TODO:** Enable Facebook Login product, set redirect URI: `https://<project>.supabase.co/auth/v1/callback`
-- **TODO:** Copy App ID + App Secret → Supabase Dashboard → Auth → Providers → Facebook → Enable + paste
-- **TODO:** Set Facebook app to **Live mode** (not development)
+
+Code side done ✅ (2026-08-13) — the earlier tick was optimistic: the *handlers*
+existed but both buttons were commented out, so nothing rendered. Now shipped:
+
+- Buttons render on `/login` and `/signup`, verified at 375px, no overflow
+- Signup keeps the consent gate — clicking Facebook without ticking the box
+  refuses and says why, verified rather than assumed
+- `redirect_to` carries `?consent=<TERMS_VERSION>`, so a Facebook signup records
+  `terms_accepted_at` exactly like Google. (Signing in from `/login` still leaves
+  it NULL — by design, same as Google; see `legal_todo.md`.)
+- Migration **083** rejects a provider that returns no email. `users.email` is
+  `NOT NULL` and Facebook can legitimately return nothing — a phone-registered
+  account, or one where the person unticks the email permission. Without the
+  guard that was a NOT NULL violation *after* `auth.users` was written
+- `/login` now renders `?error=` from `/auth/callback`, which it silently
+  swallowed before. That bug affected Google too — a failed OAuth round trip
+  bounced back to a page that looked entirely blank
+- Legal copy needed no change: `/privacy` and `/terms` already name Meta as a
+  processor, so `CONSENT_VERSION` does **not** need bumping
+
+Verified against prod Supabase: the request is well-formed and fails only with
+`"Unsupported provider: provider is not enabled"`. Remaining steps are all in
+external dashboards:
+
+- ✅ Migration 083 applied to prod (2026-08-13). Signup trigger re-verified live
+  on the bot domain afterwards — `auth.users` → `public.users` still mirrors
+- **TODO:** Create the app at developers.facebook.com → My Apps → Create App.
+  The old **Consumer/Business app-type picker no longer exists** — the flow is
+  now use-case based. Choose **"Authenticate and request data from users with
+  Facebook Login"**. A business portfolio is not required
+- **TODO:** Facebook Login → **Settings** (skip the Quickstart) → paste into
+  **Valid OAuth Redirect URIs**:
+  `https://nqmjrwqcqnxoocodgedj.supabase.co/auth/v1/callback`
+- **TODO:** Use cases → *Authentication and Account Creation* → Edit → confirm
+  **both** `public_profile` and `email` read "Ready for testing"; Add `email` if
+  absent. Without `email` every real signup hits the 083 guard
+- **TODO:** App settings → Basic → copy App ID + App Secret straight into
+  Supabase → Auth → Providers → Facebook → Enable. Never paste the secret into
+  chat or a file
+- **TODO:** Set the app to **Live mode**. This — not App Review — is the gate
+  that matters: `public_profile` + `email` on this use case generally need no
+  review, but in Development mode only accounts with a role on the app can sign
+  in, so it works for you and fails for everyone else. App settings → Basic also
+  wants a Privacy Policy URL before going Live: `https://quietplease.app/privacy`
 
 ---
 

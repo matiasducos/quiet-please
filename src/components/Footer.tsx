@@ -44,6 +44,10 @@ export default function Footer() {
           <div className="flex items-center flex-wrap gap-2">
             <Link href="/terms" className="inline-flex items-center min-h-[44px] px-2" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Terms</Link>
             <Link href="/privacy" className="inline-flex items-center min-h-[44px] px-2" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Privacy</Link>
+            {/* Meta requires a deletion URL reachable without an account, and a
+                sitemap entry with nothing linking to it is an orphan — one link
+                settles both. */}
+            <Link href="/data-deletion" className="inline-flex items-center min-h-[44px] px-2" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Delete data</Link>
             <CookieSettingsLink />
             <a href="mailto:support@quietplease.app" className="inline-flex items-center min-h-[44px] px-2" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Contact</a>
           </div>
