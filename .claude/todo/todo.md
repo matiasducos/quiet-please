@@ -96,11 +96,41 @@ is usually the missing half.
 they share a template), `/activity`, `/onboarding`, `/challenges/[id]`, `/leagues/browse`.
 
 ### Facebook OAuth Setup (manual — Matias)
-- Code side done ✅ — button added to login & signup pages
+
+Code side done ✅ (2026-08-13) — the earlier tick was optimistic: the *handlers*
+existed but both buttons were commented out, so nothing rendered. Now shipped:
+
+- Buttons render on `/login` and `/signup`, verified at 375px, no overflow
+- Signup keeps the consent gate — clicking Facebook without ticking the box
+  refuses and says why, verified rather than assumed
+- `redirect_to` carries `?consent=<TERMS_VERSION>`, so a Facebook signup records
+  `terms_accepted_at` exactly like Google. (Signing in from `/login` still leaves
+  it NULL — by design, same as Google; see `legal_todo.md`.)
+- Migration **083** rejects a provider that returns no email. `users.email` is
+  `NOT NULL` and Facebook can legitimately return nothing — a phone-registered
+  account, or one where the person unticks the email permission. Without the
+  guard that was a NOT NULL violation *after* `auth.users` was written
+- `/login` now renders `?error=` from `/auth/callback`, which it silently
+  swallowed before. That bug affected Google too — a failed OAuth round trip
+  bounced back to a page that looked entirely blank
+- Legal copy needed no change: `/privacy` and `/terms` already name Meta as a
+  processor, so `CONSENT_VERSION` does **not** need bumping
+
+Verified against prod Supabase: the request is well-formed and fails only with
+`"Unsupported provider: provider is not enabled"`. Remaining steps are all in
+external dashboards:
+
 - **TODO:** Create Facebook App at developers.facebook.com (Consumer type)
-- **TODO:** Enable Facebook Login product, set redirect URI: `https://<project>.supabase.co/auth/v1/callback`
-- **TODO:** Copy App ID + App Secret → Supabase Dashboard → Auth → Providers → Facebook → Enable + paste
+- **TODO:** Enable Facebook Login, set redirect URI:
+  `https://nqmjrwqcqnxoocodgedj.supabase.co/auth/v1/callback`
+- **TODO:** Copy App ID + App Secret → Supabase Dashboard → Auth → Providers →
+  Facebook → Enable + paste
+- **TODO:** Confirm the `email` permission is granted for public users — Facebook
+  gates it behind App Review for anyone who is not an app admin/tester. Without
+  it *every* real signup hits the 083 guard
 - **TODO:** Set Facebook app to **Live mode** (not development)
+- **TODO:** Apply migration 083 in the Supabase dashboard before enabling the
+  provider
 
 ---
 
