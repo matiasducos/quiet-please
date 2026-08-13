@@ -7,6 +7,8 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import LeaderboardTable from './LeaderboardTable'
 import LeaderboardSelector from './LeaderboardSelector'
+import LeaderboardSearch from './LeaderboardSearch'
+import Pagination from './Pagination'
 import ScopeSegmented from './ScopeSegmented'
 import CountryFlag from '@/components/CountryFlag'
 import { formatPoints } from '@/lib/utils/format'
@@ -18,6 +20,24 @@ export const metadata: Metadata = {
 
 type Scope   = 'worldwide' | 'country' | 'city' | 'community'
 type Circuit = 'both' | 'atp' | 'wta'
+
+/**
+ * The column the board is sorted and ranked by. A union rather than a plain
+ * string so `user[pointsField]` type-checks — the circuit toggle swaps this
+ * column in the list query, the rank count and the search alike, and they have
+ * to stay in agreement or a rank is measured against the wrong ladder.
+ */
+type PointsField = 'ranking_points' | 'atp_ranking_points' | 'wta_ranking_points'
+
+type LeaderboardUser = {
+  id: string
+  username: string
+  ranking_points: number
+  atp_ranking_points: number
+  wta_ranking_points: number
+  country: string | null
+  city: string | null
+}
 
 type BreakdownEntry = {
   tournament_id: string
@@ -42,6 +62,12 @@ type UserStats = {
   correctPicks: number
   streakPower: number
 }
+
+/** Prediction ids per `.in()` filter — bounded so the request URL stays short. */
+const LEDGER_CHUNK = 200
+/** PostgREST's own response cap. Paging in this size means one extra round trip
+ *  only when a result set actually reaches it. */
+const LEDGER_PAGE = 1000
 
 /**
  * Build per-user aggregates + per-(user, tournament) stats for the
@@ -91,11 +117,26 @@ async function buildStats(
 
   // Every prediction (including zero-pointers) so the accuracy denominator
   // counts ALL picks the user made, not just the ones that won points.
-  const { data: allPreds } = await supabase
-    .from('predictions')
-    .select('id, user_id, tournament_id, picks')
-    .in('user_id', userIds)
-    .is('challenge_id', null)
+  // Paged for the same reason as the ledger below: 50 players' brackets are
+  // already at 459 rows and climb with every tournament played, and crossing
+  // 1000 would silently shrink the denominator instead of erroring.
+  const allPreds: { id: string; user_id: string; tournament_id: string; picks: unknown }[] = []
+  for (let offset = 0; ; offset += LEDGER_PAGE) {
+    const { data, error } = await supabase
+      .from('predictions')
+      .select('id, user_id, tournament_id, picks')
+      .in('user_id', userIds)
+      .is('challenge_id', null)
+      .order('id', { ascending: true })
+      .range(offset, offset + LEDGER_PAGE - 1)
+
+    if (error) {
+      console.error('[leaderboard] predictions page failed:', error.message)
+      break
+    }
+    allPreds.push(...(data ?? []))
+    if ((data?.length ?? 0) < LEDGER_PAGE) break
+  }
 
   for (const pred of allPreds ?? []) {
     if (!statsByUser[pred.user_id]) {
@@ -118,37 +159,61 @@ async function buildStats(
   const globalPredIds = (allPreds ?? []).map((p: any) => p.id).filter(Boolean)
   const streakAggregate: Record<string, { totalPts: number; basePts: number }> = {}
 
-  for (let i = 0; i < globalPredIds.length; i += 200) {
-    const chunk = globalPredIds.slice(i, i + 200)
-    const { data: ledgerData } = await supabase
-      .from('point_ledger')
-      .select('user_id, tournament_id, points, streak_multiplier')
-      .in('prediction_id', chunk)
+  for (let i = 0; i < globalPredIds.length; i += LEDGER_CHUNK) {
+    const chunk = globalPredIds.slice(i, i + LEDGER_CHUNK)
 
-    for (const row of ledgerData ?? []) {
-      if (!statsByUser[row.user_id]) {
-        statsByUser[row.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0, streakPower: 1 }
+    /*
+     * Paged, not a single read.
+     *
+     * PostgREST answers with at most 1000 rows and sets no error when it
+     * truncates, so this used to lose data in total silence: a 200-prediction
+     * chunk really holds ~1300 ledger rows, and the ~300 past the cap came
+     * straight off ACCURACY and STREAK POWER for whichever users happened to
+     * sort last inside the chunk. The board read 9% where the true figure was
+     * 24%. Page until a short page comes back — that is the only signal
+     * PostgREST gives that a result set is complete.
+     */
+    for (let offset = 0; ; offset += LEDGER_PAGE) {
+      const { data: ledgerData, error } = await supabase
+        .from('point_ledger')
+        .select('user_id, tournament_id, points, streak_multiplier')
+        .in('prediction_id', chunk)
+        // Range paging needs a total order, or pages can repeat and skip rows.
+        .order('id', { ascending: true })
+        .range(offset, offset + LEDGER_PAGE - 1)
+
+      if (error) {
+        console.error('[leaderboard] ledger page failed:', error.message)
+        break
       }
-      const pts = row.points ?? 0
-      if (pts <= 0) continue
 
-      statsByUser[row.user_id].correctPicks++
-      const mult = row.streak_multiplier ?? 1
-      const base = pts / mult
+      for (const row of ledgerData ?? []) {
+        if (!statsByUser[row.user_id]) {
+          statsByUser[row.user_id] = { tournaments: 0, totalPicks: 0, correctPicks: 0, streakPower: 1 }
+        }
+        const pts = row.points ?? 0
+        if (pts <= 0) continue
 
-      if (!streakAggregate[row.user_id]) streakAggregate[row.user_id] = { totalPts: 0, basePts: 0 }
-      streakAggregate[row.user_id].totalPts += pts
-      streakAggregate[row.user_id].basePts += base
+        statsByUser[row.user_id].correctPicks++
+        const mult = row.streak_multiplier ?? 1
+        const base = pts / mult
 
-      if (!correctByUT[row.user_id]) correctByUT[row.user_id] = {}
-      correctByUT[row.user_id][row.tournament_id] =
-        (correctByUT[row.user_id][row.tournament_id] ?? 0) + 1
+        if (!streakAggregate[row.user_id]) streakAggregate[row.user_id] = { totalPts: 0, basePts: 0 }
+        streakAggregate[row.user_id].totalPts += pts
+        streakAggregate[row.user_id].basePts += base
 
-      if (!streakByUT[row.user_id]) streakByUT[row.user_id] = {}
-      const ut = streakByUT[row.user_id][row.tournament_id] ?? { totalPts: 0, basePts: 0 }
-      ut.totalPts += pts
-      ut.basePts  += base
-      streakByUT[row.user_id][row.tournament_id] = ut
+        if (!correctByUT[row.user_id]) correctByUT[row.user_id] = {}
+        correctByUT[row.user_id][row.tournament_id] =
+          (correctByUT[row.user_id][row.tournament_id] ?? 0) + 1
+
+        if (!streakByUT[row.user_id]) streakByUT[row.user_id] = {}
+        const ut = streakByUT[row.user_id][row.tournament_id] ?? { totalPts: 0, basePts: 0 }
+        ut.totalPts += pts
+        ut.basePts  += base
+        streakByUT[row.user_id][row.tournament_id] = ut
+      }
+
+      if ((ledgerData?.length ?? 0) < LEDGER_PAGE) break
     }
   }
 
@@ -171,101 +236,272 @@ async function buildStats(
   return { breakdownByUser, statsByUser }
 }
 
-// User-specific community leaderboard: fetches the accepted-friend graph for
-// `userId`, includes self, then builds the same breakdown/stats as the global
-// view but limited to that set. Cache key includes userId so each user gets
-// their own slot — the friend set is small (typically ≤ 50) so this is cheap.
-function getCommunityLeaderboardData(userId: string, pointsField: string) {
+const PAGE_SIZE = 50
+/** Max search hits shown. Each hit costs one extra rank count, so it is capped. */
+const SEARCH_LIMIT = 10
+
+const USER_COLS = 'id, username, ranking_points, atp_ranking_points, wta_ranking_points, country, city'
+
+/**
+ * Scope filter for every `users` read on this page — the paginated list, the
+ * rank counts and the search all go through it.
+ *
+ * That shared path is the point: a rank is only meaningful relative to the
+ * board it was measured on. A search that ignored scope would report a player
+ * as #12 worldwide while the country board they are looking at has them at #3.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- PostgREST's
+// builder returns `this` through a chain of generics that cannot be named at
+// this call site; the filters applied below are all statically known.
+function applyScopeFilter(
+  query: any,
+  scope: Scope,
+  country: string | null,
+  city: string | null,
+  communityIds: string[] | null,
+) {
+  if (scope === 'country' && country) return query.eq('country', country)
+  if (scope === 'city' && country && city) return query.eq('country', country).eq('city', city)
+  if (scope === 'community' && communityIds) return query.in('id', communityIds)
+  return query
+}
+
+/**
+ * 1-based position of one player on the board.
+ *
+ * Counts everyone above them using the *same* tiebreak the list query uses:
+ * more points, or equal points and a lower id. Counting `points > mine` alone
+ * returns the best rank shared by everyone tied — with ~30 players sitting on
+ * zero points that is a number no row in the table actually occupies, so
+ * "you are #125" would point at someone else entirely.
+ */
+async function fetchRank(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- takes either
+  // the request-scoped or the admin client; they differ only in their auth.
+  supabase: any,
+  pointsField: PointsField,
+  points: number,
+  userId: string,
+  scope: Scope,
+  country: string | null,
+  city: string | null,
+  communityIds: string[] | null,
+): Promise<number | null> {
+  let query = supabase
+    .from('users')
+    .select('id', { count: 'exact', head: true })
+    .not('username', 'is', null)
+  query = applyScopeFilter(query, scope, country, city, communityIds)
+  query = query.or(`${pointsField}.gt.${points},and(${pointsField}.eq.${points},id.lt.${userId})`)
+
+  const { count, error } = await query
+  if (error) {
+    console.error('[leaderboard] rank count failed:', error.message)
+    return null
+  }
+  return (count ?? 0) + 1
+}
+
+/** Point-scoring predictions for the rows on screen — seeds the expand drawer. */
+async function fetchScoringPredictions(
+  supabase: ReturnType<typeof createAdminClient>,
+  userIds: string[],
+): Promise<unknown[]> {
+  if (userIds.length === 0) return []
+  const { data, error } = await supabase
+    .from('predictions')
+    .select('user_id, tournament_id, points_earned, expires_at, tournaments(name, tour, location, flag_emoji)')
+    .in('user_id', userIds)
+    .is('challenge_id', null)
+    .gt('points_earned', 0)
+    .order('points_earned', { ascending: false })
+    .limit(500)
+
+  if (error) {
+    console.error('[leaderboard] scoring predictions failed:', error.message)
+    return []
+  }
+  return data ?? []
+}
+
+/**
+ * Accepted-friend ids for `userId`, self included.
+ *
+ * Split out of the board fetch so the friend graph is read once per user rather
+ * than once per page of their community board — and so the search path can
+ * scope itself to the same set without duplicating the query.
+ */
+function getCommunityIds(userId: string) {
   return unstable_cache(
     async () => {
       const supabase = createAdminClient()
-
-      // 1. Fetch accepted friend IDs (either side of the friendship).
-      const { data: friendships } = await supabase
+      const { data: friendships, error } = await supabase
         .from('friendships')
         .select('requester_id, addressee_id')
         .eq('status', 'accepted')
         .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
 
-      const friendIds = new Set<string>([userId])
-      for (const f of friendships ?? []) {
-        friendIds.add(f.requester_id === userId ? f.addressee_id : f.requester_id)
+      if (error) {
+        console.error('[leaderboard] friendships failed:', error.message)
+        return [userId]
       }
 
-      // 2. Fetch user rows, ordered by points.
-      const { data: users } = await supabase
-        .from('users')
-        .select('id, username, ranking_points, atp_ranking_points, wta_ranking_points, country, city')
-        .in('id', Array.from(friendIds))
-        .not('username', 'is', null)
-        .order(pointsField, { ascending: false })
-        .limit(50)
-
-      // 3. Build breakdown + stats — shared helper handles the per-user and
-      //    per-(user, tournament) math.
-      const userIds = (users ?? []).map(u => u.id)
-      const { data: userPredictions } = userIds.length > 0
-        ? await supabase.from('predictions')
-            .select('user_id, tournament_id, points_earned, expires_at, tournaments(name, tour, location, flag_emoji)')
-            .in('user_id', userIds).is('challenge_id', null)
-            .gt('points_earned', 0).order('points_earned', { ascending: false }).limit(500)
-        : { data: [] as any[] }
-
-      const { breakdownByUser, statsByUser } = await buildStats(supabase, userIds, userPredictions ?? [])
-
-      const friendCount = friendIds.size - 1 // excluding self
-      return { users: users ?? [], breakdownByUser, statsByUser, friendCount }
+      const ids = new Set<string>([userId])
+      for (const f of friendships ?? []) {
+        ids.add(f.requester_id === userId ? f.addressee_id : f.requester_id)
+      }
+      return Array.from(ids)
     },
-    ['leaderboard-community', userId, pointsField],
-    { revalidate: 60 }
+    ['leaderboard-community-ids', userId],
+    { revalidate: 60 },
   )()
 }
 
-// keyParts include all filter params so each combination gets its own cache slot
-function getLeaderboardData(pointsField: string, scope: Scope, scopeCountry: string | null, scopeCity: string | null) {
+/**
+ * One page of the board, plus the total row count for the pager.
+ *
+ * Community and the global scopes share this function now — the only thing that
+ * ever differed was the id filter, which `applyScopeFilter` owns. `cacheKey`
+ * gives each user's community board its own slot; shared scopes pass '_'.
+ */
+function getLeaderboardPage(
+  pointsField: PointsField,
+  scope: Scope,
+  scopeCountry: string | null,
+  scopeCity: string | null,
+  page: number,
+  communityIds: string[] | null,
+  cacheKey: string,
+) {
   return unstable_cache(
     async () => {
       const supabase = createAdminClient()
+      const from = (page - 1) * PAGE_SIZE
+
       let query = supabase
         .from('users')
-        .select('id, username, ranking_points, atp_ranking_points, wta_ranking_points, country, city')
+        .select(USER_COLS, { count: 'exact' })
         .not('username', 'is', null)
         .order(pointsField, { ascending: false })
-        .limit(50)
-      if (scope === 'country' && scopeCountry) query = query.eq('country', scopeCountry)
-      if (scope === 'city' && scopeCountry && scopeCity)
-        query = query.eq('country', scopeCountry).eq('city', scopeCity)
+        /*
+         * Tiebreak — load-bearing, not cosmetic.
+         *
+         * Postgres guarantees no particular order among equal sort keys, and it
+         * is free to pick a different one per query. Under LIMIT 50 that was
+         * invisible. Under OFFSET it is not: two requests for adjacent pages can
+         * order the ~30 players tied on zero points differently, showing one of
+         * them twice and dropping another entirely. Ordering by id after points
+         * makes the sequence total, so page N always continues where N-1 ended.
+         */
+        .order('id', { ascending: true })
+        .range(from, from + PAGE_SIZE - 1)
+      query = applyScopeFilter(query, scope, scopeCountry, scopeCity, communityIds)
 
-      const { data: users } = await query
+      const { data: users, count, error } = await query
+      if (error) {
+        /*
+         * A range past the end of the board comes back as PostgREST's 416
+         * "Requested range not satisfiable" — that is `?page=99` on a four-page
+         * board, not a server fault, and it arrives with no count header. Re-ask
+         * for the total on its own so the caller can send the visitor somewhere
+         * real instead of rendering "0 in total" over a board of 157.
+         */
+        console.error('[leaderboard] page query failed:', error.message)
+        let recount = supabase
+          .from('users')
+          .select('id', { count: 'exact', head: true })
+          .not('username', 'is', null)
+        recount = applyScopeFilter(recount, scope, scopeCountry, scopeCity, communityIds)
+        const { count: fallbackTotal } = await recount
+        return { users: [] as LeaderboardUser[], breakdownByUser: {}, statsByUser: {}, total: fallbackTotal ?? 0 }
+      }
 
       const userIds = (users ?? []).map(u => u.id)
-      const { data: userPredictions } = userIds.length > 0
-        ? await supabase.from('predictions')
-            .select('user_id, tournament_id, points_earned, expires_at, tournaments(name, tour, location, flag_emoji)')
-            .in('user_id', userIds).is('challenge_id', null)
-            .gt('points_earned', 0).order('points_earned', { ascending: false }).limit(500)
-        : { data: [] as any[] }
+      const userPredictions = await fetchScoringPredictions(supabase, userIds)
+      const { breakdownByUser, statsByUser } = await buildStats(supabase, userIds, userPredictions)
 
-      const { breakdownByUser, statsByUser } = await buildStats(supabase, userIds, userPredictions ?? [])
-
-      return { users: users ?? [], breakdownByUser, statsByUser }
+      return { users: (users ?? []) as LeaderboardUser[], breakdownByUser, statsByUser, total: count ?? 0 }
     },
-    ['leaderboard', pointsField, scope, scopeCountry ?? '_', scopeCity ?? '_'],
-    { revalidate: 300 }
+    ['leaderboard', pointsField, scope, scopeCountry ?? '_', scopeCity ?? '_', String(page), cacheKey],
+    { revalidate: scope === 'community' ? 60 : 300 },
   )()
+}
+
+/**
+ * Username search over the whole board, each hit carrying its real position.
+ *
+ * Deliberately not cached: the key space is whatever anyone types, and the data
+ * cache is not the place for unbounded user input. It stays cheap because
+ * SEARCH_LIMIT caps the hits and the rank counts run in parallel — each one is
+ * an index-only count, not a scan of the board.
+ */
+async function searchLeaderboard(
+  term: string,
+  pointsField: PointsField,
+  scope: Scope,
+  scopeCountry: string | null,
+  scopeCity: string | null,
+  communityIds: string[] | null,
+) {
+  const empty = { users: [] as LeaderboardUser[], ranks: {} as Record<string, number>, breakdownByUser: {}, statsByUser: {} }
+  const supabase = createAdminClient()
+
+  let query = supabase
+    .from('users')
+    .select(USER_COLS)
+    .not('username', 'is', null)
+    .ilike('username', `%${term}%`)
+    .order(pointsField, { ascending: false })
+    .order('id', { ascending: true })
+    .limit(SEARCH_LIMIT)
+  query = applyScopeFilter(query, scope, scopeCountry, scopeCity, communityIds)
+
+  const { data: matches, error } = await query
+  if (error) {
+    console.error('[leaderboard] search failed:', error.message)
+    return empty
+  }
+
+  const hits = (matches ?? []) as LeaderboardUser[]
+  const positions = await Promise.all(
+    hits.map(u =>
+      fetchRank(supabase, pointsField, u[pointsField] ?? 0, u.id, scope, scopeCountry, scopeCity, communityIds),
+    ),
+  )
+  const ranks: Record<string, number> = {}
+  hits.forEach((u, i) => {
+    const p = positions[i]
+    if (p != null) ranks[u.id] = p
+  })
+
+  const userIds = hits.map(u => u.id)
+  const userPredictions = await fetchScoringPredictions(supabase, userIds)
+  const { breakdownByUser, statsByUser } = await buildStats(supabase, userIds, userPredictions)
+
+  return { users: hits, ranks, breakdownByUser, statsByUser }
+}
+
+/**
+ * Drops the characters that mean something to LIKE or to PostgREST's filter
+ * grammar. Usernames contain none of them, so stripping is both safer and
+ * simpler than escaping — an unescaped `%` would otherwise match the whole board.
+ */
+function sanitizeSearch(raw: string) {
+  return raw.replace(/[%_\\(),*]/g, '').trim().slice(0, 40)
 }
 
 export default async function LeaderboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ scope?: string; country?: string; city?: string; circuit?: string }>
+  searchParams: Promise<{ scope?: string; country?: string; city?: string; circuit?: string; page?: string; q?: string }>
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   // Anonymous: show blurred leaderboard preview with signup overlay (FOMO, not a wall)
   if (!user) {
-    const { users: previewUsers, breakdownByUser: previewBreakdown } = await getLeaderboardData('ranking_points', 'worldwide', null, null)
+    const { users: previewUsers, breakdownByUser: previewBreakdown } =
+      await getLeaderboardPage('ranking_points', 'worldwide', null, null, 1, null, '_')
     return (
       <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
         <Nav activePage="leaderboard" />
@@ -281,11 +517,12 @@ export default async function LeaderboardPage({
           <div style={{ position: 'relative' }}>
             <div style={{ filter: 'blur(5px)', userSelect: 'none', pointerEvents: 'none' }}>
               <LeaderboardTable
-                users={(previewUsers ?? []).map(u => ({
+                users={(previewUsers ?? []).map((u, i) => ({
                   id: u.id,
                   username: u.username,
                   country: u.country ?? null,
                   points: u.ranking_points as number,
+                  rank: i + 1,
                 }))}
                 currentUserId=""
                 breakdownByUser={previewBreakdown}
@@ -327,9 +564,15 @@ export default async function LeaderboardPage({
   const sp = await searchParams
   const scope:   Scope   = (sp.scope   as Scope   | undefined) ?? 'worldwide'
   const circuit: Circuit = (sp.circuit as Circuit | undefined) ?? 'both'
+  const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1)
+
+  // Below 2 characters a search matches most of the board, so it stays off and
+  // the normal paginated view renders instead.
+  const searchTerm  = sanitizeSearch(sp.q ?? '')
+  const isSearching = searchTerm.length >= 2
 
   // ── Points field based on circuit ───────────────────────────────────────
-  const pointsField =
+  const pointsField: PointsField =
     circuit === 'atp' ? 'atp_ranking_points' :
     circuit === 'wta' ? 'wta_ranking_points' :
     'ranking_points'
@@ -345,25 +588,57 @@ export default async function LeaderboardPage({
   const scopeCountry = sp.country ?? (scope !== 'worldwide' ? profile?.country ?? null : null)
   const scopeCity    = sp.city    ?? (scope === 'city'      ? profile?.city    ?? null : null)
 
-  // ── Cached leaderboard data ────────────────────────────────────────────
-  // Community scope: user-specific filter (self + accepted friends).
-  // Worldwide/country/city: shared cache across all users in same view.
-  let users: any[]
-  let breakdownByUser: Record<string, any>
-  let statsByUser: Record<string, any>
-  let communityCount = 0
-  if (scope === 'community') {
-    const res = await getCommunityLeaderboardData(user.id, pointsField)
+  // ── Leaderboard data ───────────────────────────────────────────────────
+  // Community scope needs its member set up front: it scopes the page, the
+  // search and the rank count alike.
+  const communityIds   = scope === 'community' ? await getCommunityIds(user.id) : null
+  const communityCount = communityIds ? communityIds.length - 1 : 0 // excluding self
+
+  let users: LeaderboardUser[] = []
+  let breakdownByUser: Record<string, any> = {}
+  let statsByUser: Record<string, any> = {}
+  let searchRanks: Record<string, number> = {}
+  let total = 0
+
+  if (isSearching) {
+    // A search replaces the list rather than filtering it — the whole point is
+    // to reach players who are nowhere near the page you are on.
+    const res = await searchLeaderboard(searchTerm, pointsField, scope, scopeCountry, scopeCity, communityIds)
     users = res.users
     breakdownByUser = res.breakdownByUser
     statsByUser = res.statsByUser
-    communityCount = res.friendCount
+    searchRanks = res.ranks
   } else {
-    const res = await getLeaderboardData(pointsField, scope, scopeCountry, scopeCity)
+    const res = await getLeaderboardPage(
+      pointsField, scope, scopeCountry, scopeCity, page, communityIds,
+      scope === 'community' ? user.id : '_',
+    )
     users = res.users
     breakdownByUser = res.breakdownByUser
     statsByUser = res.statsByUser
+    total = res.total
   }
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const offset     = (page - 1) * PAGE_SIZE
+
+  // ── URL builders ─────────────────────────────────────────────────────────
+  // Params that describe *which* board, as opposed to where you are in it.
+  // The pager and the search box both build on this, and neither carries the
+  // other's state: a new search starts at its own results, and turning the page
+  // leaves the search behind.
+  const boardParams = new URLSearchParams()
+  if (scope !== 'worldwide')                       boardParams.set('scope', scope)
+  if (circuit !== 'both')                          boardParams.set('circuit', circuit)
+  if ((scope === 'country' || scope === 'city') && scopeCountry) boardParams.set('country', scopeCountry)
+  if (scope === 'city' && scopeCity)               boardParams.set('city', scopeCity)
+  const baseQuery = boardParams.toString()
+
+  const pageHref = (p: number) => `/leaderboard?${baseQuery ? `${baseQuery}&` : ''}page=${p}`
+
+  // A page number past the end of a non-empty board is a stale or hand-typed
+  // URL. Land on the last real page rather than on an empty table.
+  if (!isSearching && total > 0 && page > totalPages) redirect(pageHref(totalPages))
 
   // ── Active tournaments for dropdown selector ─────────────────────────
   const admin = createAdminClient()
@@ -376,28 +651,16 @@ export default async function LeaderboardPage({
     .limit(20)
 
   // ── My rank: position in the current scope/circuit view ─────────────────
-  const myRankInList = users?.findIndex(u => u.id === user.id) ?? -1
-  // If not in top 50, count how many in this scope have more points
-  let myRank = myRankInList >= 0 ? myRankInList + 1 : null
-  const myPoints = (profile as any)?.[pointsField] ?? 0
+  // Always counted in Postgres rather than read off the visible rows: with the
+  // board paginated, "I am on screen" no longer implies anything about rank,
+  // and the count is a single index-only lookup.
+  const myPoints = profile?.[pointsField] ?? 0
+  const myRank = await fetchRank(
+    supabase, pointsField, myPoints, user.id, scope, scopeCountry, scopeCity, communityIds,
+  )
+  const myPage = myRank != null ? Math.ceil(myRank / PAGE_SIZE) : null
+  const myRowVisible = users.some(u => u.id === user.id)
 
-  // Community scope: self is always in the list, so we never fall into the
-  // global-count fallback path (which wouldn't know how to scope anyway).
-  if (myRankInList < 0 && scope !== 'community') {
-    let countQuery = supabase
-      .from('users')
-      .select('id', { count: 'exact', head: true })
-      .gt(pointsField, myPoints)
-      .not('username', 'is', null)
-    if (scope === 'country' && scopeCountry)
-      countQuery = countQuery.eq('country', scopeCountry)
-    if (scope === 'city' && scopeCountry && scopeCity)
-      countQuery = countQuery.eq('country', scopeCountry).eq('city', scopeCity)
-    const { count } = await countQuery
-    myRank = (count ?? 0) + 1
-  }
-
-  // ── URL builders for tabs ────────────────────────────────────────────────
   function scopeUrl(s: Scope) {
     const params = new URLSearchParams()
     params.set('scope', s)
@@ -405,6 +668,9 @@ export default async function LeaderboardPage({
     if (s === 'country' && profile?.country) params.set('country', profile.country)
     if (s === 'city' && profile?.country)    params.set('country', profile.country)
     if (s === 'city' && profile?.city)       params.set('city', profile.city)
+    // The search is a lens on the board, not part of it — switching boards
+    // keeps the name you were looking for.
+    if (isSearching) params.set('q', searchTerm)
     return `/leaderboard?${params.toString()}`
   }
 
@@ -414,6 +680,7 @@ export default async function LeaderboardPage({
     if (scope !== 'worldwide') params.set('scope', scope)
     if (scopeCountry)          params.set('country', scopeCountry)
     if (scopeCity)             params.set('city', scopeCity)
+    if (isSearching)           params.set('q', searchTerm)
     return `/leaderboard?${params.toString()}`
   }
 
@@ -503,26 +770,44 @@ export default async function LeaderboardPage({
           </div>
         )}
 
+        {/* ── Search ────────────────────────────────────────────────────────── */}
+        <LeaderboardSearch
+          initialQuery={searchTerm}
+          baseQuery={baseQuery}
+          scopeLabel={
+            scope === 'community' ? 'in your community' :
+            scope === 'city'      ? `in ${scopeCity ?? 'your city'}` :
+            scope === 'country'   ? `in ${scopeCountry ?? 'your country'}` :
+            'worldwide'
+          }
+        />
+
         {/* ── My rank highlight ──────────────────────────────────────────────── */}
         {myRank !== null && (
           <div className="mb-6 px-5 py-4 rounded-sm border" style={{ background: '#edf4fc', borderColor: '#b8d4f0' }}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: '#1e4e8c', minWidth: '32px' }}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-4 min-w-0">
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: '#1e4e8c', flexShrink: 0 }}>
                   #{myRank}
                 </span>
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: '#1e4e8c' }}>
+                <span className="truncate" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: '#1e4e8c' }}>
                   {profile?.username} (you)
                 </span>
               </div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: '#1e4e8c', fontWeight: 500 }}>
+              <span className="flex-shrink-0" style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: '#1e4e8c', fontWeight: 500 }}>
                 {formatPoints(myPoints)} pts
               </span>
             </div>
-            {myRankInList < 0 && (
-              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#4a7ab5', marginTop: '0.3rem' }}>
-                Not shown in top 50
-              </p>
+            {/* Every row is reachable now, so this stops being a dead end and
+                becomes the link to the page you are actually on. */}
+            {!myRowVisible && myPage !== null && (
+              <Link
+                href={pageHref(myPage)}
+                className="inline-block hover:underline"
+                style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#1e4e8c', marginTop: '0.4rem', textDecoration: 'none' }}
+              >
+                Jump to page {myPage} →
+              </Link>
             )}
           </div>
         )}
@@ -565,22 +850,35 @@ export default async function LeaderboardPage({
 
         {/* ── Table ─────────────────────────────────────────────────────────── */}
         <LeaderboardTable
-          users={(users ?? []).map(u => ({
+          users={users.map((u, i) => ({
             id: u.id,
             username: u.username,
             country: u.country ?? null,
-            points: (u as any)[pointsField] as number,
+            points: u[pointsField],
+            // Search hits carry their own position on the board; list rows are
+            // simply their offset within it.
+            rank: isSearching ? (searchRanks[u.id] ?? 0) : offset + i + 1,
           }))}
           currentUserId={user.id}
           breakdownByUser={breakdownByUser}
           statsByUser={statsByUser}
           scope={scope}
+          emptyTitle={isSearching ? 'No players found' : undefined}
+          emptyHint={isSearching ? `No username matching “${searchTerm}” on this board.` : undefined}
         />
 
+        {!isSearching && <Pagination page={page} totalPages={totalPages} baseQuery={baseQuery} />}
+
         <p className="mt-4 text-center" style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-          {scope === 'community'
-            ? `You and ${communityCount} friend${communityCount === 1 ? '' : 's'} · Rolling 52-week window · Points update after each result`
-            : 'Showing up to 50 players · Rolling 52-week window · Points update after each result'}
+          {isSearching
+            ? users.length === 0
+              ? `No matches for “${searchTerm}”`
+              : `${users.length}${users.length === SEARCH_LIMIT ? '+' : ''} match${users.length === 1 ? '' : 'es'} for “${searchTerm}” · Ranks are positions on this board`
+            : users.length === 0
+              ? `No players on page ${page} · ${total} in total`
+              : scope === 'community'
+                ? `You and ${communityCount} friend${communityCount === 1 ? '' : 's'} · Rolling 52-week window · Points update after each result`
+                : `Showing ${offset + 1}–${offset + users.length} of ${total} players · Rolling 52-week window · Points update after each result`}
         </p>
 
       </div>

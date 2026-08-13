@@ -11,6 +11,13 @@ interface UserRow {
   username: string
   country: string | null
   points: number
+  /**
+   * Absolute position on the board, 1-based — not the index in `users`.
+   * The list is paginated and can also be a set of search hits, so row 1 of the
+   * array is #51 on page 2 and could be #143 in a search result. Medals follow
+   * this number, never the array index.
+   */
+  rank: number
 }
 
 interface TournamentBreakdown {
@@ -53,12 +60,17 @@ export default function LeaderboardTable({
   breakdownByUser,
   statsByUser,
   scope,
+  emptyTitle,
+  emptyHint,
 }: {
   users: UserRow[]
   currentUserId: string
   breakdownByUser: Record<string, TournamentBreakdown[]>
   statsByUser: Record<string, UserStats>
   scope: string
+  /** Overrides the empty state — a search with no hits is not an empty board. */
+  emptyTitle?: string
+  emptyHint?: string
 }) {
   const [expandedUser, setExpandedUser] = useState<string | null>(null)
 
@@ -93,17 +105,19 @@ export default function LeaderboardTable({
 
       {users.length === 0 ? (
         <div className="px-4 sm:px-5 py-12 text-center" style={{ color: 'var(--muted)' }}>
-          <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem' }}>No players yet</p>
+          <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem' }}>
+            {emptyTitle ?? 'No players yet'}
+          </p>
           <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
-            {scope === 'city' || scope === 'country'
+            {emptyHint ?? (scope === 'city' || scope === 'country'
               ? 'No players from this area have earned points yet.'
-              : 'Be the first to make predictions!'}
+              : 'Be the first to make predictions!')}
           </p>
         </div>
       ) : (
-        users.map((u, i) => {
+        users.map((u) => {
           const isMe = u.id === currentUserId
-          const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null
+          const medal = u.rank === 1 ? '🥇' : u.rank === 2 ? '🥈' : u.rank === 3 ? '🥉' : null
           const isExpanded = expandedUser === u.id
           const breakdown = breakdownByUser[u.id] ?? []
           const stats = statsByUser[u.id]
@@ -131,7 +145,9 @@ export default function LeaderboardTable({
                     <span style={{ fontSize: '1rem' }}>{medal}</span>
                   ) : (
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>
-                      {i + 1}
+                      {/* 0 means the rank count errored — show nothing rather
+                          than a position that does not exist. */}
+                      {u.rank > 0 ? u.rank : '—'}
                     </span>
                   )}
                 </div>
