@@ -39,6 +39,29 @@ export async function GET(request: Request) {
   return withCronLogging('award-points', async () => {
     const supabase = createAdminClient()
 
+    // ── Time budget ───────────────────────────────────────────────────────
+    // The run must end on its own terms. When Vercel kills the function at
+    // maxDuration instead, three things happen and none of them are visible
+    // from the response: the cron_runs row is orphaned in 'running' (the next
+    // invocation is what writes "Stale: timed out after 10 minutes", so the
+    // error is always dated a day late), any statement still in flight is cut
+    // off mid-transaction, and — the expensive one — a transaction abandoned
+    // on a pooled connection keeps the database's xmin horizon pinned, which
+    // stops autovacuum reclaiming dead tuples in EVERY table until it is
+    // cleaned up. Bloat then drives disk reads that have nothing to do with
+    // how much data the app actually holds.
+    //
+    // So: stop early, deliberately, and say so. Everything guarded by this
+    // budget is best-effort work that runs after points, ledger rows,
+    // rankings and league totals are already committed, and every piece of it
+    // is idempotent — whatever is skipped is simply picked up by the next run.
+    const runStart = Date.now()
+    const SOFT_DEADLINE_MS = 45_000 // maxDuration is 60s; leave room to log and respond
+    const msLeft = () => SOFT_DEADLINE_MS - (Date.now() - runStart)
+    /** Enough budget left to start a phase that typically needs `needMs`? */
+    const hasBudget = (needMs: number) => msLeft() > needMs
+    const skippedForTime: string[] = []
+
     // ── 1. Get all match results (paginated to avoid PostgREST row limit) ─
     // Exclude BYE auto-advances — they don't award points
     const allResults: any[] = []
@@ -96,16 +119,31 @@ export async function GET(request: Request) {
     const tournamentIds = Array.from(new Set(allResults.map((r: any) => r.tournament_id)))
 
     // ── 3. Get predictions for those tournaments (paginated) ──────────────
-    // Fetch in pages of 1000 to avoid loading everything into memory at once.
+    // Fetched by tournament CHUNK, not one tournament at a time. The previous
+    // shape ran a separate paginated query per tournament — 35 sequential
+    // round trips to fetch ~1.3k rows, every one of them latency, and the
+    // count grows with every tournament ever played. Chunking keeps the same
+    // memory ceiling while collapsing that to a couple of round trips.
+    //
+    // Chunked rather than one big `.in()` because a few hundred UUIDs overflow
+    // the request URL, and PostgREST's failure mode there is a truncated
+    // result set with no error — the same trap 076 documents for recap ids.
+    //
+    // ORDER BY id is load-bearing: `range()` pagination without a stable sort
+    // can repeat or skip rows between pages, which would silently drop
+    // brackets from scoring.
     const PAGE_SIZE = 1000
+    const TOURNAMENT_CHUNK = 40
     const predictions: any[] = []
-    for (const tId of tournamentIds) {
+    for (let c = 0; c < tournamentIds.length; c += TOURNAMENT_CHUNK) {
+      const chunk = tournamentIds.slice(c, c + TOURNAMENT_CHUNK) as string[]
       let from = 0
       while (true) {
         const { data: page, error: pageErr } = await supabase
           .from('predictions')
           .select('id, user_id, tournament_id, challenge_id, picks, pick_locks, locked_picks, points_earned, expires_at')
-          .eq('tournament_id', tId)
+          .in('tournament_id', chunk)
+          .order('id', { ascending: true })
           .range(from, from + PAGE_SIZE - 1)
         if (pageErr) throw new Error(`predictions query failed: ${pageErr.message}`)
         if (!page?.length) break
@@ -546,10 +584,23 @@ export async function GET(request: Request) {
       if (emailJobs.length > 0) {
         // Fetch email preferences for all users in this batch
         const emailUserIds = [...new Set(emailJobs.map(j => j.userId))]
-        const { data: emailPrefs } = await supabase
+        // `email` rides along on the prefs query. It used to come from a
+        // per-recipient supabase.auth.admin.getUserById() call inside the send
+        // loop below — one GoTrue round trip per user, serialised behind the
+        // batch, for a value public.users already stores. 083 documents why
+        // that column is `text not null` and safe to read here: the signup
+        // trigger copies auth.users.email into it and refuses any provider
+        // sign-in that arrives without one.
+        const { data: emailPrefs, error: prefsErr } = await supabase
           .from('users')
-          .select('id, email_notifications, email_preferences, unsubscribe_token')
+          .select('id, email, email_notifications, email_preferences, unsubscribe_token')
           .in('id', emailUserIds)
+        if (prefsErr) {
+          // Destructured deliberately: falling through with an empty list would
+          // silently send nobody their points email and look like success.
+          console.error('[award-points] email prefs lookup failed:', prefsErr)
+          Sentry.captureException(prefsErr)
+        }
         const prefsMap = new Map((emailPrefs ?? []).map((p: any) => [p.id, p]))
 
         const sendEmails = async () => {
@@ -559,10 +610,9 @@ export async function GET(request: Request) {
                 try {
                   const prefs = prefsMap.get(job.userId)
                   if (!isEmailEnabled(prefs?.email_notifications, prefs?.email_preferences, 'points_awarded')) return
-                  const { data: { user: authUser } } = await supabase.auth.admin.getUserById(job.userId)
-                  if (authUser?.email && !isBotEmail(authUser.email)) {
+                  if (prefs?.email && !isBotEmail(prefs.email)) {
                     await sendPointsAwardedEmail({
-                      to: authUser.email,
+                      to: prefs.email,
                       totalPoints: job.totalPoints,
                       correctPicks: job.correctPicks,
                       tournaments: job.tournaments,
@@ -922,20 +972,39 @@ export async function GET(request: Request) {
       }
       console.log(`[award-points] achievement scope: ${completedTournamentIds.size} completed tournaments`)
 
+      // Each of the achievement loops below is one sequential round trip per
+      // item and every one of them is an idempotent re-check — the `isNew`
+      // flag is what makes a second pass cheap and harmless. That is exactly
+      // the property that makes them safe to cut short: an achievement the
+      // budget defers is awarded by the next run, whereas a run killed here
+      // strands the transaction (see the time budget at the top).
+      let trophiesChecked = 0
       for (const tId of completedTournamentIds) {
+        if (!hasBudget(3_000)) {
+          skippedForTime.push(`trophies(${completedTournamentIds.size - trophiesChecked} remaining)`)
+          break
+        }
         const trophyResults = await checkTournamentTrophies(supabase, tId)
         await maybeNotifyAchievements(trophyResults)
         achievementsAwarded += trophyResults.filter(r => r.isNew).length
+        trophiesChecked++
       }
 
       // 13b. Per-user cron achievements (accuracy, streaks, points milestones)
-      for (const userId of Object.keys(globalUserPointsDelta)) {
+      const cronAchievementUsers = Object.keys(globalUserPointsDelta)
+      let usersChecked = 0
+      for (const userId of cronAchievementUsers) {
+        if (!hasBudget(3_000)) {
+          skippedForTime.push(`user_achievements(${cronAchievementUsers.length - usersChecked} remaining)`)
+          break
+        }
         const userTournaments = Object.keys(userTournamentPoints[userId] ?? {})
         for (const tId of userTournaments) {
           const cronResults = await checkCronAchievements(supabase, userId, tId)
           await maybeNotifyAchievements(cronResults)
           achievementsAwarded += cronResults.filter(r => r.isNew).length
         }
+        usersChecked++
       }
 
       // 13b-bis. Perfect Prediction — only check for completed tournaments
@@ -1036,6 +1105,15 @@ export async function GET(request: Request) {
         const missing = (completedRows ?? []).filter(t => !have.has(t.id)).slice(0, RECAPS_PER_RUN)
 
         for (const t of missing) {
+          // Measured at ~7s each (the runs that built three took ~20s longer
+          // than the runs that built none), so this is checked per recap
+          // rather than once for the batch — one recap's worth of budget is
+          // the granularity that matters.
+          if (!hasBudget(9_000)) {
+            skippedForTime.push(`recaps(${missing.length - recapsBuilt} remaining)`)
+            console.log(`[award-points] recap build stopped: ${msLeft()}ms of budget left`)
+            break
+          }
           const { ok, error } = await buildAndStoreRecap(t.id, supabase)
           if (ok) {
             recapsBuilt++
@@ -1097,6 +1175,16 @@ export async function GET(request: Request) {
         anonymous_result_emails: anonResultEmails,
         achievements_awarded: achievementsAwarded,
         recaps_built: recapsBuilt,
+        // Empty on a healthy run. Anything listed here was deferred to the
+        // next run to stay inside maxDuration — the run still succeeded, and
+        // this is the difference between "finished early on purpose" and the
+        // orphaned 'running' row a kill leaves behind.
+        skipped_for_time: skippedForTime,
+        // How much of the budget was left at the finish line. Not a duplicate
+        // of cron_runs.duration_ms (the wrapper's own column) — this is the
+        // headroom figure, and it is what says whether SOFT_DEADLINE_MS is
+        // still the right number as the tournament back catalogue grows.
+        budget_ms_left: msLeft(),
       },
     }
   })
