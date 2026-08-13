@@ -95,12 +95,53 @@ is usually the missing half.
 **Still not audited:** the other three slam landing pages (the US Open one is clean and
 they share a template), `/activity`, `/onboarding`, `/challenges/[id]`, `/leagues/browse`.
 
-### Facebook OAuth Setup (manual — Matias)
+### ⬜ Facebook OAuth — UNFINISHED, button hidden behind a flag
 
-Code side done ✅ (2026-08-13) — the earlier tick was optimistic: the *handlers*
-existed but both buttons were commented out, so nothing rendered. Now shipped:
+**Status 2026-08-13: parked, not shipped.** A real sign-in did not work, so the
+button is hidden behind `SHOW_FACEBOOK_LOGIN` in `src/lib/auth-providers.ts`
+(`false`). Everything else below is built and verified — flip that one constant
+to true to bring it back. **The specific failure was never captured; get the
+error message first, it decides which of the two open items below is the cause.**
 
-- Buttons render on `/login` and `/signup`, verified at 375px, no overflow
+Hidden behind a flag rather than commented out on purpose. The previous attempt
+commented the buttons, which left the handlers unreferenced and left this file
+claiming the feature had shipped when nothing rendered — a flag keeps the
+handlers type-checked and the state honest.
+
+#### Still to do
+
+1. **Capture the actual failure.** Sign in at `/login` with the flag on and note
+   what comes back. If it is *"check that you allowed access to your email
+   address"*, that is the 083 guard firing and the cause is item 2. Anything else
+   — a Facebook error page, a bounce with no message — means something not yet
+   diagnosed
+2. **Meta → Casos de uso → Personalizar → Permisos y funciones**: confirm
+   `public_profile` **and** `email` both read *Listo para probar*. Never verified.
+   Without `email`, Facebook completes the login and returns no address, and every
+   signup dies on the 083 guard. This is the most likely cause
+3. **Live mode** (Meta → Publicar, currently *Sin publicar*). Development mode
+   only admits accounts holding a role on the app, so it works for Matias and
+   fails for everyone else. Not the cause of the current failure — testing was as
+   admin — but it blocks real users
+4. **App icon at 1024×1024.** Largest asset today is `public/pwa-512.png` (512).
+   `public/favicon.svg` is a flat green tile with "QP", so it rescales cleanly
+5. Once a sign-in completes: flip `SHOW_FACEBOOK_LOGIN` to `true`, and check the
+   created row has the email, a sane auto-username and `terms_accepted_at`
+
+#### Already done and verified — do not redo
+
+- Meta app created (App ID `800967199747016`), Basic settings complete: domain
+  `quietplease.app`, privacy `/privacy`, terms `/terms`, data deletion
+  `/data-deletion`, category Entretenimiento. Ineligibility banner cleared
+- **Valid OAuth Redirect URI saved and validated green** in Meta:
+  `https://nqmjrwqcqnxoocodgedj.supabase.co/auth/v1/callback`. Note the page has
+  a *Validador* box that is only a tester — the list is the field below it
+- Supabase provider **enabled** (`facebook: true` on `/auth/v1/settings`)
+- Authorize round trip verified against prod: redirects to
+  `www.facebook.com/dialog/oauth` with the right `client_id`, `scope=email`,
+  `response_type=code` and `state`, and Facebook accepts the `redirect_uri`
+  (it builds it into `cancel_url` — an unregistered URI returns "URL Blocked")
+- Buttons built on `/login` and `/signup`, verified at 375px, no overflow
 - Signup keeps the consent gate — clicking Facebook without ticking the box
   refuses and says why, verified rather than assumed
 - `redirect_to` carries `?consent=<TERMS_VERSION>`, so a Facebook signup records
@@ -116,30 +157,23 @@ existed but both buttons were commented out, so nothing rendered. Now shipped:
 - Legal copy needed no change: `/privacy` and `/terms` already name Meta as a
   processor, so `CONSENT_VERSION` does **not** need bumping
 
-Verified against prod Supabase: the request is well-formed and fails only with
-`"Unsupported provider: provider is not enabled"`. Remaining steps are all in
-external dashboards:
-
-- ✅ Migration 083 applied to prod (2026-08-13). Signup trigger re-verified live
-  on the bot domain afterwards — `auth.users` → `public.users` still mirrors
-- **TODO:** Create the app at developers.facebook.com → My Apps → Create App.
-  The old **Consumer/Business app-type picker no longer exists** — the flow is
-  now use-case based. Choose **"Authenticate and request data from users with
-  Facebook Login"**. A business portfolio is not required
-- **TODO:** Facebook Login → **Settings** (skip the Quickstart) → paste into
-  **Valid OAuth Redirect URIs**:
-  `https://nqmjrwqcqnxoocodgedj.supabase.co/auth/v1/callback`
-- **TODO:** Use cases → *Authentication and Account Creation* → Edit → confirm
-  **both** `public_profile` and `email` read "Ready for testing"; Add `email` if
-  absent. Without `email` every real signup hits the 083 guard
-- **TODO:** App settings → Basic → copy App ID + App Secret straight into
-  Supabase → Auth → Providers → Facebook → Enable. Never paste the secret into
-  chat or a file
-- **TODO:** Set the app to **Live mode**. This — not App Review — is the gate
-  that matters: `public_profile` + `email` on this use case generally need no
-  review, but in Development mode only accounts with a role on the app can sign
-  in, so it works for you and fails for everyone else. App settings → Basic also
-  wants a Privacy Policy URL before going Live: `https://quietplease.app/privacy`
+- ✅ Migration **083** applied to prod. Rejects a provider returning no email:
+  `users.email` is `NOT NULL` and Facebook can legitimately return nothing (a
+  phone-registered account, or the email permission unticked). Signup trigger
+  re-verified live on the bot domain afterwards — `auth.users` → `public.users`
+  still mirrors, so 083 did not break email/Google signup
+- ✅ `/data-deletion` published and linked from the footer — Meta requires a
+  deletion URL reachable without an account
+- ✅ `/login` renders `?error=` from `/auth/callback`, which it silently swallowed
+  before. That bug affected **Google too** — a failed OAuth round trip bounced to
+  a page that looked entirely blank
+- ✅ Signup consent gate holds on the Facebook path — clicking without ticking
+  refuses and says why
+- ✅ `redirect_to` carries `?consent=<TERMS_VERSION>`, so a Facebook signup records
+  `terms_accepted_at` like Google. (From `/login` it stays NULL — by design, same
+  as Google; see `legal_todo.md`)
+- ✅ Legal copy needed no change: `/privacy` and `/terms` already name Meta as a
+  processor, so `CONSENT_VERSION` was **not** bumped
 
 ---
 

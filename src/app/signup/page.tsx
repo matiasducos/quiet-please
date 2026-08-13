@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { authUrl, getSafeRedirectPath, withNext } from '@/lib/auth-redirect'
 import { TERMS_VERSION } from '@/lib/legal/terms'
+import { SHOW_FACEBOOK_LOGIN } from '@/lib/auth-providers'
 import posthog from 'posthog-js'
 
 /**
@@ -148,10 +149,12 @@ function SignupForm() {
             Continue with Google
           </button>
 
-          <button onClick={handleFacebookSignup} className="w-full py-3 mt-3 text-sm font-medium rounded-sm hover:opacity-90 flex items-center justify-center gap-2.5 transition-opacity" style={{ color: 'white', background: '#1877F2' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.09 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.95h-1.51c-1.49 0-1.96.93-1.96 1.88v2.26h3.33l-.53 3.49h-2.8V24C19.61 23.09 24 18.1 24 12.07z"/></svg>
-            Continue with Facebook
-          </button>
+          {SHOW_FACEBOOK_LOGIN && (
+            <button onClick={handleFacebookSignup} className="w-full py-3 mt-3 text-sm font-medium rounded-sm hover:opacity-90 flex items-center justify-center gap-2.5 transition-opacity" style={{ color: 'white', background: '#1877F2' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.09 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.95h-1.51c-1.49 0-1.96.93-1.96 1.88v2.26h3.33l-.53 3.49h-2.8V24C19.61 23.09 24 18.1 24 12.07z"/></svg>
+              Continue with Facebook
+            </button>
+          )}
 
           <div className="flex items-center gap-3 my-6">
             <div className="flex-1 h-px" style={{ background: 'var(--chalk-dim)' }} />
