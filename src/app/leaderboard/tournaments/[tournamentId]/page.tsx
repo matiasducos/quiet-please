@@ -8,17 +8,22 @@ import Nav from '@/components/Nav'
 import TournamentResultsTable from '@/components/TournamentResultsTable'
 import type { TournamentInfo, PlayerResult } from '@/components/TournamentResultsTable'
 import LeaderboardSelector from '../../LeaderboardSelector'
+import LeaderboardSearch from '../../LeaderboardSearch'
+import Pagination from '../../Pagination'
 import ScopeSegmented from '../../ScopeSegmented'
 import CountryFlag from '@/components/CountryFlag'
+import { SEARCH_LIMIT, isSearchActive, sanitizeSearch } from '@/lib/utils/search'
 
 type Scope = 'worldwide' | 'country' | 'city' | 'community'
+
+const PAGE_SIZE = 50
 
 export default async function GlobalTournamentResultsPage({
   params,
   searchParams,
 }: {
   params: Promise<{ tournamentId: string }>
-  searchParams: Promise<{ scope?: string; country?: string; city?: string }>
+  searchParams: Promise<{ scope?: string; country?: string; city?: string; page?: string; q?: string }>
 }) {
   const { user, profile } = await getNavProfile()
 
@@ -26,6 +31,9 @@ export default async function GlobalTournamentResultsPage({
   if (!user) redirect(gateRedirect(`/leaderboard/tournaments/${tournamentId}`, 'new'))
   const sp = await searchParams
   const scope: Scope = (sp.scope as Scope | undefined) ?? 'worldwide'
+  const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1)
+  const searchTerm  = sanitizeSearch(sp.q ?? '')
+  const isSearching = isSearchActive(searchTerm)
   const supabase = await createClient()
   const admin = createAdminClient()
 
@@ -79,32 +87,126 @@ export default async function GlobalTournamentResultsPage({
   }
 
   // ── Predictions query ────────────────────────────────────────────────────
-  // The users join shape changes depending on scope:
-  //   • worldwide/community → `users(username, country)` (filter applied
-  //     separately: in-memory for community via user_id set)
+  // The users join shape changes depending on what we filter on:
+  //   • worldwide/community → `users(username, country)`; community filters on
+  //     the user_id set instead of the join
   //   • country/city        → `users!inner(username, country, city)` + .eq()
   //     filters on the embedded columns
+  //   • any scope + search  → the join must be `!inner` too, because a filter
+  //     on `users.username` cannot run through an outer one
+  const joinsOnUsers = scope === 'country' || scope === 'city'
+  const needsInnerJoin = joinsOnUsers || isSearching
+  const rowSelect =
+    `id, user_id, points_earned, picks, is_fully_locked, ` +
+    `users${needsInnerJoin ? '!inner' : ''}(${joinsOnUsers ? 'username, country, city' : 'username, country'})`
+
+  /** Scope filters only — never the username search, which must not narrow a rank. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PostgREST's
+  // builder returns `this` through a chain of generics that cannot be named at
+  // this call site; the filters applied below are all statically known.
+  function applyScope(q: any) {
+    if (scope === 'country' && scopeCountry) return q.eq('users.country', scopeCountry)
+    if (scope === 'city' && scopeCountry && scopeCity) return q.eq('users.country', scopeCountry).eq('users.city', scopeCity)
+    if (scope === 'community' && communityIds) return q.in('user_id', communityIds)
+    return q
+  }
+
+  /**
+   * 1-based position of one entry on this tournament's board.
+   *
+   * Counts entries above it with the same tiebreak the list uses: more points,
+   * or equal points and a lower id. On a tournament board this matters more
+   * than on the global one — most entrants share a handful of distinct scores,
+   * so a plain `points > theirs` count would return the same rank for dozens of
+   * players and land on none of them.
+   */
+  async function fetchEntryRank(points: number, predictionId: string): Promise<number | null> {
+    let q = admin
+      .from('predictions')
+      // The embedded join has to survive into the count query, or the
+      // country/city filters below have nothing to attach to.
+      .select(joinsOnUsers ? 'id, users!inner(id)' : 'id', { count: 'exact', head: true })
+      .eq('tournament_id', tournamentId)
+      .is('challenge_id', null)
+    q = applyScope(q)
+    q = q.or(`points_earned.gt.${points},and(points_earned.eq.${points},id.lt.${predictionId})`)
+
+    const { count, error } = await q
+    if (error) {
+      console.error('[tournament-leaderboard] rank count failed:', error.message)
+      return null
+    }
+    return (count ?? 0) + 1
+  }
+
+  const from = (page - 1) * PAGE_SIZE
   let predQuery = admin
     .from('predictions')
-    .select(
-      scope === 'country' || scope === 'city'
-        ? 'id, user_id, points_earned, picks, is_fully_locked, users!inner(username, country, city)'
-        : 'id, user_id, points_earned, picks, is_fully_locked, users(username, country)',
-    )
+    .select(rowSelect, { count: 'exact' })
     .eq('tournament_id', tournamentId)
     .is('challenge_id', null)
     .order('points_earned', { ascending: false })
-    .limit(50)
+    /*
+     * Tiebreak. Postgres gives no stable order among equal scores and may pick
+     * a different one per query — invisible under LIMIT 50, but under OFFSET it
+     * shows one entrant twice and drops another. Tournament boards are the worst
+     * case for this: entrants cluster hard on a few point totals.
+     */
+    .order('id', { ascending: true })
+  predQuery = applyScope(predQuery)
 
-  if (scope === 'country' && scopeCountry) {
-    predQuery = predQuery.eq('users.country', scopeCountry)
-  } else if (scope === 'city' && scopeCountry && scopeCity) {
-    predQuery = predQuery.eq('users.country', scopeCountry).eq('users.city', scopeCity)
-  } else if (scope === 'community' && communityIds) {
-    predQuery = predQuery.in('user_id', communityIds)
+  if (isSearching) {
+    predQuery = predQuery.ilike('users.username', `%${searchTerm}%`).limit(SEARCH_LIMIT)
+  } else {
+    predQuery = predQuery.range(from, from + PAGE_SIZE - 1)
   }
 
-  const { data: predictions } = await predQuery
+  const { data: predictions, count: predCount, error: predError } = await predQuery
+  if (predError) console.error('[tournament-leaderboard] page query failed:', predError.message)
+
+  // ── Paging bounds ────────────────────────────────────────────────────────
+  // `?page=` past the end is a 416 from PostgREST — no rows and, importantly,
+  // no count header — so the real total has to be asked for separately before
+  // we can send the visitor to a page that exists.
+  let total = predCount ?? 0
+  if (predError && !isSearching) {
+    let recount = admin
+      .from('predictions')
+      .select(joinsOnUsers ? 'id, users!inner(id)' : 'id', { count: 'exact', head: true })
+      .eq('tournament_id', tournamentId)
+      .is('challenge_id', null)
+    recount = applyScope(recount)
+    const { count: fallbackTotal } = await recount
+    total = fallbackTotal ?? 0
+  }
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
+  // Params describing which board, as opposed to where you are in it.
+  const boardParams = new URLSearchParams()
+  if (scope !== 'worldwide') boardParams.set('scope', scope)
+  if ((scope === 'country' || scope === 'city') && scopeCountry) boardParams.set('country', scopeCountry)
+  if (scope === 'city' && scopeCity) boardParams.set('city', scopeCity)
+  const baseQuery = boardParams.toString()
+  const basePath  = `/leaderboard/tournaments/${tournamentId}`
+
+  if (!isSearching && total > 0 && page > totalPages) {
+    redirect(`${basePath}?${baseQuery ? `${baseQuery}&` : ''}page=${totalPages}`)
+  }
+
+  // Ranks for search hits: each is its real position on the board, not its
+  // index among the matches.
+  const rankByPrediction: Record<string, number> = {}
+  if (isSearching) {
+    // The select string is built at runtime, so supabase infers no row type here.
+    const hits = (predictions ?? []) as unknown as { id: string; points_earned: number }[]
+    const positions = await Promise.all(
+      hits.map(p => fetchEntryRank(p.points_earned ?? 0, p.id)),
+    )
+    hits.forEach((p, i) => {
+      const rank = positions[i]
+      if (rank != null) rankByPrediction[p.id] = rank
+    })
+  }
 
   // ── Correct-picks + streak-power per user from point_ledger ─────────────
   const globalPredIds = (predictions ?? []).map((p: any) => p.id).filter(Boolean)
@@ -125,9 +227,12 @@ export default async function GlobalTournamentResultsPage({
     }
   }
 
-  const players: PlayerResult[] = (predictions ?? []).map((p: any) => {
+  const players: PlayerResult[] = (predictions ?? []).map((p: any, i: number) => {
     const acc = streakAccumByUser[p.user_id]
     return {
+      // Search hits carry their real position on the board; list rows are their
+      // offset within it. Never the array index — that is only page-local.
+      rank: isSearching ? (rankByPrediction[p.id] ?? 0) : from + i + 1,
       user_id: p.user_id,
       username: p.users?.username ?? 'Unknown',
       country: p.users?.country ?? null,
@@ -160,6 +265,9 @@ export default async function GlobalTournamentResultsPage({
     if (s === 'country' && viewerProfile?.country) params.set('country', viewerProfile.country)
     if (s === 'city' && viewerProfile?.country)    params.set('country', viewerProfile.country)
     if (s === 'city' && viewerProfile?.city)       params.set('city', viewerProfile.city)
+    // The search is a lens on the board, not part of it — switching scope
+    // keeps the name you were looking for.
+    if (isSearching) params.set('q', searchTerm)
     return `/leaderboard/tournaments/${tournamentId}?${params.toString()}`
   }
   const scopeActive = (s: Scope) => scope === s
@@ -233,12 +341,41 @@ export default async function GlobalTournamentResultsPage({
           </div>
         )}
 
-        <TournamentResultsTable tournament={tournamentInfo} players={players} />
+        <LeaderboardSearch
+          initialQuery={searchTerm}
+          baseQuery={baseQuery}
+          basePath={basePath}
+          scopeLabel={
+            scope === 'community' ? 'in your community' :
+            scope === 'city'      ? `in ${scopeCity ?? 'your city'}` :
+            scope === 'country'   ? `in ${scopeCountry ?? 'your country'}` :
+            'in this tournament'
+          }
+        />
+
+        <TournamentResultsTable
+          tournament={tournamentInfo}
+          players={players}
+          emptyTitle={isSearching ? 'No players found' : undefined}
+          emptyHint={isSearching ? `No username matching “${searchTerm}” entered this tournament.` : undefined}
+        />
+
+        {!isSearching && (
+          <Pagination page={page} totalPages={totalPages} baseQuery={baseQuery} basePath={basePath} />
+        )}
 
         <p className="mt-4 text-center" style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-          {scope === 'community'
-            ? `You and ${communityCount} friend${communityCount === 1 ? '' : 's'} · Points update after each result`
-            : 'Showing top 50 · Points update after each result'}
+          {isSearching
+            ? players.length === 0
+              ? `No matches for “${searchTerm}”`
+              : `${players.length}${players.length === SEARCH_LIMIT ? '+' : ''} match${players.length === 1 ? '' : 'es'} for “${searchTerm}” · Ranks are positions in this tournament`
+            : players.length === 0
+              ? total === 0
+                ? 'Points update after each result'
+                : `No entrants on page ${page} · ${total} in total`
+              : scope === 'community'
+                ? `You and ${communityCount} friend${communityCount === 1 ? '' : 's'} · Points update after each result`
+                : `Showing ${from + 1}–${from + players.length} of ${total} entrants · Points update after each result`}
         </p>
       </div>
     </main>

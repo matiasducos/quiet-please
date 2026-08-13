@@ -15,15 +15,18 @@ export default function Pagination({
   page,
   totalPages,
   baseQuery,
+  basePath = '/leaderboard',
 }: {
   page: number
   totalPages: number
   /** Query string carrying scope/circuit/etc., without `page`. May be empty. */
   baseQuery: string
+  /** Route the pager links into — the per-tournament board passes its own. */
+  basePath?: string
 }) {
   if (totalPages <= 1) return null
 
-  const href = (p: number) => `/leaderboard?${baseQuery ? `${baseQuery}&` : ''}page=${p}`
+  const href = (p: number) => `${basePath}?${baseQuery ? `${baseQuery}&` : ''}page=${p}`
   const current = Math.min(Math.max(page, 1), totalPages)
 
   return (
