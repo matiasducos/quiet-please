@@ -1,5 +1,6 @@
 import React from 'react'
 import Link from 'next/link'
+import { editionHref } from '@/lib/tournaments/slug'
 import type { Highlight } from '@/lib/tournaments/recap-types'
 
 // ── Tier stripe: tour + category → brand colour + display label ────────────
@@ -79,6 +80,14 @@ export interface TournamentCardData {
    * therefore no canonical edition URL.
    */
   recap_href?: string | null
+  /**
+   * Series slug + year, which together form the card's canonical destination
+   * `/tournaments/<slug>/<year>`. Optional because a tournament with no series
+   * has no such URL — those fall back to the `/tournaments/<uuid>` redirect,
+   * and they are excluded from the sitemap for the same reason.
+   */
+  slug?: string | null
+  year?: number | null
 }
 
 export default function TournamentCard({ t, disableLink, action, footer, predictableStatuses }: { t: TournamentCardData; disableLink?: boolean; action?: React.ReactNode; footer?: React.ReactNode; predictableStatuses?: string[] }) {
@@ -105,14 +114,22 @@ export default function TournamentCard({ t, disableLink, action, footer, predict
   // the destination does not keep.
   const recapHref = hasRecap ? t.recap_href ?? null : null
 
+  // A card showing recap stats links to the recap; everything else goes to the
+  // canonical edition URL.
+  //
+  // The UUID is only a last resort now. It used to be the default, which meant
+  // every tournament link on the site was a 308 to the page we actually wanted
+  // indexed — so the canonical URLs had no direct inbound link anywhere, and
+  // Search Console parked all 70 of them under "Discovered - currently not
+  // indexed". Linking the destination directly is the fix.
+  const href = recapHref ?? editionHref(t.slug, t.year) ?? `/tournaments/${t.id}`
+
   const Wrapper = disableLink ? 'div' : Link
   const cardBg = isCompleted ? '#f7f5f0' : 'white'
   const cardBorder = isCompleted ? '#e0dbd2' : 'var(--chalk-dim)'
   const wrapperProps = disableLink
     ? { className: 'block rounded-sm border overflow-hidden', style: { borderColor: cardBorder, background: cardBg } }
-    // A card showing recap stats links to the recap; everything else keeps the
-    // /tournaments/<uuid> redirect to the edition page.
-    : { href: recapHref ?? `/tournaments/${t.id}`, className: 'tournament-card block rounded-sm border overflow-hidden', style: { borderColor: cardBorder, background: cardBg, textDecoration: 'none' } }
+    : { href, className: 'tournament-card block rounded-sm border overflow-hidden', style: { borderColor: cardBorder, background: cardBg, textDecoration: 'none' } }
 
   return (
     <Wrapper {...wrapperProps as any}>

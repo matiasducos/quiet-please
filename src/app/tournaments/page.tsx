@@ -5,6 +5,7 @@ import { unstable_cache } from 'next/cache'
 import { getNavProfile } from '@/lib/supabase/profile'
 import Nav from '@/components/Nav'
 import TournamentsClientList from '@/components/TournamentsClientList'
+import SeriesDirectory from '@/components/SeriesDirectory'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { withRecaps } from '@/lib/tournaments/recap'
 import { getPredictableStatuses } from '@/lib/app-settings'
@@ -198,6 +199,14 @@ export default async function TournamentsPage({ searchParams }: { searchParams: 
             silently failed. */}
         <Suspense key={`${activeTour}:${activeStatus}`} fallback={<TournamentsListSkeleton />}>
           <TournamentsList tour={activeTour} status={activeStatus} />
+        </Suspense>
+
+        {/* Deliberately NOT keyed on the filter: the directory is the same for
+            every tour and status, and it is the only place on the site that
+            links every series. Re-suspending it on a filter change would drop
+            those links out of the HTML for the duration. */}
+        <Suspense fallback={null}>
+          <SeriesDirectory />
         </Suspense>
       </div>
     </main>

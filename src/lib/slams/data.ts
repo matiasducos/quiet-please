@@ -3,8 +3,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { BracketData } from '@/lib/tournaments/series'
 import type { SlamConfig } from './config'
 
+// The series slug rides along so the cards on a slam page link the canonical
+// /tournaments/<slug>/<year> rather than the /tournaments/<uuid> redirect.
+// These four pages are the site's strongest inbound links, so where they point
+// matters more here than anywhere else.
 const TOURNAMENT_FIELDS =
-  'id, name, tour, surface, category, starts_at, ends_at, status, location, flag_emoji, starts_year'
+  'id, name, tour, surface, category, starts_at, ends_at, status, location, flag_emoji, starts_year, tournament_series(slug)'
 
 export type SlamTournament = {
   id: string
@@ -18,6 +22,10 @@ export type SlamTournament = {
   location: string | null
   flag_emoji: string | null
   starts_year: number | null
+  /** Series slug, or null for a row an admin never linked to a series. */
+  slug: string | null
+  /** Alias of `starts_year` under the name TournamentCard reads. */
+  year: number | null
 }
 
 /**
@@ -67,7 +75,20 @@ const getAllSlamTournaments = unstable_cache(
       console.error('[slams] failed to load grand slam tournaments:', error.message)
       return []
     }
-    return (data ?? []) as SlamTournament[]
+
+    type Row = Omit<SlamTournament, 'slug' | 'year'> & {
+      tournament_series?: { slug: string } | { slug: string }[] | null
+    }
+    // PostgREST types a to-one embed as either an object or an array depending
+    // on how it infers the relationship, so both shapes are unwrapped.
+    return ((data ?? []) as unknown as Row[]).map(row => {
+      const embedded = row.tournament_series
+      return {
+        ...row,
+        slug: (Array.isArray(embedded) ? embedded[0]?.slug : embedded?.slug) ?? null,
+        year: row.starts_year ?? null,
+      }
+    })
   },
   ['slam-tournaments'],
   { revalidate: 300, tags: ['tournament-list'] },

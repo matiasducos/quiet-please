@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { editionHref } from './slug'
 import { cardHighlights } from './recap-types'
 import type { Highlight, RecapPayload } from './recap-types'
 
@@ -178,8 +179,8 @@ export async function getRecentCompleted(limit = 3): Promise<RecentTournament[]>
  * inline, so that check cannot be forgotten in one place and not another.
  */
 export function recapHref(slug: string | null, year: number | null): string | null {
-  if (!slug || year == null) return null
-  return `/tournaments/${slug}/${year}/recap`
+  const edition = editionHref(slug, year)
+  return edition && `${edition}/recap`
 }
 
 /**

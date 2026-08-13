@@ -120,3 +120,35 @@ export function parseEditionYear(value: string): number | null {
   if (!/^(19|20)\d{2}$/.test(value)) return null
   return Number(value)
 }
+
+// ── Canonical URLs ───────────────────────────────────────────────────────────
+//
+// These are the only two indexable shapes under /tournaments, and they are what
+// sitemap.ts lists. Everything else — a UUID, a legacy path — resolves to one of
+// them through a redirect.
+//
+// Built here rather than inline at each call site because this module is pure:
+// it imports nothing, so client components can link canonically without pulling
+// the admin client into their bundle. That constraint is why the card used to
+// link `/tournaments/<uuid>` and let the 308 sort it out.
+
+/** The evergreen series page, or null when the tournament has no series. */
+export function hubHref(slug: string | null | undefined): string | null {
+  if (!slug) return null
+  return `/tournaments/${slug}`
+}
+
+/**
+ * A single edition — the canonical URL for "this tournament, this year".
+ *
+ * Null when either half is missing: a tournament with no series, or one whose
+ * `starts_year` was never set, has no edition URL at all, and inventing one
+ * would link a 404.
+ */
+export function editionHref(
+  slug: string | null | undefined,
+  year: number | null | undefined,
+): string | null {
+  if (!slug || year == null) return null
+  return `/tournaments/${slug}/${year}`
+}
