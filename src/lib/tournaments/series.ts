@@ -460,3 +460,108 @@ export function isEditionIndexable(page: EditionPage): boolean {
 export function isSeriesIndexable(hub: SeriesHub): boolean {
   return hub.series.slug_reviewed && hub.editions.length > 0
 }
+
+// ── Directory ────────────────────────────────────────────────────────────────
+
+export type SeriesDirectoryEntry = {
+  slug: string
+  name: string
+  city: string | null
+  country: string | null
+  flag_emoji: string | null
+  surface: Surface | null
+  category: Category | null
+  /** Every edition year, newest first. */
+  years: number[]
+}
+
+/**
+ * Row cap, matching sitemap.ts for the same reason: PostgREST silently
+ * truncates at 1000 rows rather than erroring, and a directory that quietly
+ * drops half the tour is worse than one that fails loudly.
+ */
+const MAX_DIRECTORY_ROWS = 900
+
+/**
+ * Every indexable series, A–Z, with its edition years.
+ *
+ * Deliberately the SAME shape and filter as sitemap.ts — one query over
+ * tournaments with an inner join to reviewed series, grouped by slug. That is
+ * the point: the sitemap lists 70 URLs, and this is what links them. Building
+ * the directory from a different source is how the two drift into a sitemap
+ * advertising pages the site itself never links.
+ *
+ * Cost is one indexed query for the whole tour calendar, cached for an hour and
+ * shared by every visitor, so it does not scale with users.
+ */
+export const getSeriesDirectory = (): Promise<SeriesDirectoryEntry[]> =>
+  unstable_cache(
+    async (): Promise<SeriesDirectoryEntry[]> => {
+      const supabase = createAdminClient()
+
+      const { data, error } = await supabase
+        .from('tournaments')
+        .select(
+          'starts_year, tournament_series!inner(slug, name, city, country, flag_emoji, surface, category, slug_reviewed)',
+        )
+        .not('series_id', 'is', null)
+        .order('starts_year', { ascending: false })
+        .limit(MAX_DIRECTORY_ROWS)
+
+      if (error) {
+        // The directory is an enhancement to a page that already works. A failed
+        // query drops the section rather than taking /tournaments down with it.
+        console.error('[series] directory lookup failed:', error.message)
+        return []
+      }
+
+      type Row = {
+        starts_year: number | null
+        tournament_series: {
+          slug: string
+          name: string
+          city: string | null
+          country: string | null
+          flag_emoji: string | null
+          surface: Surface | null
+          category: Category | null
+          slug_reviewed: boolean
+        } | null
+      }
+
+      const bySlug = new Map<string, SeriesDirectoryEntry>()
+
+      for (const row of (data ?? []) as unknown as Row[]) {
+        const series = row.tournament_series
+        // Unreviewed slugs are auto-created by the sync cron and render noindex
+        // until an admin confirms the URL — the same guard sitemap.ts applies.
+        // Linking one would push crawl budget at a page asking not to be indexed.
+        if (!series?.slug_reviewed || row.starts_year == null) continue
+
+        const existing = bySlug.get(series.slug)
+        if (existing) {
+          // The two tours of one edition share a year and a URL.
+          if (!existing.years.includes(row.starts_year)) existing.years.push(row.starts_year)
+          continue
+        }
+        bySlug.set(series.slug, {
+          slug: series.slug,
+          name: series.name,
+          city: series.city,
+          country: series.country,
+          flag_emoji: series.flag_emoji,
+          surface: series.surface,
+          category: series.category,
+          years: [row.starts_year],
+        })
+      }
+
+      const entries = [...bySlug.values()]
+      for (const entry of entries) entry.years.sort((a, b) => b - a)
+      // A–Z, so the order is stable between renders and predictable to a reader
+      // scanning for one tournament.
+      return entries.sort((a, b) => a.name.localeCompare(b.name))
+    },
+    ['tournament-series-directory'],
+    { revalidate: 3600, tags: ['tournament-list'] },
+  )()

@@ -8,6 +8,7 @@ import { getLiveTournaments } from '@/lib/tournaments/cached'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { ALL_SLAMS, type SlamConfig } from '@/lib/slams/config'
 import { estimateNextEdition, getSlamPerformers, type SlamEditions, type SlamTournament } from '@/lib/slams/data'
+import { editionHref, hubHref } from '@/lib/tournaments/slug'
 import { buildSlamJsonLd } from '@/lib/slams/jsonLd'
 
 /** "the US Open" -> "The US Open", for use at the start of a sentence. */
@@ -76,6 +77,18 @@ export default async function SlamLanding({
 
   const jsonLd = buildSlamJsonLd(config, editions, performers)
   const otherSlams = ALL_SLAMS.filter(s => s.slug !== config.slug)
+
+  // The series hub — every past edition and its champion.
+  //
+  // Read off a tournament row rather than assuming `config.slug` matches the
+  // series slug: the two are independent, config.slug names the landing page
+  // and the series slug is admin-editable at /admin/tournaments/series.
+  //
+  // These four pages carry the most authority on the site, so this link is the
+  // main path by which it reaches the tournament section at all.
+  const seriesSlug =
+    editions.atp?.slug ?? editions.wta?.slug ?? editions.lastCompleted?.slug ?? null
+  const seriesHref = hubHref(seriesSlug)
 
   const primaryCta = isPlayable && editions.atp
     ? { href: `/tournaments/${editions.atp.id}/predict`, label: `Fill out your ${config.name} bracket` }
@@ -189,7 +202,14 @@ export default async function SlamLanding({
               </p>
               {editions.lastCompleted && (
                 <Link
-                  href={`/tournaments/${editions.lastCompleted.id}/results`}
+                  // The edition page, not /tournaments/<uuid>/results: it shows
+                  // the same draw and results, and it is the canonical URL in
+                  // the sitemap. The UUID path stays as the fallback for a row
+                  // with no series, which has no edition URL to link.
+                  href={
+                    editionHref(editions.lastCompleted.slug, editions.lastCompleted.year) ??
+                    `/tournaments/${editions.lastCompleted.id}/results`
+                  }
                   className="inline-flex items-center min-h-[44px] mt-4"
                   style={{ color: accent.base, fontSize: '0.9rem' }}
                 >
@@ -209,6 +229,18 @@ export default async function SlamLanding({
                 </div>
               )}
             </>
+          )}
+
+          {/* Outside both branches: whether the draw is open or the page is in
+              the off-season, the history is there and worth linking. */}
+          {seriesHref && (
+            <Link
+              href={seriesHref}
+              className="inline-flex items-center min-h-[44px] mt-6"
+              style={{ color: accent.base, fontSize: '0.9rem' }}
+            >
+              Every {config.name} champion, year by year →
+            </Link>
           )}
         </div>
       </section>
