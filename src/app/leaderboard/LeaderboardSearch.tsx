@@ -20,12 +20,15 @@ export default function LeaderboardSearch({
   initialQuery,
   baseQuery,
   scopeLabel,
+  basePath = '/leaderboard',
 }: {
   initialQuery: string
   /** Query string carrying scope/circuit/etc., without `q` or `page`. */
   baseQuery: string
   /** Where the search looks, e.g. "worldwide" — shown in the placeholder. */
   scopeLabel: string
+  /** Route the search writes into — the per-tournament board passes its own. */
+  basePath?: string
 }) {
   const router = useRouter()
   const [value, setValue] = useState(initialQuery)
@@ -66,7 +69,7 @@ export default function LeaderboardSearch({
     // A new search always starts from its own results, never page 4 of the old view.
     params.delete('page')
     const qs = params.toString()
-    startTransition(() => router.replace(qs ? `/leaderboard?${qs}` : '/leaderboard', { scroll: false }))
+    startTransition(() => router.replace(qs ? `${basePath}?${qs}` : basePath, { scroll: false }))
   }
 
   function schedule(next: string) {
@@ -83,7 +86,7 @@ export default function LeaderboardSearch({
       role="search"
       className="mb-4"
       // No `action`: a GET form posts to the current path, so pressing Enter
-      // produces `/leaderboard?…&q=term` on its own. That is the whole search
+      // produces `<basePath>?…&q=term` on its own. That is the whole search
       // working before this component has hydrated — the debounce below is the
       // upgrade, not the mechanism.
       onSubmit={e => {

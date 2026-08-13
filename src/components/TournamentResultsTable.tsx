@@ -34,6 +34,13 @@ export type TournamentInfo = {
 }
 
 export type PlayerResult = {
+  /**
+   * Absolute position on the board, 1-based — not the index in `players`.
+   * The board is paginated and can also be a set of search hits, so entry 1 of
+   * the array is #51 on page 2 and could be #87 in a search result. Medals
+   * follow this number, never the array index.
+   */
+  rank: number
   user_id: string
   username: string
   country?: string | null
@@ -61,7 +68,18 @@ function formatDateRange(startsAt: string | null, endsAt: string | null): string
   return `${s} – ${e}, ${year}`
 }
 
-export default function TournamentResultsTable({ tournament, players }: { tournament: TournamentInfo; players: PlayerResult[] }) {
+export default function TournamentResultsTable({
+  tournament,
+  players,
+  emptyTitle,
+  emptyHint,
+}: {
+  tournament: TournamentInfo
+  players: PlayerResult[]
+  /** Overrides the empty state — a search with no hits is not an empty board. */
+  emptyTitle?: string
+  emptyHint?: string
+}) {
   const tierKey = `${tournament.tour}|${tournament.category}`
   const tier = TIER[tierKey] ?? { label: tournament.tour, bg: '#4a5568', text: '#fff' }
   const surface = SURFACE_COLORS[(tournament.surface as keyof typeof SURFACE_COLORS) ?? 'hard']
@@ -144,12 +162,12 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
 
         {players.length === 0 ? (
           <div className="px-5 py-12 text-center" style={{ color: 'var(--muted)' }}>
-            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem' }}>No results yet</p>
-            <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>Points will appear once matches are scored.</p>
+            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem' }}>{emptyTitle ?? 'No results yet'}</p>
+            <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>{emptyHint ?? 'Points will appear once matches are scored.'}</p>
           </div>
         ) : (
-          players.map((p, i) => {
-            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null
+          players.map((p) => {
+            const medal = p.rank === 1 ? '🥇' : p.rank === 2 ? '🥈' : p.rank === 3 ? '🥉' : null
             const accuracy = p.total_picks > 0 ? `${p.correct_picks}/${p.total_picks}` : '—'
             const rate = p.total_picks > 0 ? `${Math.round((p.correct_picks / p.total_picks) * 100)}%` : '—'
             // Own bracket is always viewable; everyone else's only once locked.
@@ -159,7 +177,11 @@ export default function TournamentResultsTable({ tournament, players }: { tourna
                 style={{ borderColor: 'var(--chalk-dim)', background: p.isMe ? '#edf4fc' : 'white' }}>
                 <div className="col-span-1 flex items-center">
                   {medal ? <span style={{ fontSize: '1rem' }}>{medal}</span>
-                    : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{i + 1}</span>}
+                    : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>
+                        {/* 0 means the rank count errored — show nothing rather
+                            than a position that does not exist. */}
+                        {p.rank > 0 ? p.rank : '—'}
+                      </span>}
                 </div>
                 <div className="col-span-3 flex items-center gap-2 min-w-0">
                   <Link href={`/profile/${p.username}`} className="truncate" style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: p.isMe ? '#1e4e8c' : 'var(--ink)', textDecoration: 'none' }}>{p.username}</Link>

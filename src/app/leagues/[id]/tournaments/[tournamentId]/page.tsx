@@ -112,7 +112,10 @@ export default async function LeagueTournamentResultsPage({ params }: { params: 
         picks_locked: p.is_fully_locked === true,
       }
     })
-    .sort((a: PlayerResult, b: PlayerResult) => b.points - a.points)
+    .sort((a, b) => b.points - a.points)
+    // Rank last, once the order is settled. A league board is one page of its
+    // own members, so position in the sorted list is the rank.
+    .map((p, i) => ({ ...p, rank: i + 1 }))
 
   const tournamentInfo: TournamentInfo = {
     id: tournament.id,

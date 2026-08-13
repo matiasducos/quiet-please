@@ -12,6 +12,7 @@ import Pagination from './Pagination'
 import ScopeSegmented from './ScopeSegmented'
 import CountryFlag from '@/components/CountryFlag'
 import { formatPoints } from '@/lib/utils/format'
+import { SEARCH_LIMIT, isSearchActive, sanitizeSearch } from '@/lib/utils/search'
 
 export const metadata: Metadata = {
   title: 'Leaderboard',
@@ -237,8 +238,6 @@ async function buildStats(
 }
 
 const PAGE_SIZE = 50
-/** Max search hits shown. Each hit costs one extra rank count, so it is capped. */
-const SEARCH_LIMIT = 10
 
 const USER_COLS = 'id, username, ranking_points, atp_ranking_points, wta_ranking_points, country, city'
 
@@ -481,15 +480,6 @@ async function searchLeaderboard(
   return { users: hits, ranks, breakdownByUser, statsByUser }
 }
 
-/**
- * Drops the characters that mean something to LIKE or to PostgREST's filter
- * grammar. Usernames contain none of them, so stripping is both safer and
- * simpler than escaping — an unescaped `%` would otherwise match the whole board.
- */
-function sanitizeSearch(raw: string) {
-  return raw.replace(/[%_\\(),*]/g, '').trim().slice(0, 40)
-}
-
 export default async function LeaderboardPage({
   searchParams,
 }: {
@@ -566,10 +556,10 @@ export default async function LeaderboardPage({
   const circuit: Circuit = (sp.circuit as Circuit | undefined) ?? 'both'
   const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1)
 
-  // Below 2 characters a search matches most of the board, so it stays off and
+  // Below the minimum a search matches most of the board, so it stays off and
   // the normal paginated view renders instead.
   const searchTerm  = sanitizeSearch(sp.q ?? '')
-  const isSearching = searchTerm.length >= 2
+  const isSearching = isSearchActive(searchTerm)
 
   // ── Points field based on circuit ───────────────────────────────────────
   const pointsField: PointsField =
