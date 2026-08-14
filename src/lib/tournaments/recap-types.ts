@@ -125,6 +125,35 @@ export interface Highlight {
   detail?: string
 }
 
+/** Who topped the tournament leaderboard, and with what. */
+export interface RecapWinner {
+  username: string
+  points: number
+}
+
+/**
+ * The winner of the tournament leaderboard — the human, not the tennis player.
+ *
+ * Deliberately NOT a `Highlight`. Everything `cardHighlights()` returns is
+ * colour about the draw ("biggest bust", "upsets"), competing for three slots
+ * and dropped when its sample is too thin. Who actually won is the result
+ * itself: it is never noise, it never needs a caveat, and burying it in the
+ * same rotation meant a finished tournament could show three stats about
+ * players and never name the person who beat everyone.
+ *
+ * No sample gate, for the same reason `chalk_vs_chaos` has none: this is a
+ * fact, not a percentage. Whoever scored most points scored most points,
+ * whether the field was three brackets or three thousand.
+ *
+ * `podium` is built from brackets that scored above zero, so an empty podium
+ * means nobody scored at all — there is no winner to name and this returns
+ * null rather than inventing one.
+ */
+export function cardWinner(payload: RecapPayload | null | undefined): RecapWinner | null {
+  const top = payload?.podium?.[0]
+  return top ? { username: top.username, points: top.points } : null
+}
+
 /**
  * '🇪🇸 Carlos Alcaraz', or just the name when the country is unknown.
  *

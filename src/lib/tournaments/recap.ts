@@ -1,7 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { editionHref } from './slug'
-import { cardHighlights } from './recap-types'
-import type { Highlight, RecapPayload } from './recap-types'
+import { cardHighlights, cardWinner } from './recap-types'
+import type { Highlight, RecapPayload, RecapWinner } from './recap-types'
 
 /**
  * The end-of-tournament recap — read and write side.
@@ -20,8 +20,8 @@ import type { Highlight, RecapPayload } from './recap-types'
  * keeps the pages free of `any` — the same approach `./series.ts` takes.
  */
 
-export type { RecapPayload, RecapPlayer, Highlight } from './recap-types'
-export { cardHighlights, playerLabel, roundName, MIN_SAMPLE } from './recap-types'
+export type { RecapPayload, RecapPlayer, Highlight, RecapWinner } from './recap-types'
+export { cardHighlights, cardWinner, playerLabel, roundName, MIN_SAMPLE } from './recap-types'
 
 type Admin = ReturnType<typeof createAdminClient>
 
@@ -184,27 +184,34 @@ export function recapHref(slug: string | null, year: number | null): string | nu
 }
 
 /**
- * Attach formatted recap lines and a link to a list of tournaments.
+ * Attach formatted recap lines, the leaderboard winner and a link to a list of
+ * tournaments.
  *
- * Shared by the homepage and the tournaments list so the two cannot drift into
- * showing different stats for the same tournament. Only completed tournaments
- * are looked up — nothing else can have a recap — which also keeps the `.in()`
- * filter down to the rows that could match.
+ * Shared by the homepage, the dashboard and the tournaments list so the three
+ * cannot drift into showing different stats for the same tournament — which is
+ * also why the winner is attached here rather than at any one call site. Only
+ * completed tournaments are looked up — nothing else can have a recap — which
+ * also keeps the `.in()` filter down to the rows that could match.
  */
 export async function withRecaps<T extends { id: string; status: string; slug?: string | null; year?: number | null }>(
   tournaments: T[],
-): Promise<Array<T & { recap_highlights: Highlight[]; recap_href: string | null }>> {
+): Promise<Array<T & { recap_highlights: Highlight[]; recap_winner: RecapWinner | null; recap_href: string | null }>> {
   const completedIds = tournaments.filter(t => t.status === 'completed').map(t => t.id)
   const recaps = await getRecaps(completedIds)
 
   return tournaments.map(t => {
     const payload = recaps.get(t.id)?.payload ?? null
     const highlights = cardHighlights(payload)
+    const winner = cardWinner(payload)
     return {
       ...t,
       recap_highlights: highlights,
-      // No stats means no link: see the matching guard in TournamentCard.
-      recap_href: highlights.length > 0 ? recapHref(t.slug ?? null, t.year ?? null) : null,
+      recap_winner: winner,
+      // Nothing to show means no link: see the matching guard in
+      // TournamentCard. A winner counts as something to show — the recap page
+      // leads with the podium, so a card naming a champion and nothing else
+      // still sends you somewhere that keeps the promise.
+      recap_href: highlights.length > 0 || winner ? recapHref(t.slug ?? null, t.year ?? null) : null,
     }
   })
 }
