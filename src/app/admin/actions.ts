@@ -91,8 +91,31 @@ export async function triggerCron(key: string, params?: Record<string, string>):
 
 // ── Tournament status override ────────────────────────────────────────────────
 
-const VALID_STATUSES = ['upcoming', 'accepting_predictions', 'in_progress', 'completed'] as const
+// `draw_published` is included because `sync-draws` sets it (a qualifying draw
+// with no named players yet), so it is a state a tournament can genuinely be in
+// and therefore one an admin must be able to set it back to. The API route at
+// /api/admin/set-tournament-status has always accepted it; this action was the
+// odd one out.
+const VALID_STATUSES = ['upcoming', 'draw_published', 'accepting_predictions', 'in_progress', 'completed'] as const
 type ValidStatus = typeof VALID_STATUSES[number]
+
+/**
+ * The statuses a draw save is allowed to move to `accepting_predictions`.
+ *
+ * Publishing a draw opens predictions, but a draw is also RE-saved routinely —
+ * a qualifier resolves, a withdrawal reshuffles a section. Both publish paths
+ * used to rewrite the status unconditionally, so re-saving the draw of a
+ * tournament that was already under way dragged it backwards. Cincinnati 2026
+ * spent a day like that: the first result flipped it to `in_progress` at 23:07,
+ * a draw re-save knocked it back to `accepting_predictions` at 06:32, and every
+ * "live right now" surface went back to reporting nothing on court.
+ *
+ * Forward-only, which is what `sync-draws` has always done — see the matching
+ * transition there. `in_progress` and `completed` are absent deliberately:
+ * those are decided by RESULTS, and editing a draw is not new information about
+ * whether play has started.
+ */
+const DRAW_OPENABLE_STATUSES = ['upcoming', 'draw_published']
 
 export async function setTournamentStatus(
   tournamentId: string,
@@ -302,10 +325,12 @@ export async function saveManualDraw(
   revalidateTag('tournament-list', 'default')
 
   if (openPredictions) {
+    // Forward-only: see DRAW_OPENABLE_STATUSES.
     await admin
       .from('tournaments')
       .update({ status: 'accepting_predictions' })
       .eq('id', tournamentId)
+      .in('status', DRAW_OPENABLE_STATUSES)
 
     // Notify + email all users that predictions are now open
     await announceDrawOpen(tournamentId)
@@ -1826,13 +1851,17 @@ export async function buildDraw(
       .upsert(byeResults, { onConflict: 'tournament_id,external_match_id' })
   }
 
-  // Open predictions
+  // Open predictions — forward-only, so re-saving the draw of a tournament
+  // that is already under way cannot demote it. See DRAW_OPENABLE_STATUSES.
   await admin
     .from('tournaments')
     .update({ status: 'accepting_predictions' })
     .eq('id', tournamentId)
+    .in('status', DRAW_OPENABLE_STATUSES)
 
-  // Notify + email users
+  // Notify + email users. Safe to call unconditionally even when the status
+  // write above matched nothing: the announcement is claimed atomically via
+  // `draw_announced_at` (070), so a re-save is already a no-op here.
   await announceDrawOpen(tournamentId)
 
   revalidateTag('tournament-detail', 'default')
