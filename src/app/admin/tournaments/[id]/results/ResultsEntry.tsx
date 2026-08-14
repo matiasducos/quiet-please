@@ -42,6 +42,27 @@ interface ResultsEntryProps {
   predictionMode: PredictionMode
 }
 
+/**
+ * The statuses the override dropdown may set.
+ *
+ * `completed` is deliberately absent in BOTH directions. Completing fires
+ * trophies, Perfect Prediction, challenge finalization and invite expiry;
+ * un-completing has to undo all four. That is exactly what the Mark complete /
+ * Un-complete buttons below do — a dropdown reaching `completed` would fire
+ * those triggers from a control that looks like a label change, and one that
+ * could leave it would strand the badges already handed out. So the dropdown
+ * hides entirely once a tournament is completed.
+ */
+const SETTABLE_STATUSES = ['upcoming', 'draw_published', 'accepting_predictions', 'in_progress'] as const
+
+const STATUS_LABELS: Record<string, string> = {
+  upcoming:              'Upcoming',
+  draw_published:        'Draw published — not open yet',
+  accepting_predictions: 'Accepting predictions',
+  in_progress:           'In progress — live',
+  completed:             'Completed',
+}
+
 const ROUND_LABELS: Record<string, string> = {
   R128: 'Round of 128',
   R64: 'Round of 64',
@@ -69,6 +90,9 @@ export default function ResultsEntry({
   // Separate from completeStatus so a rebuild does not clear the message from a
   // completion that just happened, and vice versa.
   const [recapStatus, setRecapStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error'; message?: string }>({ type: 'idle' })
+  // Third message slot, for the same reason recapStatus is separate: a status
+  // override should not wipe the message from a completion or a recap rebuild.
+  const [statusChange, setStatusChange] = useState<{ type: 'idle' | 'loading' | 'success' | 'error'; message?: string }>({ type: 'idle' })
   // Local mirror of the prop so completing / un-completing swaps the controls
   // without a round trip. The server action is the source of truth; this only
   // moves after it succeeds.
@@ -278,6 +302,22 @@ export default function ResultsEntry({
       }
     } finally {
       setLockingRound(null)
+    }
+  }
+
+  async function handleSetStatus(next: string) {
+    if (next === status) return
+    const previous = status
+    setStatusChange({ type: 'loading' })
+    const { ok, error } = await setTournamentStatus(tournamentId, next)
+    if (ok) {
+      setStatus(next)
+      setStatusChange({ type: 'success', message: `Status set to “${STATUS_LABELS[next] ?? next}”` })
+    } else {
+      // Leave the local mirror where it was: the select reads from `status`, so
+      // not moving it is what snaps the dropdown back to reality on a failure.
+      setStatus(previous)
+      setStatusChange({ type: 'error', message: error ?? 'Failed to change status' })
     }
   }
 
@@ -661,6 +701,49 @@ export default function ResultsEntry({
             </div>
           )
         })}
+
+        {/* ── Status override ──────────────────────────────────────────────
+            This page is where you FIND OUT the status is wrong — you are
+            entering results for a tournament the site still calls "accepting
+            predictions". Until now nothing in the admin UI could set
+            `in_progress`: the only writer was an API route with no caller, so
+            fixing it meant a POST by hand. Hidden once completed, because from
+            there the only safe exit is Un-complete (see SETTABLE_STATUSES). */}
+        {status !== 'completed' && (
+          <div className="mt-8">
+            <div className="flex flex-wrap items-center gap-3">
+              <label
+                htmlFor="tournament-status"
+                style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)' }}
+              >
+                Status
+              </label>
+              <select
+                id="tournament-status"
+                value={status}
+                onChange={e => handleSetStatus(e.target.value)}
+                disabled={statusChange.type === 'loading'}
+                className="px-3 py-2 text-sm rounded-sm border disabled:opacity-40"
+                style={{ background: 'white', color: 'var(--ink)', borderColor: 'var(--chalk-dim)' }}
+              >
+                {SETTABLE_STATUSES.map(s => (
+                  <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                ))}
+              </select>
+              {statusChange.type === 'loading' && (
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>Saving…</span>
+              )}
+            </div>
+            {statusChange.message && (
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: statusChange.type === 'error' ? '#991b1b' : '#166534', marginTop: '8px' }}>
+                {statusChange.message}
+              </p>
+            )}
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', marginTop: '8px', lineHeight: 1.5 }}>
+              Entering the first real result sets <strong>In progress</strong> on its own. Reach for this when that has been undone, or to open or close predictions by hand.
+            </p>
+          </div>
+        )}
 
         {/* Complete / un-complete — with global progress */}
         <div className="mt-8">
