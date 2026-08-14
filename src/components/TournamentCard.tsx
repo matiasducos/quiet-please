@@ -1,6 +1,7 @@
 import React from 'react'
 import Link from 'next/link'
 import { editionHref } from '@/lib/tournaments/slug'
+import { formatPoints } from '@/lib/utils/format'
 import type { Highlight } from '@/lib/tournaments/recap-types'
 
 // ── Tier stripe: tour + category → brand colour + display label ────────────
@@ -73,6 +74,14 @@ export interface TournamentCardData {
    */
   recap_highlights?: Highlight[]
   /**
+   * Who won the tournament leaderboard. Plain data for the same reason the
+   * highlights are: this component renders inside client components. Not
+   * clickable here even though a profile exists — the whole card is already an
+   * anchor, and an anchor inside an anchor is invalid HTML. The recap page the
+   * card points at has the podium, with every name linked.
+   */
+  recap_winner?: { username: string; points: number } | null
+  /**
    * Where "Full recap →" goes. Carried on the data rather than passed as a
    * prop so it flows through `TournamentsClientList`, which spreads whole
    * tournament objects and would otherwise need the link threaded separately.
@@ -108,10 +117,11 @@ export default function TournamentCard({ t, disableLink, action, footer, predict
   const displayLocation = t.location ?? fallbackLocation
 
   const highlights = t.recap_highlights ?? []
-  const hasRecap = isCompleted && highlights.length > 0
-  // Only a card that actually shows recap stats sends you to the recap. A
-  // completed card with no stats linking to a recap page would be a promise
-  // the destination does not keep.
+  const winner = isCompleted ? t.recap_winner ?? null : null
+  const hasRecap = isCompleted && (highlights.length > 0 || !!winner)
+  // Only a card that actually shows something from the recap sends you to the
+  // recap. A completed card with nothing on it linking to a recap page would be
+  // a promise the destination does not keep.
   const recapHref = hasRecap ? t.recap_href ?? null : null
 
   // A card showing recap stats links to the recap; everything else goes to the
@@ -265,6 +275,47 @@ export default function TournamentCard({ t, disableLink, action, footer, predict
               gap: '10px',
             }}
           >
+            {/* The result, above the colour. `flexWrap` + `overflowWrap` rather
+                than truncation: at 375px a long username has to break, and a
+                champion whose name is cut off defeats the point of the row. */}
+            {winner && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  gap: '8px',
+                  flexWrap: 'wrap',
+                  background: '#edf7f0',
+                  border: '1px solid #cfe6d8',
+                  borderRadius: '2px',
+                  padding: '7px 10px',
+                }}
+              >
+                <span style={{ fontSize: '0.8rem', lineHeight: 1 }}>🏆</span>
+                <span
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: '0.95rem',
+                    color: 'var(--ink)',
+                    minWidth: 0,
+                    overflowWrap: 'anywhere',
+                  }}
+                >
+                  {winner.username}
+                </span>
+                <span
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '0.6rem',
+                    color: 'var(--muted)',
+                    letterSpacing: '0.03em',
+                  }}
+                >
+                  won with {formatPoints(winner.points)} pts
+                </span>
+              </div>
+            )}
+
             {highlights.map(h => (
               <div key={h.label}>
                 <div
