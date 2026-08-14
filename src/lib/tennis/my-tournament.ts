@@ -18,6 +18,8 @@
  *    have neither, so callers can pass `overrides` from the players registry.
  */
 
+import { isQualifierPlaceholder } from './qualifier-remap'
+
 export const ROUND_ORDER = ['R128', 'R64', 'R32', 'R16', 'QF', 'SF', 'F'] as const
 
 export const ROUND_LABEL: Record<string, string> = {
@@ -91,6 +93,14 @@ export interface PlayerSummary {
   riding: number
   /** round the player was eliminated in, null while still active */
   outRound: string | null
+  /**
+   * Whether the picked id still appears in the draw. False means the pick is
+   * dangling — the player withdrew and was replaced, or a qualifier placeholder
+   * resolved without the pick being remapped onto the real player. Either way
+   * that pick can never score again, so it must not be counted as active: the
+   * matches it names are being played by somebody else entirely.
+   */
+  inDraw: boolean
 }
 
 export interface MyTournament {
@@ -116,12 +126,20 @@ export interface MyTournament {
   players: PlayerSummary[]
 }
 
+/**
+ * "Qualifier" is a claim about the pick, not a fallback for a name we failed to
+ * look up. Reserve it for ids that really are placeholders — everything else
+ * resolves from the draw, then from the registry (which is where a player who
+ * has since been removed from the draw still lives), and only then gives up.
+ */
 function displayName(
   externalId: string,
   fromDraw: Record<string, string>,
   overrides: Record<string, { name?: string | null }>,
 ): string {
-  return fromDraw[externalId] || overrides[externalId]?.name || 'Qualifier'
+  const resolved = fromDraw[externalId] || overrides[externalId]?.name
+  if (resolved) return resolved
+  return isQualifierPlaceholder({ externalId }) ? 'Qualifier' : 'Unknown player'
 }
 
 export function buildMyTournament(input: MyTournamentInput): MyTournament {
@@ -131,10 +149,12 @@ export function buildMyTournament(input: MyTournamentInput): MyTournament {
   const nameByExternalId: Record<string, string> = {}
   const countryByExternalId: Record<string, string> = {}
   const roundByMatchId: Record<string, string> = {}
+  const idsInDraw = new Set<string>()
   for (const m of matches) {
     if (m?.matchId && m.round) roundByMatchId[m.matchId] = m.round
     for (const p of [m?.player1, m?.player2]) {
       if (!p?.externalId) continue
+      idsInDraw.add(p.externalId)
       if (p.name) nameByExternalId[p.externalId] = p.name
       if (p.country) countryByExternalId[p.externalId] = p.country
     }
@@ -200,7 +220,12 @@ export function buildMyTournament(input: MyTournamentInput): MyTournament {
 
   const players: PlayerSummary[] = Object.keys(pickCount).map(externalId => {
     const outRound = eliminatedIn.get(externalId) ?? null
-    const active = outRound === null
+    // A pick on someone who is no longer in the draw looks "active" by the only
+    // test we have — they never lost a match here — but they cannot win one
+    // either. Treating that as active overstates "Still active" and parks a dead
+    // pick at the top of "Still to come".
+    const inDraw = idsInDraw.has(externalId)
+    const active = outRound === null && inDraw
     return {
       externalId,
       name: displayName(externalId, nameByExternalId, overrides),
@@ -210,6 +235,7 @@ export function buildMyTournament(input: MyTournamentInput): MyTournament {
       active,
       riding: active ? (riding[externalId] ?? 0) : 0,
       outRound,
+      inDraw,
     }
   })
 

@@ -91,7 +91,10 @@ const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_RO
 
 const ROUND_ORDER = ['R128', 'R64', 'R32', 'R16', 'QF', 'SF', 'F']
 
-const isPlaceholderId = (id) => /^qualifier([-_ ]?\d+)?$/i.test(String(id ?? '').trim())
+// Matches every placeholder id we have ever minted: the bare 'Qualifier' from
+// the API name-fallback, the old counter ids ('qualifier-6'), and the
+// slot-derived ones ('qualifier-027-p1').
+const isPlaceholderId = (id) => /^qualifier($|[-_ ])/i.test(String(id ?? '').trim())
 
 // ── Load draw + build feed structure (mirrors src/lib/tennis/bracket.ts) ─────
 

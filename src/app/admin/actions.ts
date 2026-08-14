@@ -6,6 +6,7 @@ import { createAdminClient, listAllUsers } from '@/lib/supabase/admin'
 import { announceDrawOpen } from '@/lib/announce-draw-open'
 import { buildAndStoreRecap, deleteRecap } from '@/lib/tournaments/recap'
 import { slugErrorMessage } from '@/lib/tournaments/slug'
+import { qualifierSlotId, remapResolvedQualifiers, type DrawLike } from '@/lib/tennis/qualifier-remap'
 import { COUNTRIES, codeToFlag } from './countries'
 
 /** Look up a country name and return its flag emoji, or null if not found. */
@@ -267,6 +268,15 @@ export async function saveManualDraw(
   const draw = { tournamentExternalId: externalId, rounds, matches: allMatches }
   const admin = createAdminClient()
 
+  // See buildDraw: the stored draw is the only record of the ids the qualifier
+  // slots carried, and picks reference them. Read it before overwriting.
+  const { data: oldDrawRow, error: oldDrawError } = await admin
+    .from('draws')
+    .select('bracket_data')
+    .eq('tournament_id', tournamentId)
+    .maybeSingle()
+  if (oldDrawError) console.error('[saveManualDraw] failed to read prior draw:', oldDrawError.message)
+
   const { error: drawError } = await admin
     .from('draws')
     .upsert(
@@ -274,6 +284,18 @@ export async function saveManualDraw(
       { onConflict: 'tournament_id' },
     )
   if (drawError) return { ok: false, error: drawError.message }
+
+  try {
+    const summary = await remapResolvedQualifiers(
+      admin, tournamentId,
+      oldDrawRow?.bracket_data as unknown as DrawLike | null,
+      draw as unknown as DrawLike,
+      'saveManualDraw',
+    )
+    if (summary) console.log(`[saveManualDraw] ${summary}`)
+  } catch (remapErr) {
+    console.error('[saveManualDraw] qualifier remap failed:', remapErr)
+  }
 
   // Bust the ISR cache so tournament detail pages refresh immediately
   revalidateTag('tournament-detail', 'default')
@@ -1695,23 +1717,25 @@ export async function buildDraw(
   const allMatches: any[] = []
 
   // First round — players from slots
-  let qualifierCounter = 0
   slots.forEach((slot, i) => {
     const idx = String(i + 1).padStart(3, '0')
     const matchId = `${externalId}-${firstRound}-${idx}`
-    const resolveSlot = (extId: string | null) => {
+    const resolveSlot = (extId: string | null, which: 'player1' | 'player2') => {
       if (!extId) return null
+      // A placeholder id is derived from its slot, never from a running counter:
+      // resolving one qualifier must not renumber the others, or every pick
+      // stored against a later placeholder quietly starts meaning a different
+      // match. See qualifierSlotId.
       if (extId === 'QUALIFIER') {
-        qualifierCounter++
-        return { externalId: `qualifier-${qualifierCounter}`, name: 'Qualifier', country: '' }
+        return { externalId: qualifierSlotId(i, which), name: 'Qualifier', country: '' }
       }
       return playerMap.get(extId) ?? null
     }
     allMatches.push({
       matchId,
       round: firstRound,
-      player1: resolveSlot(slot.player1ExternalId),
-      player2: resolveSlot(slot.player2ExternalId),
+      player1: resolveSlot(slot.player1ExternalId, 'player1'),
+      player2: resolveSlot(slot.player2ExternalId, 'player2'),
     })
   })
 
@@ -1765,6 +1789,15 @@ export async function buildDraw(
 
   const draw = { tournamentExternalId: externalId, rounds, matches: allMatches }
 
+  // Read the draw we are about to destroy: it is the only record of which id
+  // each qualifier slot used to carry, and stored picks reference those ids.
+  const { data: oldDrawRow, error: oldDrawError } = await admin
+    .from('draws')
+    .select('bracket_data')
+    .eq('tournament_id', tournamentId)
+    .maybeSingle()
+  if (oldDrawError) console.error('[buildDraw] failed to read prior draw:', oldDrawError.message)
+
   const { error: drawError } = await admin
     .from('draws')
     .upsert(
@@ -1772,6 +1805,19 @@ export async function buildDraw(
       { onConflict: 'tournament_id' },
     )
   if (drawError) return { ok: false, error: drawError.message }
+
+  // Re-publishing a draw with the qualifiers filled in is the whole point of the
+  // second save, so every pick that named a placeholder has to follow the slot.
+  // Without this the pick is dangling: it can never match a result, the cron
+  // awards nothing, and the tournament page keeps calling the player "Qualifier".
+  try {
+    const summary = await remapResolvedQualifiers(
+      admin, tournamentId, oldDrawRow?.bracket_data as unknown as DrawLike | null, draw, 'buildDraw',
+    )
+    if (summary) console.log(`[buildDraw] "${tournament.name}": ${summary}`)
+  } catch (remapErr) {
+    console.error('[buildDraw] qualifier remap failed:', remapErr)
+  }
 
   // Insert BYE results so they show as resolved
   if (byeResults.length > 0) {

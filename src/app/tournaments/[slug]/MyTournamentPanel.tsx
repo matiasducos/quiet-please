@@ -1,5 +1,6 @@
 import type { MyTournament, PlayerSummary } from '@/lib/tennis/my-tournament'
 import { ROUND_LABEL } from '@/lib/tennis/my-tournament'
+import { isQualifierPlaceholder } from '@/lib/tennis/qualifier-remap'
 import InfoBubble from '@/components/InfoBubble'
 import { nameToFlag } from '@/app/admin/countries'
 
@@ -64,11 +65,19 @@ function PlayerLine({ p, tone, isChampion, isFinished }: { p: PlayerSummary; ton
   // While the tournament runs, the label counts picks rather than naming a
   // state: "0 to come" says plainly that a player still in the draw has nothing
   // left to give you, which the old "active" actively hid.
+  //
+  // A pick on someone who left the draw is neither: they were never beaten and
+  // they are not playing. Saying "out R64" would invent a defeat, so name what
+  // actually happened to the pick — a named player left the draw ("withdrew"),
+  // while a placeholder that outlived its own resolution never became anybody,
+  // so the pick is simply void.
   const statusLabel = isChampion
     ? 'champion'
-    : p.active
-      ? (isFinished ? 'out' : `${p.riding} to come`)
-      : `out ${p.outRound ?? ''}`
+    : !p.inDraw
+      ? (p.outRound ? `out ${p.outRound}` : isQualifierPlaceholder({ externalId: p.externalId }) ? 'void' : 'withdrew')
+      : p.active
+        ? (isFinished ? 'out' : `${p.riding} to come`)
+        : `out ${p.outRound ?? ''}`
   return (
     <div className="flex items-center gap-2 px-2 md:px-3 py-2 rounded-sm" style={{ background: bg }}>
       <PlayerName p={p} color={nameColor} />
