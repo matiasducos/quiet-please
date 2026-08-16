@@ -668,3 +668,90 @@ export async function sendAnonymousChallengeResultEmail(o: AnonymousChallengeRes
       </div>`,
   })
 }
+
+export interface AnonymousBracketResultEmail {
+  to: string
+  /** The name on the bracket — generated ("Player 7986") when none was given. */
+  name: string
+  points: number
+  correctPicks: number
+  /** Matches that were actually decided, i.e. the denominator for `correctPicks`. */
+  matchesScored: number
+  tournamentName: string
+  tournamentFlagEmoji: string | null
+  shareCode: string
+  emailToken: string
+}
+
+/**
+ * The one email a signed-out solo bracket earns.
+ *
+ * Sibling of sendAnonymousChallengeResultEmail, and the reason the /play flow
+ * asks for an address at all: without it, someone who filled in a bracket from
+ * a social post and did well is never told, and the single best moment to earn
+ * the account passes in silence.
+ *
+ * No opponent here, so there is no win/lose to lead with. The score itself is
+ * the news, and the honest framing of a mid-tournament entry — you can only be
+ * marked on the matches that have been played since — is carried in the
+ * denominator rather than buried.
+ */
+export async function sendAnonymousBracketResultEmail(o: AnonymousBracketResultEmail) {
+  if (!canSend()) return
+
+  const flag = o.tournamentFlagEmoji ? `${o.tournamentFlagEmoji} ` : ''
+  const scored = o.points > 0
+
+  const subject = scored
+    ? `Your ${o.tournamentName} bracket: ${o.points} points`
+    : `How your ${o.tournamentName} bracket finished`
+
+  const headline = scored ? `${o.points} points.` : 'That’s a wrap.'
+
+  // Carries the reader back to the bracket they already built rather than
+  // dropping them on a cold signup form — same reasoning as the challenge mail.
+  const signupUrl = `${BASE_URL}/signup?next=${encodeURIComponent(`/b/${o.shareCode}`)}`
+
+  await resend!.emails.send({
+    from: FROM,
+    replyTo: REPLY_TO,
+    to: o.to,
+    subject,
+    html: `
+      <div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#f5f2eb;">
+        <p style="font-size:12px;letter-spacing:0.08em;color:#6b6b6b;text-transform:uppercase;margin-bottom:24px;">Quiet Please</p>
+        <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 12px;">${headline}</h1>
+        <p style="color:#6b6b6b;font-size:16px;margin:0 0 24px;">${flag}${o.tournamentName} is over. Here's how your bracket finished.</p>
+
+        <table style="width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #e8e3d8;border-radius:2px;margin-bottom:28px;">
+          <tr>
+            <td style="padding:14px 16px;font-size:15px;color:#0d0d0d;">${o.name}</td>
+            <td style="padding:14px 16px;font-size:15px;text-align:right;color:${scored ? '#1a6b3c' : '#0d0d0d'};font-weight:bold;">${o.points} pts</td>
+          </tr>
+          <tr>
+            <td style="padding:14px 16px;font-size:15px;color:#6b6b6b;border-top:1px solid #e8e3d8;">Correct picks</td>
+            <td style="padding:14px 16px;font-size:15px;text-align:right;color:#0d0d0d;border-top:1px solid #e8e3d8;">${o.correctPicks} of ${o.matchesScored}</td>
+          </tr>
+        </table>
+
+        <p style="color:#6b6b6b;font-size:15px;margin:0 0 20px;">
+          That bracket disappears with your browser. With a free account they're
+          all kept — points, a global ranking, leagues with friends, and every
+          tournament of the season.
+        </p>
+
+        <div>
+          <a href="${signupUrl}"
+             style="display:inline-block;background:#1a6b3c;color:white;text-decoration:none;padding:12px 24px;font-size:14px;border-radius:2px;">
+            Create a free account →
+          </a>
+        </div>
+
+        <p style="margin-top:20px;">
+          <a href="${BASE_URL}/b/${o.shareCode}" style="color:#6b6b6b;font-size:14px;">See your full bracket →</a>
+        </p>
+
+        ${anonymousFooter(o.emailToken)}
+      </div>`,
+  })
+}

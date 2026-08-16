@@ -49,6 +49,23 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Solo brackets from /play carry the same kind of one-shot address, minted
+  // in their own table rather than on a challenge. One column here, not two:
+  // a bracket has a single author.
+  const { data: bracket, error: bracketErr } = await supabase
+    .from('anonymous_predictions')
+    .update({ email: null, email_token: null })
+    .eq('email_token', token)
+    .select('id')
+
+  if (bracketErr) {
+    console.error('[unsubscribe/anonymous] bracket update error:', bracketErr)
+    return NextResponse.redirect(new URL('/?unsubscribed=error', req.url))
+  }
+  if (bracket && bracket.length > 0) {
+    return NextResponse.redirect(new URL('/unsubscribed?type=anonymous', req.url))
+  }
+
   // No match. Most likely an already-used opt-out link — the address is gone,
   // which is the outcome the visitor wanted, so say so rather than erroring.
   return NextResponse.redirect(new URL('/unsubscribed?type=anonymous', req.url))
