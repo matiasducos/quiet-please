@@ -945,6 +945,122 @@ export async function GET(request: Request) {
       }
     }
 
+    // ── 12c. Tell signed-out solo bracket players how they finished ───────
+    //
+    // The /play entry point's counterpart to 12b. Same self-healing shape:
+    // driven off "has an address, not yet emailed", the guard is only stamped
+    // after the send returns, so a Resend failure is retried next run instead
+    // of vanishing.
+    //
+    // The pending set is tiny by construction — it is only people who left an
+    // address and have not been mailed yet — and is backed by the partial
+    // index in 085, so this stays cheap however large the table grows.
+    let anonBracketEmails = 0
+    if (!silent) {
+      try {
+        const { data: pendingBrackets, error: pendingBracketErr } = await supabase
+          .from('anonymous_predictions')
+          .select('id, tournament_id, share_code, display_name, picks, locked_picks, email, email_token, claimed_by')
+          .not('email', 'is', null)
+          .is('result_emailed_at', null)
+          .limit(200)
+
+        if (pendingBracketErr) throw pendingBracketErr
+
+        if (pendingBrackets?.length) {
+          const { sendAnonymousBracketResultEmail, isBotEmail } = await import('@/lib/email')
+          const { scoreAnonymousPicks } = await import('@/lib/tennis/anonymous-scoring')
+
+          // Only completed tournaments owe anyone a result. Resolved from the
+          // maps this run already built rather than re-queried per row.
+          for (const bracketRow of pendingBrackets) {
+            const tournamentId = bracketRow.tournament_id
+
+            // Claimed brackets are somebody's real prediction now. They get the
+            // normal signed-in points mail, and pitching "create a free
+            // account" at someone who just made one is worse than saying
+            // nothing — so the address is retired without a send.
+            if (bracketRow.claimed_by) {
+              await supabase
+                .from('anonymous_predictions')
+                .update({
+                  result_emailed_at: new Date().toISOString(),
+                  email: null,
+                  email_token: null,
+                })
+                .eq('id', bracketRow.id)
+              continue
+            }
+
+            const { data: tRow } = await supabase
+              .from('tournaments')
+              .select('status, name, location, flag_emoji, category')
+              .eq('id', tournamentId)
+              .single()
+
+            if (tRow?.status !== 'completed') continue
+            if (isBotEmail(bracketRow.email!)) continue
+
+            const bracket = bracketByTournament[tournamentId]
+            if (!bracket) continue
+
+            const typedResults = allResults
+              .filter((r: any) => r.tournament_id === tournamentId && r.score !== 'BYE')
+              .map((r: any) => ({
+                external_match_id: r.external_match_id,
+                round: r.round as Round,
+                winner_external_id: r.winner_external_id,
+                score: r.score,
+              }))
+            if (typedResults.length === 0) continue
+
+            const score = scoreAnonymousPicks(
+              (bracketRow.picks as Record<string, string>) ?? {},
+              typedResults,
+              tRow.category as TournamentCategory,
+              bracket.matches,
+              (bracketRow.locked_picks as string[]) ?? [],
+            )
+
+            try {
+              await sendAnonymousBracketResultEmail({
+                to: bracketRow.email!,
+                name: bracketRow.display_name ?? 'Your bracket',
+                points: score.totalPoints,
+                correctPicks: score.correctPicks,
+                matchesScored: score.totalResults,
+                tournamentName: tRow.location ?? tRow.name,
+                tournamentFlagEmoji: tRow.flag_emoji,
+                shareCode: bracketRow.share_code,
+                emailToken: bracketRow.email_token ?? '',
+              })
+
+              // Claimed only after the send returns, and the address is erased
+              // in the same write — it was collected for this one message and
+              // the timestamp alone prevents a second.
+              await supabase
+                .from('anonymous_predictions')
+                .update({
+                  result_emailed_at: new Date().toISOString(),
+                  email: null,
+                  email_token: null,
+                })
+                .eq('id', bracketRow.id)
+
+              anonBracketEmails++
+            } catch (sendErr) {
+              // Left unclaimed on purpose so the next run retries this one.
+              console.error(`[award-points] anon bracket email failed (${bracketRow.id}):`, sendErr)
+              Sentry.captureException(sendErr)
+            }
+          }
+        }
+      } catch (bracketEmailErr) {
+        console.error('[award-points] anonymous bracket email error:', bracketEmailErr)
+        Sentry.captureException(bracketEmailErr)
+      }
+    }
+
     // ── 13. Achievement checks ─────────────────────────────────────────
     let achievementsAwarded = 0
     // Silent mode still AWARDS achievements (data correctness) but skips the
@@ -1189,6 +1305,7 @@ export async function GET(request: Request) {
         challenges_expired: challengesExpired,
         anonymous_challenges_scored: anonChallengesScored,
         anonymous_result_emails: anonResultEmails,
+        anonymous_bracket_emails: anonBracketEmails,
         achievements_awarded: achievementsAwarded,
         recaps_built: recapsBuilt,
         // Empty on a healthy run. Anything listed here was deferred to the
