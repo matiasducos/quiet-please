@@ -3,6 +3,7 @@ import { requireAdmin } from '@/app/admin/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ROUND_ORDER, ROUND_LABEL } from '@/lib/tennis/my-tournament'
 import { pendingMatches, type RawDrawMatch } from '@/lib/social/data'
+import { resolveLegacyTournamentId } from '@/lib/tournaments/series'
 import SocialStudio from './SocialStudio'
 
 /**
@@ -17,7 +18,7 @@ export default async function SocialCardsPage({ params }: { params: Promise<{ id
   const { id } = await params
   const admin = createAdminClient()
 
-  const [{ data: tournament }, { data: draw }, { data: results }, { data: recap }] = await Promise.all([
+  const [{ data: tournament }, { data: draw }, { data: results }, { data: recap }, legacy] = await Promise.all([
     admin.from('tournaments').select('id, name, flag_emoji, status').eq('id', id).single(),
     // bracket_data, not just the id: the "Up next" tab is gated on there being a
     // match left to play, and that is only derivable from the draw plus the
@@ -32,6 +33,10 @@ export default async function SocialCardsPage({ params }: { params: Promise<{ id
     // gated on the row existing rather than on the completed status — a
     // tournament can be completed for a cron cycle before its recap is built.
     admin.from('tournament_recaps').select('tournament_id').eq('tournament_id', id).maybeSingle(),
+    // Series slug + year for the campaign link the studio hands the admin to
+    // paste into the post. Null for a tournament with no reviewed series — the
+    // link falls back to the UUID below, which /play resolves just as well.
+    resolveLegacyTournamentId(id).catch(() => null),
   ])
 
   if (!tournament) notFound()
@@ -59,6 +64,10 @@ export default async function SocialCardsPage({ params }: { params: Promise<{ id
       rounds={rounds}
       hasFinal={roundsPresent.has('F')}
       hasRecap={!!recap}
+      // The evergreen series slug wherever there is one, so the same link keeps
+      // working next season and the campaign name stays comparable year on year.
+      playSlug={legacy?.slug ?? tournament.id}
+      playCampaign={legacy ? `${legacy.slug}-${legacy.year}` : tournament.id}
     />
   )
 }

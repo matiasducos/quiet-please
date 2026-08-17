@@ -13,6 +13,20 @@
 export const SITE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://quietplease.app'
 
 /**
+ * The real domain, never overridable by environment.
+ *
+ * For links that are COPIED OUT of the app and published somewhere we don't
+ * control — a campaign link pasted into an Instagram story, say. SITE_URL is
+ * wrong for those: `.env.local` points it at localhost so that local runs don't
+ * generate production links, which is right for everything rendered in-app and
+ * catastrophic for a link a human is about to paste in front of an audience.
+ *
+ * Anything a user reads on screen and takes elsewhere belongs here. Anything
+ * the app links to itself belongs on SITE_URL.
+ */
+export const PUBLISHED_ORIGIN = 'https://quietplease.app'
+
+/**
  * True only on the production deployment. Preview and development builds serve
  * a `Disallow: /` robots.txt so unfinished copy never gets crawled.
  */
