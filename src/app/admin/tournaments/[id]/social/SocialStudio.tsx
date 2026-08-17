@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { drawCapacity, recapCapacity, upcomingCapacity, pickedLabel } from '@/lib/social/layout'
+import { PUBLISHED_ORIGIN } from '@/lib/site'
 import {
   listDrawMatches,
   listRecapMatches,
@@ -42,6 +43,10 @@ interface Props {
   hasFinal: boolean
   /** A stored recap exists, so the tournament-recap card will render. */
   hasRecap: boolean
+  /** Series slug for /play/<slug>, or the tournament UUID when it has none. */
+  playSlug: string
+  /** utm_campaign value — `<slug>-<year>`, so seasons stay comparable. */
+  playCampaign: string
 }
 
 function slugify(name: string): string {
@@ -57,6 +62,8 @@ export default function SocialStudio({
   rounds,
   hasFinal,
   hasRecap,
+  playSlug,
+  playCampaign,
 }: Props) {
   const available = useMemo<Kind[]>(() => {
     const k: Kind[] = []
@@ -313,6 +320,55 @@ export default function SocialStudio({
   const aspect = size === 'story' ? 1080 / 1920 : 1
   const previewWidth = size === 'story' ? 300 : 380
 
+  /**
+   * The link that goes in the post, built here rather than assembled by hand.
+   *
+   * It points at /play — the signed-out bracket landing — not the homepage,
+   * because a post about a specific tournament should open that tournament's
+   * bracket, and not at /tournaments/<slug>/predict, which bounces anyone
+   * without an account straight to a signup wall.
+   *
+   * `utm_content` carries the card this link was copied next to, so the report
+   * separates "the draw-published story converted" from "the round recap did".
+   * Hand-typed UTMs never stay that consistent — and an inconsistent one splits
+   * a campaign in two, since `deriveAttribution` lowercases and groups on these
+   * exact strings.
+   *
+   * Built on PUBLISHED_ORIGIN, not SITE_URL: this string gets pasted into a
+   * story sticker, and SITE_URL is localhost in local development.
+   */
+  const playUrl = useMemo(() => {
+    const url = new URL(`/play/${playSlug}`, PUBLISHED_ORIGIN)
+    url.searchParams.set('utm_source', 'instagram')
+    url.searchParams.set('utm_medium', 'social')
+    url.searchParams.set('utm_campaign', playCampaign)
+    url.searchParams.set(
+      'utm_content',
+      `${kind}${roundSuffix ? `-${roundSuffix.toLowerCase()}` : ''}`,
+    )
+    return url.toString()
+  }, [playSlug, playCampaign, kind, roundSuffix])
+
+  const [linkCopied, setLinkCopied] = useState(false)
+
+  async function copyPlayLink() {
+    try {
+      await navigator.clipboard.writeText(playUrl)
+    } catch {
+      // Clipboard API needs a secure context and permission. Falling back to a
+      // throwaway input keeps this working over plain http on a LAN address,
+      // which is how the admin is often reached from a phone.
+      const input = document.createElement('input')
+      input.value = playUrl
+      document.body.appendChild(input)
+      input.select()
+      document.execCommand('copy')
+      document.body.removeChild(input)
+    }
+    setLinkCopied(true)
+    setTimeout(() => setLinkCopied(false), 2000)
+  }
+
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       <nav className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
@@ -554,6 +610,41 @@ export default function SocialStudio({
           <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', marginTop: '-12px' }}>
             {size === 'story' ? '1080 × 1920' : '1080 × 1080'} · {filename}
           </p>
+
+          {/* The other half of the post. The card is only an image — this is the
+              link that actually has to reach the story sticker or the bio. */}
+          <Field label="Link for the post">
+            <div
+              className="rounded-sm px-3 py-2"
+              style={{
+                background: 'white',
+                border: '1px solid var(--chalk-dim)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.65rem',
+                lineHeight: 1.6,
+                color: 'var(--ink)',
+                wordBreak: 'break-all',
+              }}
+            >
+              {playUrl}
+            </div>
+            <button
+              onClick={copyPlayLink}
+              className="px-4 py-2.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-90"
+              style={{
+                background: linkCopied ? 'var(--court)' : 'transparent',
+                color: linkCopied ? 'white' : 'var(--court)',
+                border: '1px solid var(--court)',
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              {linkCopied ? 'Copied ✓' : 'Copy link'}
+            </button>
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', lineHeight: 1.6 }}>
+              Opens the bracket with no account needed. Tagged to this card, so
+              PostHog can tell which post earned the signup.
+            </p>
+          </Field>
         </div>
 
         {/* Preview */}
