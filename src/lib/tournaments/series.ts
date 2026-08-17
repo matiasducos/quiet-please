@@ -414,6 +414,71 @@ export const resolveLegacyTournamentId = (
   )()
 
 /**
+ * Where a retired series slug should redirect to, or null if it was never one.
+ *
+ * Renaming a series moves the hub URL and every edition URL beneath it. The
+ * rename action warns about that, but a warning does not keep the old URL
+ * alive: `japan-open` became `tokyo-open` and Search Console went on listing
+ * /tournaments/japan-open/2026 as indexed in position 9, resolving to nothing.
+ *
+ * Called only after the normal lookup has already failed, so the cost is paid
+ * on 404s and redirects rather than on every hit. Cached like the rest of this
+ * module and tagged with the same keys, so a rename busts it immediately —
+ * important in the other direction too: renaming BACK to an old slug must stop
+ * this from redirecting a now-live URL to itself.
+ */
+const lookupRenamedSeriesSlug = (retiredSlug: string): Promise<string | null> =>
+  unstable_cache(
+    async () => {
+      const supabase = createAdminClient()
+      const { data, error } = await supabase
+        .from('tournament_series_slug_history')
+        .select('tournament_series(slug)')
+        .eq('slug', retiredSlug)
+        .maybeSingle()
+
+      // Never cache an error as "no redirect" — that would turn a transient
+      // blip into a permanent 404 for a URL that has a perfectly good home.
+      if (error) throw new Error(`[series] slug history lookup failed: ${error.message}`)
+      if (!data) return null
+
+      // PostgREST widens a many-to-one embed to a possible array; accept both,
+      // the same way resolveLegacyTournamentId does.
+      const embedded = (data as { tournament_series?: { slug: string } | { slug: string }[] | null })
+        .tournament_series
+      const slug = Array.isArray(embedded) ? embedded[0]?.slug : embedded?.slug
+      // A tombstone pointing at its own slug would be an infinite redirect.
+      return slug && slug !== retiredSlug ? slug : null
+    },
+    ['series-slug-history', retiredSlug],
+    { revalidate: 3600, tags: ['tournament-detail', 'tournament-list'] },
+  )()
+
+/**
+ * Safe wrapper — the one the routes call.
+ *
+ * The lookup above throws rather than returning null on a query error, so a
+ * blip is never cached as "no redirect". That throw must not reach the page:
+ * this runs on the 404 path of two public routes, so an unhandled error would
+ * turn every unknown slug into a 500. It also has to survive the window
+ * between this code deploying and migration 086 being applied by hand, when
+ * the table genuinely does not exist yet.
+ *
+ * Catching here rather than inside the cache is deliberate: `unstable_cache`
+ * stores what the function returns, so swallowing the error in there would
+ * cache the wrong answer for an hour. Thrown, nothing is stored and the next
+ * request tries again.
+ */
+export async function resolveRenamedSeriesSlug(retiredSlug: string): Promise<string | null> {
+  try {
+    return await lookupRenamedSeriesSlug(retiredSlug)
+  } catch (error) {
+    console.error('[series] renamed-slug lookup unavailable:', (error as Error).message)
+    return null
+  }
+}
+
+/**
  * Resolves the `[slug]` route param for the app surfaces that still address a
  * single tournament — /predict and /picks.
  *
