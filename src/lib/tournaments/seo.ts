@@ -115,8 +115,9 @@ export function buildEditionMetadata(page: EditionPage): Metadata {
   const url = `${SITE_URL}${path}`
 
   const isDone = page.tours.every(t => t.tournament.status === 'completed')
+  const hasDraw = page.tours.some(t => (t.bracket?.matches?.length ?? 0) > 0)
 
-  const title = editionTitle(series, year, isDone)
+  const title = editionTitle(series, year, isDone, hasDraw)
 
   const description = editionDescription(page)
   const indexable = isEditionIndexable(page)

@@ -455,16 +455,39 @@ async function TourSection({
         </div>
       )}
 
+      {/* No bracket. Which of the two reasons applies depends entirely on
+          whether the edition has been played — and saying the wrong one is
+          a plain falsehood on the page.
+
+          "Not out yet" was the only case while every tournament in the
+          database belonged to the current season. Imported historical editions
+          broke that: a 2024 final is emphatically not waiting for its draw to
+          be published, and promising it "fills in the moment it lands" would
+          be a promise nothing is ever going to keep. */}
       {!renderDraw && (
         <div className="rounded-sm border bg-white p-5 mb-8" style={{ borderColor: 'var(--chalk-dim)' }}>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.5rem' }}>
-            The {series.name} {year} draw is not out yet
-          </h2>
-          <p style={{ fontSize: '0.9rem', color: 'var(--muted)', lineHeight: 1.6 }}>
-            The bracket is usually published a few days before play starts. This page
-            fills in with the full field, the order of play and round-by-round results
-            the moment it lands.
-          </p>
+          {isDone ? (
+            <>
+              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.5rem' }}>
+                The full {series.name} {year} bracket isn&rsquo;t here
+              </h2>
+              <p style={{ fontSize: '0.9rem', color: 'var(--muted)', lineHeight: 1.6 }}>
+                This page records who won and who they beat in the final. We don&rsquo;t
+                hold the round-by-round draw for this edition.
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.5rem' }}>
+                The {series.name} {year} draw is not out yet
+              </h2>
+              <p style={{ fontSize: '0.9rem', color: 'var(--muted)', lineHeight: 1.6 }}>
+                The bracket is usually published a few days before play starts. This page
+                fills in with the full field, the order of play and round-by-round results
+                the moment it lands.
+              </p>
+            </>
+          )}
         </div>
       )}
 

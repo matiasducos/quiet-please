@@ -36,12 +36,26 @@ export function hubTitle(series: SeriesNaming): string {
   return `${seriesLabel(series, true)} — Draw, Results & Past Winners`
 }
 
-/** The title promises only what the page actually contains. */
-export function editionTitle(series: SeriesNaming, year: number, isDone: boolean): string {
+/**
+ * The title promises only what the page actually contains.
+ *
+ * Hence `hasDraw`. Imported historical editions carry the final and nothing
+ * else — no bracket was ever archived for them — so the finished-edition title
+ * would have advertised a "Full Draw" that is not on the page. Overstating the
+ * contents is precisely the signal thin-content filters look for, and it earns
+ * a bounce from anyone who clicks expecting a bracket.
+ */
+export function editionTitle(
+  series: SeriesNaming,
+  year: number,
+  isDone: boolean,
+  hasDraw = true,
+): string {
   const name = seriesLabel(series, true)
-  return isDone
+  if (!isDone) return `${name} ${year} — Draw, Schedule & Results`
+  return hasDraw
     ? `${name} ${year} — Results & Full Draw`
-    : `${name} ${year} — Draw, Schedule & Results`
+    : `${name} ${year} — Champion & Final Result`
 }
 
 /**
