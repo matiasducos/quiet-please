@@ -7,6 +7,33 @@ export default function Footer() {
     <footer className="border-t py-6" style={{ borderColor: 'var(--chalk-dim)' }}>
       <div className="max-w-5xl mx-auto px-4 md:px-8 flex flex-col gap-4">
 
+        {/* Contact. Spelled out rather than hidden behind a "Contact" link:
+            this footer is on every page, and the address is the only support
+            channel there is — no form, no ticket queue, no chatbot. Rendering
+            the address as text also means it still works for anyone whose
+            browser has no mail handler wired up to mailto:. */}
+        <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-4">
+          <span style={{ fontSize: '0.7rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            Contact
+          </span>
+          <div className="flex flex-col gap-1">
+            <p style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+              Questions, comments or suggestions? Write to{' '}
+              {/* No min-h-[44px] here, unlike the links below: this one sits
+                  mid-sentence, where a 44px box would break the line flow.
+                  A full email address is a wide target already — the hit area
+                  problem the other links have comes from their short labels. */}
+              <a href="mailto:support@quietplease.app" style={{ color: 'var(--court)' }}>
+                support@quietplease.app
+              </a>{' '}
+              — every message is read.
+            </p>
+            <p style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>
+              Quiet Please · Latvia
+            </p>
+          </div>
+        </div>
+
         {/* Grand Slam links. These are site-wide on purpose: without an internal
             link the landing pages are orphans, discoverable only via the sitemap
             and accruing no internal link equity. */}
@@ -49,7 +76,9 @@ export default function Footer() {
                 settles both. */}
             <Link href="/data-deletion" className="inline-flex items-center min-h-[44px] px-2" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Delete data</Link>
             <CookieSettingsLink />
-            <a href="mailto:support@quietplease.app" className="inline-flex items-center min-h-[44px] px-2" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Contact</a>
+            {/* No "Contact" link here any more — the address itself is at the
+                top of the footer, so a second entry point pointing at the same
+                mailto: was just noise in the legal row. */}
           </div>
         </div>
       </div>

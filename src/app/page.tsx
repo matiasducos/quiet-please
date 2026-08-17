@@ -5,7 +5,6 @@ import { unstable_cache } from 'next/cache'
 import TournamentCard from '@/components/TournamentCard'
 import MarketingNav from '@/components/MarketingNav'
 import CountryFlag from '@/components/CountryFlag'
-import Footer from '@/components/Footer'
 import HowItWorksDemo from '@/components/HowItWorksDemo'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { getRecentCompleted, withRecaps } from '@/lib/tournaments/recap'
@@ -802,8 +801,6 @@ export default async function HomePage() {
           </TrackedCTA>
         </div>
       </section>
-
-      <Footer />
     </main>
   )
 }
