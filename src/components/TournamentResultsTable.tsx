@@ -144,6 +144,21 @@ export default function TournamentResultsTable({
 
       {/* Results table */}
       <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+        {players.length === 0 ? (
+          /*
+           * Outside the horizontal scroller below, deliberately. The row grid
+           * needs min-w-[680px] to keep its columns aligned, but an empty-state
+           * sentence inside that container is clipped at 375px and can only be
+           * read by scrolling sideways — and on a board with no entrants the
+           * empty state is the entire page.
+           */
+          <div className="px-5 py-12 text-center" style={{ color: 'var(--muted)' }}>
+            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem' }}>{emptyTitle ?? 'No results yet'}</p>
+            <p style={{ fontSize: '0.8rem', marginTop: '0.25rem', maxWidth: '30rem', marginInline: 'auto', lineHeight: 1.6 }}>
+              {emptyHint ?? 'Points will appear once matches are scored.'}
+            </p>
+          </div>
+        ) : (
         <div className="overflow-x-auto">
         <div className="min-w-[680px]">
         <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
@@ -160,13 +175,7 @@ export default function TournamentResultsTable({
           <div className="col-span-1 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>PICKS</div>
         </div>
 
-        {players.length === 0 ? (
-          <div className="px-5 py-12 text-center" style={{ color: 'var(--muted)' }}>
-            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem' }}>{emptyTitle ?? 'No results yet'}</p>
-            <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>{emptyHint ?? 'Points will appear once matches are scored.'}</p>
-          </div>
-        ) : (
-          players.map((p) => {
+        {players.map((p) => {
             const medal = p.rank === 1 ? '🥇' : p.rank === 2 ? '🥈' : p.rank === 3 ? '🥉' : null
             const accuracy = p.total_picks > 0 ? `${p.correct_picks}/${p.total_picks}` : '—'
             const rate = p.total_picks > 0 ? `${Math.round((p.correct_picks / p.total_picks) * 100)}%` : '—'
@@ -222,10 +231,10 @@ export default function TournamentResultsTable({
                 </div>
               </div>
             )
-          })
+          })}
+      </div>
+      </div>
         )}
-      </div>
-      </div>
       </div>
     </div>
   )
