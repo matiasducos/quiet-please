@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { Fragment, Suspense } from 'react'
-import { notFound } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
 import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -14,7 +14,7 @@ import { buildMyTournament, eliminationRounds, ROUND_LABEL } from '@/lib/tennis/
 import type { MyTournament, DrawMatch } from '@/lib/tennis/my-tournament'
 import { nameToFlag } from '@/app/admin/countries'
 import { parseEditionYear } from '@/lib/tournaments/slug'
-import { getEdition, isEditionIndexable } from '@/lib/tournaments/series'
+import { getEdition, isEditionIndexable, resolveRenamedSeriesSlug } from '@/lib/tournaments/series'
 import type { DrawPlayer, EditionDetail, EditionPage } from '@/lib/tournaments/series'
 import { buildEditionMetadata, buildEditionJsonLd } from '@/lib/tournaments/seo'
 import { getRecap } from '@/lib/tournaments/recap'
@@ -103,7 +103,16 @@ export default async function EditionPage({ params }: { params: Promise<RoutePar
   if (year === null) notFound()
 
   const [{ user, profile }, page] = await Promise.all([getNavProfile(), getEdition(slug, year)])
-  if (!page) notFound()
+
+  // Before giving up: was this slug renamed out from under the URL? A rename
+  // moves every edition beneath the hub, and the old URLs kept their rankings
+  // while resolving to nothing. 301 rather than 404 so the ranking and any
+  // external links transfer to the new address.
+  if (!page) {
+    const renamedTo = await resolveRenamedSeriesSlug(slug)
+    if (renamedTo) permanentRedirect(`/tournaments/${renamedTo}/${year}`)
+    notFound()
+  }
 
   const jsonLd = buildEditionJsonLd(page)
   const indexable = isEditionIndexable(page)

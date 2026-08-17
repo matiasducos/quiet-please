@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
 import Nav from '@/components/Nav'
 import { isUuid } from '@/lib/tournaments/slug'
-import { getSeriesHub, isSeriesIndexable, resolveLegacyTournamentId } from '@/lib/tournaments/series'
+import { getSeriesHub, isSeriesIndexable, resolveLegacyTournamentId, resolveRenamedSeriesSlug } from '@/lib/tournaments/series'
 import type { EditionSummary, SeriesHub } from '@/lib/tournaments/series'
 import { buildHubMetadata, buildHubJsonLd, seriesVenue } from '@/lib/tournaments/seo'
 import { STATUS_STYLES, formatDateRange } from './tournament-ui'
@@ -66,7 +66,15 @@ export default async function SeriesHubPage({ params }: { params: Promise<{ slug
   }
 
   const [{ user, profile }, hub] = await Promise.all([getNavProfile(), getSeriesHub(slug)])
-  if (!hub) notFound()
+
+  // A retired slug redirects rather than 404s — this is the URL that
+  // accumulates backlinks across seasons, so losing it to a rename is the most
+  // expensive 404 the site can serve. See resolveRenamedSeriesSlug.
+  if (!hub) {
+    const renamedTo = await resolveRenamedSeriesSlug(slug)
+    if (renamedTo) permanentRedirect(`/tournaments/${renamedTo}`)
+    notFound()
+  }
 
   const featured = hub.editions.find(e => e.year === hub.featuredYear) ?? null
   const past = hub.editions.filter(e => e.year !== hub.featuredYear)

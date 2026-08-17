@@ -823,6 +823,30 @@ export async function updateSeriesSeo(
     return { ok: false, error: error.message }
   }
 
+  // Leave a forwarding address. The warning above is only a warning — an admin
+  // who unlocks a published slug and renames it anyway used to strand every
+  // indexed URL under it, which is exactly what happened to `japan-open`.
+  //
+  // Written after the rename succeeds, so a failed update never leaves a
+  // tombstone for a slug that is still live.
+  if (wantsSlugChange) {
+    const { error: historyError } = await admin
+      .from('tournament_series_slug_history')
+      .upsert({ slug: current.slug, series_id: seriesId }, { onConflict: 'slug' })
+    // Logged rather than surfaced: the rename itself worked, and failing the
+    // whole action here would tell the admin their edit was rejected when it
+    // was not. The cost is one URL that 404s instead of redirecting.
+    if (historyError) console.error('[series] slug history write failed:', historyError.message)
+
+    // Renaming BACK to a previously retired slug: drop that tombstone, or the
+    // now-live URL would redirect to itself.
+    const { error: cleanupError } = await admin
+      .from('tournament_series_slug_history')
+      .delete()
+      .eq('slug', nextSlug)
+    if (cleanupError) console.error('[series] slug history cleanup failed:', cleanupError.message)
+  }
+
   // These fields are the <title>, H1, meta description and JSON-LD of the hub
   // and of every edition under it. Without busting the tag the corrected name
   // sits behind the 5-minute ISR window while crawlers keep the old one.
