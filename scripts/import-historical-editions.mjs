@@ -109,6 +109,7 @@ const PLAYER = {
   medvedev: '1093',
   zverev: '1980',
   fritz: '2832',
+  ruud: '430',
 }
 
 // ── The editions ────────────────────────────────────────────────────────────
@@ -116,6 +117,15 @@ const PLAYER = {
 // `played_at` for the final is the closing date, which is when a Grand Slam
 // men's final is played.
 const EDITIONS = [
+  // US Open goes deeper than the rest on purpose: Search Console shows the
+  // "us open bracket" cluster carrying 28% of all impressions at position 25,
+  // and it is the one query with a deadline — the tournament starts 30 Aug.
+  // Depth on the series its landing page and hub already rank for is worth
+  // more right now than a first edition of somewhere else.
+  { slug: 'us-open',         year: 2021, starts: '2021-08-30', ends: '2021-09-12', champion: PLAYER.medvedev, runnerUp: PLAYER.djokovic },
+  { slug: 'us-open',         year: 2022, starts: '2022-08-29', ends: '2022-09-11', champion: PLAYER.alcaraz,  runnerUp: PLAYER.ruud },
+  { slug: 'us-open',         year: 2023, starts: '2023-08-28', ends: '2023-09-10', champion: PLAYER.djokovic, runnerUp: PLAYER.medvedev },
+
   { slug: 'australian-open', year: 2024, starts: '2024-01-14', ends: '2024-01-28', champion: PLAYER.sinner,  runnerUp: PLAYER.medvedev },
   { slug: 'french-open',     year: 2024, starts: '2024-05-26', ends: '2024-06-09', champion: PLAYER.alcaraz, runnerUp: PLAYER.zverev },
   { slug: 'wimbledon',       year: 2024, starts: '2024-07-01', ends: '2024-07-14', champion: PLAYER.alcaraz, runnerUp: PLAYER.djokovic },

@@ -9,6 +9,7 @@ import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { ALL_SLAMS, type SlamConfig } from '@/lib/slams/config'
 import { estimateNextEdition, getSlamPerformers, type SlamEditions, type SlamTournament } from '@/lib/slams/data'
 import { editionHref, hubHref } from '@/lib/tournaments/slug'
+import { getSeriesHub } from '@/lib/tournaments/series'
 import { buildSlamJsonLd } from '@/lib/slams/jsonLd'
 
 /** "the US Open" -> "The US Open", for use at the start of a sentence. */
@@ -89,6 +90,26 @@ export default async function SlamLanding({
   const seriesSlug =
     editions.atp?.slug ?? editions.wta?.slug ?? editions.lastCompleted?.slug ?? null
   const seriesHref = hubHref(seriesSlug)
+
+  /**
+   * Past champions, as actual names on the page.
+   *
+   * Until now these four pages linked "Every champion, year by year →" and
+   * carried not one champion's name themselves. That link is the right thing to
+   * offer, but it meant the page held no unique factual content about the event
+   * it is named after — the About paragraph is evergreen copy, the draw section
+   * is empty out of season, and the rest is product pitch. So the only query it
+   * could ever answer was "<slam> bracket".
+   *
+   * The hub already computes the champion per edition, so this reuses that
+   * rather than adding a second way to derive the same fact. Cached and tagged
+   * with the rest of the series data, so a corrected result shows here too.
+   */
+  const hub = seriesSlug ? await getSeriesHub(seriesSlug) : null
+  const pastChampions = (hub?.editions ?? [])
+    .filter(e => e.status === 'completed' && e.champion?.name)
+    .sort((a, b) => b.year - a.year)
+    .slice(0, 6)
 
   // Points at /play, not /predict.
   //
@@ -248,8 +269,14 @@ export default async function SlamLanding({
           )}
 
           {/* Outside both branches: whether the draw is open or the page is in
-              the off-season, the history is there and worth linking. */}
-          {seriesHref && (
+              the off-season, the history is there and worth linking.
+
+              Suppressed when the roll of honour below is rendering, which ends
+              with the same link in a place where it actually follows from
+              something — two identical links a screen apart just read as a
+              mistake. Kept for a series with no completed edition, where that
+              section does not render at all. */}
+          {seriesHref && pastChampions.length === 0 && (
             <Link
               href={seriesHref}
               className="inline-flex items-center min-h-[44px] mt-6"
@@ -260,6 +287,73 @@ export default async function SlamLanding({
           )}
         </div>
       </section>
+
+      {/* ── Past champions ────────────────────────────────────────── */}
+      {/* Only rendered when there is real history to show. An empty "Recent
+          champions" heading over nothing is worse than no section at all. */}
+      {pastChampions.length > 0 && (
+        <section className="py-12 md:py-16" style={{ borderTop: '1px solid var(--chalk-dim)' }}>
+          <div className="max-w-5xl mx-auto px-4 md:px-8">
+            <SectionHeading
+              kicker="Roll of honour"
+              title={`Recent ${config.name} champions`}
+              accent={accent.base}
+            />
+            <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 16px', maxWidth: '46rem' }}>
+              {pastChampions.map(e => {
+                const href = editionHref(seriesSlug, e.year)
+                const row = (
+                  <>
+                    <span
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '0.8rem',
+                        color: 'var(--muted)',
+                        minWidth: '3.5rem',
+                      }}
+                    >
+                      {e.year}
+                    </span>
+                    <span style={{ fontSize: '0.95rem', color: 'var(--ink)' }}>
+                      {e.champion!.name}
+                      {e.champion!.country ? (
+                        <span style={{ color: 'var(--muted)' }}> ({e.champion!.country})</span>
+                      ) : null}
+                    </span>
+                  </>
+                )
+                return (
+                  <li
+                    key={`${e.year}-${e.tour}`}
+                    style={{ borderBottom: '1px solid var(--chalk-dim)' }}
+                  >
+                    {href ? (
+                      <Link
+                        href={href}
+                        className="flex items-center gap-4 min-h-[44px] py-2"
+                        style={{ textDecoration: 'none' }}
+                      >
+                        {row}
+                      </Link>
+                    ) : (
+                      <div className="flex items-center gap-4 min-h-[44px] py-2">{row}</div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+            {seriesHref && (
+              <Link
+                href={seriesHref}
+                className="inline-flex items-center min-h-[44px]"
+                style={{ color: accent.base, fontSize: '0.9rem' }}
+              >
+                Every {config.name} champion, year by year →
+              </Link>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* ── About this slam ───────────────────────────────────────── */}
       <section className="py-12 md:py-16">
