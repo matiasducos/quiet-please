@@ -90,8 +90,24 @@ export default async function SlamLanding({
     editions.atp?.slug ?? editions.wta?.slug ?? editions.lastCompleted?.slug ?? null
   const seriesHref = hubHref(seriesSlug)
 
-  const primaryCta = isPlayable && editions.atp
-    ? { href: `/tournaments/${editions.atp.id}/predict`, label: `Fill out your ${config.name} bracket` }
+  // Points at /play, not /predict.
+  //
+  // These are the highest-authority pages on the site and they are read by
+  // signed-out visitors almost exclusively — Googlebot is never logged in, and
+  // neither is anyone arriving from a search result. /predict redirects exactly
+  // that visitor to /signup, so the button promising "fill out your bracket"
+  // delivered a registration form instead. The SEO work was buying traffic for
+  // a wall.
+  //
+  // /play needs no auth branch of its own here, which matters: this page is
+  // statically rendered with ISR, so it cannot know who is reading it. A
+  // signed-in visitor who lands on /play is redirected onward to /predict by
+  // that route itself.
+  const primaryCta = isPlayable && (seriesSlug ?? editions.atp)
+    ? {
+        href: `/play/${seriesSlug ?? editions.atp!.id}`,
+        label: `Fill out your ${config.name} bracket`,
+      }
     : { href: '/signup', label: 'Create your free account' }
 
   return (

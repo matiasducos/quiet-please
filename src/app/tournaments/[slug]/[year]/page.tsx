@@ -291,8 +291,18 @@ async function TourSection({
             ) : null}
 
             {statusAllowed && (
+              // Signed-out visitors go to /play, not /predict.
+              //
+              // This is the page organic search actually lands on, and /predict
+              // redirects anyone without an account straight to /signup — so
+              // the button reading "Fill in this bracket — free" delivered a
+              // registration form, which made the word "free" a lie and threw
+              // away the visitor at their most interested moment.
+              //
+              // Signed-in users still go direct: this page already knows who
+              // they are, so sending them via /play would only add a redirect.
               <Link
-                href={`/tournaments/${series.slug}/predict`}
+                href={userId ? `/tournaments/${series.slug}/predict` : `/play/${series.slug}`}
                 className="px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
                 style={{ background: 'var(--court)', color: 'white', textDecoration: 'none' }}
               >
