@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import MarketingNav from '@/components/MarketingNav'
-import Footer from '@/components/Footer'
 
 /**
  * The 404 page.
@@ -121,8 +120,6 @@ export default function NotFound() {
           </ul>
         </div>
       </div>
-
-      <Footer />
     </main>
   )
 }

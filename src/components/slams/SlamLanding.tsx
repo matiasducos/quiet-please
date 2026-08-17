@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import MarketingNav from '@/components/MarketingNav'
-import Footer from '@/components/Footer'
 import TrackedCTA from '@/components/TrackedCTA'
 import TournamentCard from '@/components/TournamentCard'
 import HowItWorksDemo from '@/components/HowItWorksDemo'
@@ -438,8 +437,6 @@ export default async function SlamLanding({
           </TrackedCTA>
         </div>
       </section>
-
-      <Footer />
     </main>
   )
 }

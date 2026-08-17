@@ -18,7 +18,6 @@ import AchievementsTab from './AchievementsTab'
 import PredictionStats from '@/components/PredictionStats'
 import PlayerLookup from './PlayerLookup'
 import type { RoundStat, PlayerStat, MissedPlayerStat } from '@/components/PredictionStats'
-import Footer from '@/components/Footer'
 import DeleteAccountSection from '@/app/profile/DeleteAccountSection'
 import RecentFormDot from './RecentFormDot'
 import { ACHIEVEMENTS } from '@/lib/achievements/definitions'
@@ -69,7 +68,6 @@ export default async function ProfilePage({
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', letterSpacing: '-0.02em', marginBottom: '1.5rem' }}>Player not found</h1>
           <Link href="/leaderboard" style={{ color: 'var(--court)', fontSize: '0.9rem' }}>← Back to leaderboard</Link>
         </div>
-        <Footer />
       </main>
     )
   }
@@ -969,7 +967,6 @@ export default async function ProfilePage({
 
         </>)}
       </div>
-      <Footer />
 
       {/* Hero body responsive: two columns on md+, stacked on mobile */}
       <style>{`

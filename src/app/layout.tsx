@@ -4,6 +4,7 @@ import { Analytics } from '@vercel/analytics/next'
 import { Suspense } from 'react'
 import PostHogPageviews from '@/components/PostHogPageviews'
 import ConsentBanner from '@/components/ConsentBanner'
+import Footer from '@/components/Footer'
 import { SITE_URL, DEFAULT_OG } from '@/lib/site'
 import './globals.css'
 
@@ -119,6 +120,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <PostHogPageviews />
         </Suspense>
         {children}
+        {/* Site-wide so every page carries a way to reach us. It lives here
+            rather than in each page for one reason: 64 pages cannot be kept in
+            sync by hand, and the pages people actually write in from (a broken
+            bracket, a wrong result) were the ones missing it.
+
+            A sibling of {children}, never a wrapper — see the note above. A
+            plain element here is fine; only a Suspense boundary over the page
+            tree breaks notFound(). */}
+        <Footer />
         {/* Outside the analytics boundary: the banner governs what PostHog is
             allowed to store, so it must never be waiting on PostHog to render. */}
         <ConsentBanner />

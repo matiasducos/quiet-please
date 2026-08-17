@@ -4,7 +4,6 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { unstable_cache } from 'next/cache'
 import Nav from '@/components/Nav'
-import Footer from '@/components/Footer'
 import HowItWorksDemo from '@/components/HowItWorksDemo'
 import TournamentCard from '@/components/TournamentCard'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -205,7 +204,6 @@ export default async function InvitePage() {
         )}
 
       </div>
-      <Footer />
     </main>
   )
 }
