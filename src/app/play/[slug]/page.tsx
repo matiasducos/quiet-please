@@ -64,10 +64,13 @@ export async function generateMetadata({
 
 export default async function PlayPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>
+  searchParams: Promise<{ round?: string }>
 }) {
   const { slug } = await params
+  const { round: initialRound } = await searchParams
 
   // Someone already signed in has no use for the anonymous path — send them
   // to the real thing, which knows about their existing picks, their slot and
@@ -78,7 +81,11 @@ export default async function PlayPage({
     // The predict route accepts the same param shapes this one does (series
     // slug or legacy UUID), so it can be handed straight through.
     const resolved = await resolveTournamentParam(slug)
-    redirect(resolved ? `/tournaments/${slug}/predict` : '/tournaments')
+    // Carry the round across: a campaign link is clicked by existing users
+    // constantly, and dropping it here would land exactly those people on the
+    // first round — the thing the param exists to avoid.
+    const round = initialRound ? `?round=${encodeURIComponent(initialRound)}` : ''
+    redirect(resolved ? `/tournaments/${slug}/predict${round}` : '/tournaments')
   }
 
   const resolution = await resolvePlayableTournament(slug)
@@ -157,6 +164,7 @@ export default async function PlayPage({
           substitutedFor={substituted}
           totalMatches={draw?.matches?.length ?? 0}
           decidedMatches={Object.keys(matchResults).length}
+          initialRound={initialRound}
         />
       </div>
     </main>

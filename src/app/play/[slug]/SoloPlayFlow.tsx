@@ -27,6 +27,7 @@ export default function SoloPlayFlow({
   substitutedFor,
   totalMatches,
   decidedMatches,
+  initialRound,
 }: {
   tournament: PlayableTournament
   draw: any
@@ -38,6 +39,8 @@ export default function SoloPlayFlow({
   substitutedFor: { requestedName: string; reason: SubstitutionReason } | null
   totalMatches: number
   decidedMatches: number
+  /** Round to open on, from `?round=` — see BracketPredictor.initialRound. */
+  initialRound?: string
 }) {
   const [step, setStep] = useState<Step>('picks')
   const [picks, setPicks] = useState<Record<string, string>>({})
@@ -211,6 +214,7 @@ export default function SoloPlayFlow({
         hideBackLink={true}
         onPicksChange={handlePicksChange}
         adminLockedMatches={adminLockedMatches}
+        initialRound={initialRound}
       />
 
       <div

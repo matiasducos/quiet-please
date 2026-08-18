@@ -172,6 +172,7 @@ export default function BracketPredictor({
   drawResultsMode = false,
   adminLockedMatches,
   lockedPicks = [],
+  initialRound,
 }: {
   tournament: any
   draw: Draw
@@ -200,6 +201,16 @@ export default function BracketPredictor({
   adminLockedMatches?: Record<string, string>
   /** Match IDs that were admin-locked when the user made their pick (no points) */
   lockedPicks?: string[]
+  /**
+   * Which round to open on, from `?round=` — the campaign links in the social
+   * studio carry the round their post is about.
+   *
+   * Ignored unless the draw actually has that round, so a stale or hand-edited
+   * link degrades to the first round rather than to an empty tab. Read once, as
+   * the initial value only: the round is state from then on, and re-syncing it
+   * would yank the tab back every time the URL changed under a soft navigation.
+   */
+  initialRound?: string
 }) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -219,6 +230,7 @@ export default function BracketPredictor({
   const [statsPlayers, setStatsPlayers] = useState<{ player1: Player; player2: Player } | null>(null)
   const [activeRound, setActiveRound] = useState(() => {
     const sorted = draw.rounds.slice().sort((a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b))
+    if (initialRound && sorted.includes(initialRound)) return initialRound
     return sorted[0] ?? 'QF'
   })
 
