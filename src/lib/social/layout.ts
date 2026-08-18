@@ -21,19 +21,23 @@ import type { CardSize } from './templates/frame'
  * canvas is simply clipped, and the card is on its way to a public feed. So the
  * count is capped rather than trusted to the layout.
  *
- * The numbers are one lower than they were before per-match pick counts existed
- * — every match now carries a second line of its own — and lower again when the
- * podium is present, which costs roughly two match rows of height.
+ * Re-measured after the QP logo and the CTA footer came off the frame, which
+ * returned ~257px of story height and ~213px of square — far more than the
+ * enlarged evidence lines spend. These are heights, not editorial preferences:
+ * leave them stale when the chrome changes and the reclaimed space just sits on
+ * the card as a void while the template still prints "+ 2 more matches".
+ *
+ * Still lower when the podium is present, which costs roughly two match rows.
  *
  * Measured against the worst case, not the average one: the upset row is taller
- * than the others because it carries a badge, so a square that fits three plain
- * matches can still overpaint its own footer once one of the three is the upset.
- * At most one match per round is ever marked (see RecapArt), which is what makes
- * the worst case bounded and these numbers checkable.
+ * than the others because it carries a badge, so a square that fits four plain
+ * matches can still overpaint its own bottom edge once one of the four is the
+ * upset. At most one match per round is ever marked (see RecapArt), which is what
+ * makes the worst case bounded and these numbers checkable.
  */
 export function recapCapacity(size: CardSize, hasPodium: boolean): number {
-  if (size === 'story') return hasPodium ? 4 : 6
-  return hasPodium ? 3 : 4
+  if (size === 'story') return hasPodium ? 5 : 7
+  return hasPodium ? 4 : 5
 }
 
 /**
@@ -47,7 +51,7 @@ export function recapCapacity(size: CardSize, hasPodium: boolean): number {
  * the recap's do not.
  */
 export function upcomingCapacity(size: CardSize): number {
-  return size === 'story' ? 6 : 4
+  return size === 'story' ? 8 : 6
 }
 
 /**
@@ -59,13 +63,15 @@ export function upcomingCapacity(size: CardSize): number {
  * line at the bottom that wraps to two lines by design. Between them they cost
  * roughly the two rows the difference represents.
  *
- * Budgeted against the worst case at story: a two-line tournament title, five
- * rows each carrying a seed badge, and the closing line wrapping to two. That
- * leaves ~100px of the 1440px content band unspent, which is the margin for a
- * name that wraps somewhere unexpected.
+ * Budgeted against the worst case at story: a two-line tournament title, every
+ * row carrying a seed badge, and the closing line wrapping to two. The closing
+ * line is pinned to the bottom with `marginTop: auto`, so whatever this number
+ * leaves unspent shows up as one gap in the middle of the card rather than as
+ * slack distributed through the list — which is why it is worth re-measuring
+ * against the current chrome rather than leaving a safe old figure in place.
  */
 export function drawCapacity(size: CardSize): number {
-  return size === 'story' ? 5 : 3
+  return size === 'story' ? 9 : 6
 }
 
 /**
@@ -99,11 +105,11 @@ export function favouriteLabel(name: string, count: number, pct: number | null):
  * Budgeted against the worst case, which is a two-line tournament title
  * ("Mubadala Citi DC Open" wraps at story size) — that costs ~200px before the
  * content column starts. The square is half the height but carries a
- * single-line title and no podium, so it lands on the same figure.
+ * single-line title and no podium, so it lands close to the same figure.
  */
 export function statsCapacity(size: CardSize, hasPodium: boolean): number {
-  if (size === 'story') return hasPodium ? 2 : 3
-  return 2
+  if (size === 'story') return hasPodium ? 3 : 4
+  return 3
 }
 
 /**
