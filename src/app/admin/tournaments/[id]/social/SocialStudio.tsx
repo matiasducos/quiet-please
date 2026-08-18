@@ -336,6 +336,12 @@ export default function SocialStudio({
    *
    * Built on PUBLISHED_ORIGIN, not SITE_URL: this string gets pasted into a
    * story sticker, and SITE_URL is localhost in local development.
+   *
+   * `round` opens the bracket on the round the post is about instead of on the
+   * first round of the draw. Without it a Round-of-32 post drops the reader at
+   * the Round of 128 and leaves them to find their way forward, which is the
+   * whole distance a cold visitor is willing to travel. The draw card sends no
+   * round — nothing has been played, so the first round IS the live one.
    */
   const playUrl = useMemo(() => {
     const url = new URL(`/play/${playSlug}`, PUBLISHED_ORIGIN)
@@ -346,6 +352,7 @@ export default function SocialStudio({
       'utm_content',
       `${kind}${roundSuffix ? `-${roundSuffix.toLowerCase()}` : ''}`,
     )
+    if (roundSuffix) url.searchParams.set('round', roundSuffix)
     return url.toString()
   }, [playSlug, playCampaign, kind, roundSuffix])
 

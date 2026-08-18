@@ -18,7 +18,7 @@ export default async function PredictPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ challenge?: string }>
+  searchParams: Promise<{ challenge?: string; round?: string }>
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -26,7 +26,7 @@ export default async function PredictPage({
   // Params are resolved before the gate so the redirect can name the bracket
   // this visitor asked for.
   const { slug: routeParam } = await params
-  const { challenge: challengeId } = await searchParams
+  const { challenge: challengeId, round: initialRound } = await searchParams
 
   // 'new' rather than 'returning': this page is reached by clicking Predict
   // on a public tournament page, which is the single most likely moment for
@@ -221,6 +221,7 @@ export default async function PredictPage({
       shareUrl={!challengeId && profile?.username ? `/tournaments/${id}/picks/${profile.username}` : undefined}
       adminLockedMatches={adminLockedMatches}
       lockedPicks={(prediction?.locked_picks as string[]) ?? []}
+      initialRound={initialRound}
     />
   )
 }
