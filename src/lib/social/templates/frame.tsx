@@ -43,10 +43,9 @@ export { DISPLAY, BODY, MONO }
 const SAFE: Record<CardSize, { top: number; bottom: number; x: number }> = {
   story: { top: 250, bottom: 230, x: 80 },
   // The square's bottom is optical margin, not a reserve for someone else's UI,
-  // so it is the cheapest space on the card to buy back — and a footer that ends
-  // in a rule reads fine closer to the edge than a bare headline would. Story
-  // keeps 230: that band is under Instagram's reply bar, and tightening it would
-  // put the CTA behind a control rather than merely near an edge.
+  // so it is the cheapest space on the card to buy back. Story keeps 230 even
+  // though the card no longer prints anything down there: the band sits under
+  // Instagram's reply bar, so spending it would put a match row behind a control.
   square: { top: 72, bottom: 52, x: 72 },
 }
 
@@ -127,29 +126,11 @@ export function Frame({
   eyebrow,
   tournament,
   children,
-  cta = 'Play free at quietplease.app',
-  ctaLead,
 }: {
   size: CardSize
   eyebrow: string
   tournament: CardTournament
   children: ReactNode
-  cta?: string
-  /**
-   * A headline-sized line above the CTA — the ask, set at a size that competes
-   * with the card's own content rather than reading as a credit.
-   *
-   * Only the draw card uses it, and only because that card is the acquisition
-   * one: it is the post a stranger sees before they have an account, so the
-   * instruction has to be the loudest thing in the footer. Everywhere else the
-   * audience already plays and the plain CTA is the right volume.
-   *
-   * It stays a separate line rather than a bigger `cta` because the row also
-   * carries the handle: "Make your picks — quietplease.app" set at 56px runs to
-   * ~1000px of a 920px band, and Satori would neither warn nor wrap it usefully.
-   * Stacking keeps the widest thing on the row at ~400px.
-   */
-  ctaLead?: string
 }) {
   const s = SAFE[size]
   const story = size === 'story'
@@ -170,27 +151,9 @@ export function Frame({
         paddingRight: s.x,
       }}
     >
-      {/* Logo only — the wordmark is redundant next to the @quietplease handle
-          in the footer, and the mark reads better at size on a phone screen. */}
-      <div style={{ display: 'flex' }}>
-        <div
-          style={{
-            display: 'flex',
-            width: 108,
-            height: 108,
-            borderRadius: 26,
-            backgroundColor: C.court,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <div style={{ display: 'flex', fontFamily: DISPLAY, fontSize: 60, color: C.chalk }}>QP</div>
-        </div>
-      </div>
-
-      {/* Headline block */}
-      <div style={{ display: 'flex', flexDirection: 'column', marginTop: story ? 64 : 40 }}>
-        <Eyebrow size={story ? 26 : 22}>{eyebrow}</Eyebrow>
+      {/* Headline block — first thing on the card now that the logo is gone. */}
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <Eyebrow size={story ? 34 : 28}>{eyebrow}</Eyebrow>
         {/* flex-start, not center: a name that wraps to two or three lines would
             otherwise drag the flag down to the middle of the block, stranding it
             inside the title instead of leading it. */}
@@ -215,9 +178,9 @@ export function Frame({
         <div
           style={{
             display: 'flex',
-            marginTop: 14,
+            marginTop: 16,
             fontFamily: BODY,
-            fontSize: story ? 28 : 24,
+            fontSize: story ? 36 : 30,
             color: C.muted,
           }}
         >
@@ -230,49 +193,6 @@ export function Frame({
         {children}
       </div>
 
-      {/* Footer — tighter on the square, which has 840px less to spend on the
-          same chrome and is the only size where the recap runs out of room. */}
-      <div style={{ display: 'flex', flexDirection: 'column', marginTop: story ? 24 : 16 }}>
-        <Rule />
-        <div
-          style={{
-            display: 'flex',
-            marginTop: story ? 22 : 16,
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: ctaLead ? (story ? 6 : 4) : 0 }}>
-            {ctaLead ? (
-              <div
-                style={{
-                  display: 'flex',
-                  fontFamily: DISPLAY,
-                  fontSize: story ? 56 : 40,
-                  color: C.court,
-                  lineHeight: 1.05,
-                }}
-              >
-                {ctaLead}
-              </div>
-            ) : null}
-            <div
-              style={{
-                display: 'flex',
-                fontFamily: BODY,
-                fontWeight: 700,
-                fontSize: story ? 30 : 26,
-                color: ctaLead ? C.ink : C.court,
-              }}
-            >
-              {cta}
-            </div>
-          </div>
-          <div style={{ display: 'flex', fontFamily: MONO, fontWeight: 500, fontSize: 24, color: C.muted, letterSpacing: 2 }}>
-            @quietplease
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

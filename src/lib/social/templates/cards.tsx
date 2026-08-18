@@ -100,8 +100,8 @@ function Podium({ entries, showUsernames, story }: { entries: PodiumEntry[]; sho
   if (!entries.length) return null
   const PLACE = ['1st', '2nd', '3rd']
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 16 : 12 }}>
-      <Eyebrow color={C.muted} size={story ? 22 : 19}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 20 : 14 }}>
+      <Eyebrow color={C.muted} size={story ? 28 : 24}>
         Leading brackets
       </Eyebrow>
       {entries.map((e, i) => (
@@ -116,7 +116,7 @@ function Podium({ entries, showUsernames, story }: { entries: PodiumEntry[]; sho
                   display: 'flex',
                   fontFamily: MONO,
                   fontWeight: 500,
-                  fontSize: story ? 24 : 21,
+                  fontSize: story ? 30 : 26,
                   color: i === 0 ? C.clay : C.muted,
                 }}
               >
@@ -128,14 +128,14 @@ function Podium({ entries, showUsernames, story }: { entries: PodiumEntry[]; sho
                 display: 'flex',
                 fontFamily: BODY,
                 fontWeight: i === 0 ? 700 : 400,
-                fontSize: story ? 32 : 28,
+                fontSize: story ? 42 : 36,
                 color: showUsernames ? C.ink : i === 0 ? C.ink : C.muted,
               }}
             >
               {showUsernames ? short(e.username, 18) : `${PLACE[i]} place`}
             </div>
           </div>
-          <div style={{ display: 'flex', fontFamily: MONO, fontWeight: 500, fontSize: story ? 30 : 26, color: C.court }}>
+          <div style={{ display: 'flex', fontFamily: MONO, fontWeight: 500, fontSize: story ? 40 : 34, color: C.court }}>
             {e.points.toLocaleString('en-GB')} pts
           </div>
         </div>
@@ -213,25 +213,23 @@ function DrawArt({ card, size }: { card: DrawCard; size: CardSize }): ReactEleme
       size={size}
       eyebrow="The draw is out"
       tournament={card.tournament}
-      ctaLead="Make your picks!"
-      cta="Free to play at quietplease.app"
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 44 : 28, flex: 1 }}>
         <StatBlock value={String(card.entrants)} label="players in the draw" story={story} />
 
         {matches.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 22 : 15 }}>
-            <Eyebrow color={C.muted} size={story ? 22 : 19}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 26 : 17 }}>
+            <Eyebrow color={C.muted} size={story ? 28 : 24}>
               Highlighted matches
             </Eyebrow>
             {matches.map(m => (
               <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                 {/* Seed badges appear only where the draw actually recorded one. */}
-                {m.a.seed != null && <SeedBadge seed={m.a.seed} size={story ? 40 : 34} />}
-                <PlayerLine player={m.a} size={story ? 34 : 28} max={16} />
-                <div style={{ display: 'flex', fontFamily: DISPLAY, fontSize: story ? 28 : 24, color: C.clay }}>v</div>
-                {m.b.seed != null && <SeedBadge seed={m.b.seed} size={story ? 40 : 34} />}
-                <PlayerLine player={m.b} size={story ? 34 : 28} max={16} />
+                {m.a.seed != null && <SeedBadge seed={m.a.seed} size={story ? 44 : 36} />}
+                <PlayerLine player={m.a} size={story ? 38 : 30} max={16} />
+                <div style={{ display: 'flex', fontFamily: DISPLAY, fontSize: story ? 32 : 26, color: C.clay }}>v</div>
+                {m.b.seed != null && <SeedBadge seed={m.b.seed} size={story ? 44 : 36} />}
+                <PlayerLine player={m.b} size={story ? 38 : 30} max={16} />
               </div>
             ))}
           </div>
@@ -318,7 +316,7 @@ function UpcomingArt({ card, size }: { card: UpcomingCard; size: CardSize }): Re
   const { scale, max } = upcomingType(size, matches.length)
   const px = (base: number) => Math.round(base * scale)
   const nameSize = px(story ? 36 : 29)
-  const crowdSize = px(story ? 24 : 21)
+  const crowdSize = px(story ? 32 : 27)
   const matchGap = px(story ? 30 : 18)
 
   return (
@@ -326,7 +324,6 @@ function UpcomingArt({ card, size }: { card: UpcomingCard; size: CardSize }): Re
       size={size}
       eyebrow={`${card.roundLabel} — up next`}
       tournament={card.tournament}
-      cta="Lock your picks — quietplease.app"
     >
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
         {/* Centred so a two-match semifinal does not strand the top half of a
@@ -354,7 +351,7 @@ function UpcomingArt({ card, size }: { card: UpcomingCard; size: CardSize }): Re
             </div>
           ))}
           {hidden > 0 && (
-            <div style={{ display: 'flex', fontFamily: BODY, fontSize: story ? 26 : 22, color: C.muted }}>
+            <div style={{ display: 'flex', fontFamily: BODY, fontSize: story ? 30 : 25, color: C.muted }}>
               + {hidden} more {hidden === 1 ? 'match' : 'matches'}
             </div>
           )}
@@ -366,9 +363,9 @@ function UpcomingArt({ card, size }: { card: UpcomingCard; size: CardSize }): Re
           <div
             style={{
               display: 'flex',
-              marginTop: story ? 0 : 14,
+              marginTop: story ? 22 : 14,
               fontFamily: BODY,
-              fontSize: story ? 28 : 24,
+              fontSize: story ? 36 : 30,
               color: C.muted,
             }}
           >
@@ -404,7 +401,7 @@ function PickCount({ match, story }: { match: RecapMatch; story: boolean }) {
             display: 'flex',
             fontFamily: MONO,
             fontWeight: 500,
-            fontSize: story ? 20 : 18,
+            fontSize: story ? 26 : 22,
             letterSpacing: 2,
             textTransform: 'uppercase',
             color: C.chalk,
@@ -423,7 +420,7 @@ function PickCount({ match, story }: { match: RecapMatch; story: boolean }) {
         style={{
           display: 'flex',
           fontFamily: BODY,
-          fontSize: story ? 24 : 21,
+          fontSize: story ? 32 : 27,
           color: upset ? C.clay : C.muted,
         }}
       >
@@ -448,7 +445,7 @@ function RecapArt({ card, size, showUsernames }: { card: RecapCard; size: CardSi
   const hidden = card.matches.length - matches.length
 
   return (
-    <Frame size={size} eyebrow={`${card.roundLabel} results`} tournament={card.tournament} cta="Track your bracket — quietplease.app">
+    <Frame size={size} eyebrow={`${card.roundLabel} results`} tournament={card.tournament}>
       {/* `justifyContent: center` on the flex:1 group is a no-op once the round
           fills the canvas, and stops a two-match round from stranding a third of
           the story empty. */}
@@ -477,7 +474,7 @@ function RecapArt({ card, size, showUsernames }: { card: RecapCard; size: CardSi
             </div>
           ))}
           {hidden > 0 && (
-            <div style={{ display: 'flex', fontFamily: BODY, fontSize: story ? 26 : 22, color: C.muted }}>
+            <div style={{ display: 'flex', fontFamily: BODY, fontSize: story ? 30 : 25, color: C.muted }}>
               + {hidden} more {hidden === 1 ? 'match' : 'matches'}
             </div>
           )}
@@ -491,17 +488,18 @@ function RecapArt({ card, size, showUsernames }: { card: RecapCard; size: CardSi
         )}
         </div>
 
-        {/* The square's group above fills its box exactly, so this line would sit
-            flush against "3rd place" without a margin of its own — two different
-            facts reading as one wrapped sentence. Story gets its separation free
-            from the centred group's slack. */}
+        {/* Both sizes need the margin now. The story used to get its separation
+            free from the centred group's slack, but the group fills its box since
+            the capacities were re-measured against the logo-less frame — without
+            this the line sits flush against "3rd place" and the two facts read as
+            one wrapped sentence. */}
         {card.bracketCount > 0 && (
           <div
             style={{
               display: 'flex',
-              marginTop: story ? 0 : 14,
+              marginTop: story ? 22 : 14,
               fontFamily: BODY,
-              fontSize: story ? 28 : 24,
+              fontSize: story ? 36 : 30,
               color: C.muted,
             }}
           >
@@ -519,7 +517,7 @@ function CompleteArt({ card, size, showUsernames }: { card: CompleteCard; size: 
   const story = size === 'story'
 
   return (
-    <Frame size={size} eyebrow="Champion" tournament={card.tournament} cta="See the final table — quietplease.app">
+    <Frame size={size} eyebrow="Champion" tournament={card.tournament}>
       <div
         style={{
           display: 'flex',
@@ -580,7 +578,7 @@ function CompleteArt({ card, size, showUsernames }: { card: CompleteCard; size: 
         )}
 
         {!!card.championPickedPct && card.bracketCount > 0 && (
-          <div style={{ display: 'flex', fontFamily: BODY, fontSize: story ? 28 : 24, color: C.muted }}>
+          <div style={{ display: 'flex', fontFamily: BODY, fontSize: story ? 36 : 30, color: C.muted }}>
             from {card.bracketCount.toLocaleString('en-GB')} brackets played
           </div>
         )}
@@ -600,8 +598,8 @@ function CompleteArt({ card, size, showUsernames }: { card: CompleteCard; size: 
  */
 function StatRow({ line, story }: { line: Highlight; story: boolean }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 6 : 4 }}>
-      <Eyebrow color={C.muted} size={story ? 22 : 19}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 8 : 5 }}>
+      <Eyebrow color={C.muted} size={story ? 26 : 22}>
         {line.label}
       </Eyebrow>
       <div
@@ -616,7 +614,7 @@ function StatRow({ line, story }: { line: Highlight; story: boolean }) {
         {line.value}
       </div>
       {line.detail ? (
-        <div style={{ display: 'flex', fontFamily: BODY, fontSize: story ? 28 : 23, color: C.muted, lineHeight: 1.3 }}>
+        <div style={{ display: 'flex', fontFamily: BODY, fontSize: story ? 34 : 28, color: C.muted, lineHeight: 1.3 }}>
           {line.detail}
         </div>
       ) : null}
@@ -633,7 +631,7 @@ function StatsArt({ card, size, showUsernames }: { card: StatsCard; size: CardSi
   const lines = card.lines.slice(0, statsCapacity(size, hasPodium))
 
   return (
-    <Frame size={size} eyebrow="Tournament recap" tournament={card.tournament} cta="Full recap at quietplease.app">
+    <Frame size={size} eyebrow="Tournament recap" tournament={card.tournament}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 40 : 26, flex: 1, justifyContent: 'center' }}>
         {/* The hero figure is participation, not a percentage: it is the one
             number that is always available and always large, and it frames
