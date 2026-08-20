@@ -166,6 +166,26 @@ type Density = 'roomy' | 'compact' | 'dense'
 
 const DENSITY_ORDER: Density[] = ['dense', 'compact', 'roomy']
 
+/**
+ * Default density per round.
+ *
+ * Density is really a function of how many matches the round holds. The early
+ * rounds are long scrolls where seeing more at once is the whole point, so they
+ * open compact. The semifinals and final are two matches and one — they fit on
+ * any screen at any density, so compressing them buys nothing and only makes
+ * the tournament's most-looked-at matches smaller than they deserve.
+ *
+ * This is only the starting point: the moment the reader touches the zoom
+ * control their choice takes over for the rest of the session (see
+ * `densityOverride`), because a per-round default that kept reasserting itself
+ * on every tab change would make the control feel broken.
+ */
+const ROOMY_ROUNDS = new Set(['SF', 'F'])
+
+function defaultDensityForRound(round: string): Density {
+  return ROOMY_ROUNDS.has(round) ? 'roomy' : 'compact'
+}
+
 const DENSITY: Record<Density, {
   label: string
   groupGap: string
@@ -263,10 +283,11 @@ export default function BracketPredictor({
   const [showImport, setShowImport] = useState(true)
   const [h2hPlayers, setH2HPlayers] = useState<{ player1: Player; player2: Player } | null>(null)
   const [statsPlayers, setStatsPlayers] = useState<{ player1: Player; player2: Player } | null>(null)
-  // Session-only on purpose: persisting it would mean a new non-essential
-  // client-side store to gate on `canStore` and document in /privacy, which is
-  // a lot of ceremony for a view preference.
-  const [density, setDensity] = useState<Density>('roomy')
+  // Null means "follow the per-round default". Session-only on purpose:
+  // persisting it would mean a new non-essential client-side store to gate on
+  // `canStore` and document in /privacy, which is a lot of ceremony for a view
+  // preference.
+  const [densityOverride, setDensityOverride] = useState<Density | null>(null)
   const [activeRound, setActiveRound] = useState(() => {
     const sorted = draw.rounds.slice().sort((a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b))
     if (initialRound && sorted.includes(initialRound)) return initialRound
@@ -597,6 +618,9 @@ export default function BracketPredictor({
   // ── Determine what the editable state really is ──────────────────────────
   const isEditing = !readOnly && !fullyLocked
 
+  // Derived, not synced: an effect writing state on `activeRound` change is
+  // exactly the pattern `react-hooks/set-state-in-effect` exists to catch.
+  const density = densityOverride ?? defaultDensityForRound(activeRound)
   const d = DENSITY[density]
 
   return (
@@ -796,7 +820,7 @@ export default function BracketPredictor({
               return (
                 <button
                   key={dir}
-                  onClick={() => !disabled && setDensity(DENSITY_ORDER[nextIdx])}
+                  onClick={() => !disabled && setDensityOverride(DENSITY_ORDER[nextIdx])}
                   disabled={disabled}
                   aria-label={title}
                   title={title}
