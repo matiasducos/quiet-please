@@ -9,6 +9,7 @@ import TournamentCard from '@/components/TournamentCard'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
 import { getReferralStats } from '@/lib/referrals'
+import { authUrl } from '@/lib/auth-redirect'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import InviteShare from './InviteShare'
 
@@ -39,7 +40,13 @@ export const metadata: Metadata = { title: 'Invite a friend' }
 
 export default async function InvitePage() {
   const { user, profile } = await getNavProfile()
-  if (!user || !profile?.username) redirect('/login?redirectTo=/invite')
+  // `?next=`, not `?redirectTo=`. This used to say redirectTo, which nothing
+  // reads any more — middleware.ts explicitly deletes that param and /login,
+  // /signup and /auth/callback all read NEXT_PARAM. So a signed-out visitor
+  // signed in and landed on the dashboard, silently losing the one thing they
+  // came here to do. That matters more now the US Open site notice sends
+  // everyone to this page, signed in or not.
+  if (!user || !profile?.username) redirect(authUrl('/login', '/invite'))
 
   // Build the absolute invite URL. Prefer the request host so previews/
   // localhost work; fall back to the canonical domain in production.

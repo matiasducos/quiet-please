@@ -132,14 +132,15 @@ export default function PrivacyPolicy() {
               <li><strong>username_is_set</strong> — records that you have chosen a username, so we route you to the right page after signup</li>
               <li><strong>qp_consent</strong> — remembers the choice you made about the cookies below, so we don&apos;t ask again on every page</li>
             </ul>
-            <p><strong>Analytics</strong> — only set if you accept, and removed if you decline:</p>
+            <p><strong>Optional</strong> — only set if you accept, and removed if you decline:</p>
             <ul>
               <li><strong>qp_attr</strong> (6 months) — records how you first found us (for example, a search campaign or a link from another site) so we can tell which of our pages are worth improving</li>
               <li><strong>qp_ref</strong> (30 days) — if you arrived through a friend&apos;s invite link, records who invited you so they get credit when you sign up</li>
+              <li><strong>qp_notice_…</strong> (90 days) — if you dismiss an announcement bar (for example, the one about an upcoming Grand Slam), remembers that so it stays dismissed. One per announcement. If you decline cookies we simply hide it for the current page instead.</li>
               <li><strong>PostHog</strong> — product analytics. If you accept, PostHog stores an identifier so we can see how many separate people use the site and where they get stuck. If you decline, PostHog runs without storing anything on your device.</li>
             </ul>
             <p>
-              If you are in the EU, EEA or UK we ask before setting any of the analytics cookies.
+              If you are in the EU, EEA or UK we ask before setting any of the optional cookies.
               You can change your mind at any time using the <strong>Cookie settings</strong> link in
               the footer of any page — declining removes the cookies listed above.
             </p>

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
 import NotificationBell from './NotificationBell'
+import FeaturedSlamNotice from './FeaturedSlamNotice'
 import ChatBubbleIconServer from './ChatBubbleIconServer'
 import PostHogIdentify from './PostHogIdentify'
 
@@ -39,6 +40,7 @@ export default function Nav({ username, activePage, userId, deletionRequestedAt 
   const userMenuOpen = false // placeholder for clarity; <details> is stateful itself
 
   return (
+    <>
     <nav className="sticky top-0 z-50 bg-white border-b" style={{ borderColor: 'var(--chalk-dim)' }}>
       <style>{`
         .nav-link {
@@ -313,7 +315,10 @@ export default function Nav({ username, activePage, userId, deletionRequestedAt 
         ))}
       </div>
 
-      {/* Deletion warning banner */}
+      {/* Deletion warning banner.
+          Stays INSIDE the sticky nav, unlike the site notice below: this one is
+          account state the user has to act on, so following them down the page
+          is the point. */}
       {deletionDate && (
         <div className="px-4 md:px-8 py-2 text-center" style={{ background: '#FFF9E6', borderBottom: '1px solid #E8C47A' }}>
           <p style={{ fontSize: '0.75rem', color: '#7A5C00', fontFamily: 'var(--font-mono)' }}>
@@ -325,5 +330,26 @@ export default function Nav({ username, activePage, userId, deletionRequestedAt 
         </div>
       )}
     </nav>
+
+    {/* Outside the sticky <nav>, so it scrolls away with the page.
+        Pinning it would cost ~44px of every mobile viewport for a fortnight —
+        the nav is navigation and earns its place at the top; an announcement
+        read once does not.
+
+        Rendered here rather than in the root layout because this is the one
+        component that already knows whether there is an account to refer from,
+        and because every route that mounts Nav has already resolved auth from
+        cookies — which is what lets the notice read its own dismissal
+        server-side instead of flashing on hydration. Verified against a build:
+        no route changed rendering mode when this was added.
+
+        Awaited rather than wrapped in Suspense, deliberately. Streaming it in
+        behind a fallback would let the nav paint first and then push the whole
+        page down when the notice arrives — reintroducing the layout shift the
+        server-side dismissal read exists to avoid. getFeaturedSlam() resolves
+        from a shared 5-minute cache entry, so the wait is a cache lookup on
+        every request but the first after a deploy. */}
+    <FeaturedSlamNotice />
+    </>
   )
 }
