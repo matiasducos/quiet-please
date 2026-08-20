@@ -152,6 +152,25 @@ const PICK_STYLES: Record<string, { bg: string; labelColor: string; labelBg: str
 }
 
 /**
+ * Minimap palette.
+ *
+ * Deliberately not PICK_STYLES: those are pale washes tuned to sit behind a
+ * player's name across a full-width row. At a 7px cell they read as off-white
+ * against the chalk background and the whole strip turns to mush, so the
+ * minimap uses saturated versions of the same hues.
+ */
+type MinimapState = 'correct' | 'wrong' | 'void' | 'picked' | 'empty' | 'bye'
+
+const MINIMAP_COLORS: Record<MinimapState, string> = {
+  correct: '#16a34a',  // you got it right
+  wrong:   '#dc2626',  // played, you missed it
+  void:    '#d97706',  // your pick lost upstream — this can never score
+  picked:  '#64748b',  // committed, not yet played
+  empty:   '#e2e0d9',  // no pick
+  bye:     '#bfdbfe',  // BYE, nothing to pick
+}
+
+/**
  * Three display densities for the round list.
  *
  * The bracket is one vertical column by design, so "zoom" here means how much
@@ -288,6 +307,7 @@ export default function BracketPredictor({
   // `canStore` and document in /privacy, which is a lot of ceremony for a view
   // preference.
   const [densityOverride, setDensityOverride] = useState<Density | null>(null)
+  const [showMinimap, setShowMinimap] = useState(false)
   const [activeRound, setActiveRound] = useState(() => {
     const sorted = draw.rounds.slice().sort((a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b))
     if (initialRound && sorted.includes(initialRound)) return initialRound
@@ -399,6 +419,73 @@ export default function BracketPredictor({
   for (const m of draw.matches) {
     if (m.player1) allPlayers.set(m.player1.externalId, m.player1)
     if (m.player2) allPlayers.set(m.player2.externalId, m.player2)
+  }
+
+  /**
+   * Pick state for every match in the draw, for the minimap.
+   *
+   * Built as one forward pass over the rounds, so each match reads the already
+   * -resolved winners of its two feeders. Resolving each match independently
+   * would re-walk the tree from that match back to round one — 127 times over
+   * a full draw. This is a single O(n) sweep instead.
+   */
+  const minimapState: Record<string, MinimapState> = {}
+  {
+    // matchId → who goes through: the actual result if played, else the pick.
+    const advancing: Record<string, string | undefined> = {}
+    for (const round of sortedRounds) {
+      for (const m of draw.matches) {
+        if (m.round !== round) continue
+
+        if (byeMatchIds.has(m.matchId)) {
+          minimapState[m.matchId] = 'bye'
+          advancing[m.matchId] = m.player1?.externalId ?? m.player2?.externalId
+          continue
+        }
+
+        const feeders = reverseFeedMap[m.matchId]
+        const p1 = m.player1?.externalId
+          ?? (feeders?.player1Feeder ? advancing[feeders.player1Feeder] : undefined)
+        const p2 = m.player2?.externalId
+          ?? (feeders?.player2Feeder ? advancing[feeders.player2Feeder] : undefined)
+
+        const result = matchResults?.[m.matchId]
+        const pick = picks[m.matchId]
+        advancing[m.matchId] = result ?? pick
+
+        if (!pick) { minimapState[m.matchId] = 'empty'; continue }
+        if (result) { minimapState[m.matchId] = result === pick ? 'correct' : 'wrong'; continue }
+        // Both sides must be known before a pick can be called dead — with one
+        // slot still TBD the pick may yet turn out to be in this match. Same
+        // condition the match card uses for its `voidPick` badge.
+        minimapState[m.matchId] = p1 && p2 && pick !== p1 && pick !== p2 ? 'void' : 'picked'
+      }
+    }
+  }
+
+  /**
+   * `data-match-id` is written on the group wrapper, not on each card, and the
+   * group is keyed by whichever of the pair feeds the player1 slot. Jumping to
+   * the sibling would query for an id that is not in the DOM and silently not
+   * scroll at all, so resolve to the group's leader first.
+   */
+  const groupLeaderFor = (matchId: string): string => {
+    const feed = feedMap[matchId]
+    if (!feed) return matchId
+    const siblings = reverseMap[feed.nextMatchId] ?? []
+    return siblings.find(id => feedMap[id]?.slot === 'player1') ?? matchId
+  }
+
+  const jumpToMatch = (matchId: string, round: string) => {
+    const target = groupLeaderFor(matchId)
+    if (round === activeRound) {
+      matchContainerRef.current
+        ?.querySelector(`[data-match-id="${target}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
+    }
+    pendingScrollTarget.current = target
+    setActiveRound(round)
   }
 
   /**
@@ -810,6 +897,21 @@ export default function BracketPredictor({
             round tabs, which are the more important control.
           */}
           <div className="ml-auto flex items-center gap-1 px-2 sm:px-4 py-2 flex-shrink-0">
+            <button
+              onClick={() => setShowMinimap(v => !v)}
+              aria-pressed={showMinimap}
+              title="Show the whole bracket at a glance"
+              className="rounded-sm border transition-colors mr-1"
+              style={{
+                fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.06em',
+                padding: '0 6px', height: '24px', display: 'inline-flex', alignItems: 'center',
+                borderColor: showMinimap ? 'var(--court)' : 'var(--chalk-dim)',
+                color: showMinimap ? 'var(--court)' : 'var(--muted)',
+                background: showMinimap ? '#eef4ff' : 'transparent',
+              }}
+            >
+              MAP
+            </button>
             <span className="hidden sm:inline" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.08em', color: 'var(--muted)', textTransform: 'uppercase', marginRight: '2px' }}>
               {d.label}
             </span>
@@ -838,6 +940,64 @@ export default function BracketPredictor({
           </div>
         </div>
       </div>
+
+      {/*
+        Minimap: one row per round, one cell per match, each row filling the
+        width. Cell width therefore doubles every round, which draws the funnel
+        of the draw for free and keeps R128's 64 cells legible at 375px.
+
+        Cells are ~5px wide in the first round — well under a comfortable touch
+        target. That is tolerable here because the round tabs remain the primary
+        navigation and a near miss still lands you in the right neighbourhood of
+        the right round, which is all a minimap owes you.
+      */}
+      {showMinimap && (
+        <div className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
+          <div className="max-w-5xl mx-auto px-4 md:px-6 py-2 flex flex-col" style={{ gap: '2px' }}>
+            {sortedRounds.map(round => {
+              const isActive = round === activeRound
+              return (
+                <div key={round} className="flex items-center" style={{ gap: '6px' }}>
+                  <button
+                    onClick={() => setActiveRound(round)}
+                    className="flex-shrink-0 text-left"
+                    style={{
+                      width: '26px', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
+                      // Without this the label's default line-height, not the
+                      // 7px cells, sets the row height — which cost the strip
+                      // ~30px over seven rounds.
+                      fontFamily: 'var(--font-mono)', fontSize: '0.5rem', lineHeight: 1, letterSpacing: '0.04em',
+                      color: isActive ? 'var(--court)' : 'var(--muted)',
+                      fontWeight: isActive ? 600 : 400,
+                    }}
+                  >
+                    {SHORT_ROUND_LABELS[round] ?? round}
+                  </button>
+                  {/* Only a light dim on the other rounds. The strip's job is
+                      the whole tournament at once, so burying six rounds to
+                      spotlight one would defeat it — the green label already
+                      says which round you are in. */}
+                  <div className="flex flex-1" style={{ gap: '1px', opacity: isActive ? 1 : 0.8 }}>
+                    {draw.matches.filter(m => m.round === round).map(m => (
+                      <button
+                        key={m.matchId}
+                        onClick={() => jumpToMatch(m.matchId, round)}
+                        aria-label={`${SHORT_ROUND_LABELS[round] ?? round} match — ${minimapState[m.matchId] ?? 'empty'}`}
+                        title={`${SHORT_ROUND_LABELS[round] ?? round} · ${minimapState[m.matchId] ?? 'empty'}`}
+                        style={{
+                          flex: 1, height: '7px', minWidth: 0, padding: 0, border: 'none',
+                          borderRadius: '1px', cursor: 'pointer',
+                          background: MINIMAP_COLORS[minimapState[m.matchId] ?? 'empty'],
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       </div>{/* end sticky top block */}
 
