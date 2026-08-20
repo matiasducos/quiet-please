@@ -248,7 +248,8 @@ async function TourSection({
 
   // User-specific data is read per request, never from the shared cache — a
   // cached bracket would show players as still active after they had lost.
-  const myTournament = userId ? await loadMyTournament(t.id, userId, detail) : null
+  const myBracket = userId ? await loadMyBracket(t.id, userId, detail) : NO_BRACKET
+  const myTournament = myBracket.myTournament
 
   const resultsByMatch: Record<string, string> = Object.fromEntries(
     detail.results.map(r => [r.external_match_id, r.winner_external_id]),
@@ -315,7 +316,14 @@ async function TourSection({
                 className="px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
                 style={{ background: 'var(--court)', color: 'white', textDecoration: 'none' }}
               >
-                {userId ? 'Make predictions' : 'Fill in this bracket — free'}
+                {/* Once they have hit "Lock all picks" the bracket is final,
+                    so inviting them to make predictions promises an edit
+                    screen that will open read-only. */}
+                {!userId
+                  ? 'Fill in this bracket — free'
+                  : myBracket.isFullyLocked
+                    ? 'Check your predictions'
+                    : 'Make predictions'}
               </Link>
             )}
             {(t.status === 'in_progress' || isDone) && (
@@ -642,11 +650,28 @@ function OtherEditions({ page }: { page: EditionPage }) {
 
 // ── User-specific bracket summary ────────────────────────────────────────────
 
-async function loadMyTournament(
+/**
+ * What this visitor's own bracket looks like on this edition.
+ *
+ * `myTournament` is the summary panel and is null until there is something to
+ * summarise — no bracket, or no results landed yet. `isFullyLocked` is a
+ * separate fact that survives all of those cases: someone can lock their picks
+ * the day the draw opens, long before a single match is played, and the CTA
+ * has to reflect that.
+ */
+type MyBracket = {
+  myTournament: MyTournament | null
+  /** They pressed "Lock all picks" — nothing in the bracket can change. */
+  isFullyLocked: boolean
+}
+
+const NO_BRACKET: MyBracket = { myTournament: null, isFullyLocked: false }
+
+async function loadMyBracket(
   tournamentId: string,
   userId: string,
   detail: EditionDetail,
-): Promise<MyTournament | null> {
+): Promise<MyBracket> {
   const supabase = await createClient()
 
   const { data: prediction, error } = await supabase
@@ -659,12 +684,14 @@ async function loadMyTournament(
 
   if (error) {
     console.error('[edition] prediction lookup failed:', error.message)
-    return null
+    return NO_BRACKET
   }
 
+  const isFullyLocked = prediction?.is_fully_locked === true
+
   const picks = (prediction?.picks ?? {}) as Record<string, string>
-  if (!prediction || Object.keys(picks).length === 0) return null
-  if (detail.results.length === 0) return null
+  if (!prediction || Object.keys(picks).length === 0) return NO_BRACKET
+  if (detail.results.length === 0) return { myTournament: null, isFullyLocked }
 
   // Points are attributed per match so the panel can show which pick earned
   // what. Scoped to this prediction id so challenge points never leak in.
@@ -713,11 +740,14 @@ async function loadMyTournament(
     for (const p of strays ?? []) overrides[p.external_id] = { name: p.name, country: p.country }
   }
 
-  return buildMyTournament({
-    picks,
-    results: detail.results,
-    matches,
-    pointsByMatch,
-    overrides,
-  })
+  return {
+    myTournament: buildMyTournament({
+      picks,
+      results: detail.results,
+      matches,
+      pointsByMatch,
+      overrides,
+    }),
+    isFullyLocked,
+  }
 }
