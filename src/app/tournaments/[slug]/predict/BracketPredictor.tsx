@@ -161,6 +161,16 @@ const PICK_STYLES: Record<string, { bg: string; labelColor: string; labelBg: str
  */
 type MinimapState = 'correct' | 'wrong' | 'void' | 'picked' | 'empty' | 'bye'
 
+/** Ordered for the legend: how a pick ends up, best outcome first. */
+const MINIMAP_LEGEND: [MinimapState, string][] = [
+  ['correct', 'correct'],
+  ['wrong',   'wrong'],
+  ['void',    'dead pick'],
+  ['picked',  'picked'],
+  ['empty',   'no pick'],
+  ['bye',     'bye'],
+]
+
 const MINIMAP_COLORS: Record<MinimapState, string> = {
   correct: '#16a34a',  // you got it right
   wrong:   '#dc2626',  // played, you missed it
@@ -422,6 +432,46 @@ export default function BracketPredictor({
   }
 
   /**
+   * Players who have actually lost, from the real results chain alone.
+   *
+   * A pick can only score if the player it names actually reaches that match,
+   * so anyone already beaten is a dead pick in every remaining round — which
+   * is what makes a bracket quietly stop being able to score while still
+   * looking full. The loser of a played match is definitionally the
+   * participant who is not the winner, resolved from the draw in round one and
+   * from real winners after that. Never from the user's picks: this has to be
+   * reality, not their bracket.
+   */
+  const eliminatedPlayers = new Set<string>()
+  {
+    const realWinner: Record<string, string | undefined> = {}
+    for (const round of sortedRounds) {
+      for (const m of draw.matches) {
+        if (m.round !== round) continue
+
+        if (byeMatchIds.has(m.matchId)) {
+          realWinner[m.matchId] = m.player1?.externalId ?? m.player2?.externalId
+          continue
+        }
+
+        const winner = matchResults?.[m.matchId]
+        if (!winner) continue
+        realWinner[m.matchId] = winner
+
+        const feeders = reverseFeedMap[m.matchId]
+        const p1 = m.player1?.externalId
+          ?? (feeders?.player1Feeder ? realWinner[feeders.player1Feeder] : undefined)
+        const p2 = m.player2?.externalId
+          ?? (feeders?.player2Feeder ? realWinner[feeders.player2Feeder] : undefined)
+
+        // Skip rather than guess when a side is unresolved: an unrecorded
+        // feeder result would otherwise eliminate whoever failed to resolve.
+        if (p1 && p2) eliminatedPlayers.add(p1 === winner ? p2 : p1)
+      }
+    }
+  }
+
+  /**
    * Pick state for every match in the draw, for the minimap.
    *
    * Built as one forward pass over the rounds, so each match reads the already
@@ -455,13 +505,17 @@ export default function BracketPredictor({
 
         if (!pick) { minimapState[m.matchId] = 'empty'; continue }
         if (result) { minimapState[m.matchId] = result === pick ? 'correct' : 'wrong'; continue }
-        // Both sides must be known before a pick can be called dead — with one
-        // slot still TBD the pick may yet turn out to be in this match. Same
-        // condition the match card uses for its `voidPick` badge.
-        minimapState[m.matchId] = p1 && p2 && pick !== p1 && pick !== p2 ? 'void' : 'picked'
+        // Dead either because the player is already out of the tournament, or
+        // because both sides of this match are known and the pick is neither.
+        // The first case is what carries the news forward into rounds whose
+        // players are still TBD.
+        const dead = eliminatedPlayers.has(pick) || (!!p1 && !!p2 && pick !== p1 && pick !== p2)
+        minimapState[m.matchId] = dead ? 'void' : 'picked'
       }
     }
   }
+
+  const presentStates = new Set<MinimapState>(Object.values(minimapState))
 
   /**
    * `data-match-id` is written on the group wrapper, not on each card, and the
@@ -710,6 +764,8 @@ export default function BracketPredictor({
   const density = densityOverride ?? defaultDensityForRound(activeRound)
   const d = DENSITY[density]
 
+  const hasResults = !!matchResults && Object.keys(matchResults).length > 0
+
   return (
     <div className="min-h-screen" style={{ background: 'var(--chalk)' }}>
 
@@ -805,48 +861,6 @@ export default function BracketPredictor({
       </nav>
       )}
 
-      {/* Read-only banner (viewing someone else's picks) */}
-      {readOnly && !hideNav && (
-        <div style={{ background: '#f1efe8', borderBottom: '1px solid var(--chalk-dim)' }}>
-          {/* First row: badge + (desktop legend) + share button */}
-          <div className="max-w-5xl mx-auto flex items-center gap-3 px-4 md:px-6 py-2.5">
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: 'var(--muted)', fontWeight: 600, flexShrink: 0 }}>
-              {drawResultsMode ? 'DRAW RESULTS' : 'LOCKED PICKS'}
-            </span>
-            {/* Legend inline — desktop only */}
-            <span className="hidden md:inline" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-              {drawResultsMode
-                ? 'Gold = match winner'
-                : matchResults && Object.keys(matchResults).length > 0
-                  ? 'Green = correct · Red = wrong · Gold = actual winner you missed'
-                  : 'Results not yet available — check back after matches are played.'}
-            </span>
-            {shareUrl && (
-              <button
-                onClick={() => {
-                  const url = `${window.location.origin}${shareUrl}`
-                  navigator.clipboard.writeText(url).then(() => {
-                    setCopied(true)
-                    setTimeout(() => setCopied(false), 2000)
-                  })
-                }}
-                className="ml-auto px-3 py-1 rounded-sm border text-xs transition-colors flex-shrink-0"
-                style={{ borderColor: 'var(--chalk-dim)', color: copied ? 'var(--court)' : 'var(--muted)', background: 'white' }}
-              >
-                {copied ? 'Copied!' : 'Share picks'}
-              </button>
-            )}
-          </div>
-          {/* Legend below — mobile only */}
-          <p className="max-w-5xl mx-auto md:hidden mt-1 px-4 md:px-6 pb-1" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-            {drawResultsMode
-              ? 'Gold = match winner'
-              : matchResults && Object.keys(matchResults).length > 0
-                ? 'Green = correct · Red = wrong · Gold = actual winner you missed'
-                : 'Results not yet available — check back after matches are played.'}
-          </p>
-        </div>
-      )}
 
       {/* Round tabs */}
       <div className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
@@ -1007,11 +1021,85 @@ export default function BracketPredictor({
                 </div>
               )
             })}
+
+            {/*
+              Only the states this bracket actually contains. Six swatches is
+              two wrapped lines at 375px and most of them are irrelevant to any
+              given bracket — an untouched one is all "no pick" and "bye".
+            */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1" style={{ paddingTop: '5px' }}>
+              {MINIMAP_LEGEND.filter(([state]) => presentStates.has(state)).map(([state, label]) => (
+                <span
+                  key={state}
+                  className="inline-flex items-center gap-1"
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: '0.55rem', letterSpacing: '0.04em', color: 'var(--muted)' }}
+                >
+                  <span style={{ width: '7px', height: '7px', borderRadius: '1px', background: MINIMAP_COLORS[state], flexShrink: 0 }} />
+                  {label}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
       )}
 
       </div>{/* end sticky top block */}
+
+      {/*
+        Deliberately outside the sticky block. It is reference text that
+        never changes, and at 375px it stood 91px tall — taller than the
+        round tabs — so pinning it spent a fifth of the screen restating a
+        colour key the reader has already read. Nav, tabs and the minimap
+        stay pinned because they are navigation; this is not.
+      */}
+      {/*
+        Banner for any bracket that can no longer be edited — someone else's
+        picks, a completed tournament, or your own after "Lock all picks".
+        It was gated on `readOnly` alone, so a stranger reading your bracket was
+        told what the colours meant and you were not, on the same screen full of
+        green, red and gold.
+      */}
+      {(readOnly || fullyLocked) && !hideNav && (
+        <div style={{ background: '#f1efe8', borderBottom: '1px solid var(--chalk-dim)' }}>
+          {/* First row: badge + (desktop legend) + share button */}
+          <div className="max-w-5xl mx-auto flex items-center gap-3 px-4 md:px-6 py-2.5">
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: 'var(--muted)', fontWeight: 600, flexShrink: 0 }}>
+              {drawResultsMode ? 'DRAW RESULTS' : 'LOCKED PICKS'}
+            </span>
+            {/* Legend inline — desktop only */}
+            <span className="hidden md:inline" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+              {drawResultsMode
+                ? 'Gold = match winner'
+                : matchResults && Object.keys(matchResults).length > 0
+                  ? 'Green = correct · Red = wrong · Gold = actual winner you missed'
+                  : 'Results not yet available — check back after matches are played.'}
+            </span>
+            {shareUrl && (
+              <button
+                onClick={() => {
+                  const url = `${window.location.origin}${shareUrl}`
+                  navigator.clipboard.writeText(url).then(() => {
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 2000)
+                  })
+                }}
+                className="ml-auto px-3 py-1 rounded-sm border text-xs transition-colors flex-shrink-0"
+                style={{ borderColor: 'var(--chalk-dim)', color: copied ? 'var(--court)' : 'var(--muted)', background: 'white' }}
+              >
+                {copied ? 'Copied!' : 'Share picks'}
+              </button>
+            )}
+          </div>
+          {/* Legend below — mobile only */}
+          <p className="max-w-5xl mx-auto md:hidden mt-1 px-4 md:px-6 pb-1" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+            {drawResultsMode
+              ? 'Gold = match winner'
+              : matchResults && Object.keys(matchResults).length > 0
+                ? 'Green = correct · Red = wrong · Gold = actual winner you missed'
+                : 'Results not yet available — check back after matches are played.'}
+          </p>
+        </div>
+      )}
 
       {/* Header */}
       {!hideNav && (
@@ -1031,19 +1119,29 @@ export default function BracketPredictor({
           </span>
         </div>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.02em' }}>
+          {/* A locked bracket is a record, not a task. "Make your predictions"
+              over a header reading 95/95 LOCKED ✓ describes something the
+              reader cannot do. Challenges keep their own title, which stays
+              accurate either way. */}
           {drawResultsMode
             ? 'Draw Results'
             : readOnly
               ? `${username}'s picks`
               : challengeContext
                 ? `Challenge vs ${challengeContext.opponentUsername}`
-                : 'Make your predictions'}
+                : fullyLocked
+                  ? 'Your locked bracket'
+                  : 'Make your predictions'}
         </h1>
         <p style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
           {drawResultsMode
             ? 'Actual match results round by round.'
             : readOnly
               ? `View ${username}'s picks round by round.`
+            : fullyLocked
+              ? (hasResults
+                  ? 'Your picks are final. Follow how they are scoring, round by round.'
+                  : 'Your picks are final. Check back once matches are played to see how they scored.')
             : (() => {
                 const firstRound = sortedRounds[0]
                 const lastRound = sortedRounds[sortedRounds.length - 1]
@@ -1280,9 +1378,25 @@ export default function BracketPredictor({
                       const noPlayers = !p1 && !p2
                       const lockDisplay = getMatchLockDisplay(match.matchId)
 
-                      // Void pick: user picked someone who's been eliminated (not in this match anymore)
-                      const voidPick = !isBye && pickedId && p1 && p2
-                        && pickedId !== p1.externalId && pickedId !== p2.externalId
+                      // Void pick: the picked player can no longer win this match.
+                      //
+                      // The second clause is the original test — both sides
+                      // known, pick is neither — which only fires once the
+                      // match has real players. The first clause is what makes
+                      // the death visible in later rounds too: a bracket whose
+                      // QF pick is out used to show "TBD vs TBD · LOCKED" in the
+                      // semifinal, with nothing to say the run was already over.
+                      //
+                      // `!actualWinnerId` is load-bearing. Every loser is in
+                      // eliminatedPlayers, including the loser of THIS match,
+                      // so without it a played match you simply got wrong
+                      // reports "your pick was eliminated" instead of "wrong".
+                      // A played match is scored, never void — the same
+                      // ordering the minimap uses.
+                      const voidPick = !isBye && !!pickedId && !actualWinnerId && (
+                        eliminatedPlayers.has(pickedId)
+                        || (!!p1 && !!p2 && pickedId !== p1.externalId && pickedId !== p2.externalId)
+                      )
                       const voidPickPlayer = voidPick ? allPlayers.get(pickedId) : null
 
                       // BYE matches: non-null player gets 'bye' state, null side gets 'none'
