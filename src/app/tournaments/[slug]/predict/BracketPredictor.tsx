@@ -151,6 +151,41 @@ const PICK_STYLES: Record<string, { bg: string; labelColor: string; labelBg: str
   none:       { bg: 'white',   labelColor: '',        labelBg: '',        label: ''               },
 }
 
+/**
+ * Three display densities for the round list.
+ *
+ * The bracket is one vertical column by design, so "zoom" here means how much
+ * vertical space a match card spends, not a canvas transform. R128 is 64 cards
+ * in a single file — at `roomy` that is a very long scroll, and the point of
+ * `dense` is to get a whole round close to one screen.
+ *
+ * The connectors need no entry here: they are positioned in percentages
+ * against the group's stretched height, so they rescale on their own.
+ */
+type Density = 'roomy' | 'compact' | 'dense'
+
+const DENSITY_ORDER: Density[] = ['dense', 'compact', 'roomy']
+
+const DENSITY: Record<Density, {
+  label: string
+  groupGap: string
+  cardGap: string
+  headerPadY: string
+  playerPadY: string
+  nameSize: string
+  labelSize: string
+  flagSize: number
+  seedBox: string
+  seedSize: string
+  /* The VS strip carries the STATS button, so dropping it costs a feature.
+     Only `dense` — the deliberate overview level — pays that price. */
+  showVsRow: boolean
+}> = {
+  roomy:   { label: 'Roomy',   groupGap: '1.5rem',  cardGap: '0.5rem',   headerPadY: '6px', playerPadY: '8px', nameSize: '0.95rem', labelSize: '0.7rem',  flagSize: 14, seedBox: '16px', seedSize: '0.55rem', showVsRow: true },
+  compact: { label: 'Compact', groupGap: '1rem',    cardGap: '0.375rem', headerPadY: '3px', playerPadY: '4px', nameSize: '0.85rem', labelSize: '0.65rem', flagSize: 12, seedBox: '14px', seedSize: '0.5rem',  showVsRow: true },
+  dense:   { label: 'Dense',   groupGap: '0.625rem', cardGap: '0.25rem', headerPadY: '1px', playerPadY: '2px', nameSize: '0.8rem',  labelSize: '0.6rem',  flagSize: 11, seedBox: '13px', seedSize: '0.5rem',  showVsRow: false },
+}
+
 export default function BracketPredictor({
   tournament,
   draw,
@@ -228,6 +263,10 @@ export default function BracketPredictor({
   const [showImport, setShowImport] = useState(true)
   const [h2hPlayers, setH2HPlayers] = useState<{ player1: Player; player2: Player } | null>(null)
   const [statsPlayers, setStatsPlayers] = useState<{ player1: Player; player2: Player } | null>(null)
+  // Session-only on purpose: persisting it would mean a new non-essential
+  // client-side store to gate on `canStore` and document in /privacy, which is
+  // a lot of ceremony for a view preference.
+  const [density, setDensity] = useState<Density>('roomy')
   const [activeRound, setActiveRound] = useState(() => {
     const sorted = draw.rounds.slice().sort((a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b))
     if (initialRound && sorted.includes(initialRound)) return initialRound
@@ -558,6 +597,8 @@ export default function BracketPredictor({
   // ── Determine what the editable state really is ──────────────────────────
   const isEditing = !readOnly && !fullyLocked
 
+  const d = DENSITY[density]
+
   return (
     <div className="min-h-screen" style={{ background: 'var(--chalk)' }}>
 
@@ -706,7 +747,7 @@ export default function BracketPredictor({
           predict view, which adds a "3/8" badge per tab, takes a second row
           instead of hiding half the tournament.
         */}
-        <div className="max-w-5xl mx-auto flex flex-wrap">
+        <div className="max-w-5xl mx-auto flex flex-wrap items-center">
           {sortedRounds.map(round => {
             const stats = getRoundStats(round)
             const allDone = stats.done === stats.total && stats.total > 0
@@ -738,6 +779,39 @@ export default function BracketPredictor({
               </button>
             )
           })}
+
+          {/*
+            Zoom. `ml-auto` parks it at the right of the tab row on desktop and
+            lets it drop to its own line at 375px rather than squeezing the
+            round tabs, which are the more important control.
+          */}
+          <div className="ml-auto flex items-center gap-1 px-2 sm:px-4 py-2 flex-shrink-0">
+            <span className="hidden sm:inline" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.08em', color: 'var(--muted)', textTransform: 'uppercase', marginRight: '2px' }}>
+              {d.label}
+            </span>
+            {([['out', '−', 'Show more matches'], ['in', '+', 'Show fewer, larger matches']] as const).map(([dir, glyph, title]) => {
+              const idx = DENSITY_ORDER.indexOf(density)
+              const nextIdx = dir === 'out' ? idx - 1 : idx + 1
+              const disabled = nextIdx < 0 || nextIdx >= DENSITY_ORDER.length
+              return (
+                <button
+                  key={dir}
+                  onClick={() => !disabled && setDensity(DENSITY_ORDER[nextIdx])}
+                  disabled={disabled}
+                  aria-label={title}
+                  title={title}
+                  className="rounded-sm border transition-colors disabled:opacity-30 hover:bg-white"
+                  style={{
+                    fontFamily: 'var(--font-mono)', fontSize: '0.85rem', lineHeight: 1,
+                    width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'transparent',
+                  }}
+                >
+                  {glyph}
+                </button>
+              )
+            })}
+          </div>
         </div>
       </div>
 
@@ -826,7 +900,7 @@ export default function BracketPredictor({
           </div>
         )}
 
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col" style={{ gap: d.groupGap }}>
           {(() => {
             // Group matches that share the same next-round match (bracket pairs)
             const roundMatches = matchesForRound(activeRound)
@@ -866,8 +940,10 @@ export default function BracketPredictor({
                   <button
                     onClick={() => player && pickWinner(match.matchId, player.externalId)}
                     disabled={!player || matchLocked || isBye}
-                    className={`pick-btn w-full flex items-center justify-between px-3 py-2 text-left${withBorderBottom ? ' border-b' : ''}`}
+                    className={`pick-btn w-full flex items-center justify-between px-3 text-left${withBorderBottom ? ' border-b' : ''}`}
                     style={{
+                      paddingTop: d.playerPadY,
+                      paddingBottom: d.playerPadY,
                       borderColor: 'var(--chalk-dim)',
                       background: style.bg,
                       cursor: isClickable ? 'pointer' : 'default',
@@ -879,12 +955,12 @@ export default function BracketPredictor({
                         <Tooltip text="Tournament seed. Seeded players are the highest-ranked and placed in the draw to avoid early meetings.">
                           <span style={{
                             fontFamily: 'var(--font-mono)',
-                            fontSize: '0.55rem',
+                            fontSize: d.seedSize,
                             fontWeight: 600,
                             color: 'white',
                             background: '#5a5a4a',
-                            minWidth: '16px',
-                            height: '16px',
+                            minWidth: d.seedBox,
+                            height: d.seedBox,
                             borderRadius: '2px',
                             display: 'flex',
                             alignItems: 'center',
@@ -894,13 +970,13 @@ export default function BracketPredictor({
                           }}>{player.seed}</span>
                         </Tooltip>
                       ) : (
-                        <span style={{ minWidth: '16px', flexShrink: 0 }} />
+                        <span style={{ minWidth: d.seedBox, flexShrink: 0 }} />
                       )}
-                      <span className="truncate" style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', letterSpacing: '-0.01em', color: player ? 'var(--ink)' : 'var(--muted)' }}>
+                      <span className="truncate" style={{ fontFamily: 'var(--font-display)', fontSize: d.nameSize, letterSpacing: '-0.01em', color: player ? 'var(--ink)' : 'var(--muted)' }}>
                         {player?.name ?? (isBye ? 'BYE' : 'TBD')}
                       </span>
                       {player?.country && player.country.toLowerCase() !== 'world' && (
-                        <CountryFlag country={player.country} size={14} />
+                        <CountryFlag country={player.country} size={d.flagSize} />
                       )}
                     </div>
                     {state !== 'none' && (() => {
@@ -913,7 +989,7 @@ export default function BracketPredictor({
                       const pill = (
                         <span style={{
                           fontFamily: 'var(--font-mono)',
-                          fontSize: '0.7rem',
+                          fontSize: d.labelSize,
                           color: style.labelColor,
                           background: style.labelBg,
                           padding: '2px 8px',
@@ -997,7 +1073,7 @@ export default function BracketPredictor({
                   )}
 
                   {/* Match cards column */}
-                  <div className="flex flex-col gap-2 flex-1">
+                  <div className="flex flex-col flex-1" style={{ gap: d.cardGap }}>
                     {group.map((match) => {
                       const i = matchIndex++
                       const isBye = byeMatchIds.has(match.matchId)
@@ -1023,7 +1099,7 @@ export default function BracketPredictor({
                       return (
                         <div key={match.matchId} className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: isBye ? '#bfdbfe' : 'var(--chalk-dim)' }}>
                           {/* Match header */}
-                          <div className="px-3 py-1.5 border-b flex items-center justify-between" style={{ borderColor: isBye ? '#bfdbfe' : 'var(--chalk-dim)', background: isBye ? '#eff6ff' : '#fafaf8' }}>
+                          <div className="px-3 border-b flex items-center justify-between" style={{ paddingTop: d.headerPadY, paddingBottom: d.headerPadY, borderColor: isBye ? '#bfdbfe' : 'var(--chalk-dim)', background: isBye ? '#eff6ff' : '#fafaf8' }}>
                             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: isBye ? '#1e40af' : 'var(--muted)', letterSpacing: '0.05em' }}>
                               MATCH {i + 1}{isBye ? ' · BYE' : ''}
                             </span>
@@ -1102,7 +1178,11 @@ export default function BracketPredictor({
 
                           {renderPlayer(match, p1, 'player1', s1, true)}
 
-                          <div className="flex items-center justify-center py-1 gap-2" style={{ background: '#fafaf8' }}>
+                          {/* Dropped at `dense`: the strip is mostly the VS
+                              label, and the divider under player 1 already
+                              separates the two. STATS comes back a zoom step in. */}
+                          {d.showVsRow && (
+                          <div className="flex items-center justify-center gap-2" style={{ background: '#fafaf8', paddingTop: '4px', paddingBottom: '4px' }}>
                             {SHOW_H2H && p1 && p2 && !isBye && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); setH2HPlayers({ player1: p1, player2: p2 }) }}
@@ -1134,6 +1214,7 @@ export default function BracketPredictor({
                             )}
                             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--muted)', letterSpacing: '0.1em' }}>VS</span>
                           </div>
+                          )}
 
                           {renderPlayer(match, p2, 'player2', s2, false)}
                         </div>
