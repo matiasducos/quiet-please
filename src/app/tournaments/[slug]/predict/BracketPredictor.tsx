@@ -896,7 +896,12 @@ export default function BracketPredictor({
             lets it drop to its own line at 375px rather than squeezing the
             round tabs, which are the more important control.
           */}
-          <div className="ml-auto flex items-center gap-1 px-2 sm:px-4 py-2 flex-shrink-0">
+          {/*
+            Padding is px-2 at every width, not sm:px-4. The tab row for a
+            128-draw is 849px inside a 1024px container, which leaves ~175px —
+            and the control at its widest wanted 177px.
+          */}
+          <div className="ml-auto flex items-center gap-1 px-2 py-2 flex-shrink-0">
             <button
               onClick={() => setShowMinimap(v => !v)}
               aria-pressed={showMinimap}
@@ -912,7 +917,14 @@ export default function BracketPredictor({
             >
               MAP
             </button>
-            <span className="hidden sm:inline" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.08em', color: 'var(--muted)', textTransform: 'uppercase', marginRight: '2px' }}>
+            {/*
+              Fixed width, because the label is the widest thing in here and it
+              changes when you press the button next to it. "COMPACT" is two
+              characters longer than "DENSE" and "ROOMY" — about 13px — which
+              was enough to push the whole control onto a second line only at
+              that one zoom level, so it jumped lines as you clicked through.
+            */}
+            <span className="hidden sm:inline-block text-center" style={{ width: '52px', flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.08em', color: 'var(--muted)', textTransform: 'uppercase' }}>
               {d.label}
             </span>
             {([['out', '−', 'Show more matches'], ['in', '+', 'Show fewer, larger matches']] as const).map(([dir, glyph, title]) => {
