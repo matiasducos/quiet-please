@@ -559,7 +559,15 @@ async function TourSection({
         </div>
       )}
 
-      <PointsPerRound category={t.category} />
+      {/* Only once there is something to score against.
+
+          A tournament that has not started yet has no results, so the table is
+          five numbers attached to nothing — and on an undrawn edition it was
+          the last thing on the page, sitting between "we'll email you when the
+          draw lands" and the tournaments you could actually go and play. The
+          scoring rules are not what that visitor came for; they matter when
+          points are moving. */}
+      {(t.status === 'in_progress' || isDone) && <PointsPerRound category={t.category} />}
     </section>
   )
 }
