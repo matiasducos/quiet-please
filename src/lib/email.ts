@@ -275,6 +275,152 @@ export async function sendDrawOpenEmails(recipients: DrawOpenEmail[]): Promise<n
   return sent
 }
 
+// ── Draw reminder: the anonymous half of the draw-open announcement ──────────
+
+export interface DrawReminderEmail {
+  to: string
+  tournament: DrawOpenTournamentInfo
+  /**
+   * Series slug, so the CTA can land on /play — the no-account bracket flow.
+   * Null for a tournament with no series, which falls back to the edition
+   * redirect and its own signed-out CTA.
+   */
+  seriesSlug: string | null
+  emailToken: string
+}
+
+/**
+ * Opt-out footer for the reminder.
+ *
+ * Separate from `anonymousFooter` because that one states the recipient asked
+ * "to be told how your bracket finished" — true for a /play bracket, a plain
+ * falsehood here, where they never made one. The mechanic is identical: the
+ * address is erased by the send itself, and the link only confirms it.
+ */
+function drawReminderFooter(emailToken: string) {
+  const url = `${BASE_URL}/api/unsubscribe/anonymous?token=${emailToken}`
+  return `
+    <div style="margin-top:40px;padding-top:20px;border-top:1px solid #e8e3d8;">
+      <p style="font-size:11px;color:#999;line-height:1.5;">
+        You're getting this once because you asked to be told when this draw was
+        published. You don't have an account with us, and we deleted your address
+        when we sent this — it was the only thing we collected it for, so there
+        is no list to leave.<br/>
+        <a href="${url}" style="color:#999;text-decoration:underline;">Confirm removal</a>.
+      </p>
+    </div>`
+}
+
+function drawReminderSubject(o: DrawReminderEmail) {
+  const flag = o.tournament.flagEmoji ? `${o.tournament.flagEmoji} ` : ''
+  return `${flag}The ${o.tournament.name} draw is out`
+}
+
+/**
+ * Deliberately not `drawOpenHtml` with the standing block removed.
+ *
+ * That email is written for someone who already plays: it opens on where they
+ * rank, and its CTA points at /tournaments/<id>, which for a signed-out reader
+ * leads to a Predict button that bounces them to /signup. Sending it to a
+ * stranger would deliver a registration form to someone whose entire
+ * relationship with us is one line in a text box — the same "the word free was
+ * a lie" failure the edition page's own CTA comment describes.
+ *
+ * So the promise made on the page ("we'll email you when it's out") is the
+ * whole content, and the CTA is the bracket itself at /play, where no account
+ * is needed to fill one in.
+ */
+function drawReminderHtml(o: DrawReminderEmail) {
+  const t = o.tournament
+
+  const facts = [
+    categoryLabel(t.tour, t.category),
+    t.surface ? t.surface.charAt(0).toUpperCase() + t.surface.slice(1) : null,
+    t.drawSize ? `${t.drawSize} draw` : null,
+  ].filter(Boolean)
+
+  const dates = dateRange(t.startsAt, t.endsAt)
+
+  const closeLine = t.closeDate
+    ? `<tr><td style="padding:14px 0 0;font-family:Georgia,serif;font-size:13px;color:#b3392c;">
+         Picks close ${new Date(t.closeDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}.
+       </td></tr>`
+    : ''
+
+  const playUrl = o.seriesSlug
+    ? `${BASE_URL}/play/${o.seriesSlug}`
+    : `${BASE_URL}/tournaments/${t.id}`
+
+  return `
+      <div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#f5f2eb;">
+        <p style="font-size:12px;letter-spacing:0.08em;color:#6b6b6b;text-transform:uppercase;margin:0 0 24px;">Quiet Please</p>
+        <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 12px;">The draw is out.</h1>
+        <p style="color:#6b6b6b;font-size:16px;margin:0 0 24px;">You asked us to tell you. Here it is.</p>
+
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 24px;padding:0;border-top:1px solid #e8e3d8;border-bottom:1px solid #e8e3d8;">
+          <tr>
+            <td style="padding:18px 0 0;font-family:Georgia,serif;font-size:19px;line-height:1.3;color:#0d0d0d;">
+              ${t.flagEmoji ? `${t.flagEmoji} ` : ''}${t.name}
+            </td>
+          </tr>
+          ${t.location ? `<tr><td style="padding:6px 0 0;font-family:Georgia,serif;font-size:14px;color:#6b6b6b;">${t.location}</td></tr>` : ''}
+          ${facts.length ? `<tr><td style="padding:4px 0 0;font-family:Georgia,serif;font-size:13px;color:#8a867e;">${facts.join(' · ')}</td></tr>` : ''}
+          ${dates ? `<tr><td style="padding:4px 0 0;font-family:Georgia,serif;font-size:13px;color:#8a867e;">${dates}</td></tr>` : ''}
+          ${closeLine}
+          <tr><td style="padding:0 0 18px;"></td></tr>
+        </table>
+
+        <p style="margin:0 0 24px;font-family:Georgia,serif;font-size:15px;color:#6b6b6b;line-height:1.5;">
+          Pick every match from the first round to the final. It takes a couple of
+          minutes, it scores itself as the results come in, and you don't need an
+          account to fill one in.
+        </p>
+
+        <div style="text-align:center;">
+          <a href="${playUrl}"
+             style="display:inline-block;background:#1a6b3c;color:#ffffff;text-decoration:none;padding:13px 28px;font-size:15px;border-radius:2px;">
+            Fill in your bracket — free →
+          </a>
+        </div>
+        ${drawReminderFooter(o.emailToken)}
+      </div>`
+}
+
+/**
+ * Batched for the same reason `sendDrawOpenEmails` is — this runs inside the
+ * same announcement, on the same 60s serverless budget, and one HTTP round trip
+ * per address does not survive a popular tournament.
+ *
+ * Returns the addresses actually accepted, so the caller can erase exactly
+ * those and leave a failed chunk to be retried rather than silently dropped.
+ */
+export async function sendDrawReminderEmails(recipients: DrawReminderEmail[]): Promise<string[]> {
+  if (!canSend() || recipients.length === 0) return []
+  const sent: string[] = []
+  for (let i = 0; i < recipients.length; i += RESEND_BATCH_LIMIT) {
+    const chunk = recipients.slice(i, i + RESEND_BATCH_LIMIT)
+    try {
+      const { error } = await resend!.batch.send(
+        chunk.map(r => ({
+          from: FROM,
+          replyTo: REPLY_TO,
+          to: r.to,
+          subject: drawReminderSubject(r),
+          html: drawReminderHtml(r),
+        })),
+      )
+      if (error) {
+        console.error('[email] draw-reminder batch failed:', error.message)
+        continue
+      }
+      sent.push(...chunk.map(r => r.to))
+    } catch (e) {
+      console.error('[email] draw-reminder batch threw:', e)
+    }
+  }
+  return sent
+}
+
 export interface PointsAwardedRoundBreakdown {
   round: string
   label: string

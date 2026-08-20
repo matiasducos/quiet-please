@@ -55,6 +55,10 @@ export default function PrivacyPolicy() {
                 An email address, only if you choose to leave one on an anonymous challenge so
                 that we can send you the final result. See section 7.
               </li>
+              <li>
+                An email address, only if you ask us to tell you when a particular tournament
+                draw is published. See section 7.
+              </li>
             </ul>
 
             <h4>Activity data</h4>
@@ -80,6 +84,10 @@ export default function PrivacyPolicy() {
               <li>Send you email notifications about tournament draws and points earned (you can opt out at any time)</li>
               <li>
                 Send you the result of an anonymous challenge, if you asked us to — a single
+                email, after which your address is deleted
+              </li>
+              <li>
+                Tell you that a tournament draw you asked about has been published — a single
                 email, after which your address is deleted
               </li>
               <li>Prevent abuse through rate limiting</li>
@@ -141,7 +149,7 @@ export default function PrivacyPolicy() {
             </p>
           </Section>
 
-          <Section title="7. Anonymous challenges">
+          <Section title="7. Playing and asking without an account">
             <p>
               You can participate in anonymous challenges without creating an account. When you do,
               we store a display name you choose and your bracket picks. A random token is stored in
@@ -163,6 +171,24 @@ export default function PrivacyPolicy() {
               </li>
             </ul>
             <p>
+              You may also leave an email address on a tournament page to be told when that
+              tournament&apos;s draw is published. The same rules apply, and for the same reason —
+              we asked for one thing, so we do one thing with it:
+            </p>
+            <ul>
+              <li>
+                It is used for exactly one email — that the draw is out — sent once, when it is.
+              </li>
+              <li>
+                It is stored against that one tournament. It is not added to any mailing list, is
+                not used for marketing, and is not linked to an account.
+              </li>
+              <li>
+                We delete it at the moment that email is sent. You can also delete it at any point
+                before then using the link in the email, or by emailing us.
+              </li>
+            </ul>
+            <p>
               Your IP address is used temporarily for rate limiting but is not saved to our database.
             </p>
           </Section>
@@ -175,8 +201,9 @@ export default function PrivacyPolicy() {
             </p>
             <p>
               Anonymous challenge data is retained indefinitely as it is not linked to a personal account.
-              The one exception is an email address left on an anonymous challenge: that is deleted as
-              soon as the result email is sent, or immediately if you ask us to before then.
+              The exception is either kind of email address left without an account — on a challenge,
+              or asking about a draw: that is deleted as soon as the one email it was given for is
+              sent, or immediately if you ask us to before then.
             </p>
           </Section>
 

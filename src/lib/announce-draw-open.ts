@@ -1,16 +1,27 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendDrawOpenEmails, isBotEmail, type DrawOpenEmail, type DrawOpenTournamentInfo } from '@/lib/email'
+import {
+  sendDrawOpenEmails,
+  sendDrawReminderEmails,
+  isBotEmail,
+  type DrawOpenEmail,
+  type DrawReminderEmail,
+  type DrawOpenTournamentInfo,
+} from '@/lib/email'
 import { isEmailEnabled, type EmailPreferences } from '@/lib/email-preferences'
 
 export interface AnnounceResult {
   notified: number
   emailed: number
+  /** Signed-out visitors who had asked to be told when this draw landed. */
+  reminded: number
 }
 
 /** PostgREST caps a response at 1000 rows — page rather than trust one query. */
 const USER_PAGE = 1000
 /** Notification rows per insert. One 10k-row insert is a request-size problem. */
 const NOTIF_CHUNK = 1000
+/** Ids per erasure UPDATE — `.in()` builds a URL, and a URL has a length. */
+const ERASE_CHUNK = 100
 
 interface UserRow {
   id: string
@@ -74,7 +85,7 @@ function rankByUser(users: UserRow[]): Map<string, number> {
  * the admin action afterwards would imply the publish itself failed.
  */
 export async function announceDrawOpen(tournamentId: string): Promise<AnnounceResult> {
-  const result: AnnounceResult = { notified: 0, emailed: 0 }
+  const result: AnnounceResult = { notified: 0, emailed: 0, reminded: 0 }
 
   try {
     const admin = createAdminClient()
@@ -141,7 +152,9 @@ export async function announceDrawOpen(tournamentId: string): Promise<AnnounceRe
         from += USER_PAGE
       }
     }
-    if (users.length === 0) return result
+    // No early return on an empty user list. The reminder fan-out below serves
+    // people who have no user row by definition, and both loops that follow
+    // no-op on an empty array anyway.
 
     // ── In-app notifications: everyone, bots included ────────────────────────
     // Bots are the QA accounts used to verify signed-in UI, so they need the
@@ -196,14 +209,141 @@ export async function announceDrawOpen(tournamentId: string): Promise<AnnounceRe
     }
     result.emailed = await sendDrawOpenEmails(recipients)
 
+    // ── Reminders: signed-out visitors who asked for exactly this ────────────
+    // Runs after the user fan-out so it can dedupe against the addresses that
+    // have just been mailed — someone who left their address on the edition
+    // page and later created an account with it must not get both.
+    const mailedAddresses = new Set(recipients.map(r => r.to.toLowerCase()))
+    result.reminded = await notifyDrawReminders(admin, tournament, mailedAddresses)
+
     console.log(
       `[announceDrawOpen] ${tournament.name}: ${result.notified} notified, ` +
       `${result.emailed}/${recipients.length} emailed (${users.length} users scanned` +
-      `${missingToken ? `, ${missingToken} skipped for missing unsubscribe_token` : ''})`,
+      `${missingToken ? `, ${missingToken} skipped for missing unsubscribe_token` : ''})` +
+      `, ${result.reminded} reminders sent`,
     )
   } catch (e) {
     console.error('[announceDrawOpen] failed:', e)
   }
 
   return result
+}
+
+// ── Draw reminders ───────────────────────────────────────────────────────────
+
+interface ReminderRow {
+  id: string
+  email: string
+  email_token: string
+}
+
+/**
+ * Mail everyone who left an address on this tournament's page while the draw
+ * was still unpublished, then erase what they left.
+ *
+ * The erasure is the point, not an afterthought. The address was collected for
+ * exactly one message and the page said so, so once that message is out there
+ * is nothing left to hold — same contract as the anonymous bracket and
+ * challenge addresses (see /api/unsubscribe/anonymous). The row survives with
+ * `notified_at` set so the funnel stays countable without the data.
+ *
+ * Only addresses that Resend actually accepted are erased. A chunk that fails
+ * keeps its rows intact and un-notified, which is what makes clearing
+ * `draw_announced_at` a working re-arm rather than a way to mail half the list
+ * twice and the other half never.
+ *
+ * Never throws — it is the last thing an already-successful publish does.
+ */
+async function notifyDrawReminders(
+  admin: ReturnType<typeof createAdminClient>,
+  tournament: DrawOpenTournamentInfo,
+  alreadyMailed: Set<string>,
+): Promise<number> {
+  try {
+    // Paged for the same reason the user query is: PostgREST caps a response at
+    // 1000 rows and returns the truncation as success.
+    const rows: ReminderRow[] = []
+    let from = 0
+    while (true) {
+      const { data: page, error } = await admin
+        .from('draw_reminders')
+        .select('id, email, email_token')
+        .eq('tournament_id', tournament.id)
+        .not('email', 'is', null)
+        .is('notified_at', null)
+        .order('id', { ascending: true })
+        .range(from, from + USER_PAGE - 1)
+      if (error) {
+        console.error('[announceDrawOpen] reminder query failed:', error.message)
+        return 0
+      }
+      if (!page?.length) break
+      rows.push(...(page as ReminderRow[]))
+      if (page.length < USER_PAGE) break
+      from += USER_PAGE
+    }
+    if (rows.length === 0) return 0
+
+    // The bracket CTA lands on /play/<series-slug>, which needs no account.
+    // Read here rather than on the claim query above: that query is the
+    // concurrency guard and is not worth complicating for a link.
+    const { data: seriesRow, error: seriesErr } = await admin
+      .from('tournaments')
+      .select('tournament_series(slug)')
+      .eq('id', tournament.id)
+      .maybeSingle()
+    // Not fatal — the CTA falls back to /tournaments/<id> below — but silence
+    // here would look identical to a tournament that genuinely has no series.
+    if (seriesErr) console.error('[announceDrawOpen] series lookup failed:', seriesErr.message)
+    const embedded = seriesRow?.tournament_series as
+      | { slug: string }
+      | { slug: string }[]
+      | null
+      | undefined
+    const seriesSlug = (Array.isArray(embedded) ? embedded[0]?.slug : embedded?.slug) ?? null
+
+    const byAddress = new Map<string, ReminderRow[]>()
+    const recipients: DrawReminderEmail[] = []
+    for (const r of rows) {
+      const address = r.email.toLowerCase()
+      // They have an account now and have already had the real draw-open mail.
+      // The row is still erased below — the promise was kept, just by the other
+      // email — so this is a skip of the send, not of the cleanup.
+      const duplicate = alreadyMailed.has(address)
+      const existing = byAddress.get(address)
+      if (existing) existing.push(r)
+      else byAddress.set(address, [r])
+      if (duplicate || existing) continue
+      recipients.push({ to: r.email, tournament, seriesSlug, emailToken: r.email_token })
+    }
+
+    const accepted = await sendDrawReminderEmails(recipients)
+
+    // Erase the address on every row whose message went out, plus every row
+    // suppressed as a duplicate — the promise on those was kept by the
+    // draw-open email, so holding the address any longer serves nothing.
+    const acceptedAddresses = new Set(accepted.map(a => a.toLowerCase()))
+    const doneIds = [...byAddress]
+      .filter(([address]) => acceptedAddresses.has(address) || alreadyMailed.has(address))
+      .flatMap(([, group]) => group.map(r => r.id))
+
+    const now = new Date().toISOString()
+    for (let i = 0; i < doneIds.length; i += ERASE_CHUNK) {
+      const { error } = await admin
+        .from('draw_reminders')
+        .update({ email: null, notified_at: now })
+        .in('id', doneIds.slice(i, i + ERASE_CHUNK))
+      if (error) {
+        // The mail is already out, so this is a data-retention failure, not a
+        // delivery one. Loud, but not fatal to the announcement.
+        console.error('[announceDrawOpen] reminder erasure failed:', error.message)
+        break
+      }
+    }
+
+    return accepted.length
+  } catch (e) {
+    console.error('[announceDrawOpen] reminder fan-out failed:', e)
+    return 0
+  }
 }

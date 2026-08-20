@@ -275,6 +275,28 @@ what remains, roughly in impact order.
 
 ## Shipped
 
+### ✅ Draw reminders + "playing right now" on undrawn editions (2026-08-20)
+- **Why:** `/tournaments/<slug>/<year>` for an upcoming edition is where search intent
+  lands months early, and it had nothing for a signed-out visitor — no draw, so every
+  CTA on the page was gated behind one. One paragraph saying "come back later", and the
+  visit was spent
+- Email capture: migration `087_draw_reminders.sql`, `subscribeToDrawReminder()` in
+  `src/app/tournaments/[slug]/[year]/actions.ts`, `DrawReminderForm.tsx`. Same
+  purpose-limited contract as the anonymous challenge address — one email, erased on
+  send, opt-out through `/api/unsubscribe/anonymous`
+- Fan-out hangs off `announceDrawOpen()`, which is already the at-most-once guard, so
+  reminders can never double-send. Deduped against the users just emailed, and the rows
+  of anyone who now has an account are erased rather than mailed twice
+- Signed-out only: account holders already get the notification and the email, so they
+  get told that instead of being asked for an address we hold
+- `PlayingNow.tsx` gives the same visitor somewhere to go now. Heading is derived —
+  live events, else open draws, else nothing — because "Playing right now" over a
+  tournament starting Monday is a plain falsehood
+- `/privacy` §2, §3, §7 and §8 updated; §7 retitled since it now covers both addresses.
+  **`TERMS_VERSION` deliberately left at 2026-03-25** — decided not to re-prompt every
+  existing account holder, since the new collection only ever applies to visitors who
+  don't have an account and so can never affect the people who'd see the prompt
+
 ### ✅ Anonymous → account conversion + email capture (2026-08-10)
 - **Why now:** the US Open opens 2026-08-30 and signups were 2 in the preceding 30 days.
   The infrastructure to attract that traffic already existed (slam pages, social cards,

@@ -10,6 +10,8 @@ import Nav from '@/components/Nav'
 import TournamentMatchList from '@/components/TournamentMatchList'
 import BracketPredictor from '../predict/BracketPredictor'
 import MyTournamentPanel from '../MyTournamentPanel'
+import DrawReminderForm from './DrawReminderForm'
+import PlayingNow from './PlayingNow'
 import { buildMyTournament, eliminationRounds, ROUND_LABEL } from '@/lib/tennis/my-tournament'
 import type { MyTournament, DrawMatch } from '@/lib/tennis/my-tournament'
 import { nameToFlag } from '@/app/admin/countries'
@@ -17,6 +19,7 @@ import { parseEditionYear } from '@/lib/tournaments/slug'
 import { getEdition, isEditionIndexable, resolveRenamedSeriesSlug } from '@/lib/tournaments/series'
 import type { DrawPlayer, EditionDetail, EditionPage } from '@/lib/tournaments/series'
 import { buildEditionMetadata, buildEditionJsonLd } from '@/lib/tournaments/seo'
+import { authUrl } from '@/lib/auth-redirect'
 import { getRecap } from '@/lib/tournaments/recap'
 import { TIER, SURFACE_COLORS, STATUS_STYLES, formatDateRange, roundPoints, toRenderDraw } from '../tournament-ui'
 
@@ -117,6 +120,15 @@ export default async function EditionPage({ params }: { params: Promise<RoutePar
   const jsonLd = buildEditionJsonLd(page)
   const indexable = isEditionIndexable(page)
 
+  // An edition still to be played whose bracket has not been published: the one
+  // state in which this page has nothing for a visitor to do. `every` rather
+  // than `some` because a Grand Slam page carries two tours and one published
+  // draw is already something to fill in.
+  const awaitingDraw =
+    page.tours.length > 0 &&
+    page.tours.every(d => !toRenderDraw(d.bracket)) &&
+    page.tours.some(d => d.tournament.status !== 'completed')
+
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       <Nav
@@ -173,6 +185,14 @@ export default async function EditionPage({ params }: { params: Promise<RoutePar
               showTourLabel={page.tours.length > 1}
             />
           ))}
+
+          {/* Rendered once for the page, not once per tour — two identical
+              "Playing right now" grids on a Grand Slam page would be the same
+              two cards twice. Cheap to decide here: the tours are already
+              resolved and `toRenderDraw` is synchronous. */}
+          {awaitingDraw && (
+            <PlayingNow excludeTournamentIds={page.tours.map(d => d.tournament.id)} />
+          )}
 
           <OtherEditions page={page} />
         </Suspense>
@@ -503,6 +523,37 @@ async function TourSection({
                 fills in with the full field, the order of play and round-by-round results
                 the moment it lands.
               </p>
+
+              {/* Until now that paragraph was the whole page for a signed-out
+                  visitor: it tells them to come back later and gives them no
+                  way to be reminded, so the search intent that brought them
+                  here is spent on one sentence. This is the only thing on an
+                  undrawn edition that can outlive the visit.
+
+                  Signed out only, and not as a nicety. `announceDrawOpen()`
+                  already gives every user an in-app notification and an email
+                  the moment a draw is published, so asking an account holder
+                  for their address would be collecting data we hold, to send a
+                  mail we already send — while implying they'd otherwise miss
+                  it. They get the fact instead.
+
+                  Rendered per tour on purpose. A draw is published — and
+                  announced — per tournament row, so on a page carrying both an
+                  ATP and a WTA event the two are genuinely separate promises. */}
+              {userId ? (
+                <p
+                  className="mt-4 pt-4 border-t"
+                  style={{ borderColor: 'var(--chalk-dim)', fontSize: '0.85rem', color: 'var(--muted)', lineHeight: 1.6 }}
+                >
+                  You&rsquo;ll get a notification the moment it&rsquo;s published — nothing to do here.
+                </p>
+              ) : (
+                <DrawReminderForm
+                  tournamentId={t.id}
+                  tournamentName={`${series.name} ${year}`}
+                  signupHref={authUrl('/signup', `/tournaments/${series.slug}/${year}`)}
+                />
+              )}
             </>
           )}
         </div>

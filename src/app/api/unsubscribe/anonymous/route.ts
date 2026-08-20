@@ -66,6 +66,24 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL('/unsubscribed?type=anonymous', req.url))
   }
 
+  // Draw reminders, from the "tell me when this draw is out" box on an
+  // upcoming edition page. Deleted outright rather than nulled: unlike the
+  // rows above, this one carries nothing but the address and the tournament it
+  // was for, so there is no result left behind to keep it attached to.
+  const { data: reminder, error: reminderErr } = await supabase
+    .from('draw_reminders')
+    .delete()
+    .eq('email_token', token)
+    .select('id')
+
+  if (reminderErr) {
+    console.error('[unsubscribe/anonymous] reminder delete error:', reminderErr)
+    return NextResponse.redirect(new URL('/?unsubscribed=error', req.url))
+  }
+  if (reminder && reminder.length > 0) {
+    return NextResponse.redirect(new URL('/unsubscribed?type=anonymous', req.url))
+  }
+
   // No match. Most likely an already-used opt-out link — the address is gone,
   // which is the outcome the visitor wanted, so say so rather than erroring.
   return NextResponse.redirect(new URL('/unsubscribed?type=anonymous', req.url))
