@@ -481,7 +481,7 @@ export default async function HomePage() {
                   How the crowd did when the dust settled.
                 </p>
               </div>
-              <Link href="/tournaments?status=completed" className="inline-flex items-center min-h-[44px] shrink-0" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>
+              <Link href="/tournaments?status=completed&year=all" className="inline-flex items-center min-h-[44px] shrink-0" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>
                 See all →
               </Link>
             </div>

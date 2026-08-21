@@ -19,6 +19,22 @@ export const metadata: Metadata = {
 
 const VALID_STATUSES = ['upcoming', 'draw_published', 'accepting_predictions', 'in_progress', 'completed'] as const
 
+/** A resolved year filter: a specific season, or every season at once. */
+type Season = number | 'all'
+
+/**
+ * Parse ?year=. Accepts a four-digit year or the literal "all"; anything else
+ * (including a year with no tournaments) falls through to null and lets the
+ * caller pick the default season. Deliberately *not* validated against the
+ * season list here — that list is a database read, and this runs before the
+ * Suspense boundary that streams it.
+ */
+function parseYear(raw: string | undefined): Season | null {
+  if (raw === 'all') return 'all'
+  if (raw && /^\d{4}$/.test(raw)) return Number(raw)
+  return null
+}
+
 /**
  * Fallback for the streamed list. Carried over from the deleted
  * tournaments/loading.tsx, minus its nav skeleton — the real nav now renders
@@ -68,7 +84,7 @@ function TournamentsListSkeleton() {
 
 // Cached — same data for all users, refreshes every hour
 // keyParts include tour+status so each combination gets its own cache slot
-function getTournaments(tour: string, status: string) {
+function getTournaments(tour: string, status: string, year: Season) {
   return unstable_cache(
     async () => {
       const supabase = createAdminClient()
@@ -76,6 +92,12 @@ function getTournaments(tour: string, status: string) {
       // — /tournaments/<slug>/<year>/recap is the only route that resolves one.
       let q = supabase.from('tournaments').select('*, tournament_series(slug)').eq('tour', tour).order('starts_at', { ascending: true, nullsFirst: false })
       if (status !== 'all') q = (q as any).eq('status', status)
+      // Filtered in the database, not after the fetch: the whole point of the
+      // year picker is that a visitor never pays for five dead seasons. A row
+      // with a null starts_year belongs to no season and so drops out of every
+      // year view — it is still reachable under "All years", which is the only
+      // honest place to put it.
+      if (year !== 'all') q = (q as any).eq('starts_year', year)
       const { data, error } = await q
       if (error) {
         console.error('[tournaments] list query failed:', error.message)
@@ -83,7 +105,34 @@ function getTournaments(tour: string, status: string) {
       }
       return data ?? []
     },
-    ['tournament-list', tour, status],
+    ['tournament-list', tour, status, String(year)],
+    { revalidate: 3600, tags: ['tournament-list'] }
+  )()
+}
+
+/**
+ * Seasons that have at least one tournament on this tour, newest first.
+ *
+ * Backed by tournament_seasons() (088) rather than a select + de-dupe in Node:
+ * PostgREST has no `select distinct`, and the client-side version reads every
+ * tournament row to produce six integers — then silently truncates at the
+ * 1000-row cap, dropping the oldest years from the picker with no error.
+ *
+ * Cached for an hour on the same tag as the list, so an admin write that adds
+ * the first tournament of a new season reveals that season immediately.
+ */
+function getSeasons(tour: string) {
+  return unstable_cache(
+    async () => {
+      const supabase = createAdminClient()
+      const { data, error } = await supabase.rpc('tournament_seasons', { p_tour: tour })
+      if (error) {
+        console.error('[tournaments] season query failed:', error.message)
+        return []
+      }
+      return (data ?? []) as { season: number; tournament_count: number }[]
+    },
+    ['tournament-seasons', tour],
     { revalidate: 3600, tags: ['tournament-list'] }
   )()
 }
@@ -99,8 +148,8 @@ function getTournaments(tour: string, status: string) {
  * on this page, and it was being paid far more often than the 30-minute
  * revalidate window suggests.
  *
- * (tour, status) is how getTournaments() above is keyed, so the two now move
- * together. The trade is that a tournament added mid-window shows zero counts
+ * (tour, status, year) is how getTournaments() above is keyed, so the two now
+ * move together. The trade is that a tournament added mid-window shows zero counts
  * until the entry expires or an admin write revalidates the tag — these are
  * soft counts on a card, and 30 minutes of staleness was already the design.
  *
@@ -108,10 +157,10 @@ function getTournaments(tour: string, status: string) {
  * Admin writes already revalidate `tournament-list`, which is exactly when the
  * id set can change.
  */
-function getEngagement(tour: string, status: string, tournamentIds: string[]) {
+function getEngagement(tour: string, status: string, year: Season, tournamentIds: string[]) {
   return unstable_cache(
     () => getTournamentEngagement(tournamentIds),
-    ['tournament-engagement', tour, status],
+    ['tournament-engagement', tour, status, String(year)],
     { revalidate: 1800, tags: ['tournament-list'] }
   )()
 }
@@ -131,19 +180,37 @@ function getEngagement(tour: string, status: string, tournamentIds: string[]) {
  * recaps on top. The nav above renders from getNavProfile(), which is 1-9ms for
  * a signed-out visitor, so the page frame is effectively free.
  */
-async function TournamentsList({ tour, status }: { tour: string; status: string }) {
-  const [tournaments, liveTournaments, predictableStatuses] = await Promise.all([
-    getTournaments(tour, status),
-    getTournaments(tour, 'in_progress'),
+async function TournamentsList({ tour, status, requestedYear, initialQuery }: { tour: string; status: string; requestedYear: Season | null; initialQuery: string }) {
+  // None of these three depend on the year, so they go first and in parallel —
+  // the live strip is deliberately season-agnostic (a tournament in progress is
+  // in progress whatever season the visitor is browsing).
+  const [seasons, liveTournaments, predictableStatuses] = await Promise.all([
+    getSeasons(tour),
+    getTournaments(tour, 'in_progress', 'all'),
     getPredictableStatuses(),
   ])
+
+  // Resolve the year only now that the real season list is known. The default
+  // is the current season; it falls back to the newest season on record so the
+  // page is never blank in the gap between January 1st and the new calendar
+  // being imported. A ?year= naming a season with no events lands here too,
+  // which keeps the dropdown and the list showing the same thing.
+  const years = seasons.map(s => s.season)
+  const currentSeason = new Date().getUTCFullYear()
+  const year: Season =
+    requestedYear === 'all'                                  ? 'all'
+    : requestedYear !== null && years.includes(requestedYear) ? requestedYear
+    : years.includes(currentSeason)                           ? currentSeason
+    : years[0] ?? currentSeason
+
+  const tournaments = await getTournaments(tour, status, year)
 
   // Collect unique IDs for non-upcoming tournaments and fetch engagement
   const allTournaments = [...tournaments, ...liveTournaments]
   const engageableIds = [...new Set(
     allTournaments.filter(t => t.status !== 'upcoming').map(t => t.id)
   )]
-  const engagement = await getEngagement(tour, status, engageableIds)
+  const engagement = await getEngagement(tour, status, year, engageableIds)
 
   // Enrich tournaments with engagement counts, then with recap stats.
   //
@@ -176,15 +243,23 @@ async function TournamentsList({ tour, status }: { tour: string; status: string 
       liveTournaments={enrichedLive}
       activeTour={tour}
       activeStatus={status}
+      activeYear={year}
+      seasons={seasons}
+      currentSeason={currentSeason}
+      initialQuery={initialQuery}
       predictableStatuses={predictableStatuses}
     />
   )
 }
 
-export default async function TournamentsPage({ searchParams }: { searchParams: Promise<{ tour?: string; status?: string }> }) {
+export default async function TournamentsPage({ searchParams }: { searchParams: Promise<{ tour?: string; status?: string; year?: string; q?: string }> }) {
   const params       = await searchParams
   const activeTour   = params.tour === 'WTA' ? 'WTA' : 'ATP'
   const activeStatus = VALID_STATUSES.includes(params.status as any) ? params.status! : 'all'
+  const activeYear   = parseYear(params.year)
+  // Only ever arrives from the "search all years" link in the empty state, but
+  // it is a URL and so is capped before it is echoed back into an input.
+  const initialQuery = (params.q ?? '').slice(0, 80)
 
   const { user, profile } = await getNavProfile()
 
@@ -197,8 +272,8 @@ export default async function TournamentsPage({ searchParams }: { searchParams: 
             the skeleton again. Without the key React keeps the previous list
             mounted while the new one loads, which reads as the filter having
             silently failed. */}
-        <Suspense key={`${activeTour}:${activeStatus}`} fallback={<TournamentsListSkeleton />}>
-          <TournamentsList tour={activeTour} status={activeStatus} />
+        <Suspense key={`${activeTour}:${activeStatus}:${activeYear ?? 'default'}:${initialQuery}`} fallback={<TournamentsListSkeleton />}>
+          <TournamentsList tour={activeTour} status={activeStatus} requestedYear={activeYear} initialQuery={initialQuery} />
         </Suspense>
 
         {/* Deliberately NOT keyed on the filter: the directory is the same for
