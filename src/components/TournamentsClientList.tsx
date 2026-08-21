@@ -16,7 +16,7 @@ interface Props {
   /** The season being shown — already resolved server-side, never null. */
   activeYear: Season
   /** Every season with at least one event on this tour, newest first. */
-  seasons: { season: number; tournament_count: number }[]
+  seasons: number[]
   /** The calendar year, so the default season can be left out of URLs. */
   currentSeason: number
   /** Seed for the search box, set only by the "search all years" escape hatch. */
@@ -115,14 +115,9 @@ export default function TournamentsClientList({ tournaments, liveTournaments, ac
   // empty — before 088 is applied, or if the query errors — so the active year
   // is folded in rather than assumed to be present.
   const seasonOptions = [...new Set([
-    ...seasons.map(s => s.season),
+    ...seasons,
     ...(activeYear === 'all' ? [] : [activeYear]),
   ])].sort((a, b) => b - a)
-  // Counts come free with the GROUP BY, and they answer the question the picker
-  // otherwise leaves open — whether an old season holds a full calendar or the
-  // four majors we backfilled.
-  const countFor = new Map(seasons.map(s => [s.season, s.tournament_count]))
-  const totalSeasonCount = seasons.reduce((n, s) => n + s.tournament_count, 0)
 
   const activeStatusMeta = STATUSES.find(s => s.key === activeStatus)
   // Empty-state copy has to name the season, or "No completed ATP tournaments"
@@ -188,17 +183,10 @@ export default function TournamentsClientList({ tournaments, liveTournaments, ac
                 outline: 'none',
               }}
             >
-              {seasonOptions.map(year => {
-                const n = countFor.get(year)
-                return (
-                  <option key={year} value={year}>
-                    {year}{n ? ` (${n})` : ''}
-                  </option>
-                )
-              })}
-              <option value="all">
-                All years{totalSeasonCount ? ` (${totalSeasonCount})` : ''}
-              </option>
+              {seasonOptions.map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+              <option value="all">All years</option>
             </select>
             {/* Same glyph the month accordions use, so the two chevrons on the
                 page match. pointer-events-none keeps clicks going to the
