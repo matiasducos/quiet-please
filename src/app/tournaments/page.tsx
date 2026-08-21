@@ -130,6 +130,9 @@ function getSeasons(tour: string) {
         console.error('[tournaments] season query failed:', error.message)
         return []
       }
+      // tournament_count comes back too. The picker showed it briefly and it
+      // read as clutter, so nothing consumes it now — the column stays in 088
+      // because dropping it would need a migration to buy nothing.
       return (data ?? []) as { season: number; tournament_count: number }[]
     },
     ['tournament-seasons', tour],
@@ -244,7 +247,7 @@ async function TournamentsList({ tour, status, requestedYear, initialQuery }: { 
       activeTour={tour}
       activeStatus={status}
       activeYear={year}
-      seasons={seasons}
+      seasons={years}
       currentSeason={currentSeason}
       initialQuery={initialQuery}
       predictableStatuses={predictableStatuses}
