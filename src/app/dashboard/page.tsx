@@ -208,7 +208,7 @@ export default async function DashboardPage() {
               <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.01em' }}>
                 Recent results
               </h2>
-              <Link href="/tournaments?status=completed" className="shrink-0" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>
+              <Link href="/tournaments?status=completed&year=all" className="shrink-0" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>
                 All results →
               </Link>
             </div>
