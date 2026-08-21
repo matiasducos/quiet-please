@@ -2,6 +2,29 @@ import Link from 'next/link'
 import { ALL_SLAMS } from '@/lib/slams/config'
 import CookieSettingsLink from '@/components/CookieSettingsLink'
 
+/* Drawn inline rather than loaded from Instagram's CDN: the CSP forbids
+   third-party images, and an <img> pointing at Meta would fire a request
+   from every page on the site — a tracking vector the consent banner never
+   asked about. stroke="currentColor" also means it inherits --muted and
+   matches the text beside it without a second colour to keep in sync. */
+function InstagramIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block', flexShrink: 0 }}
+      aria-hidden="true"
+    >
+      <rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" />
+    </svg>
+  )
+}
+
 export default function Footer() {
   return (
     <footer className="border-t py-6" style={{ borderColor: 'var(--chalk-dim)' }}>
@@ -48,6 +71,29 @@ export default function Footer() {
             </a>{' '}
             — every message is read.
           </p>
+        </div>
+
+        {/* Follow. Labelled like the rows above rather than reduced to a lone
+            glyph in the legal bar: an icon on its own has no accessible name,
+            and the handle spelled out is what a crawler can tie to the brand.
+            One account today, but the row scales if there is ever a second. */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
+          <span style={{ fontSize: '0.7rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            Follow
+          </span>
+          {/* w-fit stops the tap target stretching the full width on mobile,
+              where the column layout would otherwise leave a long strip of
+              clickable dead space to the right of the handle. */}
+          <a
+            href="https://www.instagram.com/quietplease.app/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 min-h-[44px] w-fit"
+            style={{ fontSize: '0.75rem', color: 'var(--muted)' }}
+          >
+            <InstagramIcon />
+            @quietplease.app
+          </a>
         </div>
 
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t pt-4" style={{ borderColor: 'var(--chalk-dim)' }}>
