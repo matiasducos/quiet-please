@@ -26,9 +26,12 @@ export function isByeMatch(match: DrawMatch): boolean {
  *
  * Based on positional ordering: match[i] in current round feeds into
  * match[floor(i/2)] in next round, slot = i%2===0 ? player1 : player2.
+ *
+ * Generic over the match shape because the wiring only depends on `round` and
+ * draw order — pick-gaps.ts feeds it a reduced match that carries no players.
  */
-export function buildFeedMap(matches: DrawMatch[]): FeedMap {
-  const byRound: Record<string, DrawMatch[]> = {}
+export function buildFeedMap<T extends { matchId: string; round: string }>(matches: T[]): FeedMap {
+  const byRound: Record<string, T[]> = {}
   for (const m of matches) {
     if (!byRound[m.round]) byRound[m.round] = []
     byRound[m.round].push(m)
