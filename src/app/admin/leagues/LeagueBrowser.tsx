@@ -30,8 +30,15 @@ function LeagueCard({ league }: { league: AdminLeagueRow }) {
                 who is not in their own roster is a state worth surfacing. */}
             {!league.ownerIsMember && <Chip text="owner not a member" tone="warn" />}
           </div>
-          <div style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            run by {league.ownerUsername ?? 'unknown'} · code {league.inviteCode}
+          {/* Two spans rather than one line: the owner name is unbounded and
+              must be allowed to truncate, but the invite code is fixed-width
+              and is the thing an admin copies — an ellipsis through it makes
+              it useless. So only the name shrinks. */}
+          <div className="flex items-baseline gap-1.5" style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)' }}>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              run by {league.ownerUsername ?? 'unknown'}
+            </span>
+            <span style={{ flexShrink: 0 }}>· code {league.inviteCode}</span>
           </div>
         </div>
 
