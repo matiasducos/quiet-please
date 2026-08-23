@@ -36,6 +36,20 @@ export const ROUND_PROSE: Record<string, string> = {
   R16: 'the Round of 16', QF: 'the Quarterfinals', SF: 'the Semifinals', F: 'the Final',
 }
 
+/** The same words without the article, for listing several — "the Quarterfinals, Semifinals and Final". */
+const ROUND_NOUN: Record<string, string> = {
+  R128: 'Round of 128', R64: 'Round of 64', R32: 'Round of 32',
+  R16: 'Round of 16', QF: 'Quarterfinals', SF: 'Semifinals', F: 'Final',
+}
+
+/** "the Quarterfinals, Semifinals and Final" — the article carries the whole list. */
+export function listRounds(rounds: string[]): string {
+  const names = rounds.map(r => ROUND_NOUN[r] ?? r)
+  if (names.length === 0) return ''
+  if (names.length === 1) return `the ${names[0]}`
+  return `the ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
 /**
  * A draw match reduced to the four facts this file needs.
  *
@@ -93,6 +107,33 @@ export function toGapMatches(
       isBye: hasPlayer1 !== hasPlayer2,
     }
   })
+}
+
+/**
+ * Every round this bracket would give up by locking right now, earliest first.
+ *
+ * Deliberately NOT `findPickGaps`. That one answers "what can you pick today",
+ * so it stops at the rounds whose slots resolve — a bracket with the semis
+ * unpicked has no gap in the final, because the final has nobody in it yet.
+ * Locking does not stop there: it forecloses the semis, which forecloses the
+ * final, all the way down. Warning about only the reachable round would understate
+ * the cost of the button by two rounds on a bracket abandoned at the quarters.
+ */
+export function findForfeitedRounds(
+  matches: GapMatch[],
+  played: ReadonlySet<string>,
+  picked: ReadonlySet<string>,
+): string[] {
+  const rounds = new Set<string>()
+  for (const m of matches) {
+    if (m.isBye) continue
+    if (played.has(m.matchId)) continue   // already gone, locking costs nothing
+    if (picked.has(m.matchId)) continue
+    rounds.add(m.round)
+  }
+  return [...rounds].sort(
+    (a, b) => ROUND_ORDER.indexOf(a as never) - ROUND_ORDER.indexOf(b as never),
+  )
 }
 
 /**

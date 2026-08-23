@@ -8,6 +8,7 @@ import { savePrediction, importGlobalPicks } from './actions'
 import CountryFlag from '@/components/CountryFlag'
 import Tooltip from '@/components/Tooltip'
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation'
+import { findForfeitedRounds, listRounds, toGapMatches } from '@/lib/tennis/pick-gaps'
 
 // Small "i in a circle" affordance placed next to tooltip-bearing tags.
 // Inherits color from parent via currentColor so it adapts to each tag's palette.
@@ -653,10 +654,29 @@ export default function BracketPredictor({
     finally { setSaving(false) }
   }
 
+  /**
+   * Every round this bracket gives up by locking now.
+   *
+   * Locking is irreversible and there is no unlock anywhere in the app, so a
+   * bracket locked at the quarters can never score the semis or the final. The
+   * button said only "you won't be able to change any predictions", which reads
+   * as "I'm sure of my picks" rather than "I forfeit three rounds" — and under
+   * manual_lock, where later rounds keep opening as results land, that is
+   * exactly the mistake it invites.
+   */
+  const forfeitedRounds = findForfeitedRounds(
+    toGapMatches(draw.matches),
+    new Set(Object.keys(matchResults ?? {})),
+    new Set(Object.keys(picks).filter(id => picks[id])),
+  )
+
   /** Lock entire bracket (replaces old "Submit & lock") */
   const handleLockAll = async () => {
     if (readOnly || fullyLocked) return
-    if (!confirm('Lock all picks? You won\'t be able to change any predictions after locking.')) return
+    const forfeitWarning = forfeitedRounds.length > 0
+      ? `\n\nThis forfeits ${listRounds(forfeitedRounds)} — you will not be able to pick ${forfeitedRounds.length > 1 ? 'those rounds' : 'that round'} later, and they will score nothing.`
+      : ''
+    if (!confirm(`Lock all picks? You won't be able to change any predictions after locking.${forfeitWarning}`)) return
     setSaving(true)
     setSlotError(null)
     try {
@@ -1631,6 +1651,19 @@ export default function BracketPredictor({
                 </button>
               </div>
             </div>
+            {/* Shown before the click, not only in the confirm dialog — a native
+                confirm is muscle-memory dismissed, and this is the one warning
+                on the page that costs real points to miss. */}
+            {forfeitedRounds.length > 0 && (
+              <p
+                className="rounded-sm px-3 py-2"
+                style={{ fontSize: '0.75rem', color: '#7a3210', background: '#fdece0', border: '1px solid #f0c9ae' }}
+              >
+                <strong>Locking now forfeits {listRounds(forfeitedRounds)}.</strong>{' '}
+                {forfeitedRounds.length > 1 ? 'Those rounds' : 'That round'} would score nothing, and locking cannot be undone.
+                Leave the bracket unlocked to keep picking as the draw opens up.
+              </p>
+            )}
             <p style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
               Once locked, your picks cannot be changed. You can also lock individual picks using the &quot;Lock pick&quot; button on each match.
             </p>
