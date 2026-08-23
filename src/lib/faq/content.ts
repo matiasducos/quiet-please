@@ -271,7 +271,12 @@ export const FAQ_SECTIONS: FaqSection[] = [
         id: 'auto-predict',
         question: 'Can brackets be filled in for me?',
         answer: [
-          { type: 'p', text: 'Yes. Set up auto-predictions from your profile: choose up to five players per tour in priority order, optionally with different lists per surface. When a draw is published, a bracket is generated for you from that list.' },
+          // The availability gate leads, because it decides whether the rest of
+          // the answer is any use — auto-predict is enabled per account
+          // (`config.enabled`), and the page itself only says "contact the
+          // admin" without naming anyone.
+          { type: 'p', text: 'Yes, with auto-predictions — though it is not switched on by default. If you would like it enabled for your account, email support@quietplease.app and ask.' },
+          { type: 'p', text: 'Once you have it, you set it up from your profile: choose up to five players per tour in priority order, optionally with different lists per surface. When a draw is published, a bracket is generated for you from that list.' },
           { type: 'p', text: 'Auto-generated brackets are locked the moment they are created and cannot be edited afterwards, so be sure of your player list before saving it. Being locked, they earn the streak multiplier like any other committed bracket.' },
         ],
       },

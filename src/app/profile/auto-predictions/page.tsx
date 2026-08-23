@@ -35,7 +35,11 @@ export default async function AutoPredictionsPage() {
             style={{ background: '#fefce8', borderColor: '#fde68a' }}
           >
             <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: '#92400e' }}>
-              This feature is not yet available for your account. Contact the admin to get access.
+              This feature is not yet available for your account. Email{' '}
+              <a href="mailto:support@quietplease.app?subject=Auto-predictions%20access" style={{ color: '#92400e', textDecoration: 'underline' }}>
+                support@quietplease.app
+              </a>{' '}
+              to request access.
             </p>
           </div>
         ) : (
