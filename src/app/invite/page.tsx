@@ -6,25 +6,23 @@ import { unstable_cache } from 'next/cache'
 import Nav from '@/components/Nav'
 import HowItWorksDemo from '@/components/HowItWorksDemo'
 import TournamentCard from '@/components/TournamentCard'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavProfile } from '@/lib/supabase/profile'
 import { getReferralStats } from '@/lib/referrals'
 import { authUrl } from '@/lib/auth-redirect'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
+import { getOnNowTournaments } from '@/lib/tournaments/cached'
 import InviteShare from './InviteShare'
 
 // Cached "live right now" list — shared across every authed invite view.
 // 5-min TTL matches the homepage pattern.
+//
+// The list itself comes from `getOnNowTournaments`, which is what defines the
+// strip on every surface: in progress, plus draws that are open. A friend
+// invited today can still enter one of the latter clean, which is a better
+// thing to point at than a tournament they are already three rounds behind in.
 const getLiveTournaments = unstable_cache(
   async () => {
-    const admin = createAdminClient()
-    const { data: live } = await admin
-      .from('tournaments')
-      .select('id, name, location, flag_emoji, category, tour, surface, starts_at, ends_at, status')
-      .eq('status', 'in_progress')
-      .order('starts_at', { ascending: true })
-      .limit(4)
-    const rows = live ?? []
+    const rows = await getOnNowTournaments(4)
     const engagement = await getTournamentEngagement(rows.map(t => t.id))
     return rows.map(t => ({
       ...t,

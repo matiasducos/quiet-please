@@ -9,6 +9,7 @@ import SeriesDirectory from '@/components/SeriesDirectory'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { withRecaps } from '@/lib/tournaments/recap'
 import { getPredictableStatuses } from '@/lib/app-settings'
+import { ON_NOW_STATUSES, compareOnNow } from '@/lib/tournaments/cached'
 
 // Self-referencing canonical, like every indexable page — see the note in
 // src/app/layout.tsx for why this cannot be inherited from the root.
@@ -18,6 +19,13 @@ export const metadata: Metadata = {
 }
 
 const VALID_STATUSES = ['upcoming', 'draw_published', 'accepting_predictions', 'in_progress', 'completed'] as const
+
+/**
+ * Internal status token for the live strip. Deliberately not in VALID_STATUSES:
+ * it is not a filter a visitor can ask for from the URL, it is how this page
+ * asks getTournaments() for the set ON_NOW_STATUSES defines.
+ */
+const ON_NOW = 'on_now'
 
 /** A resolved year filter: a specific season, or every season at once. */
 type Season = number | 'all'
@@ -91,7 +99,11 @@ function getTournaments(tour: string, status: string, year: Season) {
       // The series slug rides along so completed cards can link to their recap
       // — /tournaments/<slug>/<year>/recap is the only route that resolves one.
       let q = supabase.from('tournaments').select('*, tournament_series(slug)').eq('tour', tour).order('starts_at', { ascending: true, nullsFirst: false })
-      if (status !== 'all') q = (q as any).eq('status', status)
+      // `on_now` is an internal token, not a value the ?status= filter accepts
+      // (see VALID_STATUSES) — it is how the live strip asks for its own set:
+      // what is on court, plus draws that are open.
+      if (status === ON_NOW) q = (q as any).in('status', ON_NOW_STATUSES)
+      else if (status !== 'all') q = (q as any).eq('status', status)
       // Filtered in the database, not after the fetch: the whole point of the
       // year picker is that a visitor never pays for five dead seasons. A row
       // with a null starts_year belongs to no season and so drops out of every
@@ -103,7 +115,9 @@ function getTournaments(tour: string, status: string, year: Season) {
         console.error('[tournaments] list query failed:', error.message)
         return []
       }
-      return data ?? []
+      // The strip leads with what is being played; everywhere else keeps the
+      // chronological order the calendar is grouped by.
+      return status === ON_NOW ? (data ?? []).sort(compareOnNow) : (data ?? [])
     },
     ['tournament-list', tour, status, String(year)],
     { revalidate: 3600, tags: ['tournament-list'] }
@@ -186,10 +200,11 @@ function getEngagement(tour: string, status: string, year: Season, tournamentIds
 async function TournamentsList({ tour, status, requestedYear, initialQuery }: { tour: string; status: string; requestedYear: Season | null; initialQuery: string }) {
   // None of these three depend on the year, so they go first and in parallel —
   // the live strip is deliberately season-agnostic (a tournament in progress is
-  // in progress whatever season the visitor is browsing).
+  // in progress whatever season the visitor is browsing, and so is one whose
+  // draw is open).
   const [seasons, liveTournaments, predictableStatuses] = await Promise.all([
     getSeasons(tour),
-    getTournaments(tour, 'in_progress', 'all'),
+    getTournaments(tour, ON_NOW, 'all'),
     getPredictableStatuses(),
   ])
 
@@ -233,7 +248,7 @@ async function TournamentsList({ tour, status, requestedYear, initialQuery }: { 
       }
     })
 
-  // One recap lookup for both lists: the live list holds nothing completed, but
+  // One recap lookup for both lists: the strip holds nothing completed, but
   // passing them together keeps this to a single round trip.
   const [enrichedList, enrichedLive] = await Promise.all([
     withRecaps(enrich(tournaments)),

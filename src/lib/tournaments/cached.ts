@@ -36,6 +36,10 @@ function withEditionRef<T extends { starts_year?: number | null; tournament_seri
 /**
  * Cached query for upcoming tournaments (shared across all users).
  * Revalidates every 60s or when tournament-list tag is busted.
+ *
+ * No caller since PlayingNow merged its two lists into `getOnNowTournaments` —
+ * kept because "what is coming up" is a different question from "what can I act
+ * on now", and this is the only helper that answers it.
  */
 export const getUpcomingTournaments = unstable_cache(
   async (limit: number = 3) => {
@@ -70,5 +74,66 @@ export const getLiveTournaments = unstable_cache(
     return withEditionRef(data ?? [])
   },
   ['live-tournaments'],
+  { revalidate: 60, tags: ['tournament-list'] },
+)
+
+/**
+ * The statuses the "Live right now" strips show.
+ *
+ * Wider than `in_progress` on purpose: a published draw taking predictions is
+ * the most actionable thing on the site — you can still enter it clean — and it
+ * was invisible on every one of these surfaces while the strip meant "on court".
+ *
+ * `draw_published` is in the list but is not predictable: `sync-draws` sets it
+ * for a qualifying or shell bracket with no players in it yet, and
+ * `getPredictableStatuses()` excludes it. TournamentCard reads the status
+ * itself, so such a card renders a "Draw published" badge and no predict CTA
+ * rather than a link to a closed door.
+ */
+export const ON_NOW_STATUSES = ['in_progress', 'accepting_predictions', 'draw_published'] as const
+
+/** In progress first, then draws that are open, then the rest. */
+const ON_NOW_RANK: Record<string, number> = { in_progress: 0, accepting_predictions: 1, draw_published: 2 }
+
+/**
+ * Order the strip: what is being played leads, then earliest start.
+ *
+ * Sorted here rather than in the query because PostgREST cannot order by a
+ * custom status precedence, and ordering by `starts_at` alone would put a
+ * tournament that opens tomorrow above one that is on court today.
+ */
+export function compareOnNow<T extends { status: string; starts_at: string | null }>(a: T, b: T): number {
+  const rank = (ON_NOW_RANK[a.status] ?? 9) - (ON_NOW_RANK[b.status] ?? 9)
+  if (rank !== 0) return rank
+  return (a.starts_at ?? '').localeCompare(b.starts_at ?? '')
+}
+
+/**
+ * Cached "on now" list — in progress, plus draws that are open (shared).
+ *
+ * Kept separate from `getLiveTournaments` rather than replacing it. Two callers
+ * genuinely mean "on court": `getPickGapPrompt`, whose whole premise is a
+ * tournament already under way, and `getLiveStatuses`, which reports a standing
+ * that does not exist before the first result. Widening the shared helper would
+ * have changed both silently.
+ *
+ * The row cap is applied after sorting, so a tournament on court is never
+ * pushed out of the strip by an earlier-starting one that has not begun. The
+ * fetch is bounded at 20 because a busy week is six or eight concurrent events,
+ * not hundreds.
+ */
+export const getOnNowTournaments = unstable_cache(
+  async (limit: number = 4) => {
+    const supabase = createAdminClient()
+    const { data, error } = await supabase
+      .from('tournaments')
+      .select(TOURNAMENT_FIELDS)
+      .in('status', ON_NOW_STATUSES)
+      .order('starts_at', { ascending: true })
+      .limit(20)
+    if (error) console.error('cached on-now tournaments error:', error.message)
+    return withEditionRef((data ?? []).sort(compareOnNow).slice(0, limit))
+  },
+  ['on-now-tournaments'],
   { revalidate: 60, tags: ['tournament-list'] },
 )

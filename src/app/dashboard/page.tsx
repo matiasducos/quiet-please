@@ -9,7 +9,7 @@ import TournamentCard from '@/components/TournamentCard'
 import ActivityFeed from '@/components/ActivityFeed'
 import { getActivity } from '@/lib/friends/activity'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
-import { getLiveTournaments } from '@/lib/tournaments/cached'
+import { getOnNowTournaments } from '@/lib/tournaments/cached'
 import PredictionStats from '@/components/PredictionStats'
 import type { RoundStat, PlayerStat, MissedPlayerStat } from '@/components/PredictionStats'
 import DashboardTour from '@/components/DashboardTour'
@@ -45,8 +45,8 @@ export default async function DashboardPage() {
   // The all-time aggregates sit in this batch rather than after it: they are the
   // slowest queries on the page (they scan every prediction the user has made),
   // so running them in parallel keeps them off the critical path.
-  const [liveTournaments, { count: predictionCount }, roundRes, playerRes, missedRes] = await Promise.all([
-    getLiveTournaments(4),
+  const [onNowTournaments, { count: predictionCount }, roundRes, playerRes, missedRes] = await Promise.all([
+    getOnNowTournaments(4),
     supabase.from('predictions')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.id)
@@ -64,27 +64,30 @@ export default async function DashboardPage() {
   const missedStats = (missedRes.data ?? []) as MissedPlayerStat[]
 
   // Rank + engagement in parallel (both depend on prior data)
-  const liveIds = liveTournaments.map(t => t.id)
+  const onNowIds = onNowTournaments.map(t => t.id)
   const [{ count: higherCount }, engagement] = await Promise.all([
     supabase
       .from('users')
       .select('id', { count: 'exact', head: true })
       .gt('ranking_points', profile?.ranking_points ?? 0),
-    getTournamentEngagement(liveIds),
+    getTournamentEngagement(onNowIds),
   ])
 
   const globalRank = (higherCount ?? 0) + 1
 
-  // Enrich live tournaments with engagement counts
-  const enrichedLive = liveTournaments.map(t => ({
+  // Enrich the strip with engagement counts
+  const enrichedLive = onNowTournaments.map(t => ({
     ...t,
     prediction_count: engagement[t.id]?.predictions ?? 0,
     challenge_count: engagement[t.id]?.challenges ?? 0,
   }))
 
-  // The viewer's own standing in each live tournament. Not cached alongside
-  // getLiveTournaments(), which is shared across all users.
-  const liveStatuses = await getLiveStatuses(user.id, liveIds)
+  // The viewer's own standing in each tournament on the strip. Not cached
+  // alongside getOnNowTournaments(), which is shared across all users.
+  //
+  // Returns nothing for a tournament that has not started — no results means no
+  // standing — so those cards simply render without a footer.
+  const liveStatuses = await getLiveStatuses(user.id, onNowIds)
 
   const stats = [
     { label: 'Ranking points', value: formatPoints(profile?.ranking_points ?? 0) },
@@ -100,9 +103,16 @@ export default async function DashboardPage() {
   // A line about *this* moment rather than a restatement of the page. When
   // something is running the dashboard's job is to point at it; when nothing is,
   // it points at the one panel that's still worth reading.
+  // The strip now carries tournaments that have not started, and "is under way"
+  // is false for those — the line has to follow the headliner's own status.
   const headliner = enrichedLive[0]
+  const headlinerName = headliner
+    ? `${headliner.flag_emoji ? `${headliner.flag_emoji} ` : ''}${headliner.location ?? headliner.name}`
+    : null
   const subtitle = headliner
-    ? `${headliner.flag_emoji ? `${headliner.flag_emoji} ` : ''}${headliner.location ?? headliner.name} is under way — every result moves your bracket.`
+    ? headliner.status === 'in_progress'
+      ? `${headlinerName} is under way — every result moves your bracket.`
+      : `${headlinerName} has its draw out — get your bracket in before play starts.`
     : 'Nothing on court right now. Good moment to look back at your record.'
 
   return (

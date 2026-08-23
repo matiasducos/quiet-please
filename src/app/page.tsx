@@ -8,6 +8,7 @@ import CountryFlag from '@/components/CountryFlag'
 import HowItWorksDemo from '@/components/HowItWorksDemo'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { getRecentCompleted, withRecaps } from '@/lib/tournaments/recap'
+import { getOnNowTournaments } from '@/lib/tournaments/cached'
 import { formatPoints } from '@/lib/utils/format'
 import { SITE_URL, SITE_NAME, DEFAULT_OG } from '@/lib/site'
 import type { Metadata } from 'next'
@@ -27,14 +28,13 @@ export const metadata: Metadata = {
 const getHomepageData = unstable_cache(
   async () => {
     const admin = createAdminClient()
-    const [{ data: live, error: liveError }, { data: top, error: topError }] = await Promise.all([
-      admin.from('tournaments')
-        // `starts_year` + the series slug are what let a card link the canonical
-        // /tournaments/<slug>/<year> instead of the /tournaments/<uuid> redirect.
-        .select('id, name, location, flag_emoji, category, tour, surface, starts_at, ends_at, status, starts_year, tournament_series(slug)')
-        .eq('status', 'in_progress')
-        .order('starts_at', { ascending: true })
-        .limit(4),
+    // The strip is no longer just what is on court — a published draw taking
+    // predictions belongs here too, and is the only thing a first-time visitor
+    // can still enter clean. `getOnNowTournaments` owns that definition and the
+    // in-progress-first ordering for every surface that shows the strip; it
+    // also flattens the embedded series to the slug/year a card links from.
+    const [liveTournaments, { data: top, error: topError }] = await Promise.all([
+      getOnNowTournaments(4),
       admin.from('users')
         .select('id, username, ranking_points, country')
         .gt('ranking_points', 0)
@@ -42,27 +42,14 @@ const getHomepageData = unstable_cache(
         .limit(5),
     ])
 
-    // A dropped error here reads as "nothing is live" and quietly empties the
-    // homepage — the failure has to be visible in the logs at least.
-    if (liveError) console.error('[homepage] live tournaments query failed:', liveError.message)
     if (topError) console.error('[homepage] top players query failed:', topError.message)
 
-    const liveTournaments = live ?? []
-
-    // Enrich live tournaments with engagement counts, and flatten the embedded
-    // series to the slug/year a TournamentCard links from. PostgREST types a
-    // to-one embed as either an object or an array, so both shapes are unwrapped.
     const engagement = await getTournamentEngagement(liveTournaments.map(t => t.id))
-    const enrichedLive = liveTournaments.map(t => {
-      const embedded = (t as { tournament_series?: { slug: string } | { slug: string }[] | null }).tournament_series
-      return {
-        ...t,
-        slug: (Array.isArray(embedded) ? embedded[0]?.slug : embedded?.slug) ?? null,
-        year: t.starts_year ?? null,
-        prediction_count: engagement[t.id]?.predictions ?? 0,
-        challenge_count: engagement[t.id]?.challenges ?? 0,
-      }
-    })
+    const enrichedLive = liveTournaments.map(t => ({
+      ...t,
+      prediction_count: engagement[t.id]?.predictions ?? 0,
+      challenge_count: engagement[t.id]?.challenges ?? 0,
+    }))
 
     // Recently finished tournaments, with their stored recap. One extra query
     // for the tournaments and one for the recap rows — the aggregation itself
