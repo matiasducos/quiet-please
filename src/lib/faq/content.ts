@@ -229,6 +229,126 @@ export const FAQ_SECTIONS: FaqSection[] = [
       },
     ],
   },
+
+  {
+    id: 'predicting',
+    title: 'Making predictions',
+    intro: 'Filling in a bracket, and what happens when you are late to one.',
+    questions: [
+      {
+        id: 'when-can-i-predict',
+        question: 'When can I fill in a bracket?',
+        answer: [
+          { type: 'p', text: 'From the moment the draw is published, and you can keep going while the tournament is being played. Matches that have already been played are shown with their real result and cannot be picked; everything still to come is open.' },
+          { type: 'p', text: 'So arriving late is not fatal. Join at the quarterfinals and you simply pick from the quarterfinals on — you miss the points from the earlier rounds, not the tournament.' },
+        ],
+      },
+      {
+        id: 'change-my-picks',
+        question: 'Can I change a pick after saving?',
+        answer: [
+          { type: 'p', text: 'Yes, for as long as the match has not been played and you have not locked it. Save draft keeps your bracket editable; locking is what makes a pick final.' },
+          { type: 'p', text: 'Once a match has a result, its pick is frozen whatever you do — there is nothing left to decide.' },
+        ],
+      },
+      {
+        id: 'later-rounds',
+        question: 'How do I pick a later round when I do not know who is in it?',
+        answer: [
+          { type: 'p', text: 'The bracket fills the next round in for you. A slot shows the real winner once that match has been played, and your own pick until then — so the quarterfinal you are looking at is built from the calls you already made.' },
+          { type: 'p', text: 'That is also why a wrong pick early on does not stop you: the real result takes over, and you carry on picking from the players who are genuinely still in.' },
+        ],
+      },
+      {
+        id: 'byes',
+        question: 'What about byes and qualifiers?',
+        answer: [
+          { type: 'p', text: 'A bye is not a match, so there is nothing to pick — the player advances for free and it neither builds nor breaks your streak.' },
+          { type: 'p', text: 'A slot reading "Qualifier" is a place in the draw whose player has not been decided yet. Once qualifying finishes the real name appears.' },
+        ],
+      },
+      {
+        id: 'auto-predict',
+        question: 'Can brackets be filled in for me?',
+        answer: [
+          { type: 'p', text: 'Yes. Set up auto-predictions from your profile: choose up to five players per tour in priority order, optionally with different lists per surface. When a draw is published, a bracket is generated for you from that list.' },
+          { type: 'p', text: 'Auto-generated brackets are locked the moment they are created and cannot be edited afterwards, so be sure of your player list before saving it. Being locked, they earn the streak multiplier like any other committed bracket.' },
+        ],
+      },
+    ],
+  },
+
+  {
+    id: 'ranking',
+    title: 'Ranking and leagues',
+    intro: 'Where your points end up.',
+    questions: [
+      {
+        id: 'global-ranking',
+        question: 'How is my global rank worked out?',
+        answer: [
+          { type: 'p', text: 'By ranking points, highest first. Your rank is simply the number of players with more points than you, plus one.' },
+          { type: 'p', text: 'Because points expire after 364 days, the ranking is a rolling 52-week table rather than an all-time one — the same way the real tours do it. A quiet year costs you places even if you never lose a point.' },
+        ],
+      },
+      {
+        id: 'leagues',
+        question: 'What is a league?',
+        answer: [
+          { type: 'p', text: 'A private table among people you invite. Everyone keeps playing the same tournaments as normal; the league just scores you against each other instead of against the whole site.' },
+          { type: 'p', text: 'A league can be narrowed to certain kinds of tournament — Grand Slams only, for instance — in which case only points from those count toward its table.' },
+        ],
+      },
+      {
+        id: 'challenge-points-ranking',
+        question: 'Do challenge points count toward my ranking?',
+        answer: [
+          { type: 'p', text: 'No. A challenge bracket is separate from your main one and scores only within that challenge. It does not touch your ranking points, your leagues, or your profile statistics.' },
+          { type: 'p', text: 'Your normal bracket for the same tournament is unaffected — you can enter both.' },
+        ],
+      },
+    ],
+  },
+
+  {
+    id: 'challenges',
+    title: 'Challenges',
+    intro: 'Head-to-head against one person, over one tournament.',
+    questions: [
+      {
+        id: 'what-is-a-challenge',
+        question: 'How does a challenge work?',
+        answer: [
+          { type: 'p', text: 'You pick a friend and a tournament. They accept, you both fill in a bracket for it, and whoever scores more points over that tournament wins.' },
+          { type: 'p', text: 'Scoring is the same as everywhere else — same points per round, same streak multiplier. Only the audience is different.' },
+        ],
+      },
+      {
+        id: 'challenge-hidden-picks',
+        question: 'Can my opponent see my picks?',
+        answer: [
+          { type: 'p', text: 'Not until you have both locked. Until then neither of you can see the other’s picks, their score, or even how many picks they have made.' },
+          { type: 'p', text: 'Locking is what reveals both brackets at once, so nobody can read their opponent before committing.' },
+        ],
+      },
+      {
+        id: 'challenge-winner',
+        question: 'How is a challenge decided?',
+        answer: [
+          { type: 'p', text: 'On points earned over the tournament. If both of you finish level, the one who made more picks wins — backing yourself on more matches breaks the tie. Level on both is recorded as a draw.' },
+          { type: 'p', text: 'Challenges are settled automatically once the tournament is complete. A challenge nobody accepted before the tournament started expires on its own.' },
+        ],
+      },
+      {
+        id: 'anonymous-challenge',
+        question: 'Can I challenge someone without an account?',
+        answer: [
+          { type: 'p', text: 'Yes. Create a challenge, send the link, and whoever opens it can fill in a bracket with just a display name — no sign-up, no email.' },
+          { type: 'p', text: 'Anonymous brackets score on the same rules but stand alone: they do not appear on the leaderboard, in leagues, or in anyone’s ranking. Creating an account later lets you claim a bracket you played anonymously.' },
+        ],
+      },
+    ],
+  },
 ]
 
 /** Flat list, for anchors and structured data. */
