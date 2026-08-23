@@ -47,6 +47,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.9,
     })),
     { url: `${SITE_URL}/leaderboard`, changeFrequency: 'daily', priority: 0.8 },
+    // Answers "how does X work" queries, which is a different intent from the
+    // tournament pages and one nothing else on the site serves.
+    { url: `${SITE_URL}/faq`, changeFrequency: 'monthly', priority: 0.6 },
     { url: `${SITE_URL}/challenges/create`, changeFrequency: 'monthly', priority: 0.7 },
     { url: `${SITE_URL}/signup`, changeFrequency: 'monthly', priority: 0.6 },
     { url: `${SITE_URL}/login`, changeFrequency: 'yearly', priority: 0.3 },

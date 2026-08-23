@@ -103,6 +103,11 @@ export default function Footer() {
           {/* min-h-[44px] keeps these tappable on a phone — at their 0.75rem font
               size the natural hit area is only ~18px tall. */}
           <div className="flex items-center flex-wrap gap-2">
+            {/* Site-wide for the same reason as the slam links above: a page
+                nothing links to is an orphan whatever the sitemap says. It also
+                belongs on every page by nature — the scoring questions people
+                have are asked from the bracket, not from a help menu. */}
+            <Link href="/faq" className="inline-flex items-center min-h-[44px] px-2" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>How it works</Link>
             <Link href="/terms" className="inline-flex items-center min-h-[44px] px-2" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Terms</Link>
             <Link href="/privacy" className="inline-flex items-center min-h-[44px] px-2" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Privacy</Link>
             {/* Meta requires a deletion URL reachable without an account, and a
