@@ -1773,9 +1773,11 @@ export default function BracketPredictor({
               <Link href="/faq#streak-multiplier" style={{ color: 'var(--court)' }}>How scoring works →</Link>
             </p>
             <p style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-              Locking a round commits just that round and leaves the rest of your bracket editable.
-              &quot;Lock all picks&quot; ends the whole bracket and cannot be undone. You can also lock
-              one match at a time with the &quot;Lock pick&quot; button on it.
+              <Link href="/faq#lock-a-round" style={{ color: 'var(--court)' }}>Locking a round</Link>{' '}
+              commits just that round and leaves the rest of your bracket editable.{' '}
+              <Link href="/faq#lock-all-picks" style={{ color: 'var(--court)' }}>&quot;Lock all picks&quot;</Link>{' '}
+              ends the whole bracket and cannot be undone. You can also lock one match at a time with
+              the &quot;Lock pick&quot; button on it.
             </p>
           </div>
         )}

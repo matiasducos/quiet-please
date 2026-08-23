@@ -8,7 +8,7 @@ import PostHogIdentify from './PostHogIdentify'
 interface NavProps {
   username?: string | null
   points?: number
-  activePage?: 'tournaments' | 'leaderboard' | 'leagues' | 'challenges' | 'achievements' | 'onboarding'
+  activePage?: 'tournaments' | 'leaderboard' | 'leagues' | 'challenges' | 'achievements' | 'onboarding' | 'faq'
   userId?: string | null
   deletionRequestedAt?: string | null
 }
@@ -20,6 +20,13 @@ const NAV_LINKS = [
   { href: '/leaderboard', label: 'Leaderboard', page: 'leaderboard' },
   { href: '/leagues',     label: 'Leagues',     page: 'leagues'     },
   { href: '/challenges',  label: 'Challenges',  page: 'challenges'  },
+  // Desktop only. The mobile strip divides its width evenly, so a fifth link
+  // drops every label to 75px — and measured at 375px that ellipsises
+  // "Tournaments", "Leaderboard" and "Challenges" at once. The row's own comment
+  // below says ellipsising is the signal to rethink rather than shave padding,
+  // so on a phone help lives in the avatar menu and the footer instead, and the
+  // four things people come here to DO keep the strip.
+  { href: '/faq',         label: 'How it works', page: 'faq', desktopOnly: true },
 ] as const
 
 export default function Nav({ username, activePage, userId, deletionRequestedAt }: NavProps) {
@@ -236,12 +243,20 @@ export default function Nav({ username, activePage, userId, deletionRequestedAt 
                     Invite a friend
                   </Link>
                   <Link
+                    href="/faq"
+                    className={`user-menu-item${activePage === 'faq' ? ' nav-link-active' : ''}`}
+                    role="menuitem"
+                    style={activePage === 'faq' ? { fontWeight: 500 } : undefined}
+                  >
+                    How it works
+                  </Link>
+                  <Link
                     href="/onboarding"
                     className={`user-menu-item${activePage === 'onboarding' ? ' nav-link-active' : ''}`}
                     role="menuitem"
                     style={activePage === 'onboarding' ? { fontWeight: 500 } : undefined}
                   >
-                    How it works
+                    Getting started
                   </Link>
                   {isAdmin && (
                     <>
@@ -294,7 +309,7 @@ export default function Nav({ username, activePage, userId, deletionRequestedAt 
         className="md:hidden flex border-t max-w-5xl mx-auto"
         style={{ borderColor: 'var(--chalk-dim)' }}
       >
-        {NAV_LINKS.map(link => (
+        {NAV_LINKS.filter(link => !('desktopOnly' in link)).map(link => (
           <Link
             key={link.page}
             href={link.href}

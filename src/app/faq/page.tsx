@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import Nav from '@/components/Nav'
 import { getNavProfile } from '@/lib/supabase/profile'
+import FaqControls from '@/components/faq/FaqControls'
 import {
   FAQ_SECTIONS,
   ALL_FAQ_QUESTIONS,
@@ -141,7 +142,20 @@ export default async function FaqPage() {
         username={profile?.username}
         points={profile?.ranking_points ?? 0}
         userId={user?.id}
+        activePage="faq"
       />
+
+      {/* Native disclosure triangles differ per browser and sit oddly against a
+          display-font question; ::-webkit-details-marker plus list-none removes
+          them so the +/− below is the only marker. */}
+      <style>{`
+        .faq-item > summary::-webkit-details-marker { display: none; }
+        .faq-item > summary::marker { content: ''; }
+        .faq-item[open] > summary .faq-marker::before { content: '\u2212'; }
+        .faq-item:not([open]) > summary .faq-marker::before { content: '+'; }
+        .faq-item > summary .faq-marker { width: 0.9rem; display: inline-block; font-size: 1rem; }
+        .faq-item > summary:hover { color: var(--court); }
+      `}</style>
 
       <div className="max-w-3xl mx-auto px-4 md:px-8 py-12 md:py-16">
         <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '0.75rem' }}>
@@ -160,8 +174,12 @@ export default async function FaqPage() {
             without reading the rest. */}
         <nav aria-label="Contents" className="mb-12 rounded-sm border bg-white p-4 md:p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
           {FAQ_SECTIONS.map(section => (
-            <div key={section.id} className="mb-3 last:mb-0">
-              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '0.4rem' }}>
+            <div key={section.id} className="mb-5 last:mb-0">
+              {/* The section name, not a label. At 0.65rem uppercase mono it read
+                  as a form caption and the six groups blurred into one list; the
+                  contents is the main way around a 25-question page, so the
+                  groups have to be the thing the eye lands on. */}
+              <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--ink)', marginBottom: '0.5rem' }}>
                 {section.title}
               </p>
               <ul>
@@ -177,6 +195,8 @@ export default async function FaqPage() {
           ))}
         </nav>
 
+        <FaqControls />
+
         {FAQ_SECTIONS.map(section => (
           <section key={section.id} id={section.id} className="mb-14">
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.6rem', letterSpacing: '-0.01em', marginBottom: section.intro ? '0.35rem' : '1.25rem' }}>
@@ -187,20 +207,33 @@ export default async function FaqPage() {
             )}
 
             {section.questions.map(q => (
-              <article
+              // A <details>, not a div with a click handler: it opens without
+              // JavaScript, it is a disclosure widget to a screen reader for
+              // free, and the answer stays in the HTML when closed — which is
+              // what keeps it indexable and keeps the structured data matching
+              // the page. FaqControls only adds what HTML cannot do.
+              <details
                 key={q.id}
                 id={q.id}
-                // Anchored questions are linked from the bracket, so the heading
+                data-faq
+                // Anchored questions are linked from the bracket, so the summary
                 // must clear the sticky nav when one is jumped to. Measured, not
                 // guessed: the nav is 99px tall at 375px, where it wraps onto two
-                // rows, so scroll-mt-24 (96px) left the heading 3px underneath it.
-                className="mb-8 scroll-mt-28"
+                // rows, so scroll-mt-24 (96px) left it 3px underneath.
+                className="faq-item scroll-mt-28 border-b"
+                style={{ borderColor: 'var(--chalk-dim)' }}
               >
-                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.15rem', letterSpacing: '-0.01em', marginBottom: '0.6rem' }}>
-                  {q.question}
-                </h3>
-                {q.answer.map((block, i) => <Block key={i} block={block} />)}
-              </article>
+                <summary
+                  className="flex items-start gap-3 cursor-pointer list-none py-3.5"
+                  style={{ fontFamily: 'var(--font-display)', fontSize: '1.05rem', letterSpacing: '-0.01em', color: 'var(--ink)' }}
+                >
+                  <span className="faq-marker shrink-0" aria-hidden="true" style={{ color: 'var(--court)', lineHeight: 1.6 }} />
+                  <span className="flex-1">{q.question}</span>
+                </summary>
+                <div className="pb-4 pl-6">
+                  {q.answer.map((block, i) => <Block key={i} block={block} />)}
+                </div>
+              </details>
             ))}
           </section>
         ))}
