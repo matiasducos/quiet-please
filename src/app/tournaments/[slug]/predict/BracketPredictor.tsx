@@ -727,6 +727,57 @@ export default function BracketPredictor({
     finally { setSaving(false) }
   }
 
+  /**
+   * Commit every changeable pick in one round, leaving the rest of the bracket open.
+   *
+   * The middle ground the bracket never had. "Lock pick" binds one match and buys
+   * nothing; "Lock all picks" buys the multiplier on everything but ends the
+   * bracket, forfeiting every round still to open. This commits exactly what is
+   * in front of you and keeps the rest editable.
+   */
+  const handleLockRound = async (round: string) => {
+    if (readOnly || fullyLocked) return
+    const { committable, empty } = getRoundLockState(round)
+    if (committable === 0) return
+
+    const label = ROUND_PROSE[round] ?? 'this round'
+    const emptyNote = empty > 0
+      ? `\n\n${empty} match${empty === 1 ? '' : 'es'} in this round ${empty === 1 ? 'has' : 'have'} no pick. Locking leaves ${empty === 1 ? 'it' : 'them'} open — you can still pick ${empty === 1 ? 'it' : 'them'} later.`
+      : ''
+    if (!confirm(
+      `Lock ${label}? Those ${committable} pick${committable === 1 ? '' : 's'} become final and start earning the streak multiplier. ` +
+      `The rest of your bracket stays editable.${emptyNote}`,
+    )) return
+
+    setSaving(true)
+    setSlotError(null)
+    try {
+      const result = await savePrediction({
+        tournamentId: tournament.id,
+        picks,
+        predictionId: currentPredictionId,
+        challengeId,
+        lockRound: round,
+      })
+      if (result.success) {
+        setCurrentPickLocks(prev => {
+          const next = { ...prev }
+          for (const m of matchesForRound(round)) {
+            if (byeMatchIds.has(m.matchId)) continue
+            if (matchResults?.[m.matchId] || next[m.matchId] || !picks[m.matchId]) continue
+            next[m.matchId] = 'round'
+          }
+          return next
+        })
+        setSaved(true)
+        if (result.predictionId) setCurrentPredictionId(result.predictionId)
+      } else {
+        console.error('Lock round failed')
+      }
+    } catch (e) { console.error(e) }
+    finally { setSaving(false) }
+  }
+
   /** Import global picks into challenge prediction */
   const handleImportGlobal = async () => {
     if (!challengeId) return
@@ -750,6 +801,28 @@ export default function BracketPredictor({
 
   const matchesForRound = (round: string) => draw.matches.filter(m => m.round === round)
 
+  /**
+   * What committing this round would do, and whether it can be done at all.
+   *
+   * `committable` counts the picks that are still changeable — those are what a
+   * round lock would actually commit. `empty` counts the slots with no pick that
+   * have not been played: locking does not touch them (the server skips them),
+   * so unlike "Lock all picks" a round lock forfeits nothing, and the copy can
+   * say so honestly.
+   */
+  function getRoundLockState(round: string): { committable: number; locked: number; empty: number; total: number } {
+    let committable = 0, locked = 0, empty = 0, total = 0
+    for (const m of matchesForRound(round)) {
+      if (byeMatchIds.has(m.matchId)) continue
+      total++
+      if (matchResults?.[m.matchId]) continue          // decided — nothing to commit
+      if (currentPickLocks[m.matchId]) { locked++; continue }
+      if (picks[m.matchId]) committable++
+      else empty++
+    }
+    return { committable, locked, empty, total }
+  }
+
   // Per-round stats: "done" = picked OR played (no action needed from user)
   function getRoundStats(round: string): { done: number; total: number } {
     const roundMatches = matchesForRound(round)
@@ -763,6 +836,11 @@ export default function BracketPredictor({
     }
     return { done, total }
   }
+
+  // Declared here, not up with the other derived values: getRoundLockState closes
+  // over `matchesForRound`, which is a const defined just above. Reading it from
+  // the top of the component compiles fine and throws at runtime.
+  const activeRoundLock = getRoundLockState(activeRound)
 
   // Count correctly picked vs total played (for read-only summary), excluding BYE matches
   const correctPicks = readOnly && matchResults
@@ -920,6 +998,12 @@ export default function BracketPredictor({
                   }}>
                     {stats.done}/{stats.total}
                   </span>
+                )}
+                {/* A round with nothing left to commit reads as done at a glance,
+                    which is the whole point of committing round by round. */}
+                {!readOnly && !fullyLocked && getRoundLockState(round).locked > 0
+                  && getRoundLockState(round).committable === 0 && (
+                  <span aria-label="round locked" title="Locked — earning the streak multiplier" style={{ fontSize: '0.6rem' }}>🔒</span>
                 )}
               </button>
             )
@@ -1632,7 +1716,7 @@ export default function BracketPredictor({
               <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
                 {pickedCount} of {totalMatches} picks made
               </span>
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
                 <button
                   onClick={handleSave}
                   disabled={saving || pickedCount === 0}
@@ -1641,6 +1725,19 @@ export default function BracketPredictor({
                 >
                   {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save draft'}
                 </button>
+                {/* Scoped to the round on screen. Placed before "Lock all picks"
+                    because it is the safe one: it forfeits nothing, and it is
+                    what most people on this screen actually want. */}
+                {activeRoundLock.committable > 0 && (
+                  <button
+                    onClick={() => handleLockRound(activeRound)}
+                    disabled={saving}
+                    className="px-5 py-2.5 text-sm font-medium rounded-sm border transition-colors disabled:opacity-40"
+                    style={{ borderColor: 'var(--court)', color: 'var(--court)' }}
+                  >
+                    {saving ? 'Locking…' : `Lock ${SHORT_ROUND_LABELS[activeRound] ?? activeRound} (${activeRoundLock.committable})`}
+                  </button>
+                )}
                 <button
                   onClick={handleLockAll}
                   disabled={saving || pickedCount === 0}
@@ -1664,8 +1761,20 @@ export default function BracketPredictor({
                 Leave the bracket unlocked to keep picking as the draw opens up.
               </p>
             )}
+            {/* The reason to lock at all. Until the multiplier was gated on it,
+                locking was pure downside — irreversible, and worth nothing — which
+                is why the button needed a warning and no explanation. Now it needs
+                the explanation more. */}
             <p style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-              Once locked, your picks cannot be changed. You can also lock individual picks using the &quot;Lock pick&quot; button on each match.
+              <strong style={{ color: 'var(--ink)' }}>Locked picks earn the streak multiplier.</strong>{' '}
+              Back the same player round after round and each correct pick is worth more than the last —
+              but only on picks you committed before the match was played. Unlocked picks still score, at
+              single value.
+            </p>
+            <p style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+              Locking a round commits just that round and leaves the rest of your bracket editable.
+              &quot;Lock all picks&quot; ends the whole bracket and cannot be undone. You can also lock
+              one match at a time with the &quot;Lock pick&quot; button on it.
             </p>
           </div>
         )}
