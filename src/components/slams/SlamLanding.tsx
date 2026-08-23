@@ -3,7 +3,7 @@ import MarketingNav from '@/components/MarketingNav'
 import TrackedCTA from '@/components/TrackedCTA'
 import TournamentCard from '@/components/TournamentCard'
 import HowItWorksDemo from '@/components/HowItWorksDemo'
-import { getLiveTournaments } from '@/lib/tournaments/cached'
+import { getOnNowTournaments } from '@/lib/tournaments/cached'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { ALL_SLAMS, type SlamConfig } from '@/lib/slams/config'
 import { estimateNextEdition, getSlamPerformers, type SlamEditions, type SlamTournament } from '@/lib/slams/data'
@@ -72,8 +72,10 @@ export default async function SlamLanding({
     getSlamPerformers(editions),
   ])
 
-  // In the off-season the page still needs somewhere to send people.
-  const liveElsewhere = isPlayable ? [] : await getLiveTournaments(2)
+  // In the off-season the page still needs somewhere to send people. Draws that
+  // are open count — the heading here already says "Open right now", and until
+  // now that was the one thing the list could not contain.
+  const liveElsewhere = isPlayable ? [] : await getOnNowTournaments(2)
 
   const jsonLd = buildSlamJsonLd(config, editions, performers)
   const otherSlams = ALL_SLAMS.filter(s => s.slug !== config.slug)

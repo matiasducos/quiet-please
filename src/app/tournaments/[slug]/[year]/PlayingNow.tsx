@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { unstable_cache } from 'next/cache'
 import TournamentCard from '@/components/TournamentCard'
-import { getLiveTournaments, getUpcomingTournaments } from '@/lib/tournaments/cached'
+import { getOnNowTournaments } from '@/lib/tournaments/cached'
 import { getTournamentEngagement } from '@/lib/tournaments/engagement'
 import { getPredictableStatuses } from '@/lib/app-settings'
 
@@ -14,11 +14,12 @@ import { getPredictableStatuses } from '@/lib/app-settings'
  * later; this captures it NOW, by pointing at the tournaments where a bracket
  * can be filled in today.
  *
- * The heading is derived rather than fixed, and that is load-bearing. "Playing
- * right now" over a tournament that starts on Monday is a plain falsehood, so
- * the two sets are never mixed: live events if there are any, otherwise the
- * ones whose draws are open, otherwise nothing at all. An empty section under
- * a confident heading is worse than no section.
+ * The list is one set now — what is on court plus the draws that are open, in
+ * that order — matching the "Live right now" strip everywhere else on the site.
+ * It used to hold one or the other and never both, because "Playing right now"
+ * over a tournament that starts on Monday is a plain falsehood. The heading
+ * still follows the list: it only claims play is happening when something on it
+ * actually is, and drops to "Open right now" when nothing is.
  */
 
 /** Two, because the grid is two-up on desktop and one-up at 375px. */
@@ -54,23 +55,17 @@ export default async function PlayingNow({
   // Both are `unstable_cache`d and shared across every visitor and every one of
   // the ~2,400 edition pages, so this costs no per-page query. Over-fetched by
   // a couple so the exclusion below can't empty the list.
-  const [live, predictableStatuses] = await Promise.all([
-    getLiveTournaments(SHOWN + 2),
+  const [onNow, predictableStatuses] = await Promise.all([
+    getOnNowTournaments(SHOWN + 4),
     getPredictableStatuses(),
   ])
 
-  let shown = live.filter(t => !exclude.has(t.id)).slice(0, SHOWN)
-  let mode: 'live' | 'open' = 'live'
-
-  if (shown.length === 0) {
-    const upcoming = await getUpcomingTournaments(SHOWN + 4)
-    shown = upcoming
-      .filter(t => t.status === 'accepting_predictions' && !exclude.has(t.id))
-      .slice(0, SHOWN)
-    mode = 'open'
-  }
+  const shown = onNow.filter(t => !exclude.has(t.id)).slice(0, SHOWN)
 
   if (shown.length === 0) return null
+
+  // Claimed from what is actually on the list, not from which query filled it.
+  const mode: 'live' | 'open' = shown.some(t => t.status === 'in_progress') ? 'live' : 'open'
 
   // Social proof. Sorted so two pages that show the same pair in a different
   // order still hit one cache entry rather than two.
@@ -88,6 +83,7 @@ export default async function PlayingNow({
         ? 'This draw isn’t out yet — but these are underway, and you can still pick the rounds to come.'
         : 'This draw isn’t out yet. Here’s what’s being played while you wait.'
       : 'These draws are published and taking predictions today.'
+
 
   return (
     <div className="mb-8">
