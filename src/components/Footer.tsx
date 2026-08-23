@@ -107,7 +107,7 @@ export default function Footer() {
                 nothing links to is an orphan whatever the sitemap says. It also
                 belongs on every page by nature — the scoring questions people
                 have are asked from the bracket, not from a help menu. */}
-            <Link href="/faq" className="inline-flex items-center min-h-[44px] px-2" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>How it works</Link>
+            <Link href="/faq" className="inline-flex items-center min-h-[44px] px-2" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>FAQ</Link>
             <Link href="/terms" className="inline-flex items-center min-h-[44px] px-2" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Terms</Link>
             <Link href="/privacy" className="inline-flex items-center min-h-[44px] px-2" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Privacy</Link>
             {/* Meta requires a deletion URL reachable without an account, and a
