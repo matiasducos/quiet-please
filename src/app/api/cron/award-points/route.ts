@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { revalidateTag } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getPointsForRound, calculateStreakMultiplier, buildFeedMap } from '@/lib/tennis'
+import { getPointsForRound, calculateStreakMultiplier, committedPicks, buildFeedMap } from '@/lib/tennis'
 import type { DrawMatch, Round, TournamentCategory } from '@/lib/tennis'
 import { sendPointsAwardedEmail, isBotEmail } from '@/lib/email'
 import type { PointsAwardedTournament } from '@/lib/email'
@@ -260,6 +260,13 @@ export async function GET(request: Request) {
         const picks = prediction.picks as Record<string, string>
         const lockedPicksSet = new Set((prediction.locked_picks as string[]) ?? [])
 
+        // Which of this bracket's picks were locked before their match was
+        // decided. Gates the streak multiplier: base points are unconditional,
+        // the multiplier is what locking buys. Read from the row as fetched at
+        // the top of the run, so the 'auto' locks this same run is about to
+        // write in step 6 cannot back-date a commitment.
+        const committed = committedPicks(prediction.pick_locks as Record<string, string> | null)
+
         // Auto-lock: if this prediction has a pick for this match, mark it as auto-locked
         if (picks[result.external_match_id]) {
           if (!autoLocks.has(prediction.id)) autoLocks.set(prediction.id, {})
@@ -312,6 +319,7 @@ export async function GET(request: Request) {
             bracket.feedMap,
             bracket.matches,
             lockedPicksSet,
+            committed,
           )
         }
 

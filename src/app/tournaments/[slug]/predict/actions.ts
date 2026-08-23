@@ -25,6 +25,7 @@ export type SaveResult =
  * - Global predictions (challengeId = null) — affect leaderboard, leagues, rankings
  * - Challenge predictions (challengeId = UUID) — separate picks per challenge
  * - Per-pick voluntary locks (lockMatchIds)
+ * - Whole-round locks (lockRound) — the rest of the bracket stays editable
  * - Full bracket lock-all (lockAll)
  * - Importing global picks into a new challenge prediction (importFromGlobal)
  */
@@ -34,6 +35,7 @@ export async function savePrediction({
   predictionId,
   challengeId = null,
   lockMatchIds,
+  lockRound,
   lockAll = false,
   importFromGlobal = false,
 }: {
@@ -42,6 +44,12 @@ export async function savePrediction({
   predictionId: string | null
   challengeId?: string | null
   lockMatchIds?: string[]
+  /**
+   * Round code (R64, QF, …) to commit in full. The round's matches are resolved
+   * from the draw rather than taken from the client, so a hand-crafted request
+   * cannot lock a match in a round it does not belong to.
+   */
+  lockRound?: string
   lockAll?: boolean
   importFromGlobal?: boolean
 }): Promise<SaveResult> {
@@ -127,6 +135,35 @@ export async function savePrediction({
     for (const matchId of Object.keys(picks)) {
       pickLocksUpdate[matchId] = 'auto_lock_all'
     }
+  } else if (lockRound) {
+    // Whole-round lock. `is_fully_locked` stays false on purpose: this is the
+    // point of the feature — commit the quarters, keep picking the semis.
+    //
+    // Only matches that actually carry a pick are locked. Locking an empty slot
+    // would forfeit it for nothing, which is precisely the trap the round lock
+    // exists to avoid; the UI warns about the empties instead.
+    const { data: drawRow, error: drawErr } = await supabase
+      .from('draws')
+      .select('bracket_data')
+      .eq('tournament_id', tournamentId)
+      .single()
+
+    if (drawErr || !drawRow?.bracket_data) {
+      return { success: false, error: 'unknown', message: drawErr?.message ?? 'Draw not found' }
+    }
+
+    const roundMatchIds = new Set(
+      ((drawRow.bracket_data as { matches?: Array<{ matchId: string; round: string }> }).matches ?? [])
+        .filter(m => m.round === lockRound)
+        .map(m => m.matchId),
+    )
+
+    pickLocksUpdate = {}
+    for (const matchId of roundMatchIds) {
+      if (!picks[matchId]) continue           // nothing to commit
+      if (playedMatchIds.has(matchId)) continue // already decided
+      pickLocksUpdate[matchId] = 'round'
+    }
   } else if (lockMatchIds && lockMatchIds.length > 0) {
     // Per-pick voluntary lock: only lock specific matches
     // Don't allow locking matches that are already auto-locked (played)
@@ -174,8 +211,17 @@ export async function savePrediction({
       .single()
 
     if (pickLocksUpdate) {
-      const existingLocks = (existingPred?.pick_locks as Record<string, string>) ?? {}
-      row.pick_locks = { ...existingLocks, ...pickLocksUpdate }
+      // First lock wins. A lock records when a pick stopped being changeable, so
+      // a later one must not rewrite it — and now that the multiplier is gated on
+      // committing *before* the result, overwriting would matter: 'auto' is what
+      // the cron stamps on a played match, and letting a subsequent "lock all"
+      // turn that into 'auto_lock_all' would back-date a commitment nobody made.
+      // Same non-overwriting rule the cron itself follows.
+      const merged = { ...((existingPred?.pick_locks as Record<string, string>) ?? {}) }
+      for (const [matchId, lockType] of Object.entries(pickLocksUpdate)) {
+        if (!merged[matchId]) merged[matchId] = lockType
+      }
+      row.pick_locks = merged
     }
 
     // Merge pick_sources: preserve existing "auto" for untouched matches,

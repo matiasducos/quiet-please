@@ -50,6 +50,39 @@ export const WINNER_POINTS: Record<TournamentCategory, number> = {
   '250':        250,
 }
 
+/**
+ * Lock types that represent a commitment the player made *before* the result.
+ *
+ * `pick_locks` records how each pick came to be locked, and only three of the
+ * four values mean the player chose it: 'voluntary' (one pick), 'round' (a whole
+ * round) and 'auto_lock_all' (the entire bracket, or an auto-predict bracket,
+ * which is generated and locked in one shot before play).
+ *
+ * The fourth, 'auto', is written by the award-points cron once a match has been
+ * played, purely as a record. It is the one value that must NOT count: it
+ * arrives after the answer is known, so treating it as a commitment would hand
+ * the multiplier to everyone who never locked anything.
+ */
+const COMMITTED_LOCK_TYPES = new Set(['voluntary', 'round', 'auto_lock_all'])
+
+/**
+ * The picks in this bracket that were committed before their match was decided.
+ *
+ * Pass to `calculateStreakMultiplier` to gate the streak on locking. Omit it and
+ * every pick counts, which is the pre-existing behaviour and what the anonymous
+ * scorer still wants — those brackets have no lock UI to earn the multiplier
+ * with.
+ */
+export function committedPicks(
+  pickLocks: Record<string, string> | null | undefined,
+): Set<string> {
+  const out = new Set<string>()
+  for (const [matchId, lockType] of Object.entries(pickLocks ?? {})) {
+    if (COMMITTED_LOCK_TYPES.has(lockType)) out.add(matchId)
+  }
+  return out
+}
+
 export function getPointsForRound(
   category: TournamentCategory,
   round: Round,
@@ -77,6 +110,16 @@ export function getPointsForRound(
  *
  * BYE matches are transparent: the algorithm traces through them without
  * counting them as part of the streak, since BYEs auto-advance.
+ *
+ * `committed` gates the whole thing on the player having locked. A streak is a
+ * run of calls somebody stood behind, so an unlocked pick is worth base points
+ * at x1 and ends the run — the next round starts from x1 again. That is the same
+ * treatment `lockedPicks` already gives a pick made after its match was locked,
+ * which is why both are handled at the same point in the trace rather than as
+ * two competing notions of "streak".
+ *
+ * Omitting `committed` scores every pick as committed. The anonymous brackets
+ * rely on that: they run this same function and have no way to lock.
  */
 export function calculateStreakMultiplier(
   matchId: string,
@@ -85,7 +128,11 @@ export function calculateStreakMultiplier(
   feedMap: FeedMap,
   matches: DrawMatch[],
   lockedPicks?: Set<string>,
+  committed?: ReadonlySet<string>,
 ): number {
+  // An uncommitted pick has no streak of its own to speak of — base points x1.
+  if (committed && !committed.has(matchId)) return 1
+
   const reverseFeedMap = buildReverseFeedMap(feedMap)
   const matchMap = new Map(matches.map(m => [m.matchId, m]))
 
@@ -135,6 +182,10 @@ export function calculateStreakMultiplier(
 
     // A locked pick (made after match started) breaks the streak chain
     if (lockedPicks?.has(feederMatchId)) break
+
+    // So does one the player never committed to. Same rule, same place: a run
+    // is only a run while every link was called in advance.
+    if (committed && !committed.has(feederMatchId)) break
 
     // Normal match: check if user picked the same winner here
     if (picks[feederMatchId] === winnerExternalId) {
