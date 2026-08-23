@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
 import NotificationBell from './NotificationBell'
-import FeaturedSlamNotice from './FeaturedSlamNotice'
+import SiteNotices from './SiteNotices'
 import ChatBubbleIconServer from './ChatBubbleIconServer'
 import PostHogIdentify from './PostHogIdentify'
 
@@ -348,8 +348,12 @@ export default function Nav({ username, activePage, userId, deletionRequestedAt 
         page down when the notice arrives — reintroducing the layout shift the
         server-side dismissal read exists to avoid. getFeaturedSlam() resolves
         from a shared 5-minute cache entry, so the wait is a cache lookup on
-        every request but the first after a deploy. */}
-    <FeaturedSlamNotice />
+        every request but the first after a deploy.
+
+        SiteNotices picks which of the two bars runs — see the note there. The
+        pick-gap branch adds one indexed per-user query on top of that cache
+        lookup, and only for signed-in visitors. */}
+    <SiteNotices userId={userId} />
     </>
   )
 }

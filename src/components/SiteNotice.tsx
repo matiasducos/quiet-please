@@ -45,6 +45,7 @@ export default function SiteNotice({
   accent,
   dismissCookieName,
   canPersistDismissal,
+  dismissMaxAge = DISMISS_MAX_AGE,
   hidePathPrefixes = [],
 }: {
   /** Mono, uppercase, leads the bar. Keep it to a couple of words. */
@@ -69,6 +70,16 @@ export default function SiteNotice({
    */
   canPersistDismissal: boolean
   /**
+   * How long a dismissal sticks, in seconds. Defaults to a major's news cycle.
+   *
+   * Worth shortening for any notice whose cookie name varies faster than the
+   * default lifetime — a per-round nudge mints a new name every round, and at
+   * 90 days each one would still be riding along on every request months after
+   * the tournament finished. Cookies are sent on the wire, so a notice that
+   * accumulates them is a notice that taxes every page load.
+   */
+  dismissMaxAge?: number
+  /**
    * Routes where the notice would be redundant or in the way — the slam's own
    * landing page, the bracket itself, the flows in the middle of converting
    * someone. Matched as prefixes.
@@ -88,7 +99,7 @@ export default function SiteNotice({
 
     if (canPersistDismissal) {
       const secure = window.location.protocol === 'https:' ? '; secure' : ''
-      document.cookie = `${dismissCookieName}=1; path=/; max-age=${DISMISS_MAX_AGE}; samesite=lax${secure}`
+      document.cookie = `${dismissCookieName}=1; path=/; max-age=${dismissMaxAge}; samesite=lax${secure}`
     }
 
     try {

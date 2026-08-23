@@ -5,8 +5,11 @@ import { createAdminClient } from '@/lib/supabase/admin'
 // canonical /tournaments/<slug>/<year> instead of the /tournaments/<uuid>
 // redirect. Not an inner join: a tournament with no series still belongs on the
 // homepage, it just falls back to the UUID link.
+// `external_id` and `is_manual` ride along so callers can apply the same two
+// exemptions the predict page does: the sandbox tournament, and hand-entered
+// tournaments, which are not subject to the weekly slot limit.
 const TOURNAMENT_FIELDS =
-  'id, name, tour, surface, category, starts_at, ends_at, status, location, flag_emoji, starts_year, tournament_series(slug)'
+  'id, name, tour, surface, category, starts_at, ends_at, status, location, flag_emoji, external_id, is_manual, starts_year, tournament_series(slug)'
 
 type SeriesEmbed = { slug: string } | { slug: string }[] | null | undefined
 
