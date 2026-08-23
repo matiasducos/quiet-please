@@ -1769,7 +1769,8 @@ export default function BracketPredictor({
               <strong style={{ color: 'var(--ink)' }}>Locked picks earn the streak multiplier.</strong>{' '}
               Back the same player round after round and each correct pick is worth more than the last —
               but only on picks you committed before the match was played. Unlocked picks still score, at
-              single value.
+              single value.{' '}
+              <Link href="/faq#streak-multiplier" style={{ color: 'var(--court)' }}>How scoring works →</Link>
             </p>
             <p style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
               Locking a round commits just that round and leaves the rest of your bracket editable.
