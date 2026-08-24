@@ -56,7 +56,7 @@ export interface FaqSection {
  */
 const POINTS_ROWS: string[][] = [
   ['Round of 128', '10',  '10',   '—',   '—'],
-  ['Round of 64',  '45',  '25',   '—',   '—'],
+  ['Round of 64',  '45',  '25',   '10',  '3'],
   ['Round of 32',  '90',  '45',   '20',  '6'],
   ['Round of 16',  '180', '90',   '30',  '13'],
   ['Quarterfinal', '360', '180',  '60',  '29'],

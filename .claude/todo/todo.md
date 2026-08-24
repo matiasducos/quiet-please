@@ -244,6 +244,22 @@ what remains, roughly in impact order.
 
 ## Queued (Not Yet Scoped)
 
+### 250/500 points tables don't match ATP (decided 2026-08-24: leave as-is for now)
+- `grand_slam` and `masters_1000` in `POINTS_TABLE` are the **real ATP tables**,
+  value for value. `'250'` and `'500'` are not — they sit 40–55% below ATP
+  (250 SF pays 45 vs ATP's 100; 500 SF pays 90 vs 200).
+- Surfaced while fixing Winston-Salem's R64. Decision was to add R64 only and
+  leave the rest untouched, because realigning would reprice **2,807 ledger rows
+  / 74,583 pts — 8% of all points ever awarded** across 29 tournaments and move
+  the leaderboard.
+- If it is ever revisited: ATP values are 250 → R32 13, R16 25, QF 50, SF 100;
+  500 → R32 25, R16 50, QF 100, SF 200. `F` rows are dead config either way
+  (`award-points` passes `isWinner` for every `F`, so the final always pays
+  `WINNER_POINTS`).
+- Re-scoring is per-tournament via `rerunTournamentPoints`; note a re-run does
+  **not** re-evaluate achievements.
+
+
 ### Season-Long Narrative in Notifications
 - "You're currently ranked #47 — Wimbledon starts in 8 weeks and 2,400 points are on the table"
 - Personalized ranking + upcoming tournament digest

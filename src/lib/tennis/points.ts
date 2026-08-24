@@ -24,7 +24,20 @@ export const POINTS_TABLE: Record<TournamentCategory, Partial<Record<Round, numb
     F:    600,
     // W = 1000
   },
+  // R64 exists on these two tiers only for draws larger than 32 — a 48-player
+  // field laid out in a 64 bracket, where the 16 seeds take byes and 32 players
+  // actually play. Winston-Salem 2026 was the first such event in the database,
+  // and until it arrived both tables started at R32; `getPointsForRound` ends in
+  // `?? 0`, so all 16 of its real first-round matches paid nothing and 315
+  // correct picks earned zero.
+  //
+  // Deliberately NOT the ATP value. ATP awards a first-round loser nothing at
+  // these tiers, and the top two tables here are the real ATP tables to the
+  // point — but a round with 16 live matches that cannot score is a dead round
+  // for players, so this departs from ATP on this one row and keeps the shape
+  // of the table it sits in (each round roughly double the one before).
   '500': {
+    R64:  10,
     R32:  20,
     R16:  30,
     QF:   60,
@@ -33,6 +46,7 @@ export const POINTS_TABLE: Record<TournamentCategory, Partial<Record<Round, numb
     // W = 500
   },
   '250': {
+    R64:  3,
     R32:  6,
     R16:  13,
     QF:   29,
