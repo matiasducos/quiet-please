@@ -802,11 +802,74 @@ export default function ResultsEntry({
               {completeStatus.message}
             </p>
           )}
-          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)', marginTop: '8px', lineHeight: 1.5 }}>
-            {status === 'completed'
-              ? 'Completed too early? Un-completing puts it back to In progress and silently removes this tournament’s badges, notifications and challenge verdicts. Points are kept.'
-              : 'Remember to run Award Points from the admin panel before marking as completed.'}
-          </p>
+          {/* ── The finishing procedure ──────────────────────────────────
+              Deliberately loud, and deliberately in this order.
+
+              What used to sit here said "run Award Points BEFORE marking as
+              completed", which leaves the job one run short every single time.
+              Scoring ignores tournament status — award-points reads
+              match_results with no status filter — but trophies, challenge
+              finalization, the completion email and the recap ALL require
+              status = 'completed'. Run it first and none of those happen; you
+              then need a second run that nothing will remind you about, because
+              award-points is manual (it is not in vercel.json, and cron_runs
+              shows only hand-triggered times).
+
+              Complete first and a single run does everything in the right
+              internal order: step 9 writes rankings, step 13 reads them for
+              trophies, step 14 builds the recap on settled numbers. */}
+          <div
+            className="mt-6 rounded-sm border-2 px-4 py-4 md:px-5 md:py-5"
+            style={{ borderColor: status === 'completed' ? '#991b1b' : '#92400e', background: status === 'completed' ? '#fef2f2' : '#fffbeb' }}
+          >
+            {status === 'completed' ? (
+              <>
+                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#991b1b', margin: 0 }}>
+                  Completed too early?
+                </p>
+                <p style={{ fontSize: '0.95rem', lineHeight: 1.6, color: 'var(--ink)', margin: '10px 0 0' }}>
+                  <strong>Un-complete</strong>{' '}puts it back to In progress and silently removes this tournament&rsquo;s
+                  badges, notifications and challenge verdicts. <strong>Points are kept.</strong>{' '}Emails already sent
+                  cannot be recalled &mdash; that is the one trace it leaves.
+                </p>
+                <p style={{ fontSize: '0.95rem', lineHeight: 1.6, color: 'var(--ink)', margin: '10px 0 0' }}>
+                  After fixing the result, mark it completed again and <strong>run Award Points</strong>{' '}to rebuild the
+                  trophies and recap.
+                </p>
+              </>
+            ) : (
+              <>
+                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#92400e', margin: 0 }}>
+                  Finishing this tournament &mdash; do it in this order
+                </p>
+                <ol style={{ margin: '12px 0 0', padding: 0, listStyle: 'none' }}>
+                  {[
+                    ['1', <>Enter the <strong>final</strong> result above.</>],
+                    ['2', <>Click <strong>Mark Tournament as Completed</strong>.</>],
+                    ['3', <>Run <strong>Award Points</strong> from the admin panel &mdash; <strong>once</strong>.</>],
+                  ].map(([n, text], i) => (
+                    <li key={i} className="flex gap-3" style={{ marginTop: i === 0 ? 0 : '8px' }}>
+                      <span
+                        className="shrink-0 inline-flex items-center justify-center"
+                        style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', width: '22px', height: '22px', borderRadius: '9999px', background: '#92400e', color: 'white' }}
+                      >
+                        {n}
+                      </span>
+                      <span style={{ fontSize: '1rem', lineHeight: 1.5, color: 'var(--ink)' }}>{text}</span>
+                    </li>
+                  ))}
+                </ol>
+                <p style={{ fontSize: '0.85rem', lineHeight: 1.6, color: '#92400e', margin: '14px 0 0', paddingTop: '12px', borderTop: '1px solid #fcd34d' }}>
+                  <strong>Completed second, Award Points last.</strong>{' '}That one run scores the final, then awards
+                  trophies, finalizes challenges, emails everyone who played and builds the recap. Running Award Points
+                  first only scores &mdash; you would have to run it again afterwards.
+                </p>
+                <p style={{ fontSize: '0.85rem', lineHeight: 1.6, color: '#92400e', margin: '8px 0 0' }}>
+                  Never mark completed before the final result is in: that crowns a champion off a stale podium.
+                </p>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </main>

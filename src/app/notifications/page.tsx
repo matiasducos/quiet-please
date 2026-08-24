@@ -21,6 +21,7 @@ const TYPE_META: Record<string, { label: string; color: string }> = {
   draw_open:             { label: 'Draw open',          color: '#27500A' },
   points_awarded:        { label: 'Points awarded',     color: '#185FA5' },
   points_expired:        { label: 'Points expired',     color: '#993C1D' },
+  tournament_completed:  { label: 'Tournament over',    color: '#27500A' },
   admin_calendar_gap:    { label: 'Calendar',           color: '#92400e' },
   challenge_received:    { label: 'Challenge',           color: '#993C1D' },
   challenge_cancelled:   { label: 'Challenge cancelled', color: '#993C1D' },
@@ -59,6 +60,16 @@ function getHref(
   // the only place the drop makes sense in context.
   if (n.type === 'points_expired') {
     return viewerUsername ? `/profile/${viewerUsername}` : '/leaderboard'
+  }
+  // The recap, not the edition page. The reader already knows the tournament
+  // finished — this notification is what told them — so landing them on the
+  // page that repeats that is a dead end. Falls back to the edition page for a
+  // tournament with no series, which has no recap URL. Same rule the activity
+  // feed's completion row follows.
+  if (n.type === 'tournament_completed') {
+    return n.meta.series_slug && n.meta.starts_year
+      ? `/tournaments/${n.meta.series_slug}/${n.meta.starts_year}/recap`
+      : n.tournament_id ? `/tournaments/${n.tournament_id}` : '/tournaments'
   }
   // Straight to where the missing edition gets entered.
   if (n.type === 'admin_calendar_gap') return '/admin/tournaments/new'
@@ -167,6 +178,16 @@ export default async function NotificationsPage() {
                               ? <> — a year has passed since {meta.tournament_flag_emoji && <>{meta.tournament_flag_emoji} </>}<strong>{meta.tournament_location ?? meta.tournament_name}</strong></>
                               : <> — a year has passed since {meta.tournament_count ?? 0} of your tournaments</>}
                             . You still have <strong>{meta.points_remaining ?? 0} pts</strong>. Nothing is lost: your full record is on your profile.
+                          </>
+                        )}
+                        {n.type === 'tournament_completed' && (
+                          <>
+                            {meta.tournament_flag_emoji && <>{meta.tournament_flag_emoji} </>}
+                            <strong>{meta.tournament_location ?? meta.tournament_name ?? 'A tournament'}</strong> is over.
+                            {Number(meta.points ?? 0) > 0
+                              ? <> You finished <strong>#{meta.finish_rank ?? 0}</strong> of {meta.field_size ?? 0} with <strong>{meta.points ?? 0} pts</strong>.</>
+                              : <> You didn&apos;t score this time.</>}
+                            {' '}See how everyone did.
                           </>
                         )}
                         {n.type === 'admin_calendar_gap' && (

@@ -4,20 +4,50 @@ import { revalidateTag } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPointsForRound, calculateStreakMultiplier, committedPicks, buildFeedMap } from '@/lib/tennis'
 import type { DrawMatch, Round, TournamentCategory } from '@/lib/tennis'
-import { sendPointsAwardedEmail, isBotEmail } from '@/lib/email'
+import { sendPointsAwardedEmail, sendTournamentCompleteEmails, isBotEmail } from '@/lib/email'
 import type { PointsAwardedTournament } from '@/lib/email'
-import { isEmailEnabled } from '@/lib/email-preferences'
+import { isEmailEnabled, type EmailPreferences } from '@/lib/email-preferences'
 import { ROUND_LABEL, ROUND_ORDER } from '@/lib/tennis/my-tournament'
 import { checkTournamentTrophies, checkCronAchievements, checkChallengeAchievements, checkPerfectPrediction } from '@/lib/achievements/check'
 import { notifyAchievements } from '@/lib/achievements/notify'
 import { withCronLogging } from '@/lib/cron-logger'
-import { buildAndStoreRecap } from '@/lib/tournaments/recap'
+import { buildAndStoreRecap, getRecap, playerLabel } from '@/lib/tournaments/recap'
 
 // Allow up to 60 s — heavy scoring + ranking recalculation needs headroom.
 export const maxDuration = 60
 
 /** Recaps built per cron run — see step 14 for why this is capped. */
 const RECAPS_PER_RUN = 3
+
+/**
+ * Absolute base for links inside emails. Same fallback as `@/lib/email` — a
+ * relative href is meaningless in an inbox, and `.env.local` carries
+ * BASE_URL=localhost, so a script run from a dev machine must not be able to
+ * mail production users a localhost link.
+ */
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://quietplease.app'
+
+/**
+ * One row of `tournament_result_email_batch` (migration 090).
+ *
+ * Typed by hand for the reason `src/lib/tournaments/recap.ts` gives:
+ * `src/types/database.ts` is a `Record<string, any>` placeholder because the
+ * project is not linked locally and `supabase gen types` cannot run, so every
+ * Supabase call returns `any`. Declaring the shape at the boundary is what
+ * keeps the code consuming it typed.
+ */
+interface ResultEmailRow {
+  prediction_id: string
+  user_id: string
+  username: string | null
+  email: string | null
+  points: number | null
+  finish_rank: number | null
+  field_size: number | null
+  email_notifications: boolean | null
+  email_preferences: Partial<EmailPreferences> | null
+  unsubscribe_token: string | null
+}
 
 function isAuthorized(request: Request): boolean {
   if (process.env.NODE_ENV === 'development') return true
@@ -1274,6 +1304,190 @@ export async function GET(request: Request) {
       Sentry.captureException(recapErr)
     }
 
+    // ── 15. Tell every participant their tournament is over ───────────────
+    //
+    // Last, and after the recap, because the recap IS the payload: the podium,
+    // the champion and the CTA all come out of it. A completed tournament with
+    // no recap yet is skipped rather than mailed with a thin body — step 14
+    // caps itself at three per run, so the next run picks it up.
+    //
+    // Self-healing in the same shape as 12b/12c: driven off "completed, has a
+    // recap, bracket not yet stamped", with the stamp written only for the
+    // addresses Resend accepted. A failed chunk stays pending instead of
+    // vanishing.
+    //
+    // TWO independent guards against a mass send, because there is no undo on
+    // an email:
+    //   1. 090's backfill stamped every pre-existing completed bracket, so
+    //      history starts out already-mailed.
+    //   2. The window below, in case a bracket ever slips past guard 1 — a
+    //      re-completed tournament, a migration applied out of order, a row
+    //      inserted after the backfill ran. Without it, one such row would
+    //      re-mail the entire field of a tournament from April.
+    let resultEmailsSent = 0
+    if (!silent) {
+      try {
+        const RESULT_EMAIL_WINDOW_DAYS = 14
+        const windowStart = new Date(Date.now() - RESULT_EMAIL_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString()
+
+        // Completed recently, by completion time rather than by the calendar
+        // end date — the two disagree by days, because completing is a manual
+        // step (Cincinnati 2026 ends_at 08-20, completed_at 08-24).
+        const { data: freshlyCompleted, error: freshErr } = await supabase
+          .from('tournaments')
+          .select('id, name, location, flag_emoji, starts_year, completed_at, tournament_series(slug)')
+          .eq('status', 'completed')
+          .gte('completed_at', windowStart)
+          .order('completed_at', { ascending: false })
+          .limit(20)
+        if (freshErr) throw new Error(freshErr.message)
+
+        for (const t of freshlyCompleted ?? []) {
+          if (!hasBudget(5_000)) {
+            skippedForTime.push('result_emails')
+            break
+          }
+
+          const recap = await getRecap(t.id)
+          if (!recap) continue // no recap yet — next run
+
+          const flag = t.flag_emoji ?? null
+          const tName = t.location ?? t.name
+          const series = Array.isArray(t.tournament_series) ? t.tournament_series[0] : t.tournament_series
+          const recapHref = series?.slug && t.starts_year != null
+            ? `${BASE_URL}/tournaments/${series.slug}/${t.starts_year}/recap`
+            : `${BASE_URL}/tournaments/${t.id}`
+          const ctaLabel = series?.slug && t.starts_year != null ? 'Read the recap' : 'See the results'
+          const champion = recap.payload.champion_callers?.player
+          const podium = recap.payload.podium ?? []
+
+          // Drained in pages rather than one capped batch. The RPC returns at
+          // most PAGE rows, and a field larger than that would otherwise need
+          // one manual award-points run per page to finish mailing — and this
+          // cron has no schedule, so "the next run" is whenever someone
+          // remembers. Each pass stamps what it sent, so the next query
+          // naturally returns the following page.
+          //
+          // Bounded by the same time budget as everything else in this run: the
+          // loop stops on an exhausted page, on a budget check, or on an error.
+          const PAGE = 200
+          let drained = 0
+          while (hasBudget(5_000)) {
+            const { data: pending, error: batchErr } = await supabase
+              .rpc('tournament_result_email_batch', { p_tournament_id: t.id, p_limit: PAGE })
+            if (batchErr) {
+              // Destructured and checked: an error here returning an empty list
+              // looks exactly like "everyone has been mailed" and would retire
+              // the tournament silently.
+              console.error(`[award-points] result email batch failed for ${t.name}:`, batchErr.message)
+              break
+            }
+            if (!pending?.length) break
+            // Narrowed once, here, rather than an `any` on every callback below.
+            const rows = pending as ResultEmailRow[]
+
+            // Bots are stamped, never mailed. They are excluded here rather than
+            // in the SQL so they leave the pending set — at 101 bots in a field
+            // of 111, filtering them in SQL would rescan them on every run
+            // forever.
+            const bots = rows.filter(r => !r.email || isBotEmail(r.email))
+            const humans = rows.filter(r => r.email && !isBotEmail(r.email))
+
+            // Opted out: stamped too. Re-offering an email someone declined on
+            // every subsequent run is the same waste as the bots.
+            const optedOut = humans.filter(r =>
+              !isEmailEnabled(r.email_notifications, r.email_preferences, 'tournament_complete'))
+            const willSend = humans.filter(r =>
+              isEmailEnabled(r.email_notifications, r.email_preferences, 'tournament_complete'))
+
+            const accepted = await sendTournamentCompleteEmails(
+              willSend.map(r => ({
+                to: r.email!,
+                unsubscribeToken: r.unsubscribe_token ?? '',
+                username: r.username ?? '',
+                tournamentId: t.id,
+                tournamentName: tName,
+                tournamentFlagEmoji: flag,
+                championLabel: champion ? playerLabel(champion) : null,
+                points: r.points ?? 0,
+                finishRank: r.finish_rank ?? 0,
+                fieldSize: r.field_size ?? 0,
+                podium,
+                ctaHref: recapHref,
+                ctaLabel,
+              })),
+            )
+
+            // Stamp the sends, plus everyone who was never going to get one.
+            // Anything Resend rejected is absent from `accepted` and stays
+            // pending for the next run.
+            const toStamp = [
+              ...bots.map(r => r.prediction_id),
+              ...optedOut.map(r => r.prediction_id),
+              ...willSend.filter(r => accepted.has(r.email!)).map(r => r.prediction_id),
+            ]
+            if (toStamp.length > 0) {
+              const stampedAt = new Date().toISOString()
+              for (let i = 0; i < toStamp.length; i += 200) {
+                const { error: stampErr } = await supabase
+                  .from('predictions')
+                  .update({ result_emailed_at: stampedAt })
+                  .in('id', toStamp.slice(i, i + 200))
+                if (stampErr) {
+                  // The send already happened. Failing to stamp means a duplicate
+                  // next run, which is bad but recoverable; log loudly.
+                  console.error(`[award-points] result email stamp failed for ${t.name}:`, stampErr.message)
+                  Sentry.captureException(new Error(`result email stamp failed: ${stampErr.message}`))
+                }
+              }
+            }
+
+            // In-app notification for everyone who was actually mailed — the two
+            // go together, the same way draw-open pairs them, so someone who
+            // never opens email still finds the recap in the app.
+            if (accepted.size > 0) {
+              const notifRows = willSend
+                .filter(r => accepted.has(r.email!))
+                .map(r => ({
+                  user_id: r.user_id,
+                  type: 'tournament_completed',
+                  tournament_id: t.id,
+                  meta: {
+                    tournament_name: tName,
+                    tournament_location: t.location ?? '',
+                    tournament_flag_emoji: flag ?? '',
+                    finish_rank: r.finish_rank ?? 0,
+                    field_size: r.field_size ?? 0,
+                    points: r.points ?? 0,
+                    ...(series?.slug && t.starts_year != null
+                      ? { series_slug: series.slug, starts_year: t.starts_year }
+                      : {}),
+                  },
+                }))
+              if (notifRows.length > 0) {
+                const { error: notifErr } = await supabase.from('notifications').insert(notifRows)
+                if (notifErr) console.error('[award-points] result notification insert failed:', notifErr.message)
+              }
+            }
+
+            resultEmailsSent += accepted.size
+            drained += pending.length
+            console.log(`[award-points] result emails for ${t.name}: ${accepted.size} sent, ${bots.length} bots + ${optedOut.length} opted out stamped`)
+
+            // A short page means the pending set is exhausted. Also stop when
+            // nothing could be stamped — every row failed to send — because
+            // querying again would return the identical page forever.
+            if (pending.length < PAGE || toStamp.length === 0) break
+          }
+          if (drained > 0 && !hasBudget(5_000)) skippedForTime.push(`result_emails(${t.name})`)
+        }
+      } catch (resultEmailErr) {
+        // Never fails the run, for the same reason the recap step does not.
+        console.error('[award-points] tournament result email error:', resultEmailErr)
+        Sentry.captureException(resultEmailErr)
+      }
+    }
+
     // The public hub and edition pages render results, champions and status,
     // all of which this run can change. Bust the tags rather than leaving the
     // pages to the 5-minute ISR window — a finished final should show a
@@ -1308,6 +1522,7 @@ export async function GET(request: Request) {
         point_entries_created: ledgerRows.length,
         users_awarded: Object.keys(globalUserPointsDelta).length,
         auto_locks_applied: autoLocksApplied,
+        result_emails_sent: resultEmailsSent,
         points_by_user: globalUserPointsDelta,
         challenges_scored: challengesScored,
         challenges_expired: challengesExpired,

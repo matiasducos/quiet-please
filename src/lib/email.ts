@@ -536,6 +536,183 @@ export async function sendPointsAwardedEmail(opts: {
   })
 }
 
+/* ── Tournament complete ──────────────────────────────────────────────────── */
+
+/**
+ * The one email that says a tournament is OVER.
+ *
+ * Until this existed, a signed-in participant was never told. They got a
+ * "+380 pts" mail from whichever scoring run happened to catch the final —
+ * which reads as a mid-tournament update, because that is what it is every
+ * other time it arrives — and nothing else unless they podiumed. The only
+ * completion mail in the codebase went to anonymous players (award-points
+ * 12b/12c), so the people with accounts, the ones actually worth bringing
+ * back, heard the least.
+ *
+ * Sent to the whole field, so it carries a per-type unsubscribe for the same
+ * reason draw-open does: mail the user did not trigger by an action of their
+ * own needs "stop these" to be as easy to find as "stop all", or people reach
+ * for the spam button instead.
+ */
+export interface TournamentCompleteEmail {
+  to: string
+  unsubscribeToken: string
+  username: string
+  tournamentId: string
+  /** Location where we have one — matches how the tournament is named everywhere else. */
+  tournamentName: string
+  tournamentFlagEmoji: string | null
+  /** '🇫🇷 A. Fils' — the tennis player who won the title, not the bracket leader. */
+  championLabel: string | null
+  points: number
+  finishRank: number
+  fieldSize: number
+  podium: Array<{ username: string; points: number }>
+  /** Absolute URL. The recap when one is built, the edition page otherwise. */
+  ctaHref: string
+  ctaLabel: string
+}
+
+function tournamentCompleteSubject(o: TournamentCompleteEmail): string {
+  const flag = o.tournamentFlagEmoji ? `${o.tournamentFlagEmoji} ` : ''
+  // The subject leads with the result for anyone who has one. "How you
+  // finished" is the only part of this mail that is about the reader, and a
+  // subject line that opens with the tournament name is indistinguishable from
+  // the draw-open mail for the same event.
+  return o.points > 0
+    ? `You finished #${nf.format(o.finishRank)} — ${flag}${o.tournamentName}`
+    : `${flag}${o.tournamentName} is done`
+}
+
+function tournamentCompleteHtml(o: TournamentCompleteEmail): string {
+  // Same anchor every other email uses — the profile page gives the panel
+  // `id="email-preferences"` and a scroll margin precisely for these links.
+  const prefsHref = o.username
+    ? `${BASE_URL}/profile/${encodeURIComponent(o.username)}#email-preferences`
+    : undefined
+  const flag = o.tournamentFlagEmoji ? `${o.tournamentFlagEmoji} ` : ''
+
+  const champion = o.championLabel
+    ? `<tr><td style="padding:6px 0 0;font-family:Georgia,serif;font-size:14px;color:#6b6b6b;">
+         Champion: <strong style="color:#0d0d0d;">${o.championLabel}</strong>
+       </td></tr>`
+    : ''
+
+  // Someone who scored nothing is told how to get on the board rather than
+  // shown a last-place number — the same call drawOpenHtml makes, and for the
+  // same reason: "#111 of 111" reads as a reason not to come back.
+  const yourResult = o.points > 0
+    ? `
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;background:#ffffff;border:1px solid #e8e3d8;border-radius:3px;margin:0 0 24px;">
+        <tr>
+          <td style="padding:16px 18px;">
+            <p style="margin:0 0 6px;font-family:Georgia,serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8a867e;">How you finished</p>
+            <p style="margin:0;font-family:Georgia,serif;font-size:20px;color:#0d0d0d;">
+              <strong>#${nf.format(o.finishRank)}</strong>
+              <span style="font-size:14px;color:#6b6b6b;"> of ${nf.format(o.fieldSize)}</span>
+            </p>
+            <p style="margin:4px 0 0;font-family:Georgia,serif;font-size:13px;color:#6b6b6b;">${nf.format(o.points)} points from this tournament</p>
+          </td>
+        </tr>
+      </table>`
+    : `
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;background:#ffffff;border:1px solid #e8e3d8;border-radius:3px;margin:0 0 24px;">
+        <tr>
+          <td style="padding:16px 18px;">
+            <p style="margin:0 0 6px;font-family:Georgia,serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8a867e;">How you finished</p>
+            <p style="margin:0;font-family:Georgia,serif;font-size:16px;color:#0d0d0d;">No points this time.</p>
+            <p style="margin:4px 0 0;font-family:Georgia,serif;font-size:13px;color:#6b6b6b;">The next draw is a clean slate — one correct pick puts you back on the board.</p>
+          </td>
+        </tr>
+      </table>`
+
+  // The reader is bolded when they are on it. Seeing your own name in the top
+  // three is the whole point of showing a podium in an email.
+  const podium = o.podium.length
+    ? `
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 24px;">
+        <tr><td style="padding:0 0 8px;font-family:Georgia,serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8a867e;">Podium</td></tr>
+        ${o.podium.map((p, i) => {
+          const isYou = p.username === o.username
+          return `<tr>
+            <td style="padding:5px 0;font-family:Georgia,serif;font-size:14px;color:${isYou ? '#1a6b3c' : '#0d0d0d'};border-top:1px solid #e8e3d8;">
+              ${['🥇', '🥈', '🥉'][i] ?? ''} ${isYou ? `<strong>${p.username} (you)</strong>` : p.username}
+              <span style="float:right;color:#6b6b6b;">${nf.format(p.points)} pts</span>
+            </td>
+          </tr>`
+        }).join('')}
+      </table>`
+    : ''
+
+  return `
+      <div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#f5f2eb;">
+        <p style="font-size:12px;letter-spacing:0.08em;color:#6b6b6b;text-transform:uppercase;margin:0 0 24px;">Quiet Please</p>
+        <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 20px;">That's a wrap.</h1>
+
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 24px;padding:0;border-top:1px solid #e8e3d8;border-bottom:1px solid #e8e3d8;">
+          <tr>
+            <td style="padding:18px 0 0;font-family:Georgia,serif;font-size:19px;line-height:1.3;color:#0d0d0d;">
+              ${flag}${o.tournamentName}
+            </td>
+          </tr>
+          ${champion}
+          <tr><td style="padding:0 0 18px;"></td></tr>
+        </table>
+
+        ${yourResult}
+        ${podium}
+
+        <div style="text-align:center;">
+          <a href="${o.ctaHref}"
+             style="display:inline-block;background:#1a6b3c;color:#ffffff;text-decoration:none;padding:13px 28px;font-size:15px;border-radius:2px;">
+            ${o.ctaLabel} →
+          </a>
+        </div>
+        ${unsubscribeFooter(o.unsubscribeToken, 'tournament_complete', prefsHref)}
+      </div>`
+}
+
+/**
+ * Batched for the same reason draw-open is: this fans out to every participant
+ * in the tournament, and one HTTP round trip per recipient is what kills a
+ * serverless invocation. Resend takes 100 per request.
+ *
+ * Returns the addresses that were ACCEPTED, not a count. The caller stamps
+ * `predictions.result_emailed_at` from this list, so a chunk Resend rejected
+ * must not be reported as sent — those brackets have to stay pending for the
+ * next run. A count alone could not tell the caller WHICH ones to stamp.
+ */
+export async function sendTournamentCompleteEmails(
+  recipients: TournamentCompleteEmail[],
+): Promise<Set<string>> {
+  const accepted = new Set<string>()
+  if (!canSend() || recipients.length === 0) return accepted
+
+  for (let i = 0; i < recipients.length; i += RESEND_BATCH_LIMIT) {
+    const chunk = recipients.slice(i, i + RESEND_BATCH_LIMIT)
+    try {
+      const { error } = await resend!.batch.send(
+        chunk.map(r => ({
+          from: FROM,
+          replyTo: REPLY_TO,
+          to: r.to,
+          subject: tournamentCompleteSubject(r),
+          html: tournamentCompleteHtml(r),
+        })),
+      )
+      if (error) {
+        // Left out of `accepted` on purpose — the whole chunk stays pending.
+        console.error('[email] tournament-complete batch failed:', error.message)
+        continue
+      }
+      for (const r of chunk) accepted.add(r.to)
+    } catch (e) {
+      console.error('[email] tournament-complete batch threw:', e)
+    }
+  }
+  return accepted
+}
+
 export async function sendChallengeReceivedEmail(opts: {
   to: string
   challengerUsername: string

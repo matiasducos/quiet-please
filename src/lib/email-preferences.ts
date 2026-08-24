@@ -6,6 +6,7 @@ export const EMAIL_PREF_KEYS = [
   'challenge_received',
   'auto_predictions',
   'achievement_earned',
+  'tournament_complete',
 ] as const
 
 export type EmailPrefKey = (typeof EMAIL_PREF_KEYS)[number]
@@ -20,6 +21,7 @@ export const DEFAULT_EMAIL_PREFERENCES: EmailPreferences = {
   challenge_received: true,
   auto_predictions: true,
   achievement_earned: true,
+  tournament_complete: true,
 }
 
 /** Labels for the profile UI */
@@ -31,6 +33,7 @@ export const EMAIL_PREF_LABELS: Record<EmailPrefKey, { label: string; descriptio
   challenge_received: { label: 'Challenges',        description: 'When someone challenges you' },
   auto_predictions:   { label: 'Auto-predictions', description: 'When auto-predictions are made on your behalf' },
   achievement_earned: { label: 'Achievements',     description: 'When you earn a new achievement' },
+  tournament_complete:{ label: 'Tournament recap', description: 'When a tournament you played is over, with how you finished' },
 }
 
 /**
