@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import NewMessageButton from './NewMessageButton'
+import { useMessageEvents } from '@/lib/messages/useMessageEvents'
 
 type ConversationPreview = {
   id: string
@@ -49,11 +50,15 @@ export default function ConversationList({ userId }: { userId: string }) {
     }
   }, [])
 
+  // Load once, then refresh only when a message actually arrives. The 10-second
+  // poll this replaces ran for as long as the tab was open whether or not
+  // anything happened, so an idle /messages tab was six serverless invocations
+  // a minute, indefinitely.
   useEffect(() => {
     fetchConversations()
-    const interval = setInterval(fetchConversations, 10_000)
-    return () => clearInterval(interval)
   }, [fetchConversations])
+
+  useMessageEvents(userId, fetchConversations)
 
   if (loading) {
     return (

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import MessageInput from './MessageInput'
+import { useMessageEvents } from '@/lib/messages/useMessageEvents'
 
 type Message = {
   id: string
@@ -98,7 +99,15 @@ export default function ChatView({
     }
   }, [loading, scrollToBottom])
 
-  // Poll for new messages every 10s
+  const pollRef = useRef<(() => Promise<void>) | null>(null)
+
+  // Fetch new messages when one actually arrives, not on a timer.
+  //
+  // Kept as a fetch rather than reading the body straight off the broadcast:
+  // the payload carries only a conversation id by design (migration 091), so
+  // message text is still gated by RLS on the table rather than by the Realtime
+  // authorization policy. The round trip costs one invocation per incoming
+  // message instead of six per minute per open chat.
   useEffect(() => {
     if (loading) return
 
@@ -130,9 +139,14 @@ export default function ChatView({
       }
     }
 
-    const interval = setInterval(poll, 10_000)
-    return () => clearInterval(interval)
+    pollRef.current = poll
   }, [conversationId, loading, scrollToBottom])
+
+  useMessageEvents(userId, incomingConversationId => {
+    // Ignore traffic for the user's other conversations — this view only shows
+    // one, and the badge in the nav handles the rest.
+    if (incomingConversationId === conversationId) void pollRef.current?.()
+  })
 
   // Load older messages
   const loadMore = async () => {

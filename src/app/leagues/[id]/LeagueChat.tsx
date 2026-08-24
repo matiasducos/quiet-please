@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import LeagueChatInput from './LeagueChatInput'
+import { useLeagueMessageEvents } from '@/lib/messages/useMessageEvents'
 
 type Message = {
   id: string
@@ -94,6 +95,8 @@ export default function LeagueChat({
   }, [loading, scrollToBottom])
 
   // Poll for new messages every 10s
+  const pollRef = useRef<(() => Promise<void>) | null>(null)
+
   useEffect(() => {
     if (loading) return
 
@@ -116,9 +119,12 @@ export default function LeagueChat({
       }
     }
 
-    const interval = setInterval(poll, 10_000)
-    return () => clearInterval(interval)
+    pollRef.current = poll
   }, [leagueId, loading, scrollToBottom])
+
+  // Event-driven rather than a 10-second timer: an open league chat with nobody
+  // talking now costs nothing instead of six invocations a minute.
+  useLeagueMessageEvents(leagueId, () => { void pollRef.current?.() })
 
   // Load older messages
   const loadMore = async () => {
