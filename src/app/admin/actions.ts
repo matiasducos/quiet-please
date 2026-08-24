@@ -1209,6 +1209,23 @@ export async function getScoringStatus(): Promise<ScoringTournament[]> {
 // The re-run is SILENT (?silent=1): no points notifications, no emails, no
 // achievement notifications. Existing notifications are left untouched — this
 // is a repair tool, not a re-announcement.
+//
+// ⚠️ REPRICING TRAP, for ATP 250 and 500 events played before 2026-08-24.
+// The '250' and '500' rows of POINTS_TABLE were realigned to the real ATP
+// figures on that date (a 250 semifinal went from 45 to 100, roughly a
+// doubling across the board), and the decision was to apply that FORWARD ONLY —
+// the 2,807 ledger rows already written at the old rates were deliberately left
+// alone rather than reprice 8% of every point ever awarded.
+//
+// This tool does not know that. It scores from scratch against the CURRENT
+// table, so re-running an old 250/500 to fix one mis-entered result would also
+// silently double that tournament's points for everyone in it and move the
+// leaderboard. Slams and Masters are unaffected — their tables never changed.
+//
+// Before re-running a pre-2026-08-24 250 or 500: either accept the repricing
+// (it is at least consistent with what the FAQ now publishes), or fix the
+// result some other way. There is no per-tournament rate history to fall back
+// on.
 
 /**
  * Refuse a repair while an award-points run is in flight — mutating mid-run

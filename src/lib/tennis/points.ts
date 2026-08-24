@@ -24,34 +24,39 @@ export const POINTS_TABLE: Record<TournamentCategory, Partial<Record<Round, numb
     F:    600,
     // W = 1000
   },
-  // R64 exists on these two tiers only for draws larger than 32 — a 48-player
-  // field laid out in a 64 bracket, where the 16 seeds take byes and 32 players
-  // actually play. Winston-Salem 2026 was the first such event in the database,
-  // and until it arrived both tables started at R32; `getPointsForRound` ends in
-  // `?? 0`, so all 16 of its real first-round matches paid nothing and 315
-  // correct picks earned zero.
+  // These two were the odd ones out: grand_slam and masters_1000 above have
+  // always been the real ATP tables value for value, while 250 and 500 carried
+  // invented numbers sitting 40–55% below ATP (a 250 semifinal paid 45 against
+  // ATP's 100). Realigned 2026-08-24 so all four tiers mean the same thing.
   //
-  // Deliberately NOT the ATP value. ATP awards a first-round loser nothing at
-  // these tiers, and the top two tables here are the real ATP tables to the
-  // point — but a round with 16 live matches that cannot score is a dead round
-  // for players, so this departs from ATP on this one row and keeps the shape
-  // of the table it sits in (each round roughly double the one before).
+  // NO R64 ROW, and that is deliberate rather than an omission. A 48-player
+  // draw is laid out in a 64 bracket — 16 seeds take byes, 32 players play a
+  // real first round — so R64 matches genuinely exist at these tiers, and
+  // `getPointsForRound` ends in `?? 0`, so every one of them pays nothing.
+  // That is the ATP rule: a first-round loser at a 250 or 500 earns no ranking
+  // points at all. Winston-Salem 2026 is the first such event here and its 16
+  // first-round matches score zero because of this line. Do not "fix" it by
+  // adding an R64 row without deciding to diverge from ATP on purpose.
+  //
+  // The F rows are unreachable — every caller passes `isWinner` for round 'F',
+  // so `getPointsForRound` short-circuits to WINNER_POINTS — but they carry the
+  // real ATP runner-up figures anyway, so a reader is not misled and a future
+  // caller that stops forcing isWinner degrades to the right number instead of
+  // to a made-up one.
   '500': {
-    R64:  10,
-    R32:  20,
-    R16:  30,
-    QF:   60,
-    SF:   90,
-    F:    150,
+    R32:  25,
+    R16:  50,
+    QF:   100,
+    SF:   200,
+    F:    330,
     // W = 500
   },
   '250': {
-    R64:  3,
-    R32:  6,
-    R16:  13,
-    QF:   29,
-    SF:   45,
-    F:    80,
+    R32:  13,
+    R16:  25,
+    QF:   50,
+    SF:   100,
+    F:    165,
     // W = 250
   },
 }
