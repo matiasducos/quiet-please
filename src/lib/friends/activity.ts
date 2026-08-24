@@ -161,7 +161,7 @@ async function fetchTournamentEvents(
 
   const [{ data: tournaments }, { data: recentResults }, { data: viewerPreds, error: viewerPredsError }, { data: recapRows }] = await Promise.all([
     admin.from('tournaments')
-      .select('id, name, location, flag_emoji, status, starts_at, ends_at, starts_year, tournament_series(slug)')
+      .select('id, name, location, flag_emoji, status, starts_at, ends_at, completed_at, starts_year, tournament_series(slug)')
       .in('id', tournamentIds)
       .in('status', ['accepting_predictions', 'draw_published', 'in_progress', 'completed']),
     admin.from('match_results')
@@ -266,6 +266,30 @@ async function fetchTournamentEvents(
       })
     }
 
+    // Two different dates, on purpose — this row is the one place in the feed
+    // where "is this recent?" and "when did it happen?" have different answers.
+    //
+    // The WINDOW stays on ends_at, the tournament's calendar end. The DATE
+    // moves to completed_at, when the final result was actually entered. They
+    // routinely disagree by days, because completion is a manual step: Cincinnati
+    // 2026 has ends_at 08-20 and completed_at 08-24, Montreal 08-09 vs 08-14.
+    // Sorting on ends_at is what kept this row invisible — Cincinnati's recap
+    // was built and its row generated, then stamped four days into the past and
+    // buried under every Winston-Salem result played since. The dashboard takes
+    // the newest 15; it never got close.
+    //
+    // The window must NOT move to completed_at with it. 081's backfill set
+    // completed_at from max(match_results.scored_at), and scored_at only exists
+    // from 068 onwards — so twenty tournaments going back to Monte-Carlo in
+    // April all carry 2026-08-01T08:31:44, the moment the catch-up run scored
+    // them. Gating on that value would announce the entire clay season as
+    // freshly finished. ends_at is typed in by hand from the calendar and is
+    // immune to it.
+    //
+    // Residue: a tournament inside the window whose completed_at is one of
+    // those backfilled stamps shifts by a few days. Both dates are already old
+    // enough to sit near the bottom of the feed, so nothing is displaced.
+    const completedAt = t.completed_at ?? t.ends_at
     if (t.status === 'completed' && t.ends_at && t.ends_at >= since) {
       // Point at the recap when one exists. "Tournament completed" landing on
       // the edition page is a dead end — the reader already knows it finished,
@@ -279,7 +303,7 @@ async function fetchTournamentEvents(
       events.push({
         type: 'tournament', user_id: null, username: null,
         label: recapHref ? `${displayName} — recap is up` : `${displayName} — tournament completed`,
-        date: t.ends_at,
+        date: completedAt,
         href: recapHref ?? `/tournaments/${t.id}`,
       })
     }
