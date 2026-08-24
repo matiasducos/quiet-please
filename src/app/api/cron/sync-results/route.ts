@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { revalidateTag } from 'next/cache'
 import * as Sentry from '@sentry/nextjs'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { tennisAdapter } from '@/lib/tennis'
@@ -64,12 +65,28 @@ export async function GET(request: Request) {
           continue
         }
 
-        // Update tournament to in_progress
-        await supabase
+        // Update tournament to in_progress.
+        //
+        // `.select('id')` is not decoration: the update is conditional on the
+        // row still being `accepting_predictions`, so it is a no-op on every
+        // run after the first. Reading back the affected rows is what lets the
+        // cache bust below fire once, on the run that actually moved the
+        // tournament, rather than on every poll.
+        const { data: moved } = await supabase
           .from('tournaments')
           .update({ status: 'in_progress' })
           .eq('id', tournament.id)
           .eq('status', 'accepting_predictions')
+          .select('id')
+
+        if (moved && moved.length > 0) {
+          // Going live changes both the edition page and every "on now" list
+          // (homepage, /tournaments, the slam pages). This route busted neither,
+          // which was survivable only because those caches also carried a
+          // 60-second window. They no longer do — freshness is the tag's job now.
+          revalidateTag('tournament-detail', 'default')
+          revalidateTag('tournament-list', 'default')
+        }
 
         results.push({ name: tournament.name, status: 'synced', matches: matchResults.length })
       } catch (err) {
