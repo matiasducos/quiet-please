@@ -97,9 +97,34 @@ export default function Footer() {
         </div>
 
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t pt-4" style={{ borderColor: 'var(--chalk-dim)' }}>
-          <p style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+          {/* The copyright doubles as the site-wide link home. Every other
+              important URL here got a footer link on the "an orphan is an
+              orphan whatever the sitemap says" argument — and the homepage,
+              which everyone assumes is well linked, was the one page that
+              never did. /tournaments, /faq and /leaderboard linked to it
+              exactly zero times; only the marketing nav did, and that nav is
+              not on the pages people actually land on.
+
+              That matters beyond crawlability. rel=canonical is a hint, and
+              internal links are part of what Google weighs against it, so the
+              apex homepage should not be the one URL with nothing pointing at
+              it. The brand name as anchor text is the point rather than
+              decoration: it ties "Quiet Please" to https://quietplease.app/ .
+
+              NOT the cause of the Search Console "Duplicate: Google has
+              chosen a different canonical than the user" error on / . URL
+              Inspection showed Google had selected https://www.quietplease.app/
+              — a www-vs-apex split. www already 308s to the apex for Googlebot,
+              /robots.txt and /sitemap.xml included, so there is nothing to fix
+              here; that one is settled in Search Console and by repointing
+              external links at the apex hostname. */}
+          <Link
+            href="/"
+            className="inline-flex items-center min-h-[44px]"
+            style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}
+          >
             © {new Date().getFullYear()} Quiet Please
-          </p>
+          </Link>
           {/* min-h-[44px] keeps these tappable on a phone — at their 0.75rem font
               size the natural hit area is only ~18px tall. */}
           <div className="flex items-center flex-wrap gap-2">
