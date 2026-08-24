@@ -244,21 +244,22 @@ what remains, roughly in impact order.
 
 ## Queued (Not Yet Scoped)
 
-### 250/500 points tables don't match ATP (decided 2026-08-24: leave as-is for now)
-- `grand_slam` and `masters_1000` in `POINTS_TABLE` are the **real ATP tables**,
-  value for value. `'250'` and `'500'` are not — they sit 40–55% below ATP
-  (250 SF pays 45 vs ATP's 100; 500 SF pays 90 vs 200).
-- Surfaced while fixing Winston-Salem's R64. Decision was to add R64 only and
-  leave the rest untouched, because realigning would reprice **2,807 ledger rows
-  / 74,583 pts — 8% of all points ever awarded** across 29 tournaments and move
-  the leaderboard.
-- If it is ever revisited: ATP values are 250 → R32 13, R16 25, QF 50, SF 100;
-  500 → R32 25, R16 50, QF 100, SF 200. `F` rows are dead config either way
-  (`award-points` passes `isWinner` for every `F`, so the final always pays
-  `WINNER_POINTS`).
-- Re-scoring is per-tournament via `rerunTournamentPoints`; note a re-run does
-  **not** re-evaluate achievements.
-
+### ⚠️ 250/500 points realigned to ATP — forward only (2026-08-24)
+- `POINTS_TABLE`'s `'250'` and `'500'` rows were invented numbers sitting 40–55%
+  below ATP; `grand_slam` and `masters_1000` were always the real ATP tables.
+  All four now match ATP: 250 → R32 13, R16 25, QF 50, SF 100, F 165;
+  500 → R32 25, R16 50, QF 100, SF 200, F 330.
+- **Applied forward only.** The 2,807 ledger rows already written at the old
+  rates (74,583 pts, ~8% of all points ever awarded, across 29 tournaments)
+  were left untouched rather than reprice the leaderboard.
+- **The trap this leaves:** `rerunTournamentPoints` scores from scratch against
+  the *current* table, so re-running a pre-2026-08-24 250/500 to fix one bad
+  result would silently roughly double that event's points for everyone in it.
+  Warning comment sits above the function in `src/app/admin/actions.ts`.
+- **No R64 row, on purpose.** A 48-draw's first round is R64 and ATP pays a
+  first-round loser nothing at these tiers, so those matches score zero —
+  Winston-Salem 2026's 16 first-round matches included. Adding an R64 row means
+  deciding to diverge from ATP; don't do it by accident.
 
 ### Season-Long Narrative in Notifications
 - "You're currently ranked #47 — Wimbledon starts in 8 weeks and 2,400 points are on the table"
