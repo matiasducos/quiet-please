@@ -176,7 +176,13 @@ CREATE TRIGGER trg_messages_broadcast_unread_read
 --
 -- SELECT is the only verb granted. Clients listen; only the triggers above,
 -- which run as SECURITY DEFINER, may send.
-ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY;
+--
+-- NOTE: do NOT `ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY` here.
+-- That table is owned by supabase_realtime_admin, not postgres, so the dashboard
+-- SQL editor cannot alter it — it fails with "42501: must be owner of table
+-- messages". It is also unnecessary: Supabase ships that table with RLS already
+-- enabled, which is why a private channel with no policy rejects every subscribe
+-- rather than allowing them.
 
 DROP POLICY IF EXISTS "realtime_own_user_topic_select" ON realtime.messages;
 CREATE POLICY "realtime_own_user_topic_select"
