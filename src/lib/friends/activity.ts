@@ -11,8 +11,10 @@ export type ActivityItem = {
   href?: string
   /**
    * For 'result' rows only: how the *viewer's* own global bracket did on that
-   * match. 'correct' means point_ledger paid them for it, not merely that the
-   * live pick matches the winner — see the comment at the query.
+   * match. 'correct' means point_ledger paid them for it, or — while the match
+   * is entered but not yet scored — that their pick names the winner. The
+   * ledger is preferred wherever it has an answer; see the comment at the query
+   * for why the order matters.
    *
    * Absent in two cases, both of which must render as no colour rather than as
    * a miss:
@@ -313,15 +315,30 @@ async function fetchTournamentEvents(
       const score = r.score ? ` ${r.score}` : ''
 
       // Paid wins over everything, so an edited bracket can't turn a match the
-      // viewer was actually paid for into a miss. Only then fall back to the
-      // live pick to tell "had a pick that earned nothing" from "no pick".
+      // viewer was actually paid for into a miss. Only then fall back to
+      // comparing the pick with the winner, which is what covers the window
+      // between a result being entered and award-points scoring it.
       const bracket = viewerBrackets.get(r.tournament_id)
       const pick = bracket?.picks[r.external_match_id]
       let outcome: ActivityItem['outcome']
       if (paidMatchIds.has(r.id)) {
+        // Authoritative, and it survives a later edit to the bracket.
         outcome = 'correct'
       } else if (pick !== undefined && !bracket!.locked.has(r.external_match_id)) {
-        outcome = 'wrong'
+        // Not paid — which does NOT mean they got it wrong. A result is visible
+        // here the moment it is entered, but it only pays once award-points has
+        // scored it, and that gap is routinely minutes and occasionally hours:
+        // on 2026-08-24, 16 of 22 Winston-Salem R64 results sat unscored while
+        // the feed was already showing them. Treating unpaid as a miss painted
+        // every correct pick in that window red.
+        //
+        // So fall back to the pick itself. Safe precisely because it is a
+        // fallback: the ledger still wins above it, so the 68-of-5173 paid
+        // matches whose current pick no longer matches the winner stay green,
+        // which is the case this ordering exists to protect. And a pick made
+        // after the match started is already excluded by the `locked` guard, so
+        // what reaches this line was chosen before the result was known.
+        outcome = pick === r.winner_external_id ? 'correct' : 'wrong'
       }
 
       events.push({
