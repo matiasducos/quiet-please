@@ -277,7 +277,15 @@ export const getSeriesHub = (slug: string): Promise<SeriesHub | null> =>
       return { series, editions: summaries, featuredYear }
     },
     ['tournament-series-hub', slug],
-    { revalidate: 300, tags: ['tournament-detail', 'tournament-list'] },
+    // Backstop only — every writer that adds, completes or reverts an edition
+    // busts one of these tags (audited across admin/actions.ts and the sync
+    // crons). Kept long because SlamLanding reads this, and a short window here
+    // becomes the revalidate of all four slam landing pages.
+    //
+    // getEdition() below deliberately stays at 300: its page is dynamic, so a
+    // longer window buys no cached renders, and it is the most
+    // result-sensitive cache in the app.
+    { revalidate: 3600, tags: ['tournament-detail', 'tournament-list'] },
   )()
 
 /** One edition: the series, plus full detail for each tour that has a row. */

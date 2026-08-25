@@ -91,7 +91,10 @@ const getAllSlamTournaments = unstable_cache(
     })
   },
   ['slam-tournaments'],
-  { revalidate: 300, tags: ['tournament-list'] },
+  // Tag-driven, like every other tournament list. The window is a backstop —
+  // see LIST_BACKSTOP in lib/tournaments/cached.ts for why short windows here
+  // silently become the revalidate of the whole slam page.
+  { revalidate: 3600, tags: ['tournament-list'] },
 )
 
 /** Statuses where a bracket can still be filled in. */
@@ -191,7 +194,8 @@ export async function getSlamPerformers(editions: SlamEditions): Promise<string[
       return [...names].sort((a, b) => a.localeCompare(b)).slice(0, MAX_PERFORMERS)
     },
     ['slam-performers', ...ids],
-    { revalidate: 300, tags: ['tournament-detail', 'tournament-list'] },
+    // Draw contents change only on a draw write, which busts tournament-detail.
+    { revalidate: 3600, tags: ['tournament-detail', 'tournament-list'] },
   )()
 }
 

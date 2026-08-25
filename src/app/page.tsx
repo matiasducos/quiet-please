@@ -92,9 +92,17 @@ const getHomepageData = unstable_cache(
   },
   ['homepage-data'],
   // Tagged so a completion, a revert or an admin rebuild drops this cache
-  // rather than leaving a finished tournament missing from the homepage for
-  // five minutes — or worse, a reverted one still claiming a champion.
-  { revalidate: 300, tags: ['tournament-list', 'tournament-recaps'] }
+  // rather than leaving a finished tournament missing from the homepage — or
+  // worse, a reverted one still claiming a champion.
+  //
+  // The window is an hour rather than five minutes because the tags, not the
+  // clock, are what keep this page correct, and a short window here is pure
+  // cost: the homepage renders to 145 KB of HTML (the largest page in the app)
+  // and at current traffic almost every visit arrived after the 5-minute window
+  // had expired, so nearly every visitor paid a full regeneration and the cache
+  // never got a hit. An hour lets the cache actually amortise while every write
+  // path that changes what is shown here still busts it immediately.
+  { revalidate: 3600, tags: ['tournament-list', 'tournament-recaps'] }
 )
 
 // ── Static bracket mock ─────────────────────────────────────────────────────

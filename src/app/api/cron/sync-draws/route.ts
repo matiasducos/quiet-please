@@ -172,14 +172,22 @@ export async function GET(request: Request) {
       // Main draws have named players. Use this to distinguish the two.
       const hasPlayers = draw.matches.some(m => m.player1 !== null || m.player2 !== null)
 
+      // Both branches below move the tournament into a status that
+      // ON_NOW_STATUSES matches, which changes what the homepage, /tournaments
+      // and the four slam pages list. Those surfaces read `tournament-list`
+      // caches, so the tag has to be busted here or the new status is invisible
+      // to them until the time window happens to expire. `tournament-detail`
+      // above is not enough — it covers the edition page, not the lists.
       if (tournament.status === 'upcoming' && !hasPlayers) {
         // Qualifying / shell bracket synced — move to draw_published but don't notify yet.
         await supabase.from('tournaments').update({ status: 'draw_published' }).eq('id', tournament.id)
+        revalidateTag('tournament-list', 'default')
         console.log(`[sync-draws] "${tournament.name}" → draw_published (qualifying draw, no players yet)`)
 
       } else if ((tournament.status === 'upcoming' || tournament.status === 'draw_published') && hasPlayers) {
         // Main draw now has named players — open predictions and notify all users.
         await supabase.from('tournaments').update({ status: 'accepting_predictions' }).eq('id', tournament.id)
+        revalidateTag('tournament-list', 'default')
 
         // Shared with the two admin publish paths (saveManualDraw / buildDraw)
         // so an automated sync and a hand-entered draw announce identically —

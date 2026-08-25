@@ -413,6 +413,15 @@ export async function saveManualResults(
       .eq('status', 'accepting_predictions')
   }
 
+  // Results are entered by hand here (sync-results is idle by design), so this
+  // is the main path by which a result reaches the site — and it busted no
+  // cache at all. Every other write path in this file revalidates; this one was
+  // missed, and a 300-second window on getEdition() was the only reason a
+  // freshly entered result showed up at all. `markInProgress` additionally
+  // changes what the "on now" lists contain, hence the list tag too.
+  revalidateTag('tournament-detail', 'default')
+  if (markInProgress) revalidateTag('tournament-list', 'default')
+
   return { ok: true, count: rows.length }
 }
 

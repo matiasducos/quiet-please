@@ -185,7 +185,7 @@ export default function Nav({ username, activePage, userId, deletionRequestedAt 
                 <>
                   <PostHogIdentify userId={userId} username={username!} />
                   <Suspense fallback={null}>
-                    <ChatBubbleIconServer userId={userId} />
+                    <ChatBubbleIconServer />
                   </Suspense>
                   <Suspense fallback={null}>
                     <NotificationBell userId={userId} />

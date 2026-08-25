@@ -8,6 +8,26 @@ import { createAdminClient } from '@/lib/supabase/admin'
 // `external_id` and `is_manual` ride along so callers can apply the same two
 // exemptions the predict page does: the sandbox tournament, and hand-entered
 // tournaments, which are not subject to the weekly slot limit.
+/**
+ * Backstop window for the shared tournament lists.
+ *
+ * These three caches are invalidated by tag, not by clock: every writer that
+ * can change a tournament's status (admin actions, award-points, sync-draws,
+ * sync-results) fires revalidateTag('tournament-list'). The hour here is a
+ * safety net for a writer nobody has written yet, not the freshness mechanism.
+ *
+ * It was 60 seconds, and that was expensive in a way that is easy to miss.
+ * Next reduces a route's revalidate to the SHORTEST window of any cache entry
+ * the render touched, so this value silently became the revalidate for every
+ * page that reads these lists — including the four slam landing pages, which
+ * declare `revalidate = 300` and were regenerating every 60s because
+ * SlamLanding calls getOnNowTournaments() directly. Those pages are prerendered
+ * marketing surfaces; regenerating them on a one-minute clock cost a full
+ * server render per minute per page for content that only changes when an
+ * admin publishes a draw.
+ */
+const LIST_BACKSTOP = 3600
+
 const TOURNAMENT_FIELDS =
   'id, name, tour, surface, category, starts_at, ends_at, status, location, flag_emoji, external_id, is_manual, starts_year, tournament_series(slug)'
 
@@ -35,7 +55,7 @@ function withEditionRef<T extends { starts_year?: number | null; tournament_seri
 
 /**
  * Cached query for upcoming tournaments (shared across all users).
- * Revalidates every 60s or when tournament-list tag is busted.
+ * Invalidated by the tournament-list tag; see LIST_BACKSTOP for the window.
  *
  * No caller since PlayingNow merged its two lists into `getOnNowTournaments` —
  * kept because "what is coming up" is a different question from "what can I act
@@ -54,12 +74,12 @@ export const getUpcomingTournaments = unstable_cache(
     return withEditionRef(data ?? [])
   },
   ['upcoming-tournaments'],
-  { revalidate: 60, tags: ['tournament-list'] },
+  { revalidate: LIST_BACKSTOP, tags: ['tournament-list'] },
 )
 
 /**
  * Cached query for live (in_progress) tournaments (shared across all users).
- * Revalidates every 60s or when tournament-list tag is busted.
+ * Invalidated by the tournament-list tag; see LIST_BACKSTOP for the window.
  */
 export const getLiveTournaments = unstable_cache(
   async (limit: number = 4) => {
@@ -74,7 +94,7 @@ export const getLiveTournaments = unstable_cache(
     return withEditionRef(data ?? [])
   },
   ['live-tournaments'],
-  { revalidate: 60, tags: ['tournament-list'] },
+  { revalidate: LIST_BACKSTOP, tags: ['tournament-list'] },
 )
 
 /**
@@ -135,5 +155,5 @@ export const getOnNowTournaments = unstable_cache(
     return withEditionRef((data ?? []).sort(compareOnNow).slice(0, limit))
   },
   ['on-now-tournaments'],
-  { revalidate: 60, tags: ['tournament-list'] },
+  { revalidate: LIST_BACKSTOP, tags: ['tournament-list'] },
 )
