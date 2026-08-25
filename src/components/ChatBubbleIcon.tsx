@@ -28,39 +28,56 @@ function ChatIcon() {
 
 export default function ChatBubbleIcon({
   initialCount,
-  userId,
 }: {
   initialCount: number
-  userId: string
 }) {
   const [unreadCount, setUnreadCount] = useState(initialCount)
 
-  // Push, not poll.
+  // Read the count straight from Postgres, not from a Vercel route.
   //
   // This used to fetch /api/messages/unread-count every 10 seconds, from the
-  // nav, on every page. One signed-in user with a tab open for an hour was 360
-  // serverless invocations, and the cost scaled with concurrent users rather
-  // than with anything a user actually did — at 100 concurrent users it was
-  // ~8.6 CPU-hours a day against a 4-hour monthly budget.
+  // nav, on every page: 360 serverless invocations per open tab per hour,
+  // scaling with concurrent users rather than with anything a user did. At 100
+  // concurrent users that single badge would have cost more Active CPU per day
+  // than the plan allows per month.
   //
-  // The count now arrives from Postgres over a private Realtime topic, computed
-  // by a trigger (migration 091). The badge costs zero Vercel invocations no
-  // matter how long the tab stays open, so the whole growth curve is gone.
+  // The interval was never the problem — its destination was. A request the
+  // browser sends directly to Supabase never touches a Fluid function, so this
+  // costs zero Active CPU no matter how often it runs. my_unread_message_count()
+  // derives the user from the session, so there is no id to tamper with and RLS
+  // still governs everything.
   //
-  // `initialCount` still comes from the server render, so the badge is correct
-  // in the first paint and this only ever applies deltas on top of it.
+  // (Realtime push would be nicer still, but private channels need an RLS policy
+  // on realtime.messages, which is owned by supabase_realtime_admin and cannot be
+  // altered from this project. See migration 091.)
   useEffect(() => {
-    const supabase = createClient()
-    const channel = supabase
-      .channel(`user:${userId}`, { config: { private: true } })
-      .on('broadcast', { event: 'unread' }, ({ payload }) => {
-        const next = (payload as { count?: number })?.count
-        if (typeof next === 'number') setUnreadCount(next)
-      })
-      .subscribe()
+    let cancelled = false
 
-    return () => { void supabase.removeChannel(channel) }
-  }, [userId])
+    const refresh = async () => {
+      // Skip while the tab is hidden. A backgrounded tab has nobody looking at
+      // the badge, and this is the difference between an idle tab costing
+      // nothing and costing a query a minute for as long as it stays open.
+      if (document.visibilityState !== 'visible') return
+
+      const supabase = createClient()
+      const { data, error } = await supabase.rpc('my_unread_message_count')
+      if (!cancelled && !error && typeof data === 'number') setUnreadCount(data)
+    }
+
+    // Refresh when the tab comes back to the foreground — that is when a stale
+    // badge is actually visible, and it makes the interval a backstop rather
+    // than the main mechanism.
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('focus', refresh)
+    const interval = setInterval(refresh, 60_000)
+
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('focus', refresh)
+      clearInterval(interval)
+    }
+  }, [])
 
   return (
     <Link

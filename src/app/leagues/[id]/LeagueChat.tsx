@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import LeagueChatInput from './LeagueChatInput'
-import { useLeagueMessageEvents } from '@/lib/messages/useMessageEvents'
 
 type Message = {
   id: string
@@ -95,12 +94,18 @@ export default function LeagueChat({
   }, [loading, scrollToBottom])
 
   // Poll for new messages every 10s
-  const pollRef = useRef<(() => Promise<void>) | null>(null)
-
   useEffect(() => {
     if (loading) return
 
     const poll = async () => {
+      // Skipped while the tab is hidden. These three chat views still poll a
+      // Vercel route — unlike the nav badge, they need message bodies with
+      // sender details, which is a bigger change than the deadline allows — but
+      // a backgrounded tab has nobody reading it, so it should cost nothing. The
+      // interval is also 30s rather than 10s: these are bounded by "someone is
+      // actively on a chat page", which is a far smaller population than the nav
+      // badge was, and the visible-tab case still feels live.
+      if (document.visibilityState !== 'visible') return
       if (!lastTimestampRef.current) return
       try {
         const res = await fetch(
@@ -119,12 +124,13 @@ export default function LeagueChat({
       }
     }
 
-    pollRef.current = poll
+    const interval = setInterval(poll, 30_000)
+    document.addEventListener('visibilitychange', poll)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', poll)
+    }
   }, [leagueId, loading, scrollToBottom])
-
-  // Event-driven rather than a 10-second timer: an open league chat with nobody
-  // talking now costs nothing instead of six invocations a minute.
-  useLeagueMessageEvents(leagueId, () => { void pollRef.current?.() })
 
   // Load older messages
   const loadMore = async () => {
