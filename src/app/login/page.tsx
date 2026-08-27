@@ -37,6 +37,10 @@ const AUTH_ERRORS: Record<string, string> = {
   auth_callback_failed:
     'We could not complete that sign-in. If you used Facebook, check that you allowed '
     + 'access to your email address — an account cannot be created without one.',
+  reset_link_invalid:
+    'That password reset link did not work. It may have expired, been used already, or '
+    + 'been opened in a different browser from the one that asked for it — links are tied '
+    + 'to the browser that requested them. Use “Forgot?” above to send a fresh one.',
 }
 
 function LoginForm() {
@@ -107,7 +111,13 @@ function LoginForm() {
                 onFocus={e => e.target.style.borderColor='var(--court)'} onBlur={e => e.target.style.borderColor='var(--chalk-dim)'} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.05em' }}>PASSWORD</label>
+              <div className="flex items-baseline justify-between gap-3">
+                <label style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.05em' }}>PASSWORD</label>
+                {/* Beside the field, not buried under the button: someone who
+                    cannot remember their password finds out here, not after a
+                    failed attempt. */}
+                <Link href="/forgot-password" style={{ fontSize: '0.75rem', color: 'var(--court)' }}>Forgot?</Link>
+              </div>
               <input type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••"
                 className="w-full px-4 py-3 rounded-sm text-sm outline-none"
                 style={{ background: 'white', border: '1.5px solid var(--chalk-dim)' }}

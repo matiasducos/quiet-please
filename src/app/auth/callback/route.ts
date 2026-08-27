@@ -88,5 +88,11 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${origin}${next}`)
     }
   }
-  return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`)
+  // The failure copy has to match the flow that failed. A recovery link that
+  // does not redeem is the same code path as a broken OAuth round trip, but
+  // "check you allowed access to your email address" is nonsense advice for
+  // someone who just clicked a reset link — and the real causes (expired, used,
+  // opened in another browser) are ones they can act on.
+  const failure = next.startsWith('/reset-password') ? 'reset_link_invalid' : 'auth_callback_failed'
+  return NextResponse.redirect(`${origin}/login?error=${failure}`)
 }
