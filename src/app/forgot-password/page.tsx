@@ -33,13 +33,33 @@ export default function ForgotPasswordPage() {
       redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent('/reset-password')}`,
     })
     setLoading(false)
-    // Rate limiting is the one failure worth surfacing — Supabase caps recovery
-    // mail per address, and a silent "check your inbox" for a mail that was
-    // never sent is worse than the truth. Everything else is reported as
-    // success: telling a stranger which addresses have accounts here turns the
-    // form into an account-enumeration oracle.
+    // What may and may not be reported.
+    //
+    // Only ONE class of failure has to stay hidden: "no account for that
+    // address". Saying it turns the form into an account-enumeration oracle,
+    // so a 400 is reported as success like a real send.
+    //
+    // Everything else is safe to surface, because it does not depend on
+    // whether the account exists — and hiding it is actively harmful. This
+    // page shipped reporting success on every non-429 outcome, and the very
+    // first request it took in production was a 500 ("Error sending recovery
+    // email" — Supabase Auth had no working SMTP). The user was told to check
+    // an inbox nothing was ever sent to, and the failure was invisible from
+    // both ends. A reset form that lies about sending is worse than no reset
+    // form at all: it converts a fixable outage into a user who thinks they
+    // are out of options.
     if (error?.status === 429) {
-      setError('Too many requests. Wait a few minutes before trying again.')
+      setError('Too many requests. Wait a few minutes, then try again.')
+      return
+    }
+    if (error && error.status !== 400) {
+      setError(
+        'Something went wrong on our side sending that email — this is not you. '
+        + 'Write to support@quietplease.app and we will get you back in.',
+      )
+      // Sentry is already wired app-wide; this is the one signal that would
+      // otherwise never reach it, since the page renders a success state.
+      console.error('[forgot-password] recovery send failed:', error.status, error.message)
       return
     }
     setSent(true)
