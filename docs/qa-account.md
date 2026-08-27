@@ -18,12 +18,21 @@ that domain **can never be sent mail**, so award-points, auto-predict and draw
 announcements can all be fired at this account without anything reaching a real
 inbox.
 
-## No password exists
+## No password by default
 
 `scripts/qa-user.mjs create` calls `auth.admin.createUser` with no password
-field, so the account can only be entered through a one-time link minted by the
-service role. There is no credential to store, share, leak or rotate — which is
-also why Claude can set the account up but cannot sign itself in unaided.
+field, so a freshly created account can only be entered through a one-time link
+minted by the service role. There is no credential to store, share, leak or
+rotate — which is also why Claude can set the account up but cannot sign itself
+in unaided.
+
+Verifying the password-recovery flow (PR for `feat/password-reset`, 2026-08-27)
+set one on the live QA account as a side effect: the reset form ends in a real
+`auth.updateUser({ password })`, and there is no way to prove that call works
+without leaving a password behind. It is deliberately **not** written down here.
+Clear it whenever you like — `auth.admin.updateUserById(id, { password: null })`
+from a service-role script — or keep it, which is what makes step 2 of the auth
+intent checklist in `.claude/todo/qa-next.md` testable at all.
 
 ## Commands
 

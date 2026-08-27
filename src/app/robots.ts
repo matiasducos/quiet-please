@@ -35,6 +35,13 @@ export default function robots(): MetadataRoute.Robots {
           '/onboarding',
           '/welcome',
           '/check-email',
+          // Password recovery: /reset-password only works with a live recovery
+          // session, and /forgot-password is a thin near-duplicate of /login
+          // with nothing to rank for. Both are noindex in their layouts too —
+          // robots.txt stops the crawl, the meta tag stops an already-known URL
+          // from being indexed anyway.
+          '/forgot-password',
+          '/reset-password',
           '/unsubscribed',
           '/auth/',
         ],
