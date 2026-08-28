@@ -107,6 +107,25 @@ export function favouriteLabel(name: string, count: number, pct: number | null):
  * content column starts. The square is half the height but carries a
  * single-line title and no podium, so it lands close to the same figure.
  */
+/**
+ * How many named picks fit under the champion on a picks card.
+ *
+ * Budgeted against the worst case, which is Winston-Salem Open: a title that
+ * wraps to two lines, a champion block, the points strip, and the call to
+ * action. The CTA is the one element that cannot be dropped — a card nobody
+ * can act on did nothing — so the picks give way to it, not the reverse.
+ *
+ * Six picks alongside the points strip overflowed, and the way it failed is
+ * the reason these numbers are measurements rather than taste: Satori
+ * compresses instead of clipping, so nothing was cut off. The call to action
+ * was simply printed *through* the points block, both perfectly legible and
+ * on top of each other. Nothing warns you; you have to render it and look.
+ */
+export function picksCapacity(size: CardSize, hasStanding: boolean): number {
+  if (size === 'story') return hasStanding ? 4 : 7
+  return hasStanding ? 2 : 4
+}
+
 export function statsCapacity(size: CardSize, hasPodium: boolean): number {
   if (size === 'story') return hasPodium ? 3 : 4
   return 3

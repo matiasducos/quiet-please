@@ -318,6 +318,7 @@ export default function BracketPredictor({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [slotError, setSlotError] = useState<string | null>(null)
+  const [sharing, setSharing] = useState(false)
   const [unlocking, setUnlocking] = useState(false)
   const [unlockError, setUnlockError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
@@ -716,6 +717,65 @@ export default function BracketPredictor({
       }
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
+  }
+
+  /**
+   * Share the bracket — as a picture where the platform allows one.
+   *
+   * "Share picks" used to copy a URL and stop. On a phone that is a link with
+   * no image, and Instagram will not take a link at all: Stories sharing runs
+   * on Android implicit intents and iOS custom URL schemes behind a Facebook
+   * App ID, none of which exist in a browser. What a browser *can* do is hand
+   * the OS share sheet a file, and Instagram is a target in it.
+   *
+   * So: fetch the rendered story card, share the file, and let the user pick
+   * Instagram — one tap more than a native app would need. The caption cannot
+   * ride along (Instagram drops shared text), which is why the invitation and
+   * the URL are painted into the image itself.
+   *
+   * Desktop, and any browser without file sharing, gets the old behaviour.
+   */
+  const handleShare = async () => {
+    if (!shareUrl || sharing) return
+    const link = `${window.location.origin}${shareUrl}`
+
+    const copyLink = () => {
+      navigator.clipboard.writeText(link).then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      })
+    }
+
+    // navigator.share must be called from the click that started it. An await
+    // before the check is fine; an await before share() is not on iOS, so the
+    // file is fetched first and share() is the next thing that happens.
+    if (typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function') {
+      copyLink()
+      return
+    }
+
+    setSharing(true)
+    try {
+      const res = await fetch(`${shareUrl}/story`)
+      if (!res.ok) { copyLink(); return }
+      const blob = await res.blob()
+      const file = new File([blob], `${username || 'bracket'}-${tournament.id}.png`, { type: 'image/png' })
+
+      if (!navigator.canShare({ files: [file] })) { copyLink(); return }
+
+      await navigator.share({
+        files: [file],
+        // Carried where the target accepts it. Instagram will not, which is why
+        // the same words are on the card.
+        text: `Check my ${tournament.name} predictions and challenge me — ${link}`,
+      })
+    } catch (e) {
+      // AbortError is the user closing the sheet; anything else falls back to
+      // the behaviour this button has always had rather than dead-ending.
+      if ((e as Error)?.name !== 'AbortError') copyLink()
+    } finally {
+      setSharing(false)
+    }
   }
 
   /**
@@ -1244,17 +1304,12 @@ export default function BracketPredictor({
             </span>
             {shareUrl && (
               <button
-                onClick={() => {
-                  const url = `${window.location.origin}${shareUrl}`
-                  navigator.clipboard.writeText(url).then(() => {
-                    setCopied(true)
-                    setTimeout(() => setCopied(false), 2000)
-                  })
-                }}
-                className="ml-auto px-3 py-1 rounded-sm border text-xs transition-colors flex-shrink-0"
+                onClick={handleShare}
+                disabled={sharing}
+                className="ml-auto px-3 py-1 rounded-sm border text-xs transition-colors flex-shrink-0 disabled:opacity-40"
                 style={{ borderColor: 'var(--chalk-dim)', color: copied ? 'var(--court)' : 'var(--muted)', background: 'white' }}
               >
-                {copied ? 'Copied!' : 'Share picks'}
+                {sharing ? 'Preparing…' : copied ? 'Copied!' : 'Share picks'}
               </button>
             )}
           </div>
