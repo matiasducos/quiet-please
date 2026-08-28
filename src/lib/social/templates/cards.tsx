@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
-import type { CardPlayer, DrawCard, UpcomingCard, RecapCard, RecapMatch, CompleteCard, StatsCard, SocialCard, PodiumEntry } from '../data'
+import type { CardPlayer, DrawCard, UpcomingCard, RecapCard, RecapMatch, CompleteCard, StatsCard, PicksCard, SocialCard, PodiumEntry } from '../data'
 import type { Highlight } from '@/lib/tournaments/recap-types'
-import { drawCapacity, recapCapacity, upcomingCapacity, statsCapacity, pickedLabel, favouriteLabel } from '../layout'
+import { drawCapacity, recapCapacity, upcomingCapacity, statsCapacity, picksCapacity, pickedLabel, favouriteLabel } from '../layout'
 import { Frame, Eyebrow, Rule, C, DISPLAY, BODY, MONO, type CardSize } from './frame'
 
 /**
@@ -664,6 +664,124 @@ function StatsArt({ card, size, showUsernames }: { card: StatsCard; size: CardSi
   )
 }
 
+/**
+ * One person's bracket.
+ *
+ * Reads top to bottom as a claim and an invitation: who they say wins it, who
+ * they have in the rounds below, and how to go and beat them. The call to
+ * action is not decoration — a web page cannot hand Instagram a caption, so
+ * anything not painted here is lost the moment the image is shared.
+ */
+function PicksArt({ card, size }: { card: PicksCard; size: CardSize }): ReactElement {
+  const story = size === 'story'
+  const hasStanding = card.points != null && card.rank != null
+
+  // The champion is the headline, so it is never counted against the budget —
+  // the groups underneath give way first.
+  //
+  // Whole groups only. Truncating one would print "Quarterfinalists" over a
+  // single name, which is not a shorter version of the truth but a different
+  // and wrong claim about what this bracket says.
+  let budget = picksCapacity(size, hasStanding)
+  const groups: Array<{ label: string; players: CardPlayer[] }> = []
+  for (const g of card.groups) {
+    if (g.players.length > budget) break
+    budget -= g.players.length
+    groups.push(g)
+  }
+
+  return (
+    <Frame size={size} eyebrow={`@${card.username}'s picks`} tournament={card.tournament}>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 34 : 22, flex: 1 }}>
+          {card.champion && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 14 : 10 }}>
+              <Eyebrow size={story ? 30 : 24}>Champion</Eyebrow>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+                {card.champion.flag ? (
+                  <div style={{ display: 'flex', fontSize: story ? 76 : 58 }}>{card.champion.flag}</div>
+                ) : null}
+                <div
+                  style={{
+                    display: 'flex',
+                    fontFamily: DISPLAY,
+                    fontSize: story ? 92 : 70,
+                    color: C.court,
+                    lineHeight: 1.05,
+                  }}
+                >
+                  {short(card.champion.name, 20)}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {groups.map(g => (
+            <div key={g.label} style={{ display: 'flex', flexDirection: 'column', gap: story ? 12 : 9 }}>
+              <Eyebrow size={story ? 26 : 21}>{g.label}</Eyebrow>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 8 : 6 }}>
+                {g.players.map((p, i) => (
+                  <PlayerLine key={`${g.label}-${i}`} player={p} size={story ? 40 : 32} max={24} />
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {hasStanding && (
+            <StatBlock
+              value={card.points!.toLocaleString('en-GB')}
+              label="points"
+              story={story}
+              note={`${ordinal(card.rank!)} overall`}
+            />
+          )}
+        </div>
+
+        {/* The invitation. Last, largest thing on the way out, and carrying the
+            URL because a screenshot is often all that survives a repost. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: story ? 12 : 9, marginTop: story ? 40 : 24 }}>
+          <Rule />
+          <div
+            style={{
+              display: 'flex',
+              marginTop: story ? 18 : 12,
+              fontFamily: DISPLAY,
+              fontSize: story ? 52 : 40,
+              color: C.ink,
+              lineHeight: 1.1,
+            }}
+          >
+            Check my predictions and challenge me
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              marginTop: story ? 12 : 8,
+              fontFamily: MONO,
+              fontSize: story ? 30 : 24,
+              color: C.clay,
+            }}
+          >
+            {card.shareUrl}
+          </div>
+        </div>
+      </div>
+    </Frame>
+  )
+}
+
+/** 1st, 2nd, 3rd, 4th — the standing reads as a placing, not a count. */
+function ordinal(n: number): string {
+  const rem100 = n % 100
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`
+  switch (n % 10) {
+    case 1: return `${n}st`
+    case 2: return `${n}nd`
+    case 3: return `${n}rd`
+    default: return `${n}th`
+  }
+}
+
 // ── Dispatcher ────────────────────────────────────────────────────────────────
 
 export function renderCard(card: SocialCard, { size, showUsernames }: CardOptions): ReactElement {
@@ -678,5 +796,7 @@ export function renderCard(card: SocialCard, { size, showUsernames }: CardOption
       return <CompleteArt card={card} size={size} showUsernames={showUsernames} />
     case 'stats':
       return <StatsArt card={card} size={size} showUsernames={showUsernames} />
+    case 'picks':
+      return <PicksArt card={card} size={size} />
   }
 }

@@ -209,7 +209,30 @@ export interface StatsCard {
   podium: PodiumEntry[]
 }
 
-export type SocialCard = DrawCard | UpcomingCard | RecapCard | CompleteCard | StatsCard
+/**
+ * One user's bracket, as a story card.
+ *
+ * Not in CARD_KINDS: those are the admin studio's tournament-wide posts, built
+ * by getSocialCard from a tournament id. This one is built per person by
+ * getPicksCard and rendered by a public route, so listing it there would put an
+ * unbuildable option in the studio's picker.
+ */
+export interface PicksCard {
+  kind: 'picks'
+  tournament: CardTournament
+  username: string
+  /** Pick for the Final. Null when the bracket stops short of it. */
+  champion: CardPlayer | null
+  /** Rounds below the final, deepest first, already labelled. */
+  groups: Array<{ label: string; players: CardPlayer[] }>
+  /** Null until the tournament has a result — see getPicksCard. */
+  points: number | null
+  rank: number | null
+  /** Printed on the card, because Instagram drops shared text. */
+  shareUrl: string
+}
+
+export type SocialCard = DrawCard | UpcomingCard | RecapCard | CompleteCard | StatsCard | PicksCard
 
 // ── Country → flag emoji ──────────────────────────────────────────────────────
 
