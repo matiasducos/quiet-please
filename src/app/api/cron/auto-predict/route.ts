@@ -172,16 +172,17 @@ export async function GET(request: Request) {
     // ── 3. Fetch existing predictions + weekly slots for these users ────────
     const { data: existingPredictions } = await supabase
       .from('predictions')
-      .select('id, user_id, tournament_id, is_fully_locked')
+      .select('id, user_id, tournament_id, is_fully_locked, unlocked_at')
       .in('user_id', userIds)
       .in('tournament_id', tournamentIds)
       .is('challenge_id', null)
 
-    const predMap = new Map<string, { id: string; is_fully_locked: boolean }>()
+    const predMap = new Map<string, { id: string; is_fully_locked: boolean; unlocked_at: string | null }>()
     for (const pred of existingPredictions ?? []) {
       predMap.set(`${pred.user_id}:${pred.tournament_id}`, {
         id: pred.id,
         is_fully_locked: pred.is_fully_locked,
+        unlocked_at: pred.unlocked_at,
       })
     }
 
@@ -228,6 +229,22 @@ export async function GET(request: Request) {
           const existingPred = predMap.get(`${userId}:${tournament.id}`)
           if (existingPred?.is_fully_locked) {
             skipped.push({ userId, reason: 'already_fully_locked' })
+            continue
+          }
+
+          // b2. The user has reopened this bracket by hand (migration 094).
+          //
+          // The lock is this pass's idempotency marker — see the eligibility
+          // filter above — so an unlocked bracket looks like a fresh draft and
+          // the UPDATE below would REPLACE its picks and lock it again. That is
+          // precisely the state a person is in right after clicking "Reopen
+          // bracket": their next draw re-sync (routine at a slam, where every
+          // withdrawal re-syncs) would silently undo the unlock and wipe
+          // whatever they had picked since.
+          //
+          // Once someone has taken the bracket back, it is theirs.
+          if (existingPred?.unlocked_at) {
+            skipped.push({ userId, reason: 'user_unlocked' })
             continue
           }
 

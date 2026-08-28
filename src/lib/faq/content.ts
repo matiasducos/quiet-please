@@ -198,9 +198,10 @@ export const FAQ_SECTIONS: FaqSection[] = [
         id: 'lock-all-picks',
         question: 'What does "Lock all picks" do, and can I undo it?',
         answer: [
-          { type: 'p', text: 'It ends your bracket. Every pick becomes final, the whole bracket becomes visible, and everything you have picked starts earning the multiplier.' },
-          { type: 'p', text: 'It cannot be undone. There is no unlock — not by you, not by us.' },
-          { type: 'p', text: 'It also gives up every round you have not filled in yet. Later rounds keep opening as results come in, so a bracket locked at the quarterfinals can never score the quarters, semis or final. The button tells you exactly which rounds you would be giving up before you confirm. If a tournament is still running, lock the round instead.' },
+          { type: 'p', text: 'It commits your whole bracket at once. Every pick becomes final, the bracket becomes visible, and everything you have picked starts earning the multiplier.' },
+          { type: 'p', text: 'Yes, you can undo it. An Unlock bracket button sits at the top of your locked bracket for as long as the tournament is still open for predictions, and you can use it as often as you need.' },
+          { type: 'p', text: 'Unlocking has one cost: the multiplier is earned by committing a pick before its match is played, so reopening the bracket gives that commitment back on every match still to come. Picks on matches that have already been played keep theirs — you made those in time, and they cannot be changed anyway.' },
+          { type: 'p', text: 'While it stays locked, the bracket also gives up every round you have not filled in yet. Later rounds keep opening as results come in, so a bracket locked at the quarterfinals scores nothing in the quarters, semis or final until you unlock it and pick them. The button tells you exactly which rounds you would be giving up before you confirm. If a tournament is still running, locking the round is usually what you want instead.' },
         ],
       },
       {
