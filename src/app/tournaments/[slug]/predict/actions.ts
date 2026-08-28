@@ -606,3 +606,118 @@ export async function unlockPrediction(predictionId: string): Promise<UnlockResu
     alreadyUnlocked: result.already_unlocked === true,
   }
 }
+
+export type UnlockPicksResult =
+  | { success: true; released: number }
+  | { success: false; error: 'bracket_fully_locked' | 'tournament_closed' | 'not_found' | 'unknown'; message: string }
+
+/**
+ * Release the streak commitment on specific picks, or on a whole round.
+ *
+ * The companion to unlockPrediction. That one reverses "Lock all picks"; this
+ * one reverses "Lock {round}" and "Lock pick" — which matter more, because the
+ * round lock is the button this page recommends. Committing a round was a
+ * one-way door for as long as the feature existed, and the bracket unlock did
+ * not open it: that button only renders on a fully-locked bracket.
+ *
+ * Like lockRound, a round is resolved to its matches from the draw server-side,
+ * so a hand-crafted request cannot reach across rounds. Unlocking is the less
+ * dangerous direction, but the two should not disagree about what a round is.
+ */
+export async function unlockPicks({
+  predictionId,
+  matchIds,
+  round,
+}: {
+  predictionId: string
+  matchIds?: string[]
+  round?: string
+}): Promise<UnlockPicksResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: 'unknown', message: 'Not authenticated' }
+
+  const rl = rateLimit(`unlockpicks:${user.id}`, { maxRequests: 20, windowMs: 60_000 })
+  if (rl.limited) return { success: false, error: 'unknown', message: `Too many requests. Try again in ${rl.retryAfter}s.` }
+
+  const { data: pred } = await supabase
+    .from('predictions')
+    .select('id, tournament_id, challenge_id, tournaments(status)')
+    .eq('id', predictionId)
+    .eq('user_id', user.id)
+    .single()
+
+  if (!pred) return { success: false, error: 'not_found', message: 'Prediction not found' }
+
+  const joined = pred.tournaments as { status?: string } | { status?: string }[] | null
+  const status = (Array.isArray(joined) ? joined[0]?.status : joined?.status) ?? ''
+  const allowed = pred.challenge_id
+    ? ['accepting_predictions', 'in_progress'].includes(status)
+    : await canPredictForStatus(status)
+
+  if (!allowed) {
+    return { success: false, error: 'tournament_closed', message: 'Predictions are closed for this tournament.' }
+  }
+
+  let targets = matchIds ?? []
+
+  if (round) {
+    const { data: drawRow, error: drawErr } = await supabase
+      .from('draws')
+      .select('bracket_data')
+      .eq('tournament_id', pred.tournament_id)
+      .single()
+
+    if (drawErr || !drawRow?.bracket_data) {
+      return { success: false, error: 'unknown', message: drawErr?.message ?? 'Draw not found' }
+    }
+
+    targets = ((drawRow.bracket_data as { matches?: Array<{ matchId: string; round: string }> }).matches ?? [])
+      .filter(m => m.round === round)
+      .map(m => m.matchId)
+  }
+
+  if (targets.length === 0) return { success: true, released: 0 }
+
+  const { data, error } = await supabase.rpc('unlock_picks', {
+    p_prediction_id: predictionId,
+    p_match_ids: targets,
+  })
+
+  if (error) {
+    console.error('[unlockPicks] rpc error', error)
+    return { success: false, error: 'unknown', message: 'Could not unlock those picks just now. Please try again.' }
+  }
+
+  const result = (data ?? {}) as { ok?: boolean; error?: string; released?: number }
+
+  if (!result.ok) {
+    if (result.error === 'bracket_fully_locked') {
+      return {
+        success: false,
+        error: 'bracket_fully_locked',
+        message: 'Your whole bracket is locked. Unlock the bracket first, which releases these picks with it.',
+      }
+    }
+    if (result.error === 'tournament_closed') {
+      return { success: false, error: 'tournament_closed', message: 'This tournament is no longer accepting changes.' }
+    }
+    if (result.error === 'not_found') {
+      return { success: false, error: 'not_found', message: 'Prediction not found' }
+    }
+    return { success: false, error: 'unknown', message: result.error ?? 'Unlock failed' }
+  }
+
+  revalidatePath(`/tournaments/${pred.tournament_id}`)
+  if (pred.challenge_id) revalidatePath(`/challenges/${pred.challenge_id}`)
+
+  trackServerEvent(user.id, 'picks_unlocked', {
+    tournament_id: pred.tournament_id,
+    challenge_id: pred.challenge_id ?? undefined,
+    scope: round ? 'round' : 'match',
+    round: round ?? undefined,
+    released: result.released ?? 0,
+  })
+
+  return { success: true, released: result.released ?? 0 }
+}
