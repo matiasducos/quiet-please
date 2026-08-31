@@ -115,6 +115,47 @@ export function getPointsForRound(
 }
 
 /**
+ * Every round in the scoring table, as a list.
+ *
+ * Written as the keys of a `Record<Round, true>` on purpose: adding a member to
+ * the `Round` union makes this object fail to typecheck until the new round is
+ * listed here, so the list cannot silently fall behind the type.
+ */
+const ALL_ROUNDS = Object.keys({
+  R128: true, R64: true, R32: true, R16: true, QF: true, SF: true, F: true,
+} satisfies Record<Round, true>) as Round[]
+
+/**
+ * The (category, round) pairs where a correct pick earns nothing.
+ *
+ * The award-points cron skips a result entirely when its round pays zero
+ * (`if (basePoints <= 0) continue`), so those correct picks never get a
+ * point_ledger row — not because they are pending, but because they are
+ * finished. Anything asserting "every correct pick has a ledger row" has to
+ * subtract this set first or it reports permanent, unfixable pending work.
+ * That is exactly what the admin "not awarded" banner did for the 807 correct
+ * R64 picks at Winston-Salem 2026, the first 250 played here.
+ *
+ * Derived from `getPointsForRound`, never hand-listed: this is the same
+ * function the cron scores with, called with the same `isWinner` rule, so the
+ * set cannot drift from what actually pays. Callers outside TypeScript (the
+ * `scoring_status` SQL function) are passed the result rather than keeping
+ * their own copy of the table.
+ */
+export function unpaidRounds(): Array<{ category: TournamentCategory; round: Round }> {
+  const out: Array<{ category: TournamentCategory; round: Round }> = []
+  for (const category of Object.keys(POINTS_TABLE) as TournamentCategory[]) {
+    for (const round of ALL_ROUNDS) {
+      // Mirrors the cron: it forces isWinner for 'F', so a final always pays.
+      if (getPointsForRound(category, round, round === 'F') <= 0) {
+        out.push({ category, round })
+      }
+    }
+  }
+  return out
+}
+
+/**
  * The earlier of two optional ISO timestamps, or whichever one is present.
  *
  * Used to decide when a match stopped being predictable. Returns undefined only

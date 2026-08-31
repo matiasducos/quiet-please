@@ -7,6 +7,7 @@ import { announceDrawOpen } from '@/lib/announce-draw-open'
 import { buildAndStoreRecap, deleteRecap } from '@/lib/tournaments/recap'
 import { slugErrorMessage } from '@/lib/tournaments/slug'
 import { qualifierSlotId, remapResolvedQualifiers, type DrawLike } from '@/lib/tennis/qualifier-remap'
+import { unpaidRounds } from '@/lib/tennis/points'
 import { COUNTRIES, codeToFlag } from './countries'
 
 /** Look up a country name and return its flag emoji, or null if not found. */
@@ -1133,7 +1134,7 @@ export interface ScoringTournament {
   flag_emoji: string | null
   totalResults: number       // played, non-BYE match results
   correctPicks: number       // correct, non-locked picks across all predictions
-  unscoredPicks: number      // correct picks with no point_ledger row  ← pending work
+  unscoredPicks: number      // correct picks that should have a ledger row and don't  ← pending work
   driftPredictions: number   // predictions whose stored total disagrees with the ledger
 }
 
@@ -1156,11 +1157,18 @@ export async function getScoringStatus(): Promise<ScoringTournament[]> {
   }
   if (!tournaments?.length) return []
 
-  // Aggregated in Postgres — see 054_scoring_status_pending_work.sql. This asserts
-  // the award-points cron's invariants, the same ones scripts/verify-scoring.mjs
-  // checks; both counts at zero means nothing is left to award.
+  // Aggregated in Postgres — see 054_scoring_status_pending_work.sql, narrowed by
+  // 101_scoring_status_unpaid_rounds.sql. This asserts the award-points cron's
+  // invariants, the same ones scripts/verify-scoring.mjs checks; both counts at
+  // zero means nothing is left to award.
+  //
+  // p_unpaid_rounds is what keeps the second invariant honest. The cron skips a
+  // result whose round pays nothing, so correct picks there never get a ledger
+  // row and must not read as pending — see unpaidRounds(). Passing it from here
+  // means POINTS_TABLE stays the single source of truth; the SQL keeps no copy.
   const { data: counts, error: cErr } = await admin.rpc('scoring_status', {
     p_tournament_ids: tournaments.map(t => t.id),
+    p_unpaid_rounds:  unpaidRounds(),
   })
 
   if (cErr) {
