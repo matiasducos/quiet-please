@@ -153,6 +153,21 @@ const PICK_STYLES: Record<string, { bg: string; labelColor: string; labelBg: str
 }
 
 /**
+ * A slot filled from the user's own pick rather than a played result.
+ *
+ * Deliberately a PATTERN and not another colour: every colour in PICK_STYLES
+ * already means an outcome (correct, wrong, winner, eliminated), so a new wash
+ * would read as a fifth outcome. Hatching is orthogonal to all of them — it can
+ * sit on top of any of those backgrounds and still say the same thing, which is
+ * "this name is provisional", not "this result is good or bad".
+ *
+ * Low contrast on purpose: it passes behind a player's name at every zoom level
+ * the bracket offers, so it has to stay legible rather than decorative.
+ */
+const PROJECTED_HATCH =
+  'repeating-linear-gradient(135deg, rgba(90,90,74,0.14) 0 1px, transparent 1px 7px)'
+
+/**
  * Minimap palette.
  *
  * Deliberately not PICK_STYLES: those are pale washes tuned to sit behind a
@@ -575,32 +590,48 @@ export default function BracketPredictor({
   }
 
   /**
-   * Resolve who is in a match slot.
+   * Where a player in a slot came from.
+   *
+   * `settled` covers the draw itself, a BYE auto-advance and a played feeder —
+   * three different mechanisms, but the same fact for a reader: this name is
+   * not going to change. `projected` is the one that can: the slot is filled
+   * from the user's own pick on a feeder that has not been played, so the
+   * player is there on their say-so and nothing else.
+   */
+  type SlotOrigin = 'settled' | 'projected'
+
+  /**
+   * Resolve who is in a match slot, and on what authority.
    * Priority: 1) draw data  2) actual result from feeder  3) user pick from feeder  4) null (TBD)
    */
-  function getEffectivePlayer(match: DrawMatch, slot: 'player1' | 'player2'): Player | null {
+  function resolveSlot(
+    match: DrawMatch,
+    slot: 'player1' | 'player2',
+  ): { player: Player | null; origin: SlotOrigin | null } {
+    const settled = (player: Player | null) => ({ player, origin: (player ? 'settled' : null) as SlotOrigin | null })
+
     // 1. Draw data has the player directly (first round, or seeded bye)
     const base = match[slot]
-    if (base) return base
+    if (base) return settled(base)
 
     // Find the feeder match for this slot
     const feederMatchId = slot === 'player1'
       ? reverseFeedMap[match.matchId]?.player1Feeder
       : reverseFeedMap[match.matchId]?.player2Feeder
 
-    if (!feederMatchId) return null
+    if (!feederMatchId) return { player: null, origin: null }
     const feederMatch = draw.matches.find(m => m.matchId === feederMatchId)
-    if (!feederMatch) return null
+    if (!feederMatch) return { player: null, origin: null }
 
     // BYE auto-advance: the non-null player wins automatically
     if (isByeMatch(feederMatch)) {
-      return feederMatch.player1 ?? feederMatch.player2
+      return settled(feederMatch.player1 ?? feederMatch.player2)
     }
 
     // 2. Actual result from feeder match → real winner advances
     const feederWinnerId = matchResults?.[feederMatchId]
     if (feederWinnerId) {
-      return allPlayers.get(feederWinnerId) ?? { externalId: feederWinnerId, name: feederWinnerId, country: '' }
+      return settled(allPlayers.get(feederWinnerId) ?? { externalId: feederWinnerId, name: feederWinnerId, country: '' })
     }
 
     // 3. User's pick from feeder match
@@ -608,21 +639,37 @@ export default function BracketPredictor({
     if (!pickedId) {
       // 3b. If feeder is admin-locked and has a result, show actual winner (cascade for missed picks)
       if (adminLockedMatches?.[feederMatchId] && feederWinnerId) {
-        return allPlayers.get(feederWinnerId) ?? { externalId: feederWinnerId, name: feederWinnerId, country: '' }
+        return settled(allPlayers.get(feederWinnerId) ?? { externalId: feederWinnerId, name: feederWinnerId, country: '' })
       }
-      return null
+      return { player: null, origin: null }
     }
 
+    // Everything below is reached only because the user picked someone into
+    // this slot, so the origin is `projected` however deep the resolution goes.
+    // A projected player may themselves have been resolved from real results
+    // further back — irrelevant here: what is unconfirmed is THIS advance.
+    const projected = (player: Player | null) => ({ player, origin: (player ? 'projected' : null) as SlotOrigin | null })
+
     // Resolve the picked player — might be directly on the feeder or recursively resolved
-    if (feederMatch.player1?.externalId === pickedId) return feederMatch.player1
-    if (feederMatch.player2?.externalId === pickedId) return feederMatch.player2
+    if (feederMatch.player1?.externalId === pickedId) return projected(feederMatch.player1)
+    if (feederMatch.player2?.externalId === pickedId) return projected(feederMatch.player2)
 
-    const p1 = getEffectivePlayer(feederMatch, 'player1')
-    const p2 = getEffectivePlayer(feederMatch, 'player2')
-    if (p1?.externalId === pickedId) return p1
-    if (p2?.externalId === pickedId) return p2
+    const p1 = resolveSlot(feederMatch, 'player1').player
+    const p2 = resolveSlot(feederMatch, 'player2').player
+    if (p1?.externalId === pickedId) return projected(p1)
+    if (p2?.externalId === pickedId) return projected(p2)
 
-    return null
+    return { player: null, origin: null }
+  }
+
+  /**
+   * Thin wrapper — every existing caller wants the player and nothing else.
+   * Kept so the traversal above stays the single implementation rather than
+   * being duplicated by a parallel "where did this come from" function that
+   * could drift out of step with it.
+   */
+  function getEffectivePlayer(match: DrawMatch, slot: 'player1' | 'player2'): Player | null {
+    return resolveSlot(match, slot).player
   }
 
   const pickWinner = (matchId: string, playerExternalId: string) => {
@@ -1545,21 +1592,33 @@ export default function BracketPredictor({
                 slot: 'player1' | 'player2',
                 state: ReturnType<typeof getPickState> | 'bye',
                 withBorderBottom: boolean,
+                origin: SlotOrigin | null = null,
               ) => {
                 const style = PICK_STYLES[state]
                 const isBye = byeMatchIds.has(match.matchId)
                 const matchLocked = isMatchLocked(match.matchId)
                 const isClickable = !matchLocked && !!player && !isBye
+                const isProjected = origin === 'projected'
                 return (
                   <button
                     onClick={() => player && pickWinner(match.matchId, player.externalId)}
                     disabled={!player || matchLocked || isBye}
                     className={`pick-btn w-full flex items-center justify-between px-3 text-left${withBorderBottom ? ' border-b' : ''}`}
+                    // Not colour/pattern alone: the same fact reaches a screen
+                    // reader and a hover through the accessible name.
+                    title={isProjected && player
+                      ? `${player.name} is here because you picked them to win their previous match — not confirmed yet.`
+                      : undefined}
                     style={{
                       paddingTop: d.playerPadY,
                       paddingBottom: d.playerPadY,
                       borderColor: 'var(--chalk-dim)',
-                      background: style.bg,
+                      // backgroundColor + backgroundImage rather than the
+                      // `background` shorthand: the shorthand resets the other
+                      // half, so the hatch and the outcome wash would fight
+                      // over which one survives.
+                      backgroundColor: style.bg,
+                      backgroundImage: isProjected ? PROJECTED_HATCH : undefined,
                       cursor: isClickable ? 'pointer' : 'default',
                       opacity: !player ? 0.35 : 1,
                     }}
@@ -1691,8 +1750,12 @@ export default function BracketPredictor({
                     {group.map((match) => {
                       const i = matchIndex++
                       const isBye = byeMatchIds.has(match.matchId)
-                      const p1 = getEffectivePlayer(match, 'player1')
-                      const p2 = getEffectivePlayer(match, 'player2')
+                      const slot1 = resolveSlot(match, 'player1')
+                      const slot2 = resolveSlot(match, 'player2')
+                      const p1 = slot1.player
+                      const p2 = slot2.player
+                      const o1 = slot1.origin
+                      const o2 = slot2.origin
                       const pickedId = picks[match.matchId]
                       const actualWinnerId = matchResults?.[match.matchId]
                       const noPlayers = !p1 && !p2
@@ -1834,7 +1897,7 @@ export default function BracketPredictor({
                             )}
                           </div>
 
-                          {renderPlayer(match, p1, 'player1', s1, true)}
+                          {renderPlayer(match, p1, 'player1', s1, true, o1)}
 
                           {/* Dropped at `dense`: the strip is mostly the VS
                               label, and the divider under player 1 already
@@ -1874,7 +1937,7 @@ export default function BracketPredictor({
                           </div>
                           )}
 
-                          {renderPlayer(match, p2, 'player2', s2, false)}
+                          {renderPlayer(match, p2, 'player2', s2, false, o2)}
                         </div>
                       )
                     })}
