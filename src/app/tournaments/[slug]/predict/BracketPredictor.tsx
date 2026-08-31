@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useRef, useEffect, useCallback } from 'react'
+import { useState, useTransition, useRef, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
@@ -414,13 +414,32 @@ export default function BracketPredictor({
     return false
   }
 
+  /**
+   * Picks this user made AFTER the admin locked the match — the server's
+   * `predictions.locked_picks`. These are the ones that score nothing.
+   *
+   * The distinction matters because an admin lock is a fact about the MATCH
+   * while "will this score" is a fact about THIS USER'S PICK on it.
+   * `savePrediction` keeps a pick out of `locked_picks` when it predates the
+   * lock and has not changed since, so a timely picker is paid normally.
+   */
+  const latePickIds = useMemo(() => new Set(lockedPicks), [lockedPicks])
+
   /** Display state for the match header badge */
-  type LockDisplay = 'editable' | 'voluntary_locked' | 'auto_locked' | 'admin_locked_pickable' | 'fully_locked' | 'bye'
+  type LockDisplay = 'editable' | 'voluntary_locked' | 'auto_locked' | 'admin_locked_pickable' | 'admin_locked_secured' | 'fully_locked' | 'bye'
   function getMatchLockDisplay(matchId: string): LockDisplay {
     if (byeMatchIds.has(matchId)) return 'bye'
     if (readOnly || fullyLocked) return 'fully_locked'
     if (matchResults?.[matchId]) return 'auto_locked'
-    if (adminLockedMatches?.[matchId]) return 'admin_locked_pickable'
+    if (adminLockedMatches?.[matchId]) {
+      // Telling somebody who picked in time that they get no points is simply
+      // wrong — they are paid in full. But the warning cannot just disappear:
+      // the match is still editable, and CHANGING the pick now moves it into
+      // locked_picks and forfeits it. So the timely case gets its own badge
+      // that says which of those two things is true.
+      const pickedInTime = Boolean(picks[matchId]) && !latePickIds.has(matchId)
+      return pickedInTime ? 'admin_locked_secured' : 'admin_locked_pickable'
+    }
     if (currentPickLocks[matchId]) return 'voluntary_locked'
     return 'editable'
   }
@@ -1773,6 +1792,18 @@ export default function BracketPredictor({
                               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em', color: 'var(--muted)' }}>
                                 PLAYED
                               </span>
+                            )}
+                            {!voidPick && lockDisplay === 'admin_locked_secured' && (
+                              <Tooltip text="Your pick was in before the admin locked this match, so it scores as normal. Changing it now would forfeit the points.">
+                                <span style={{
+                                  fontFamily: 'var(--font-mono)', fontSize: '0.55rem', letterSpacing: '0.04em',
+                                  color: '#166534', background: '#dcfce7', padding: '1px 6px', borderRadius: '2px',
+                                  display: 'inline-flex', alignItems: 'center', cursor: 'help',
+                                }}>
+                                  PICKED IN TIME
+                                  <InfoIcon />
+                                </span>
+                              </Tooltip>
                             )}
                             {!voidPick && lockDisplay === 'admin_locked_pickable' && (
                               <Tooltip text="You can still make a pick, but no points will be awarded — the admin locked this match after it started.">
