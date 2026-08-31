@@ -171,7 +171,7 @@ export async function GET(request: Request) {
       while (true) {
         const { data: page, error: pageErr } = await supabase
           .from('predictions')
-          .select('id, user_id, tournament_id, challenge_id, picks, pick_locks, locked_picks, points_earned, expires_at')
+          .select('id, user_id, tournament_id, challenge_id, picks, pick_locks, pick_lock_times, locked_picks, points_earned, expires_at')
           .in('tournament_id', chunk)
           .order('id', { ascending: true })
           .range(from, from + PAGE_SIZE - 1)
@@ -212,6 +212,26 @@ export async function GET(request: Request) {
           matches: bracket.matches,
           feedMap: buildFeedMap(bracket.matches),
         }
+      }
+    }
+
+    // When each match was decided, for the stacking rule in the multiplier.
+    //
+    // Deliberately NOT taken from the workset above: that holds only results
+    // this run still has to score, while the feeder a streak traces back
+    // through was almost always scored on an earlier run and is absent from it.
+    // Asking for the whole tournament is one small query — a draw is at most
+    // 127 matches — and getting it wrong would silently deny every multiplier.
+    const playedAtByTournament: Record<string, Record<string, string>> = {}
+    {
+      const { data: allResults, error: paErr } = await supabase
+        .from('match_results')
+        .select('tournament_id, external_match_id, played_at')
+        .in('tournament_id', tournamentIds as string[])
+      if (paErr) throw new Error(`played_at query failed: ${paErr.message}`)
+      for (const r of allResults ?? []) {
+        if (!r.played_at) continue
+        ;(playedAtByTournament[r.tournament_id] ??= {})[r.external_match_id] = r.played_at
       }
     }
 
@@ -350,6 +370,8 @@ export async function GET(request: Request) {
             bracket.matches,
             lockedPicksSet,
             committed,
+            (prediction.pick_lock_times as Record<string, string> | null) ?? undefined,
+            playedAtByTournament[result.tournament_id],
           )
         }
 

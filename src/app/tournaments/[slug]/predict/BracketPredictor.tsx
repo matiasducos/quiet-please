@@ -2010,6 +2010,42 @@ export default function BracketPredictor({
           </button>
         </div>
 
+        {/* How the multiplier is earned. Sits under the bracket rather than in a
+            tooltip because the hatching above is meaningless until you know
+            what it buys, and the rule changed — people who learned the old one
+            need to be told without going looking. */}
+        <div
+          className="mt-6 rounded-sm border px-4 py-3 flex flex-col gap-2"
+          style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}
+        >
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              aria-hidden
+              style={{
+                display: 'inline-block', width: '26px', height: '14px', borderRadius: '2px',
+                border: '1px solid var(--chalk-dim)', backgroundColor: 'white',
+                backgroundImage: PROJECTED_HATCH, flexShrink: 0,
+              }}
+            />
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', letterSpacing: '0.04em', color: 'var(--ink)' }}>
+              SHADED = YOUR PROJECTION
+            </span>
+          </div>
+          <p style={{ fontSize: '0.8rem', color: 'var(--muted)', lineHeight: 1.6, margin: 0 }}>
+            A shaded player is in this round because <strong>you</strong> picked them to get here — their
+            previous match has not been played yet. A plain player is already through on a real result.
+          </p>
+          <p style={{ fontSize: '0.8rem', color: 'var(--muted)', lineHeight: 1.6, margin: 0 }}>
+            The streak multiplier is built on shaded players. Committing a pick while the round before it
+            is still undecided extends your run, and the more rounds you stack that way, the higher the
+            multiplier climbs. Picking a player who has <em>already</em> won their way through still scores
+            full base points — it just pays at ×1 and starts the run again.{' '}
+            <Link href="/faq#streak-multiplier" style={{ color: 'var(--court)' }}>
+              How the multiplier works →
+            </Link>
+          </p>
+        </div>
+
         {/* Submit area — editing mode only (hidden when parent provides own buttons) */}
         {isEditing && !hideSaveButtons && (
           <div className="mt-8 pt-6 border-t flex flex-col gap-3" style={{ borderColor: 'var(--chalk-dim)' }}>
