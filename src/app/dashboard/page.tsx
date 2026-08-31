@@ -141,19 +141,6 @@ export default async function DashboardPage() {
           ))}
         </div>
 
-        {/* ─── Activity ────────────────────────────────────────────────────────── */}
-        {activity.length > 0 && (
-          <div className="mb-12">
-            <div className="flex items-center justify-between mb-4">
-              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.01em' }}>Activity</h2>
-              <Link href="/activity" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>See all activities →</Link>
-            </div>
-            {/* Cuts mid-row on purpose: a half-visible row is the clearest
-                signal that the list keeps going. */}
-            <ActivityFeed items={activity} viewerId={user.id} maxHeight="26rem" />
-          </div>
-        )}
-
         {/* ─── Live Right Now ─────────────────────────────────────────────── */}
         {enrichedLive.length > 0 && (
           <div data-tour="live-now" className="mb-12">
@@ -203,6 +190,19 @@ export default async function DashboardPage() {
                 )
               })}
             </div>
+          </div>
+        )}
+
+        {/* ─── Activity ────────────────────────────────────────────────────────── */}
+        {activity.length > 0 && (
+          <div className="mb-12">
+            <div className="flex items-center justify-between mb-4">
+              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.01em' }}>Activity</h2>
+              <Link href="/activity" style={{ fontSize: '0.875rem', color: 'var(--court)' }}>See all activities →</Link>
+            </div>
+            {/* Cuts mid-row on purpose: a half-visible row is the clearest
+                signal that the list keeps going. */}
+            <ActivityFeed items={activity} viewerId={user.id} maxHeight="26rem" />
           </div>
         )}
 
