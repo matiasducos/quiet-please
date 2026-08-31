@@ -2074,42 +2074,6 @@ export default function BracketPredictor({
           </button>
         </div>
 
-        {/* How the multiplier is earned. Sits under the bracket rather than in a
-            tooltip because the hatching above is meaningless until you know
-            what it buys, and the rule changed — people who learned the old one
-            need to be told without going looking. */}
-        <div
-          className="mt-6 rounded-sm border px-4 py-3 flex flex-col gap-2"
-          style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}
-        >
-          <div className="flex items-center gap-2 flex-wrap">
-            <span
-              aria-hidden
-              style={{
-                display: 'inline-block', width: '26px', height: '14px', borderRadius: '2px',
-                border: '1px solid var(--chalk-dim)', backgroundColor: 'white',
-                backgroundImage: PROJECTED_HATCH, flexShrink: 0,
-              }}
-            />
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', letterSpacing: '0.04em', color: 'var(--ink)' }}>
-              SHADED = YOUR PROJECTION
-            </span>
-          </div>
-          <p style={{ fontSize: '0.8rem', color: 'var(--muted)', lineHeight: 1.6, margin: 0 }}>
-            A shaded player is in this round because <strong>you</strong> picked them to get here — their
-            previous match has not been played yet. A plain player is already through on a real result.
-          </p>
-          <p style={{ fontSize: '0.8rem', color: 'var(--muted)', lineHeight: 1.6, margin: 0 }}>
-            The streak multiplier is built on shaded players. Committing a pick before that player&apos;s
-            previous match gets under way extends your run, and the more rounds you stack that way, the
-            higher the multiplier climbs. Picking a player who has <em>already</em> won their way through
-            still scores full base points — it just pays at ×1 and starts the run again.{' '}
-            <Link href="/faq#streak-multiplier" style={{ color: 'var(--court)' }}>
-              How the multiplier works →
-            </Link>
-          </p>
-        </div>
-
         {/* Submit area — editing mode only (hidden when parent provides own buttons) */}
         {isEditing && !hideSaveButtons && (
           <div className="mt-8 pt-6 border-t flex flex-col gap-3" style={{ borderColor: 'var(--chalk-dim)' }}>
@@ -2208,6 +2172,50 @@ export default function BracketPredictor({
             </p>
           </div>
         )}
+
+        {/* What the shading means, and what it buys.
+
+            Sits at the very bottom, under the locking copy it belongs with:
+            both answer the same question, and reading "locked picks earn the
+            multiplier" immediately before "the multiplier is built on shaded
+            players" is the order that makes either one land.
+
+            Deliberately OUTSIDE the isEditing block above it. The hatching is
+            drawn on read-only views too — the picks page, the admin bracket —
+            and a legend that vanishes exactly where a reader has no other way
+            to ask would be worse than one in the wrong place. */}
+        <div
+          className="mt-6 rounded-sm border px-4 py-3 flex flex-col gap-2"
+          style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}
+        >
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              aria-hidden
+              style={{
+                display: 'inline-block', width: '26px', height: '14px', borderRadius: '2px',
+                border: '1px solid var(--chalk-dim)', backgroundColor: 'white',
+                backgroundImage: PROJECTED_HATCH, flexShrink: 0,
+              }}
+            />
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', letterSpacing: '0.04em', color: 'var(--ink)' }}>
+              SHADED = YOUR PROJECTION
+            </span>
+          </div>
+          <p style={{ fontSize: '0.8rem', color: 'var(--muted)', lineHeight: 1.6, margin: 0 }}>
+            A shaded player is in this round because <strong>you</strong> picked them to get here — their
+            previous match has not been played yet. A plain player is already through on a real result.
+          </p>
+          <p style={{ fontSize: '0.8rem', color: 'var(--muted)', lineHeight: 1.6, margin: 0 }}>
+            The streak multiplier is built on shaded players. Committing a pick before that player&apos;s
+            previous match gets under way extends your run, and the more rounds you stack that way, the
+            higher the multiplier climbs. Picking a player who has <em>already</em> won their way through
+            still scores full base points — it just pays at ×1 and starts the run again.{' '}
+            <Link href="/faq#streak-multiplier" style={{ color: 'var(--court)' }}>
+              How the multiplier works →
+            </Link>
+          </p>
+        </div>
+
 
         {/* Locked confirmation (just locked during this session) */}
         {fullyLocked && !readOnly && (
