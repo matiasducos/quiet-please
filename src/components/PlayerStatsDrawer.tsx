@@ -20,8 +20,9 @@ const mono = { fontFamily: 'var(--font-mono)' } as const
  *
  * Both players load in parallel, and each renders independently: a player you
  * have never picked is a normal outcome here (unlike on the profile, where the
- * search only offers players you have picked), so an empty record shows a
- * message rather than nothing.
+ * search only offers players you have picked), so an empty record still renders
+ * — PlayerDetailView owns that state, because even with no picks there is the
+ * got-away count to show, and that is the number this drawer exists to deliver.
  */
 export default function PlayerStatsDrawer({
   player1,
@@ -111,7 +112,6 @@ export default function PlayerStatsDrawer({
           ) : (
             [player1, player2].map(p => {
               const detail = details[p.externalId]
-              const hasPicks = detail?.ok && detail.rounds.length > 0
               return (
                 <section key={p.externalId} className="bg-white rounded-sm border p-3" style={{ borderColor: 'var(--chalk-dim)' }}>
                   <div className="flex items-center gap-2 mb-3">
@@ -123,12 +123,12 @@ export default function PlayerStatsDrawer({
 
                   {!detail?.ok ? (
                     <p style={{ ...mono, fontSize: '0.7rem', color: '#991b1b' }}>Could not load your record.</p>
-                  ) : !hasPicks ? (
-                    <p style={{ ...mono, fontSize: '0.7rem', color: 'var(--muted)' }}>
-                      You have never picked {p.name}.
-                    </p>
                   ) : (
-                    <PlayerDetailView detail={detail} isOwnProfile />
+                    // The never-picked case lives in PlayerDetailView now. It used
+                    // to short-circuit here, which meant the one line worth reading
+                    // about a player you have never backed — how often they have
+                    // beaten you anyway — could not be shown at all.
+                    <PlayerDetailView detail={detail} isOwnProfile playerName={p.name} />
                   )}
                 </section>
               )
