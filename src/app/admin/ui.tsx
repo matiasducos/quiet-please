@@ -8,7 +8,17 @@
  * growing their own near-identical copies.
  */
 
-export const mono = { fontFamily: 'var(--font-mono)' } as const
+import { mono } from './format'
+
+/**
+ * Re-exported from a plain module, not declared here.
+ *
+ * Everything a `'use client'` file exports becomes a client reference, so a
+ * server component can render it but never call it. Keeping these two in
+ * format.ts is what lets the server-rendered admin pages use them; the
+ * re-export keeps the `from '../ui'` imports in the client browsers working.
+ */
+export { mono, when } from './format'
 
 export const control = {
   ...mono,
@@ -21,17 +31,6 @@ export const control = {
 } as const
 
 export const ALERT = '#991b1b'
-
-/** Relative time, falling back to an absolute date past a day. */
-export function when(iso: string | null) {
-  if (!iso) return 'never'
-  const d = new Date(iso)
-  const mins = Math.floor((Date.now() - d.getTime()) / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  if (mins < 60 * 24) return `${Math.floor(mins / 60)}h ago`
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })
-}
 
 export function Segmented<T extends string>({
   value, options, onChange,

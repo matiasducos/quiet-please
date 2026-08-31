@@ -37,17 +37,17 @@ export type NoticeAccent = {
   ink: string
 }
 
-export default function SiteNotice({
-  kicker,
-  headline,
-  cta,
-  secondary,
-  accent,
-  dismissCookieName,
-  canPersistDismissal,
-  dismissMaxAge = DISMISS_MAX_AGE,
-  hidePathPrefixes = [],
-}: {
+/**
+ * Everything about a notice except whether this particular device may remember
+ * a dismissal — that is request state, and the rest is not.
+ *
+ * Split out so a wrapper can hand the same object to the bar and to anyone else
+ * who needs to know what the bar says. /admin/banners is the second reader: it
+ * reports the live copy, CTA, cookie name and hidden routes, and reading them
+ * off this type is what keeps that report from drifting into fiction the first
+ * time somebody edits a headline.
+ */
+export type NoticeSpec = {
   /** Mono, uppercase, leads the bar. Keep it to a couple of words. */
   kicker: string
   /** One sentence. This is a bar, not a paragraph. */
@@ -58,17 +58,6 @@ export default function SiteNotice({
   secondary?: { href: string; label: string }
   accent: NoticeAccent
   dismissCookieName: string
-  /**
-   * Whether a dismissal may be written to the device at all.
-   *
-   * Computed server-side from the same consent state middleware uses. A notice
-   * dismissal is not strictly necessary storage — it exists for comfort, not to
-   * deliver the service — so under `canStore = false` it does not get written,
-   * and the dismissal degrades to this page view only. Better a bar that comes
-   * back for the minority who declined than a cookie set without consent, which
-   * is the failure that actually carries a penalty.
-   */
-  canPersistDismissal: boolean
   /**
    * How long a dismissal sticks, in seconds. Defaults to a major's news cycle.
    *
@@ -85,6 +74,30 @@ export default function SiteNotice({
    * someone. Matched as prefixes.
    */
   hidePathPrefixes?: string[]
+}
+
+export default function SiteNotice({
+  kicker,
+  headline,
+  cta,
+  secondary,
+  accent,
+  dismissCookieName,
+  canPersistDismissal,
+  dismissMaxAge = DISMISS_MAX_AGE,
+  hidePathPrefixes = [],
+}: NoticeSpec & {
+  /**
+   * Whether a dismissal may be written to the device at all.
+   *
+   * Computed server-side from the same consent state middleware uses. A notice
+   * dismissal is not strictly necessary storage — it exists for comfort, not to
+   * deliver the service — so under `canStore = false` it does not get written,
+   * and the dismissal degrades to this page view only. Better a bar that comes
+   * back for the minority who declined than a cookie set without consent, which
+   * is the failure that actually carries a penalty.
+   */
+  canPersistDismissal: boolean
 }) {
   const pathname = usePathname()
   const [dismissed, setDismissed] = useState(false)
