@@ -25,7 +25,7 @@ import { getSlamEditions, type SlamEditions } from './data'
  * a player on day one, while an invite sent the day the draw lands is somebody
  * still confirming their email while the first round is being played.
  */
-const LEAD_DAYS = 21
+export const LEAD_DAYS = 21
 
 const DAY_MS = 24 * 60 * 60 * 1000
 

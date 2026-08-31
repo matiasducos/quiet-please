@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers'
-import SiteNotice from './SiteNotice'
-import { getFeaturedSlam } from '@/lib/slams/featured'
+import SiteNotice, { type NoticeSpec } from './SiteNotice'
+import { getFeaturedSlam, type FeaturedSlam } from '@/lib/slams/featured'
 import {
   CONSENT_COOKIE_NAME,
   CONSENT_REQUIRED_COOKIE_NAME,
@@ -52,18 +52,45 @@ const ALWAYS_HIDDEN_PREFIXES = [
   '/check-email',
 ]
 
+/**
+ * Everything the bar would say and do for this major.
+ *
+ * Pure, and exported for the same reason as `pickGapNoticeSpec`: /admin/banners
+ * reports the live copy by reading this, so the report cannot drift away from
+ * what is actually on the site.
+ */
+export function featuredSlamNoticeSpec({ config, editions }: FeaturedSlam): NoticeSpec {
+  return {
+    // Tournament references lead with the flag everywhere else in the app;
+    // this is no exception. The config carries one because sync-created rows
+    // leave `flag_emoji` NULL.
+    kicker: `${config.flagEmoji} ${config.name}`,
+    headline: 'The draw lands soon. Invite your friends and have a challenge!',
+    // One destination for everyone, signed in or not. A guest lands on
+    // /invite's own sign-in gate and is returned here afterwards — see the
+    // `authUrl` call in src/app/invite/page.tsx, which exists so that
+    // round trip does not drop them on the dashboard instead.
+    cta: { href: '/invite', label: 'Invite a friend', location: `notice_${config.slug}` },
+    accent: config.accent,
+    // Scoped to the edition, so dismissing the US Open notice does not also
+    // silence the Australian Open five months later.
+    dismissCookieName: `qp_notice_${config.slug}_${editions.year ?? 'next'}`,
+    hidePathPrefixes: [
+      ...ALWAYS_HIDDEN_PREFIXES,
+      // The slam's own landing page opens with this exact pitch.
+      config.route,
+    ],
+  }
+}
+
 export default async function FeaturedSlamNotice() {
   const featured = await getFeaturedSlam()
   if (!featured) return null
 
-  const { config, editions } = featured
-
-  // Scoped to the edition, so dismissing the US Open notice does not also
-  // silence the Australian Open five months later.
-  const dismissCookieName = `qp_notice_${config.slug}_${editions.year ?? 'next'}`
+  const spec = featuredSlamNoticeSpec(featured)
 
   const cookieStore = await cookies()
-  if (cookieStore.get(dismissCookieName)?.value === '1') return null
+  if (cookieStore.get(spec.dismissCookieName)?.value === '1') return null
 
   // Same rule and the same fail-closed default as middleware: an absent flag
   // means the region is unknown, which is treated as "consent required".
@@ -71,26 +98,5 @@ export default async function FeaturedSlamNotice() {
   const consentRequired = cookieStore.get(CONSENT_REQUIRED_COOKIE_NAME)?.value !== '0'
   const canPersistDismissal = mayStoreNonEssential(decision, consentRequired)
 
-  return (
-    <SiteNotice
-      // Tournament references lead with the flag everywhere else in the app;
-      // this is no exception. The config carries one because sync-created rows
-      // leave `flag_emoji` NULL.
-      kicker={`${config.flagEmoji} ${config.name}`}
-      headline="The draw lands soon. Invite your friends and have a challenge!"
-      // One destination for everyone, signed in or not. A guest lands on
-      // /invite's own sign-in gate and is returned here afterwards — see the
-      // `authUrl` call in src/app/invite/page.tsx, which exists so that
-      // round trip does not drop them on the dashboard instead.
-      cta={{ href: '/invite', label: 'Invite a friend', location: `notice_${config.slug}` }}
-      accent={config.accent}
-      dismissCookieName={dismissCookieName}
-      canPersistDismissal={canPersistDismissal}
-      hidePathPrefixes={[
-        ...ALWAYS_HIDDEN_PREFIXES,
-        // The slam's own landing page opens with this exact pitch.
-        config.route,
-      ]}
-    />
-  )
+  return <SiteNotice {...spec} canPersistDismissal={canPersistDismissal} />
 }

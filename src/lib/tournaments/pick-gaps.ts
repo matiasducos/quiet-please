@@ -45,7 +45,7 @@ export interface PickGapPrompt {
  * has already been played. Worst case the notice is one minute stale, which
  * costs a click on a round that turns out to be locked.
  */
-const getBracketShape = unstable_cache(
+export const getBracketShape = unstable_cache(
   async (tournamentId: string): Promise<{ matches: GapMatch[]; played: string[] }> => {
     const admin = createAdminClient()
 
