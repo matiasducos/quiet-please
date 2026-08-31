@@ -12,8 +12,37 @@ import { checkPredictionMilestones, checkEngagementAchievements, checkChallengeA
 import { notifyAchievements } from '@/lib/achievements/notify'
 import { markReferralFirstPrediction } from '@/lib/referrals'
 
+/** Just the parts of a draw match this file reads. */
+interface DrawMatchShape {
+  matchId: string
+  round: string
+  player1?: unknown | null
+  player2?: unknown | null
+}
+
+/**
+ * A bye: one player through, the other slot empty.
+ *
+ * Mirrors `isByeMatch` in the predictor, which is what decides the slots a user
+ * is ever asked to fill. Counting byes as outstanding picks would make a
+ * complete bracket unreachable on any draw with them — 32 of the 127 matches at
+ * a Masters 1000.
+ */
+function isByeSlot(m: DrawMatchShape): boolean {
+  return (m.player1 != null && m.player2 == null) || (m.player1 == null && m.player2 != null)
+}
+
 export type SaveResult =
-  | { success: true; predictionId?: string }
+  | {
+      success: true
+      predictionId?: string
+      /**
+       * Whether the bracket ended up fully locked. Only a lock-all on a bracket
+       * with nothing left to pick does that now, so the client cannot assume it
+       * from the request it sent — it has to be told.
+       */
+      fullyLocked?: boolean
+    }
   | { success: false; error: 'slot_taken'; conflictingTournamentName: string }
   | { success: false; error: 'played_matches'; matchIds: string[] }
   | { success: false; error: 'unknown'; message: string }
@@ -128,12 +157,53 @@ export async function savePrediction({
   let fullyLockedAt: string | undefined
 
   if (lockAll) {
-    // Lock entire bracket: stamp every current pick as "auto_lock_all"
-    isFullyLocked = true
-    fullyLockedAt = new Date().toISOString()
+    // Commit every pick the user has made — and ONLY those.
+    //
+    // "Lock all picks" used to end the bracket outright: it set
+    // is_fully_locked, which freezes the row, so a match with no pick became
+    // unpickable forever. New users read the primary button on the page as
+    // "submit", pressed it after a first round, and lost the tournament before
+    // it started. Of the locked brackets on record, 20 of 43 were partial —
+    // some 3 picks out of 95.
+    //
+    // Now the button does what its name says. The picks you made are
+    // committed and start earning the multiplier; the slots you left empty
+    // stay open, so a lock can no longer cost you a round you never chose to
+    // give up. Locking is still one-way for the picks it touches.
     pickLocksUpdate = {}
     for (const matchId of Object.keys(picks)) {
       pickLocksUpdate[matchId] = 'auto_lock_all'
+    }
+
+    // is_fully_locked now means what it says: nothing left to pick.
+    //
+    // It is still a real state and still load-bearing — a friends challenge
+    // reveals both brackets once both are fully locked, and the auto-predict
+    // cron skips a bracket that carries it. Deriving it from the bracket
+    // rather than from the click makes that reveal *stricter*, not looser:
+    // showing an opponent's picks to someone who could still add their own
+    // was the hole in the poker rule.
+    //
+    // A bye is not a pick anyone is asked to make, and a match already played
+    // is not one they can still make, so neither counts as outstanding.
+    const { data: drawRow, error: drawErr } = await supabase
+      .from('draws')
+      .select('bracket_data')
+      .eq('tournament_id', tournamentId)
+      .single()
+
+    if (drawErr || !drawRow?.bracket_data) {
+      return { success: false, error: 'unknown', message: drawErr?.message ?? 'Draw not found' }
+    }
+
+    const drawMatches = (drawRow.bracket_data as { matches?: DrawMatchShape[] }).matches ?? []
+    const outstanding = drawMatches.filter(m =>
+      !isByeSlot(m) && !playedMatchIds.has(m.matchId) && !picks[m.matchId],
+    ).length
+
+    if (outstanding === 0) {
+      isFullyLocked = true
+      fullyLockedAt = new Date().toISOString()
     }
   } else if (lockRound) {
     // Whole-round lock. `is_fully_locked` stays false on purpose: this is the
@@ -493,7 +563,7 @@ export async function savePrediction({
       .catch(err => console.error('[savePrediction] challenge achievement check error', err))
   }
 
-  return { success: true, predictionId: insertedPredictionId }
+  return { success: true, predictionId: insertedPredictionId, fullyLocked: isFullyLocked }
 }
 
 /**

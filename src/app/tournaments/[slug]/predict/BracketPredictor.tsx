@@ -785,19 +785,25 @@ export default function BracketPredictor({
   }
 
   /**
-   * Every round this bracket gives up by locking now.
+   * Slots a lock would leave open — and that now stay open.
    *
-   * A bracket locked at the quarters scores nothing in the semis or the final
-   * for as long as it stays locked. The button said only "you won't be able to
-   * change any predictions", which reads as "I'm sure of my picks" rather than
-   * "I forfeit three rounds" — and under manual_lock, where later rounds keep
-   * opening as results land, that is exactly the mistake it invites.
+   * This used to be the forfeit count, and it was the most important warning on
+   * the page: locking took every unpicked slot away for good, so a bracket
+   * locked at the quarters could never score the semis or the final. "Lock all
+   * picks" now commits only the picks that were made, so there is nothing to
+   * forfeit and nothing to warn about — the same number is still worth showing,
+   * but as what remains to do rather than what was just lost.
    *
-   * Unlocking (migration 094) turns that from permanent into recoverable, which
-   * is why this warning now points at the way out instead of describing a
-   * one-way door. It is still worth showing: the rounds score nothing until the
-   * user actually does something about it.
+   * Counted the way the server counts it (savePrediction's `outstanding`): byes
+   * are not picks anyone is asked to make, and a played match is not one they
+   * can still make. The two must agree, or the copy promises a slot the save
+   * has already closed.
    */
+  const unpickedOpenMatches = draw.matches.filter(m =>
+    !byeMatchIds.has(m.matchId) && !matchResults?.[m.matchId] && !picks[m.matchId],
+  ).length
+
+  /** Rounds with no pick at all — named in the note, since "9 matches" is vaguer than "the semis". */
   const forfeitedRounds = findForfeitedRounds(
     toGapMatches(draw.matches),
     new Set(Object.keys(matchResults ?? {})),
@@ -807,10 +813,21 @@ export default function BracketPredictor({
   /** Lock entire bracket (replaces old "Submit & lock") */
   const handleLockAll = async () => {
     if (readOnly || fullyLocked) return
-    const forfeitWarning = forfeitedRounds.length > 0
-      ? `\n\nThis forfeits ${listRounds(forfeitedRounds)} — you will not be able to pick ${forfeitedRounds.length > 1 ? 'those rounds' : 'that round'} later, and they will score nothing.`
+
+    // What is left open, said before the click rather than discovered after it.
+    // This used to be a forfeit warning, because locking took those slots away
+    // for good. It no longer does, so the sentence is now reassurance instead
+    // of a threat — and it is the difference between a new user losing a
+    // tournament and simply carrying on.
+    const openNote = unpickedOpenMatches > 0
+      ? `\n\n${unpickedOpenMatches} match${unpickedOpenMatches === 1 ? '' : 'es'} still ${unpickedOpenMatches === 1 ? 'has' : 'have'} no pick. ` +
+        `Locking leaves ${unpickedOpenMatches === 1 ? 'it' : 'them'} open — you can still pick ${unpickedOpenMatches === 1 ? 'it' : 'them'} later.`
       : ''
-    if (!confirm(`Lock all picks? Every pick becomes final and starts earning the streak multiplier.${forfeitWarning}\n\nThis cannot be undone.`)) return
+    if (!confirm(
+      `Lock ${pickedCount} pick${pickedCount === 1 ? '' : 's'}? They become final and start earning the streak multiplier. ` +
+      `This cannot be undone.${openNote}`,
+    )) return
+
     setSaving(true)
     setSlotError(null)
     try {
@@ -822,7 +839,17 @@ export default function BracketPredictor({
         lockAll: true,
       })
       if (result.success) {
-        setFullyLocked(true)
+        // Only the server knows whether that closed the bracket — a partial
+        // one stays open, and flipping to the locked view here would hide the
+        // very slots the change exists to keep reachable.
+        setFullyLocked(result.fullyLocked === true)
+        setCurrentPickLocks(prev => {
+          const next = { ...prev }
+          for (const matchId of Object.keys(picks)) {
+            if (picks[matchId] && !next[matchId]) next[matchId] = 'auto_lock_all'
+          }
+          return next
+        })
         setSaved(true)
         if (result.predictionId) setCurrentPredictionId(result.predictionId)
       } else if (result.error === 'slot_taken') {
@@ -1130,7 +1157,7 @@ export default function BracketPredictor({
                 >
                   {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save draft'}
                 </button>
-                <Tooltip text="Lock every pick at once. Locked picks start earning the streak multiplier and can never be changed again — only do this when your bracket is final.">
+                <Tooltip text="Commit every pick you have made so far. They start earning the streak multiplier and can never be changed again. Matches you have not picked stay open.">
                   <button
                     onClick={handleLockAll}
                     disabled={saving || pickedCount === 0}
@@ -1967,14 +1994,17 @@ export default function BracketPredictor({
             {/* Shown before the click, not only in the confirm dialog — a native
                 confirm is muscle-memory dismissed, and this is the one warning
                 on the page that costs real points to miss. */}
-            {forfeitedRounds.length > 0 && (
+            {unpickedOpenMatches > 0 && (
               <p
                 className="rounded-sm px-3 py-2"
-                style={{ fontSize: '0.75rem', color: '#7a3210', background: '#fdece0', border: '1px solid #f0c9ae' }}
+                style={{ fontSize: '0.75rem', color: 'var(--muted)', background: 'var(--chalk)', border: '1px solid var(--chalk-dim)' }}
               >
-                <strong>Locking now forfeits {listRounds(forfeitedRounds)}.</strong>{' '}
-                {forfeitedRounds.length > 1 ? 'Those rounds' : 'That round'} would score nothing, and locking cannot be undone.
-                Leave the bracket unlocked to keep picking as the draw opens up.
+                <strong style={{ color: 'var(--ink)' }}>
+                  Locking commits the {pickedCount} pick{pickedCount === 1 ? '' : 's'} you have made.
+                </strong>{' '}
+                The {unpickedOpenMatches} match{unpickedOpenMatches === 1 ? '' : 'es'} you have not picked
+                {forfeitedRounds.length > 0 && <> — including {listRounds(forfeitedRounds)} — </>}{' '}
+                stay open, so you can carry on picking as the draw opens up.
               </p>
             )}
             {/* The reason to lock at all. Until the multiplier was gated on it,
@@ -1992,7 +2022,8 @@ export default function BracketPredictor({
               <Link href="/faq#lock-a-round" style={{ color: 'var(--court)' }}>Locking a round</Link>{' '}
               commits just that round and leaves the rest of your bracket editable.{' '}
               <Link href="/faq#lock-all-picks" style={{ color: 'var(--court)' }}>&quot;Lock all picks&quot;</Link>{' '}
-              ends the whole bracket and cannot be undone. You can also lock
+              commits every pick you have made so far and cannot be undone — but the matches you have
+              not picked stay open, so it never costs you a round. You can also lock
               one match at a time with the &quot;Lock pick&quot; button on it.
             </p>
           </div>
