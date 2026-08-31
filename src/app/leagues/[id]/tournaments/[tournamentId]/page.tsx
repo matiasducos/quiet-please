@@ -8,6 +8,7 @@ import Nav from '@/components/Nav'
 import TournamentResultsTable from '@/components/TournamentResultsTable'
 import type { TournamentInfo, PlayerResult } from '@/components/TournamentResultsTable'
 import LeagueTournamentSelector from '../../LeagueTournamentSelector'
+import { hasPublishedPicks } from '@/lib/tennis'
 
 export default async function LeagueTournamentResultsPage({ params }: { params: Promise<{ id: string; tournamentId: string }> }) {
   const { user, profile } = await getNavProfile()
@@ -38,7 +39,7 @@ export default async function LeagueTournamentResultsPage({ params }: { params: 
   // Fetch predictions for this tournament by league members
   const { data: predictions } = memberIds.length > 0
     ? await admin.from('predictions')
-        .select('id, user_id, points_earned, picks, is_fully_locked, users(username)')
+        .select('id, user_id, points_earned, picks, is_fully_locked, pick_locks, users(username)')
         .eq('tournament_id', tournamentId)
         .is('challenge_id', null)
         .in('user_id', memberIds)
@@ -109,7 +110,8 @@ export default async function LeagueTournamentResultsPage({ params }: { params: 
         total_picks: Object.keys(p.picks ?? {}).length,
         streak_power: acc && acc.basePts > 0 ? acc.totalPts / acc.basePts : 1,
         isMe: p.user_id === user.id,
-        picks_locked: p.is_fully_locked === true,
+        // Same rule as the global leaderboard — see hasPublishedPicks.
+        picks_locked: hasPublishedPicks(p.is_fully_locked, p.pick_locks),
       }
     })
     .sort((a, b) => b.points - a.points)

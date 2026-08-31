@@ -179,7 +179,9 @@ export default function TournamentResultsTable({
             const medal = p.rank === 1 ? '🥇' : p.rank === 2 ? '🥈' : p.rank === 3 ? '🥉' : null
             const accuracy = p.total_picks > 0 ? `${p.correct_picks}/${p.total_picks}` : '—'
             const rate = p.total_picks > 0 ? `${Math.round((p.correct_picks / p.total_picks) * 100)}%` : '—'
-            // Own bracket is always viewable; everyone else's only once locked.
+            // Own bracket is always viewable; everyone else's once they have
+            // published it — which now means committing any round, not only
+            // locking the whole bracket. See hasPublishedPicks.
             const canViewPicks = Boolean(tournament.id) && (p.isMe || p.picks_locked)
             return (
               <div key={p.user_id} className="grid grid-cols-12 px-5 py-4 border-b last:border-0"
