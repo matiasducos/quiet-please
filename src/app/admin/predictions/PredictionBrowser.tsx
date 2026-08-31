@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {
   listTournamentPredictions,
   getPredictionOverview,
+  adminUnlockPrediction,
 } from './actions'
 import type {
   AdminPredictionRow,
@@ -77,12 +78,72 @@ function Chip({ text, tone = 'muted' }: { text: string; tone?: 'muted' | 'alert'
 
 // ── One bracket ──────────────────────────────────────────────────────────────
 
-function PredictionRow({ row, showTournament }: { row: AdminPredictionRow; showTournament: boolean }) {
+const OK_TONE = '#166534'
+
+function PredictionRow({
+  row,
+  showTournament,
+  onUnlocked,
+}: {
+  row: AdminPredictionRow
+  showTournament: boolean
+  /** Lets the page patch this row in place instead of refetching 25 brackets. */
+  onUnlocked: (predictionId: string) => void
+}) {
   // Deliberately the admin route and not the public `/picks/<username>` one:
   // that URL is keyed by series slug and resolves to whichever edition is
   // currently featured, so auditing an old edition through it would show the
   // wrong year's bracket. A prediction id is exact.
   const href = `/admin/predictions/${row.predictionId}`
+
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null)
+  // Set only after the database has refused for `opponent_locked`. The override
+  // is never offered up front — an admin should have to be told what the poker
+  // rule is protecting before they decide to step over it.
+  const [canForce, setCanForce] = useState(false)
+
+  // Nothing to unlock is not the same as nothing locked: a bracket can carry
+  // round locks with is_fully_locked false, and that is the state 095 was
+  // written for.
+  const hasLocks = row.isFullyLocked || row.committedLockCount > 0
+
+  async function run(force: boolean) {
+    setBusy(true)
+    setNote(null)
+    try {
+      const res = await adminUnlockPrediction(row.predictionId, { allowRevealedChallenge: force })
+      if (!res.ok) {
+        setNote({ tone: 'err', text: res.message })
+        // Keep the confirm panel open so the override sits next to the reason
+        // it is needed, rather than making the admin start again.
+        if (res.error === 'opponent_locked') setCanForce(true)
+        else setConfirming(false)
+        return
+      }
+      setConfirming(false)
+      setCanForce(false)
+      setNote({
+        tone: 'ok',
+        text: res.noOp
+          ? 'Already open — nothing was locked, so nothing changed.'
+          : `Unlocked. ${res.withdrawn} commitment${res.withdrawn === 1 ? '' : 's'} released` +
+            (res.kept > 0 ? `, ${res.kept} kept on played matches.` : '.'),
+      })
+      onUnlocked(row.predictionId)
+    } catch (err) {
+      setNote({ tone: 'err', text: err instanceof Error ? err.message : 'Unlock failed' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const lockLabel = row.isFullyLocked
+    ? 'locked'
+    : row.committedLockCount > 0
+      ? `${row.committedLockCount} committed`
+      : 'still editable'
 
   return (
     <div className="rounded-sm border bg-white px-3 py-2.5" style={{ borderColor: 'var(--chalk-dim)' }}>
@@ -94,6 +155,7 @@ function PredictionRow({ row, showTournament }: { row: AdminPredictionRow; showT
             </span>
             {row.isBot && <Chip text="bot" />}
             {row.challengeId && <Chip text="challenge" tone="court" />}
+            {row.unlockCount > 0 && <Chip text={`reopened ×${row.unlockCount}`} />}
             {row.latePickCount > 0 && <Chip text={`${row.latePickCount} after lock`} tone="alert" />}
           </div>
           <div style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -114,11 +176,54 @@ function PredictionRow({ row, showTournament }: { row: AdminPredictionRow; showT
         <span>{row.pickCount} pick{row.pickCount === 1 ? '' : 's'}</span>
         {row.autoPickCount > 0 && <span>{row.autoPickCount} auto</span>}
         <span>{row.pointsEarned} pt{row.pointsEarned === 1 ? '' : 's'}</span>
-        <span style={{ color: row.isFullyLocked ? 'var(--court)' : 'var(--muted)' }}>
-          {row.isFullyLocked ? 'locked' : 'still editable'}
-        </span>
+        <span style={{ color: hasLocks ? 'var(--court)' : 'var(--muted)' }}>{lockLabel}</span>
         <span>edited {when(row.updatedAt)}</span>
+
+        {hasLocks && !confirming && (
+          <button
+            onClick={() => { setNote(null); setConfirming(true) }}
+            className="px-2 py-0.5 rounded-sm border transition-opacity hover:opacity-70"
+            style={{ ...mono, fontSize: '0.65rem', borderColor: 'var(--chalk-dim)', color: 'var(--ink)', background: 'white', cursor: 'pointer' }}
+          >
+            Unlock
+          </button>
+        )}
       </div>
+
+      {confirming && (
+        <div className="mt-2 rounded-sm px-2.5 py-2" style={{ background: '#fef3c7', border: '1px solid #fde68a' }}>
+          <p style={{ ...mono, fontSize: '0.65rem', color: '#92400e', margin: 0, lineHeight: 1.5 }}>
+            Reopens this bracket for <strong>{row.username ?? row.email}</strong>. Commitments on
+            unplayed matches are released, which gives back the streak multiplier on those picks
+            until they are locked again; locks on matches already played are kept, and no points
+            already awarded change.
+          </p>
+          <div className="flex items-center gap-2 flex-wrap mt-2">
+            <button
+              onClick={() => run(canForce)}
+              disabled={busy}
+              className="px-2.5 py-1 rounded-sm transition-opacity hover:opacity-80 disabled:opacity-40"
+              style={{ ...mono, fontSize: '0.65rem', background: '#92400e', color: 'white', border: 'none', cursor: 'pointer' }}
+            >
+              {busy ? 'Unlocking…' : canForce ? 'Unlock anyway' : 'Confirm unlock'}
+            </button>
+            <button
+              onClick={() => { setConfirming(false); setCanForce(false); setNote(null) }}
+              disabled={busy}
+              className="px-2.5 py-1 rounded-sm border transition-opacity hover:opacity-70 disabled:opacity-40"
+              style={{ ...mono, fontSize: '0.65rem', borderColor: '#fde68a', color: '#92400e', background: 'white', cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {note && (
+        <p style={{ ...mono, fontSize: '0.65rem', marginTop: '6px', lineHeight: 1.5, color: note.tone === 'ok' ? OK_TONE : ALERT }}>
+          {note.text}
+        </p>
+      )}
     </div>
   )
 }
@@ -165,6 +270,20 @@ export default function PredictionBrowser({ tournaments }: { tournaments: AdminP
     getPredictionOverview({ tournamentId, scope }).then(o => { if (!cancelled) setOverview(o) })
     return () => { cancelled = true }
   }, [tournamentId, scope])
+
+  // Patch the one row instead of reloading the page: a refetch would reorder
+  // the list under the admin (it is sorted by updated_at, which the unlock just
+  // moved) and lose the result message they have not read yet.
+  const handleUnlocked = useCallback((predictionId: string) => {
+    setRows(prev => prev.map(r =>
+      r.predictionId === predictionId
+        ? { ...r, isFullyLocked: false, committedLockCount: 0, unlockCount: r.unlockCount + 1 }
+        : r,
+    ))
+    setOverview(prev =>
+      prev && prev.locked !== null ? { ...prev, locked: Math.max(0, prev.locked - 1) } : prev,
+    )
+  }, [])
 
   function handleSearch(value: string) {
     if (searchTimer) clearTimeout(searchTimer)
@@ -284,7 +403,12 @@ export default function PredictionBrowser({ tournaments }: { tournaments: AdminP
         ) : (
           <div className="flex flex-col gap-2">
             {rows.map(r => (
-              <PredictionRow key={r.predictionId} row={r} showTournament={showTournament} />
+              <PredictionRow
+                key={r.predictionId}
+                row={r}
+                showTournament={showTournament}
+                onUnlocked={handleUnlocked}
+              />
             ))}
           </div>
         )}
