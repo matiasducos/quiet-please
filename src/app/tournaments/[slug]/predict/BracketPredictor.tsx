@@ -165,7 +165,7 @@ const PICK_STYLES: Record<string, { bg: string; labelColor: string; labelBg: str
  * the bracket offers, so it has to stay legible rather than decorative.
  */
 const PROJECTED_HATCH =
-  'repeating-linear-gradient(135deg, rgba(90,90,74,0.14) 0 1px, transparent 1px 7px)'
+  'repeating-linear-gradient(135deg, rgba(90,90,74,0.10) 0 1px, transparent 1px 10px)'
 
 /**
  * Minimap palette.
