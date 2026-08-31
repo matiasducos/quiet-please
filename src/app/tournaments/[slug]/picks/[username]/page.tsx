@@ -3,7 +3,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { notFound } from 'next/navigation'
 import BracketPredictor from '../../predict/BracketPredictor'
 import { resolveTournamentParam } from '@/lib/tournaments/series'
-import { hasPublishedPicks } from '@/lib/tennis'
 
 // A per-user bracket for every tournament is one URL per user per tournament —
 // ~340k near-identical pages at 10k users. Never index these.
@@ -41,7 +40,7 @@ export default async function UserPicksPage({
   // Load challenge-specific or global prediction
   let predQuery = supabase
     .from('predictions')
-    .select('id, picks, is_fully_locked, pick_locks, points_earned')
+    .select('id, picks, is_fully_locked, is_published, points_earned')
     .eq('tournament_id', id)
     .eq('user_id', targetUser.id)
 
@@ -56,12 +55,11 @@ export default async function UserPicksPage({
   // Security: don't expose unpublished picks to other users.
   //
   // Must agree with the leaderboard and league tables, which decide whether to
-  // OFFER this page using the same helper. Gating here on is_fully_locked while
-  // they gate on hasPublishedPicks is what made a round-locked bracket show a
-  // "view picks" link that 404s.
+  // OFFER this page. They read the same `is_published` column, so offering the
+  // page and serving it cannot disagree — two hand-kept copies of this rule is
+  // exactly what produced a "view picks" link that 404s.
   const isOwnPicks = viewer?.id === targetUser.id
-  if (prediction && !isOwnPicks &&
-      !hasPublishedPicks(prediction.is_fully_locked, prediction.pick_locks as Record<string, string> | null)) {
+  if (prediction && !isOwnPicks && prediction.is_published !== true) {
     notFound()
   }
 

@@ -82,8 +82,11 @@ export default async function ProfilePage({
     .eq('user_id', profile.id)
     .is('challenge_id', null)
 
+  // Someone else's profile lists only the brackets they have published —
+  // which means any committed round, not only a full lock (097). Filtered in
+  // Postgres rather than after the fetch, so the list cannot come back short.
   if (!isOwnProfile) {
-    predQuery = predQuery.eq('is_fully_locked', true)
+    predQuery = predQuery.eq('is_published', true)
   }
 
   const [

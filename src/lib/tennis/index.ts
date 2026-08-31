@@ -35,6 +35,6 @@ export type {
   Surface,
 } from './types'
 
-export { getPointsForRound, calculateStreakMultiplier, committedPicks, hasPublishedPicks, POINTS_TABLE, WINNER_POINTS } from './points'
+export { getPointsForRound, calculateStreakMultiplier, committedPicks, POINTS_TABLE, WINNER_POINTS } from './points'
 export { buildFeedMap, buildReverseFeedMap, isByeMatch, getMatchesByRound, getSortedRounds, getFeederMatchId } from './bracket'
 export type { FeedMap, FeedMapEntry } from './bracket'
