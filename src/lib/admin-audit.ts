@@ -2,11 +2,16 @@ import * as Sentry from '@sentry/nextjs'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { AdminActor } from '@/app/admin/auth'
 
-export type AdminAction = 'user.delete'
-export type AdminTargetType = 'user'
+export type AdminAction = 'user.delete' | 'prediction.unlock'
+export type AdminTargetType = 'user' | 'prediction'
 
 /**
- * Record a destructive admin action in `admin_actions` (migration 071).
+ * Record a destructive admin action in `admin_actions` (migration 071, widened
+ * by 096).
+ *
+ * Both the `action` and `target_type` columns are CHECK-constrained in the
+ * database, so a new value here needs a migration to match — the union types
+ * above and those constraints have to be extended together.
  *
  * Never throws. These are written *after* the action has already succeeded, so
  * raising here would report a failure for work that actually completed and

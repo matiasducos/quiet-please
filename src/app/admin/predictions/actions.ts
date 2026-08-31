@@ -1,6 +1,8 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { recordAdminAction } from '@/lib/admin-audit'
+import { committedPicks } from '@/lib/tennis'
 import { assertAdmin } from '../auth'
 
 const PAGE_SIZE = 25
@@ -37,6 +39,19 @@ export interface AdminPredictionRow {
   latePickCount: number
   pointsEarned: number
   isFullyLocked: boolean
+  /**
+   * Streak commitments the user made themselves — `voluntary`, `round` and
+   * `auto_lock_all` locks, counted by the same `committedPicks()` the scorer
+   * uses, so the cron's post-match `'auto'` records are excluded.
+   *
+   * Matters because a bracket can carry round locks with `isFullyLocked`
+   * false, and the list called that state "still editable" — which it is not,
+   * in the rounds those locks cover. Includes commitments on already-played
+   * matches, which an unlock keeps.
+   */
+  committedLockCount: number
+  /** Times the bracket has been reopened, by its owner or by an admin. */
+  unlockCount: number
   submittedAt: string
   updatedAt: string
 }
@@ -96,6 +111,8 @@ interface RawPredictionRow {
   locked_picks: string[] | null
   points_earned: number | null
   is_fully_locked: boolean | null
+  pick_locks: Record<string, string> | null
+  unlock_count: number | null
   submitted_at: string
   updated_at: string
   users: { username: string | null; email: string | null } | null
@@ -191,7 +208,7 @@ export async function listTournamentPredictions(opts: ListOptions): Promise<{
     // ever made — on every filter change. One extra row is asked for instead,
     // which answers the only question the pager needs.
     .select(
-      'id, user_id, tournament_id, challenge_id, picks, pick_sources, locked_picks, points_earned, is_fully_locked, submitted_at, updated_at, users!inner(username, email), tournaments!inner(name, location, flag_emoji)',
+      'id, user_id, tournament_id, challenge_id, picks, pick_sources, locked_picks, points_earned, is_fully_locked, pick_locks, unlock_count, submitted_at, updated_at, users!inner(username, email), tournaments!inner(name, location, flag_emoji)',
     )
 
   if (opts.tournamentId !== 'all') q = q.eq('tournament_id', opts.tournamentId)
@@ -244,6 +261,10 @@ export async function listTournamentPredictions(opts: ListOptions): Promise<{
       latePickCount: late.length,
       pointsEarned: p.points_earned ?? 0,
       isFullyLocked: Boolean(p.is_fully_locked),
+      // Counted here and not sent on: pick_locks is a 128-key object, and the
+      // browser only ever renders the size of it.
+      committedLockCount: committedPicks(p.pick_locks).size,
+      unlockCount: p.unlock_count ?? 0,
       submittedAt: p.submitted_at,
       updatedAt: p.updated_at,
     }
@@ -304,5 +325,153 @@ export async function getPredictionOverview(opts: {
     bots: bots.count ?? 0,
     locked: locked.count ?? 0,
     approximate: false,
+  }
+}
+
+// ── Unlocking somebody else's bracket ────────────────────────────────────────
+
+export type AdminUnlockResult =
+  | {
+      ok: true
+      /** Nothing was locked — reported rather than written, so no audit row. */
+      noOp: boolean
+      wasFullyLocked: boolean
+      /** Commitments released. Locks on played matches are kept, not counted. */
+      withdrawn: number
+      kept: number
+    }
+  | {
+      ok: false
+      error: 'not_found' | 'tournament_closed' | 'opponent_locked' | 'unknown'
+      message: string
+    }
+
+/**
+ * Reopen any user's bracket.
+ *
+ * The self-serve unlocks (094/095) resolve their row with
+ * `user_id = auth.uid()`, so neither can be reused here: the admin client has
+ * no `auth.uid()` at all, and even a signed-in admin would get `not_found` for
+ * a bracket that is not theirs. `admin_unlock_prediction` (096) is the same
+ * transition with that clause replaced by a service_role-only grant — which is
+ * why it is called through `createAdminClient()` and can only be reached from
+ * behind `assertAdmin()`.
+ *
+ * It does the work of both self-serve unlocks at once: clears the bracket lock
+ * and releases pick/round locks on unplayed matches. A bracket with round locks
+ * and no bracket lock is a real state, and treating it as "already unlocked"
+ * would be a button that reports success and changes nothing.
+ */
+export async function adminUnlockPrediction(
+  predictionId: string,
+  opts?: { allowRevealedChallenge?: boolean },
+): Promise<AdminUnlockResult> {
+  const actor = await assertAdmin()
+  const admin = createAdminClient()
+
+  // Read the identity first, for the audit label. Unlike a deletion the row
+  // survives, but resolving it afterwards would be a second round trip to
+  // learn something already in hand.
+  const { data: pred, error: lookupError } = await admin
+    .from('predictions')
+    .select('id, user_id, tournament_id, challenge_id, users(username, email), tournaments(name, location, status)')
+    .eq('id', predictionId)
+    .maybeSingle()
+
+  if (lookupError) {
+    console.error('[admin-predictions] unlock lookup failed:', lookupError.message)
+    return { ok: false, error: 'unknown', message: `Lookup failed: ${lookupError.message}` }
+  }
+  if (!pred) return { ok: false, error: 'not_found', message: 'Bracket not found — it may have been deleted.' }
+
+  // PostgREST types a to-one embed as an array in some shapes and an object in
+  // others; both are read the same way here.
+  const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? (v[0] ?? null) : v)
+  type Owner = { username: string | null; email: string | null }
+  type Tournament = { name: string; location: string | null; status: string }
+  const owner = one(pred.users as unknown as Owner | Owner[] | null)
+  const tournament = one(pred.tournaments as unknown as Tournament | Tournament[] | null)
+
+  const { data, error } = await admin.rpc('admin_unlock_prediction', {
+    p_prediction_id: predictionId,
+    p_allow_revealed_challenge: opts?.allowRevealedChallenge === true,
+  })
+
+  // A Postgres error here is ours, not the admin's — most likely 096 has not
+  // been run in this environment yet. Say so, because that is the one cause
+  // worth checking first, and log the detail.
+  if (error) {
+    console.error('[admin-predictions] admin_unlock_prediction rpc failed:', error.message)
+    return {
+      ok: false,
+      error: 'unknown',
+      message: `Unlock failed: ${error.message}. If this says the function does not exist, migration 096 has not been applied.`,
+    }
+  }
+
+  const result = (data ?? {}) as {
+    ok?: boolean
+    error?: string
+    status?: string
+    no_op?: boolean
+    was_fully_locked?: boolean
+    withdrawn?: number
+    kept?: number
+  }
+
+  if (!result.ok) {
+    if (result.error === 'tournament_closed') {
+      return {
+        ok: false,
+        error: 'tournament_closed',
+        message: `This tournament is ${(result.status ?? 'closed').replace(/_/g, ' ')} — picks can no longer be saved, so unlocking would give them a bracket they still cannot edit.`,
+      }
+    }
+    if (result.error === 'opponent_locked') {
+      return {
+        ok: false,
+        error: 'opponent_locked',
+        message: 'Their challenge opponent has locked, so both brackets are already revealed to each other. Unlocking now lets this user pick with their opponent’s bracket in front of them.',
+      }
+    }
+    if (result.error === 'not_found') {
+      return { ok: false, error: 'not_found', message: 'Bracket not found — it may have been deleted.' }
+    }
+    return { ok: false, error: 'unknown', message: result.error ?? 'Unlock failed' }
+  }
+
+  // A no-op changed nothing, so there is nothing to attribute to anyone. Audit
+  // rows are for things that happened.
+  if (result.no_op) {
+    return { ok: true, noOp: true, wasFullyLocked: false, withdrawn: 0, kept: result.kept ?? 0 }
+  }
+
+  await recordAdminAction({
+    actor,
+    action: 'prediction.unlock',
+    targetType: 'prediction',
+    targetId: predictionId,
+    targetLabel: `${owner?.username ?? '(no username)'} <${owner?.email ?? 'unknown'}> — ${tournament?.location ?? tournament?.name ?? pred.tournament_id}`,
+    meta: {
+      user_id: pred.user_id,
+      tournament_id: pred.tournament_id,
+      challenge_id: pred.challenge_id,
+      tournament_status: tournament?.status,
+      was_fully_locked: result.was_fully_locked === true,
+      // Streak commitments handed back. Zero means the bracket was locked
+      // before anything had been played — the mis-click case.
+      commitments_withdrawn: result.withdrawn ?? 0,
+      commitments_kept: result.kept ?? 0,
+      // Only ever true when an admin deliberately overrode the poker rule.
+      forced_over_revealed_challenge: opts?.allowRevealedChallenge === true,
+    },
+  })
+
+  return {
+    ok: true,
+    noOp: false,
+    wasFullyLocked: result.was_fully_locked === true,
+    withdrawn: result.withdrawn ?? 0,
+    kept: result.kept ?? 0,
   }
 }
