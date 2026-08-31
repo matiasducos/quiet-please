@@ -200,11 +200,12 @@ export const FAQ_SECTIONS: FaqSection[] = [
       },
       {
         id: 'lock-all-picks',
-        question: 'What does "Lock all picks" do, and can I undo it?',
+        question: 'What does "Lock all picks" do?',
         answer: [
-          { type: 'p', text: 'It commits your whole bracket at once. Every pick becomes final, the bracket becomes visible, and everything you have picked starts earning the multiplier.' },
-          { type: 'p', text: 'It cannot be undone from the app. If you locked by mistake while a tournament is still open, write to support@quietplease.app and we can reopen it for you.' },
-          { type: 'p', text: 'It also gives up every round you have not filled in yet. Later rounds keep opening as results come in, so a bracket locked at the quarterfinals can never score the quarters, semis or final. The button tells you exactly which rounds you would be giving up before you confirm. If a tournament is still running, lock the round instead.' },
+          { type: 'p', text: 'It commits every pick you have made so far. Those picks become final, your bracket becomes visible, and they start earning the multiplier.' },
+          { type: 'p', text: 'It does not close the rest of your bracket. Matches you have not picked stay open, so if you lock after the first round you can carry on predicting the later rounds as the draw opens up. Locking can never cost you a round you did not choose to give up.' },
+          { type: 'p', text: 'The picks it commits cannot be undone from the app. If you locked one by mistake while a tournament is still open, write to support@quietplease.app and we can reopen it for you.' },
+          { type: 'p', text: 'Your bracket only counts as fully locked once there is nothing left to pick — that is also what reveals both brackets in a friends challenge.' },
         ],
       },
       {
