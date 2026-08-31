@@ -175,6 +175,14 @@ export async function savePrediction({
     }
   }
 
+  // Every lock written in THIS save happened now. Kept as a parallel map to
+  // pick_locks (which records how) rather than folded into it, because changing
+  // that column's shape would break committedPicks() and all of its callers.
+  const lockedNow = new Date().toISOString()
+  const pickLockTimesUpdate = pickLocksUpdate
+    ? Object.fromEntries(Object.keys(pickLocksUpdate).map(m => [m, lockedNow]))
+    : undefined
+
   // ── 3. Build the row ──────────────────────────────────────────────────
   const row: Record<string, any> = {
     user_id:       user.id,
@@ -198,6 +206,9 @@ export async function savePrediction({
   if (pickLocksUpdate) {
     row.pick_locks = pickLocksUpdate
   }
+  if (pickLockTimesUpdate) {
+    row.pick_lock_times = pickLockTimesUpdate
+  }
 
   // ── 4. UPDATE or INSERT ──────────────────────────────────────────────
   let insertedPredictionId: string | undefined
@@ -206,7 +217,7 @@ export async function savePrediction({
     // Merge lock state + pick sources + locked_picks: fetch existing, then merge
     const { data: existingPred } = await supabase
       .from('predictions')
-      .select('picks, pick_locks, pick_sources, locked_picks')
+      .select('picks, pick_locks, pick_lock_times, pick_sources, locked_picks')
       .eq('id', predictionId)
       .single()
 
@@ -222,6 +233,18 @@ export async function savePrediction({
         if (!merged[matchId]) merged[matchId] = lockType
       }
       row.pick_locks = merged
+    }
+
+    if (pickLockTimesUpdate) {
+      // First write wins here too, and for a sharper reason than the locks: a
+      // commitment time is now worth points. Letting a later lock rewrite an
+      // earlier one would be harmless, but letting it rewrite a LATER one
+      // backwards would hand out a stacking credit that was never earned.
+      const mergedTimes = { ...((existingPred?.pick_lock_times as Record<string, string>) ?? {}) }
+      for (const [matchId, at] of Object.entries(pickLockTimesUpdate)) {
+        if (!mergedTimes[matchId]) mergedTimes[matchId] = at
+      }
+      row.pick_lock_times = mergedTimes
     }
 
     // Merge pick_sources: preserve existing "auto" for untouched matches,

@@ -171,7 +171,7 @@ export async function GET(request: Request) {
       while (true) {
         const { data: page, error: pageErr } = await supabase
           .from('predictions')
-          .select('id, user_id, tournament_id, challenge_id, picks, pick_locks, locked_picks, points_earned, expires_at')
+          .select('id, user_id, tournament_id, challenge_id, picks, pick_locks, pick_lock_times, locked_picks, points_earned, expires_at')
           .in('tournament_id', chunk)
           .order('id', { ascending: true })
           .range(from, from + PAGE_SIZE - 1)
@@ -200,11 +200,16 @@ export async function GET(request: Request) {
     // ── 4. Load bracket data for streak calculation ───────────────────────
     const { data: draws, error: drawsErr } = await supabase
       .from('draws')
-      .select('tournament_id, bracket_data')
+      .select('tournament_id, bracket_data, locked_matches')
       .in('tournament_id', tournamentIds as string[])
     if (drawsErr) throw new Error(`draws query failed: ${drawsErr.message}`)
 
     const bracketByTournament: Record<string, { matches: DrawMatch[]; feedMap: ReturnType<typeof buildFeedMap> }> = {}
+    // When the organiser froze each match. Already an ISO timestamp per match
+    // id, so it needs no new storage — it is the other half of the stacking
+    // boundary, and usually the earlier half, since results are entered by hand
+    // some time after the match they describe.
+    const adminLockedAtByTournament: Record<string, Record<string, string>> = {}
     for (const d of draws ?? []) {
       const bracket = d.bracket_data as any
       if (bracket?.matches) {
@@ -212,6 +217,28 @@ export async function GET(request: Request) {
           matches: bracket.matches,
           feedMap: buildFeedMap(bracket.matches),
         }
+      }
+      adminLockedAtByTournament[d.tournament_id] =
+        (d.locked_matches as Record<string, string> | null) ?? {}
+    }
+
+    // When each match was decided, for the stacking rule in the multiplier.
+    //
+    // Deliberately NOT taken from the workset above: that holds only results
+    // this run still has to score, while the feeder a streak traces back
+    // through was almost always scored on an earlier run and is absent from it.
+    // Asking for the whole tournament is one small query — a draw is at most
+    // 127 matches — and getting it wrong would silently deny every multiplier.
+    const playedAtByTournament: Record<string, Record<string, string>> = {}
+    {
+      const { data: allResults, error: paErr } = await supabase
+        .from('match_results')
+        .select('tournament_id, external_match_id, played_at')
+        .in('tournament_id', tournamentIds as string[])
+      if (paErr) throw new Error(`played_at query failed: ${paErr.message}`)
+      for (const r of allResults ?? []) {
+        if (!r.played_at) continue
+        ;(playedAtByTournament[r.tournament_id] ??= {})[r.external_match_id] = r.played_at
       }
     }
 
@@ -350,6 +377,9 @@ export async function GET(request: Request) {
             bracket.matches,
             lockedPicksSet,
             committed,
+            (prediction.pick_lock_times as Record<string, string> | null) ?? undefined,
+            playedAtByTournament[result.tournament_id],
+            adminLockedAtByTournament[result.tournament_id],
           )
         }
 
