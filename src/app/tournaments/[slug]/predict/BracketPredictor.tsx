@@ -607,6 +607,12 @@ export default function BracketPredictor({
   function resolveSlot(
     match: DrawMatch,
     slot: 'player1' | 'player2',
+    /**
+     * Which pick set to resolve against. Defaults to the live state; pickWinner
+     * passes a hypothetical one to ask "who WOULD be here if I made this
+     * change" without touching state to find out.
+     */
+    source: Record<string, string> = picks,
   ): { player: Player | null; origin: SlotOrigin | null } {
     const settled = (player: Player | null) => ({ player, origin: (player ? 'settled' : null) as SlotOrigin | null })
 
@@ -635,7 +641,7 @@ export default function BracketPredictor({
     }
 
     // 3. User's pick from feeder match
-    const pickedId = picks[feederMatchId]
+    const pickedId = source[feederMatchId]
     if (!pickedId) {
       // 3b. If feeder is admin-locked and has a result, show actual winner (cascade for missed picks)
       if (adminLockedMatches?.[feederMatchId] && feederWinnerId) {
@@ -654,8 +660,8 @@ export default function BracketPredictor({
     if (feederMatch.player1?.externalId === pickedId) return projected(feederMatch.player1)
     if (feederMatch.player2?.externalId === pickedId) return projected(feederMatch.player2)
 
-    const p1 = resolveSlot(feederMatch, 'player1').player
-    const p2 = resolveSlot(feederMatch, 'player2').player
+    const p1 = resolveSlot(feederMatch, 'player1', source).player
+    const p2 = resolveSlot(feederMatch, 'player2', source).player
     if (p1?.externalId === pickedId) return projected(p1)
     if (p2?.externalId === pickedId) return projected(p2)
 
@@ -668,8 +674,12 @@ export default function BracketPredictor({
    * being duplicated by a parallel "where did this come from" function that
    * could drift out of step with it.
    */
-  function getEffectivePlayer(match: DrawMatch, slot: 'player1' | 'player2'): Player | null {
-    return resolveSlot(match, slot).player
+  function getEffectivePlayer(
+    match: DrawMatch,
+    slot: 'player1' | 'player2',
+    source?: Record<string, string>,
+  ): Player | null {
+    return resolveSlot(match, slot, source).player
   }
 
   const pickWinner = (matchId: string, playerExternalId: string) => {
@@ -677,12 +687,66 @@ export default function BracketPredictor({
     if (byeMatchIds.has(matchId)) return  // BYE matches are auto-resolved
     const newPicks = { ...picks, [matchId]: playerExternalId }
 
+    /**
+     * Would this change strand a pick the user can no longer clear?
+     *
+     * The cascade below deletes downstream picks the change invalidates, but it
+     * cannot touch a locked one — that is what locking means. Silently leaving
+     * it behind produced brackets that contradict themselves: a committed pick
+     * on a player their own earlier picks no longer send through, and every
+     * slot after it unresolvable, drawn as TBD with nothing saying why.
+     *
+     * So the change is refused instead. The commitment is the fixed point, and
+     * unlocking it is a door the user now has.
+     */
+    const strandedLock = (mId: string, working: Record<string, string>): DrawMatch | null => {
+      const feed = feedMap[mId]
+      if (!feed) return null
+      const nextMatch = draw.matches.find(m => m.matchId === feed.nextMatchId)
+      if (!nextMatch) return null
+      if (matchResults?.[nextMatch.matchId]) return null
+      const nextPick = working[nextMatch.matchId]
+      if (!nextPick) return null
+
+      const validAfter = [
+        getEffectivePlayer(nextMatch, 'player1', working)?.externalId,
+        getEffectivePlayer(nextMatch, 'player2', working)?.externalId,
+      ].filter(Boolean)
+      if (validAfter.includes(nextPick)) return null
+
+      // Only refuse a change that BREAKS something currently intact. Four
+      // brackets already hold stranded locked picks from before this guard
+      // existed; blocking every edit on them would trap their owners in a state
+      // they cannot fix, which is worse than the incoherence itself.
+      const validBefore = [
+        getEffectivePlayer(nextMatch, 'player1', picks)?.externalId,
+        getEffectivePlayer(nextMatch, 'player2', picks)?.externalId,
+      ].filter(Boolean)
+      const wasAlreadyStranded = !validBefore.includes(nextPick)
+
+      if (currentPickLocks[nextMatch.matchId]) return wasAlreadyStranded ? null : nextMatch
+      return strandedLock(nextMatch.matchId, working)
+    }
+
+    const blocked = strandedLock(matchId, newPicks)
+    if (blocked) {
+      setSlotError(
+        `That change would leave your committed ${ROUND_LABELS[blocked.round] ?? blocked.round} pick ` +
+        `stranded — the player you locked there would no longer reach that match. ` +
+        `Unlock it first if you want to change this.`
+      )
+      return
+    }
+    setSlotError(null)
+
     const clearDownstream = (mId: string) => {
       const feed = feedMap[mId]
       if (!feed) return
       const nextMatch = draw.matches.find(m => m.matchId === feed.nextMatchId)
       if (!nextMatch) return
-      // Don't clear downstream picks that are already locked
+      // A played or locked match is fixed — the guard above has already refused
+      // any change that would strand a locked pick, so reaching one here means
+      // it stays valid.
       if (matchResults?.[nextMatch.matchId] || currentPickLocks[nextMatch.matchId]) return
       const nextPick = newPicks[nextMatch.matchId]
       if (nextPick) {
