@@ -196,7 +196,6 @@ export const FAQ_SECTIONS: FaqSection[] = [
           { type: 'p', text: 'It commits every pick in that one round and leaves the rest of your bracket completely editable. Those picks start earning the multiplier immediately; you carry on predicting the later rounds as the draw opens up.' },
           { type: 'p', text: 'This is the option to reach for while a tournament is running. It forfeits nothing: matches in that round you have not picked yet are left alone, so you can still fill them in later.' },
           { type: 'p', text: 'Use the button beside Save draft on the bracket — it names the round you are looking at, and how many picks it would commit.' },
-          { type: 'p', text: 'You can undo it. Once a round is committed the same button becomes Unlock, and it releases only the picks whose matches have not been played — those go back to editable and score at single value until you lock them again.' },
         ],
       },
       {
@@ -204,9 +203,8 @@ export const FAQ_SECTIONS: FaqSection[] = [
         question: 'What does "Lock all picks" do, and can I undo it?',
         answer: [
           { type: 'p', text: 'It commits your whole bracket at once. Every pick becomes final, the bracket becomes visible, and everything you have picked starts earning the multiplier.' },
-          { type: 'p', text: 'Yes, you can undo it. An Unlock bracket button sits at the top of your locked bracket for as long as the tournament is still open for predictions, and you can use it as often as you need.' },
-          { type: 'p', text: 'Unlocking has one cost: the multiplier is earned by committing a pick before its match is played, so reopening the bracket gives that commitment back on every match still to come. Picks on matches that have already been played keep theirs — you made those in time, and they cannot be changed anyway.' },
-          { type: 'p', text: 'While it stays locked, the bracket also gives up every round you have not filled in yet. Later rounds keep opening as results come in, so a bracket locked at the quarterfinals scores nothing in the quarters, semis or final until you unlock it and pick them. The button tells you exactly which rounds you would be giving up before you confirm. If a tournament is still running, locking the round is usually what you want instead.' },
+          { type: 'p', text: 'It cannot be undone from the app. If you locked by mistake while a tournament is still open, write to support@quietplease.app and we can reopen it for you.' },
+          { type: 'p', text: 'It also gives up every round you have not filled in yet. Later rounds keep opening as results come in, so a bracket locked at the quarterfinals can never score the quarters, semis or final. The button tells you exactly which rounds you would be giving up before you confirm. If a tournament is still running, lock the round instead.' },
         ],
       },
       {
@@ -215,7 +213,6 @@ export const FAQ_SECTIONS: FaqSection[] = [
         answer: [
           { type: 'p', text: 'Yes — every match has a Lock pick button. It commits that one call and nothing else, and that pick then counts toward the multiplier.' },
           { type: 'p', text: 'Useful when you are certain about one match and still thinking about the rest of the round.' },
-          { type: 'p', text: 'An Unlock button sits on the match once it is committed, so a single pick can be released the same way — as long as that match has not been played yet.' },
         ],
       },
       {
