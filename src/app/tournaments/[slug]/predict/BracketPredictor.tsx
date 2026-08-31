@@ -1,10 +1,9 @@
 'use client'
 
-import { useState, useTransition, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
-import { useRouter } from 'next/navigation'
-import { savePrediction, importGlobalPicks, unlockPrediction, unlockPicks } from './actions'
+import { savePrediction, importGlobalPicks } from './actions'
 import CountryFlag from '@/components/CountryFlag'
 import Tooltip from '@/components/Tooltip'
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation'
@@ -273,7 +272,6 @@ export default function BracketPredictor({
   adminLockedMatches,
   lockedPicks = [],
   initialRound,
-  canUnlock = false,
 }: {
   tournament: any
   draw: Draw
@@ -303,14 +301,6 @@ export default function BracketPredictor({
   /** Match IDs that were admin-locked when the user made their pick (no points) */
   lockedPicks?: string[]
   /**
-   * Whether this locked bracket may be reopened — the tournament is still
-   * predictable and, in a challenge, the opponent has not locked yet.
-   *
-   * Decided on the server so the button is absent rather than present-and-
-   * failing; `unlockPrediction` re-checks both rules regardless.
-   */
-  canUnlock?: boolean
-  /**
    * Which round to open on, from `?round=` — the campaign links in the social
    * studio carry the round their post is about.
    *
@@ -321,9 +311,6 @@ export default function BracketPredictor({
    */
   initialRound?: string
 }) {
-  const router = useRouter()
-  const [, startTransition] = useTransition()
-
   // ── State ────────────────────────────────────────────────────────────────
   const [picks, setPicks] = useState<Record<string, string>>(existingPicks)
   const [currentPickLocks, setCurrentPickLocks] = useState<Record<string, string>>(pickLocks)
@@ -334,8 +321,6 @@ export default function BracketPredictor({
   const [saved, setSaved] = useState(false)
   const [slotError, setSlotError] = useState<string | null>(null)
   const [sharing, setSharing] = useState(false)
-  const [unlocking, setUnlocking] = useState(false)
-  const [unlockError, setUnlockError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [showImport, setShowImport] = useState(true)
   const [h2hPlayers, setH2HPlayers] = useState<{ player1: Player; player2: Player } | null>(null)
@@ -696,8 +681,11 @@ export default function BracketPredictor({
      * on a player their own earlier picks no longer send through, and every
      * slot after it unresolvable, drawn as TBD with nothing saying why.
      *
-     * So the change is refused instead. The commitment is the fixed point, and
-     * unlocking it is a door the user now has.
+     * So the change is refused instead. The commitment is the fixed point — and
+     * since the user-facing unlock was withdrawn, it is a permanent one: there
+     * is no longer a door out of this refusal from inside the app, only an
+     * admin unlock on request. Worth knowing before making the refusal any
+     * broader than it already is.
      */
     const strandedLock = (mId: string, working: Record<string, string>): DrawMatch | null => {
       const feed = feedMap[mId]
@@ -822,7 +810,7 @@ export default function BracketPredictor({
     const forfeitWarning = forfeitedRounds.length > 0
       ? `\n\nThis forfeits ${listRounds(forfeitedRounds)} — you will not be able to pick ${forfeitedRounds.length > 1 ? 'those rounds' : 'that round'} later, and they will score nothing.`
       : ''
-    if (!confirm(`Lock all picks? Every pick becomes final and starts earning the streak multiplier.${forfeitWarning}\n\nYou can unlock the bracket again while the tournament is open.`)) return
+    if (!confirm(`Lock all picks? Every pick becomes final and starts earning the streak multiplier.${forfeitWarning}\n\nThis cannot be undone.`)) return
     setSaving(true)
     setSlotError(null)
     try {
@@ -906,104 +894,6 @@ export default function BracketPredictor({
     } finally {
       setSharing(false)
     }
-  }
-
-  /**
-   * Reopen a fully-locked bracket.
-   *
-   * The counterpart the bracket never had. Locking was final — and the people
-   * it caught were not the ones weighing a trade-off, they were new users who
-   * read the primary button on the page as "submit", locked a first round, and
-   * lost the tournament before it started.
-   *
-   * What it costs is real and is stated up front rather than in the FAQ: the
-   * streak multiplier is bought by committing a pick BEFORE its match is
-   * decided, so reopening gives those commitments back on everything still to
-   * be played. Locks on matches that already happened stay — that commitment
-   * was made in time and the picks are frozen anyway.
-   */
-  const committedUndecided = Object.keys(currentPickLocks)
-    .filter(id => !matchResults?.[id]).length
-
-  const handleUnlock = async () => {
-    if (!currentPredictionId || unlocking || !fullyLocked) return
-
-    const cost = committedUndecided > 0
-      ? `\n\nThe ${committedUndecided} pick${committedUndecided === 1 ? '' : 's'} you locked on matches that have not been played will stop earning the streak multiplier until you lock them again.`
-      : ''
-    if (!confirm(`Unlock your bracket? You will be able to change every pick that has not been played yet.${cost}`)) return
-
-    setUnlocking(true)
-    setUnlockError(null)
-    try {
-      const result = await unlockPrediction(currentPredictionId)
-      if (result.success) {
-        setFullyLocked(false)
-        setSaved(false)
-        // Mirror what the function kept: commitments survive only on matches
-        // that already have a result.
-        setCurrentPickLocks(prev =>
-          Object.fromEntries(Object.entries(prev).filter(([id]) => !!matchResults?.[id])),
-        )
-        startTransition(() => router.refresh())
-      } else {
-        setUnlockError(result.message)
-      }
-    } catch (e) {
-      console.error(e)
-      setUnlockError('Something went wrong unlocking your bracket. Try again.')
-    } finally {
-      setUnlocking(false)
-    }
-  }
-
-  /**
-   * Release the commitment on one pick, or on every committed pick in a round.
-   *
-   * The bracket unlock above only appears on a fully-locked bracket, so a
-   * bracket committed round by round — the path this page actually recommends
-   * — had no way back at all. These two share its rule: a pick whose match has
-   * been played stays committed, because it cannot be changed anyway and its
-   * lock may be the cron's own record of the result.
-   */
-  const runUnlockPicks = async (args: { matchIds?: string[]; round?: string }) => {
-    if (!currentPredictionId || unlocking) return
-    setUnlocking(true)
-    setUnlockError(null)
-    try {
-      const result = await unlockPicks({ predictionId: currentPredictionId, ...args })
-      if (result.success) {
-        const released = new Set(
-          args.round
-            ? matchesForRound(args.round).map(m => m.matchId).filter(id => !matchResults?.[id])
-            : (args.matchIds ?? []).filter(id => !matchResults?.[id]),
-        )
-        setCurrentPickLocks(prev =>
-          Object.fromEntries(Object.entries(prev).filter(([id]) => !released.has(id))),
-        )
-        setSaved(false)
-        startTransition(() => router.refresh())
-      } else {
-        setUnlockError(result.message)
-      }
-    } catch (e) {
-      console.error(e)
-      setUnlockError('Something went wrong unlocking that pick. Try again.')
-    } finally {
-      setUnlocking(false)
-    }
-  }
-
-  const handleUnlockRound = async (round: string) => {
-    const { locked } = getRoundLockState(round)
-    if (locked === 0) return
-    const label = ROUND_PROSE[round] ?? 'this round'
-    if (!confirm(
-      `Unlock ${label}? ${locked} pick${locked === 1 ? '' : 's'} become${locked === 1 ? 's' : ''} editable again ` +
-      `and stop${locked === 1 ? 's' : ''} earning the streak multiplier until you lock ${locked === 1 ? 'it' : 'them'} again. ` +
-      `Picks on matches that have already been played are not affected.`,
-    )) return
-    await runUnlockPicks({ round })
   }
 
   /** Lock a single pick (saves all current picks + locks this match) */
@@ -1240,7 +1130,7 @@ export default function BracketPredictor({
                 >
                   {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save draft'}
                 </button>
-                <Tooltip text="Lock every pick at once. Locked picks can't be changed and start earning the streak multiplier. You can unlock the bracket again while the tournament is open.">
+                <Tooltip text="Lock every pick at once. Locked picks start earning the streak multiplier and can never be changed again — only do this when your bracket is final.">
                   <button
                     onClick={handleLockAll}
                     disabled={saving || pickedCount === 0}
@@ -1492,31 +1382,6 @@ export default function BracketPredictor({
               </button>
             )}
           </div>
-          {/*
-            The way out, at the top of the page rather than below the whole
-            bracket. Someone who locked by mistake is looking for this before
-            they have scrolled anywhere, and if they do not find it they leave.
-          */}
-          {fullyLocked && !readOnly && canUnlock && (
-            <div className="max-w-5xl mx-auto px-4 md:px-6 pb-2.5 flex flex-col sm:flex-row sm:items-center gap-2">
-              <p style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-                Locked by mistake, or want to keep picking as the draw opens up?
-              </p>
-              <button
-                onClick={handleUnlock}
-                disabled={unlocking}
-                className="sm:ml-auto px-3 py-1.5 rounded-sm border text-xs font-medium transition-colors disabled:opacity-40 flex-shrink-0"
-                style={{ borderColor: 'var(--court)', color: 'var(--court)', background: 'white' }}
-              >
-                {unlocking ? 'Unlocking…' : 'Unlock bracket'}
-              </button>
-            </div>
-          )}
-          {unlockError && (
-            <p className="max-w-5xl mx-auto px-4 md:px-6 pb-2.5" style={{ fontSize: '0.75rem', color: '#c84b31' }}>
-              {unlockError}
-            </p>
-          )}
           {/* Legend below — mobile only */}
           <p className="max-w-5xl mx-auto md:hidden mt-1 px-4 md:px-6 pb-1" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
             {drawResultsMode
@@ -1566,13 +1431,9 @@ export default function BracketPredictor({
             : readOnly
               ? `View ${username}'s picks round by round.`
             : fullyLocked
-              ? (canUnlock
-                  ? (hasResults
-                      ? 'Your bracket is locked and scoring. You can unlock it while the tournament is open.'
-                      : 'Your bracket is locked. You can unlock it any time while the tournament is open.')
-                  : hasResults
-                    ? 'Your picks are final. Follow how they are scoring, round by round.'
-                    : 'Your picks are final. Check back once matches are played to see how they scored.')
+              ? (hasResults
+                  ? 'Your picks are final. Follow how they are scoring, round by round.'
+                  : 'Your picks are final. Check back once matches are played to see how they scored.')
             : (() => {
                 const firstRound = sortedRounds[0]
                 const lastRound = sortedRounds[sortedRounds.length - 1]
@@ -1875,33 +1736,17 @@ export default function BracketPredictor({
                               </Tooltip>
                             )}
 
-{/* Lock status / hint — voluntary (user chose to lock THIS pick) → green.
-                                This badge reaches here only for a match with no result yet
-                                (getMatchLockDisplay checks matchResults first), so the
-                                commitment is still live and can still be given back. */}
+{/* Lock status / hint — voluntary (user chose to lock THIS pick) → green */}
                             {!voidPick && lockDisplay === 'voluntary_locked' && (
-                              <span className="inline-flex items-center gap-2">
-                                <Tooltip text="You committed this pick, so it earns the streak multiplier. Unlock it to change it — it then scores at single value until you lock it again.">
-                                  <span style={{
-                                    fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em',
-                                    color: 'var(--court)', display: 'inline-flex', alignItems: 'center', cursor: 'help',
-                                  }}>
-                                    LOCKED ✓
-                                    <InfoIcon />
-                                  </span>
-                                </Tooltip>
-                                <button
-                                  onClick={() => runUnlockPicks({ matchIds: [match.matchId] })}
-                                  disabled={unlocking}
-                                  className="px-2 py-0.5 rounded-sm border transition-colors disabled:opacity-40"
-                                  style={{
-                                    fontFamily: 'var(--font-mono)', fontSize: '0.55rem', letterSpacing: '0.05em',
-                                    borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white',
-                                  }}
-                                >
-                                  UNLOCK
-                                </button>
-                              </span>
+                              <Tooltip text="You locked this pick yourself. It earns the streak multiplier and can't be changed anymore.">
+                                <span style={{
+                                  fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em',
+                                  color: 'var(--court)', display: 'inline-flex', alignItems: 'center', cursor: 'help',
+                                }}>
+                                  LOCKED ✓
+                                  <InfoIcon />
+                                </span>
+                              </Tooltip>
                             )}
                             {/* Fully locked — whole bracket is final (read-only or "Lock all picks") → gray */}
                             {!voidPick && lockDisplay === 'fully_locked' && (
@@ -2077,11 +1922,6 @@ export default function BracketPredictor({
         {/* Submit area — editing mode only (hidden when parent provides own buttons) */}
         {isEditing && !hideSaveButtons && (
           <div className="mt-8 pt-6 border-t flex flex-col gap-3" style={{ borderColor: 'var(--chalk-dim)' }}>
-            {unlockError && (
-              <div className="rounded-sm px-4 py-3 text-sm" style={{ background: '#fdecea', color: '#c84b31', border: '1px solid #f5c0b8', fontFamily: 'var(--font-mono)' }}>
-                {unlockError}
-              </div>
-            )}
             {/* Slot conflict error */}
             {slotError && (
               <div className="rounded-sm px-4 py-3 text-sm" style={{ background: '#fdecea', color: '#c84b31', border: '1px solid #f5c0b8', fontFamily: 'var(--font-mono)' }}>
@@ -2114,19 +1954,6 @@ export default function BracketPredictor({
                     {saving ? 'Locking…' : `Lock ${SHORT_ROUND_LABELS[activeRound] ?? activeRound} (${activeRoundLock.committable})`}
                   </button>
                 )}
-                {/* The way back out of the button beside it. Counts only
-                    commitments that are still live — a pick whose match has
-                    been played is not released and must not be offered. */}
-                {activeRoundLock.locked > 0 && (
-                  <button
-                    onClick={() => handleUnlockRound(activeRound)}
-                    disabled={unlocking}
-                    className="px-5 py-2.5 text-sm rounded-sm border transition-colors disabled:opacity-40"
-                    style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)' }}
-                  >
-                    {unlocking ? 'Unlocking…' : `Unlock ${SHORT_ROUND_LABELS[activeRound] ?? activeRound} (${activeRoundLock.locked})`}
-                  </button>
-                )}
                 <button
                   onClick={handleLockAll}
                   disabled={saving || pickedCount === 0}
@@ -2146,8 +1973,7 @@ export default function BracketPredictor({
                 style={{ fontSize: '0.75rem', color: '#7a3210', background: '#fdece0', border: '1px solid #f0c9ae' }}
               >
                 <strong>Locking now forfeits {listRounds(forfeitedRounds)}.</strong>{' '}
-                {forfeitedRounds.length > 1 ? 'Those rounds' : 'That round'} would score nothing while the bracket stays
-                locked — you would have to unlock it again to pick {forfeitedRounds.length > 1 ? 'them' : 'it'}.
+                {forfeitedRounds.length > 1 ? 'Those rounds' : 'That round'} would score nothing, and locking cannot be undone.
                 Leave the bracket unlocked to keep picking as the draw opens up.
               </p>
             )}
@@ -2166,8 +1992,7 @@ export default function BracketPredictor({
               <Link href="/faq#lock-a-round" style={{ color: 'var(--court)' }}>Locking a round</Link>{' '}
               commits just that round and leaves the rest of your bracket editable.{' '}
               <Link href="/faq#lock-all-picks" style={{ color: 'var(--court)' }}>&quot;Lock all picks&quot;</Link>{' '}
-              commits the whole bracket at once — you can unlock it again while the tournament is open,
-              but picks you unlock stop earning the multiplier until you re-lock them. You can also lock
+              ends the whole bracket and cannot be undone. You can also lock
               one match at a time with the &quot;Lock pick&quot; button on it.
             </p>
           </div>
@@ -2226,23 +2051,8 @@ export default function BracketPredictor({
               </span>
             </div>
             <p style={{ fontSize: '0.85rem', color: 'var(--muted)', maxWidth: '360px' }}>
-              {canUnlock
-                ? 'Your bracket is set. Good luck! Changed your mind, or locked before you meant to? You can unlock it while the tournament is open.'
-                : 'Your bracket is set. Good luck!'}
+              Your bracket is set. Good luck!
             </p>
-            {canUnlock && (
-              <button
-                onClick={handleUnlock}
-                disabled={unlocking}
-                className="px-5 py-2.5 text-sm rounded-sm border transition-colors disabled:opacity-40"
-                style={{ borderColor: 'var(--court)', color: 'var(--court)' }}
-              >
-                {unlocking ? 'Unlocking…' : 'Unlock bracket'}
-              </button>
-            )}
-            {unlockError && (
-              <p style={{ fontSize: '0.75rem', color: '#c84b31', maxWidth: '360px' }}>{unlockError}</p>
-            )}
             <Link
               href={returnUrl ?? `/tournaments/${tournament.id}`}
               className="px-5 py-2.5 text-sm font-medium rounded-sm transition-opacity hover:opacity-90"

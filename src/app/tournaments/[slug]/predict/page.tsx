@@ -178,30 +178,16 @@ export default async function PredictPage({
 
   // ── Challenge context (opponent lookup, already fetched challenge above) ─
   let challengeContext: { opponentUsername: string; challengeId: string } | undefined
-  // Whether the opponent has locked decides whether this bracket may be
-  // reopened: once both sides are locked the challenge reveals both brackets,
-  // and unlocking after that would mean re-picking with their bracket on
-  // screen. unlock_prediction enforces the same rule server-side.
-  let opponentLocked = false
   if (challengeId && challengeRes.data) {
     const challenge = challengeRes.data
     const opponentId = challenge.challenger_id === user.id
       ? challenge.challenged_id
       : challenge.challenger_id
-    const [{ data: opponentProfile }, { data: opponentPred }] = await Promise.all([
-      supabase
-        .from('users')
-        .select('username')
-        .eq('id', opponentId)
-        .single(),
-      supabase
-        .from('predictions')
-        .select('is_fully_locked')
-        .eq('challenge_id', challengeId)
-        .eq('user_id', opponentId)
-        .maybeSingle(),
-    ])
-    opponentLocked = opponentPred?.is_fully_locked === true
+    const { data: opponentProfile } = await supabase
+      .from('users')
+      .select('username')
+      .eq('id', opponentId)
+      .single()
     challengeContext = {
       opponentUsername: opponentProfile?.username ?? 'Opponent',
       challengeId,
@@ -211,11 +197,6 @@ export default async function PredictPage({
   // ── Fully locked or completed → show read-only bracket with results overlay ─
   const isFullyLocked = prediction?.is_fully_locked === true
   const forceReadOnly = !!isCompletedWithPicks
-
-  // A locked bracket may be reopened for exactly as long as it could still be
-  // edited — same window as picking, so we never offer an unlock that
-  // savePrediction would then refuse.
-  const canUnlock = isFullyLocked && !forceReadOnly && canPredictNow && !opponentLocked
 
   // ── Admin locked matches (manual_lock mode) ─────────────────────────────
   const manualLock = await isManualLockMode()
@@ -241,7 +222,6 @@ export default async function PredictPage({
       adminLockedMatches={adminLockedMatches}
       lockedPicks={(prediction?.locked_picks as string[]) ?? []}
       initialRound={initialRound}
-      canUnlock={canUnlock}
     />
   )
 }
