@@ -102,26 +102,6 @@ export function committedPicks(
   return out
 }
 
-/**
- * Has this bracket been published by its owner?
- *
- * The rule the leaderboard and league tables gate "view picks" on: a bracket
- * opens to other people once its owner has committed ANY round, not only once
- * they have locked the whole thing.
- *
- * Reads through `committedPicks`, and that is the load-bearing part rather than
- * a tidiness one. The award-points cron stamps `pick_locks[matchId] = 'auto'`
- * on every scored pick after its match is decided, so a plain "are there any
- * locks" test would open the bracket of everybody who has ever scored a point
- * — including people who never locked anything. Revealing a bracket has to stay
- * something its owner did on purpose.
- */
-export function hasPublishedPicks(
-  isFullyLocked: boolean | null | undefined,
-  pickLocks: Record<string, string> | null | undefined,
-): boolean {
-  return isFullyLocked === true || committedPicks(pickLocks).size > 0
-}
 
 export function getPointsForRound(
   category: TournamentCategory,

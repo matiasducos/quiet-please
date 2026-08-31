@@ -12,7 +12,6 @@ import LeaderboardSearch from '../../LeaderboardSearch'
 import Pagination from '../../Pagination'
 import ScopeSegmented from '../../ScopeSegmented'
 import CountryFlag from '@/components/CountryFlag'
-import { hasPublishedPicks } from '@/lib/tennis'
 import { SITE_NAME } from '@/lib/site'
 import { SEARCH_LIMIT, isSearchActive, sanitizeSearch } from '@/lib/utils/search'
 
@@ -235,7 +234,7 @@ export default async function GlobalTournamentResultsPage({
   const joinsOnUsers = scope === 'country' || scope === 'city'
   const needsInnerJoin = joinsOnUsers || isSearching
   const rowSelect =
-    `id, user_id, points_earned, picks, is_fully_locked, pick_locks, ` +
+    `id, user_id, points_earned, picks, is_published, ` +
     `users${needsInnerJoin ? '!inner' : ''}(${joinsOnUsers ? 'username, country, city' : 'username, country'})`
 
   /** Scope filters only — never the username search, which must not narrow a rank. */
@@ -363,10 +362,10 @@ export default async function GlobalTournamentResultsPage({
       total_picks: Object.keys(p.picks ?? {}).length,
       streak_power: streakPower(streakAccumByUser[p.user_id]),
       isMe: p.user_id === user.id,
-      // A bracket opens once its owner commits ANY round — not only on a
-      // full lock. hasPublishedPicks ignores the cron's post-match 'auto'
-      // marks, so scoring a point never publishes a bracket by itself.
-      picks_locked: hasPublishedPicks(p.is_fully_locked, p.pick_locks as Record<string, string> | null),
+      // `is_published` (097) — committed any round, or locked the whole
+      // bracket. Computed in Postgres so the feeds that must FILTER on it
+      // can, and so this rule has exactly one definition.
+      picks_locked: p.is_published === true,
     }
   })
 

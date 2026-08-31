@@ -43,7 +43,7 @@ export default async function LeagueActivityPage({ params }: { params: Promise<{
     const [{ data: lockedPicks }, { data: pointsRows }] = await Promise.all([
       admin.from('predictions')
         .select('user_id, tournament_id, submitted_at, users(username), tournaments(name, location, flag_emoji, category, surface)')
-        .in('user_id', memberIds).eq('is_fully_locked', true).is('challenge_id', null)
+        .in('user_id', memberIds).eq('is_published', true).is('challenge_id', null)
         .order('submitted_at', { ascending: false }).limit(200),
       admin.from('point_ledger')
         .select('user_id, tournament_id, points, awarded_at, users(username), tournaments(name, location, flag_emoji, category, surface)')

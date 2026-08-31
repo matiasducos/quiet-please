@@ -184,7 +184,9 @@ export default async function LeagueDetailPage({
         .from('predictions')
         .select('user_id, tournament_id, submitted_at, users(username), tournaments(name, location, flag_emoji, category, surface)')
         .in('user_id', memberIds)
-        .eq('is_fully_locked', true)
+        // Published, not merely fully locked (097) — the ORDER BY + LIMIT is
+        // why this has to be a column the database can filter on.
+        .eq('is_published', true)
         .is('challenge_id', null)
         .order('submitted_at', { ascending: false })
         .limit(50),
