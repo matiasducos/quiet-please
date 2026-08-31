@@ -61,11 +61,12 @@ let scored = 0
 let realChanged = 0                         // property A — must be 0
 let stackedChanged = 0                      // property B1 — must be 0
 let followDropped = 0, followSame = 0       // property B2 — drops must be > 0
+let windowChecked = 0, windowDenied = 0, windowMissed = 0   // property C
 const examples = []
 
 for (const t of tournaments) {
   const [{ data: draw }, { data: results }, { data: preds }] = await Promise.all([
-    db.from('draws').select('bracket_data').eq('tournament_id', t.id).maybeSingle(),
+    db.from('draws').select('bracket_data, locked_matches').eq('tournament_id', t.id).maybeSingle(),
     db.from('match_results').select('external_match_id, winner_external_id, score, played_at')
       .eq('tournament_id', t.id),
     // Tolerates pick_lock_times not existing yet: before 099 is applied the
@@ -86,6 +87,7 @@ for (const t of tournaments) {
   const feedMap = buildFeedMap(matches)
   const playedAt = Object.fromEntries(
     results.filter(r => r.played_at).map(r => [r.external_match_id, r.played_at]))
+  const adminLockedAt = draw.locked_matches ?? {}
 
   for (const p of preds) {
     const picks = p.picks ?? {}
@@ -103,9 +105,28 @@ for (const t of tournaments) {
       const args = [r.external_match_id, r.winner_external_id, picks, feedMap, matches, locked, committed]
 
       const base    = calculateStreakMultiplier(...args)
-      const withReal= calculateStreakMultiplier(...args, realTimes, playedAt)
-      const asStack = calculateStreakMultiplier(...args, early, playedAt)
-      const asFollow= calculateStreakMultiplier(...args, late, playedAt)
+      const withReal= calculateStreakMultiplier(...args, realTimes, playedAt, adminLockedAt)
+      const asStack = calculateStreakMultiplier(...args, early, playedAt, adminLockedAt)
+      const asFollow= calculateStreakMultiplier(...args, late, playedAt, adminLockedAt)
+
+      // C. The admin-lock half. Find this pick's first chain link, and if the
+      // feeder was locked by the organiser BEFORE its result was entered, time a
+      // commitment inside that window: legitimate under played_at alone, and
+      // denied once the organiser's lock counts. Everything else stays EARLY so
+      // only this one link can move the answer.
+      const feederId = Object.keys(feedMap).find(f =>
+        feedMap[f].nextMatchId === r.external_match_id && picks[f] === r.winner_external_id)
+      const lockAt = feederId ? adminLockedAt[feederId] : undefined
+      const playAt = feederId ? playedAt[feederId] : undefined
+      if (lockAt && playAt && Date.parse(lockAt) < Date.parse(playAt)) {
+        const mid = new Date((Date.parse(lockAt) + Date.parse(playAt)) / 2).toISOString()
+        const inWindow = { ...early, [r.external_match_id]: mid }
+        const allowed = calculateStreakMultiplier(...args, inWindow, playedAt)                 // result only
+        const denied  = calculateStreakMultiplier(...args, inWindow, playedAt, adminLockedAt)  // + admin lock
+        windowChecked++
+        if (denied < allowed) windowDenied++
+        else if (allowed > 1) windowMissed++
+      }
 
       if (withReal !== base) {
         realChanged++
@@ -126,8 +147,11 @@ console.log(`\nA. real data, new rule vs old      : ${realChanged} changed   (mu
 console.log(`B1. synthetic "committed early"    : ${stackedChanged} changed   (must be 0)`)
 console.log(`B2. synthetic "committed late"     : ${followDropped} dropped to a lower multiplier, ${followSame} unchanged`)
 console.log(`    (dropped must be > 0, or the new rule is dead code)`)
+console.log(`\nC. committed AFTER the organiser locked the feeder but BEFORE the result`)
+console.log(`   was entered — the window this change closes:`)
+console.log(`   ${windowChecked} such links found, ${windowDenied} now denied, ${windowMissed} still allowed (must be 0)`)
 if (examples.length) console.log('\n' + examples.join('\n'))
 
-const ok = realChanged === 0 && stackedChanged === 0 && followDropped > 0
+const ok = realChanged === 0 && stackedChanged === 0 && followDropped > 0 && windowMissed === 0
 console.log(`\n${ok ? 'PASS' : 'FAIL'}`)
 process.exit(ok ? 0 : 1)

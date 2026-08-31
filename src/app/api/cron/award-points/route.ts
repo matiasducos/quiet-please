@@ -200,11 +200,16 @@ export async function GET(request: Request) {
     // ── 4. Load bracket data for streak calculation ───────────────────────
     const { data: draws, error: drawsErr } = await supabase
       .from('draws')
-      .select('tournament_id, bracket_data')
+      .select('tournament_id, bracket_data, locked_matches')
       .in('tournament_id', tournamentIds as string[])
     if (drawsErr) throw new Error(`draws query failed: ${drawsErr.message}`)
 
     const bracketByTournament: Record<string, { matches: DrawMatch[]; feedMap: ReturnType<typeof buildFeedMap> }> = {}
+    // When the organiser froze each match. Already an ISO timestamp per match
+    // id, so it needs no new storage — it is the other half of the stacking
+    // boundary, and usually the earlier half, since results are entered by hand
+    // some time after the match they describe.
+    const adminLockedAtByTournament: Record<string, Record<string, string>> = {}
     for (const d of draws ?? []) {
       const bracket = d.bracket_data as any
       if (bracket?.matches) {
@@ -213,6 +218,8 @@ export async function GET(request: Request) {
           feedMap: buildFeedMap(bracket.matches),
         }
       }
+      adminLockedAtByTournament[d.tournament_id] =
+        (d.locked_matches as Record<string, string> | null) ?? {}
     }
 
     // When each match was decided, for the stacking rule in the multiplier.
@@ -372,6 +379,7 @@ export async function GET(request: Request) {
             committed,
             (prediction.pick_lock_times as Record<string, string> | null) ?? undefined,
             playedAtByTournament[result.tournament_id],
+            adminLockedAtByTournament[result.tournament_id],
           )
         }
 

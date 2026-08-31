@@ -2036,10 +2036,10 @@ export default function BracketPredictor({
             previous match has not been played yet. A plain player is already through on a real result.
           </p>
           <p style={{ fontSize: '0.8rem', color: 'var(--muted)', lineHeight: 1.6, margin: 0 }}>
-            The streak multiplier is built on shaded players. Committing a pick while the round before it
-            is still undecided extends your run, and the more rounds you stack that way, the higher the
-            multiplier climbs. Picking a player who has <em>already</em> won their way through still scores
-            full base points — it just pays at ×1 and starts the run again.{' '}
+            The streak multiplier is built on shaded players. Committing a pick before that player&apos;s
+            previous match gets under way extends your run, and the more rounds you stack that way, the
+            higher the multiplier climbs. Picking a player who has <em>already</em> won their way through
+            still scores full base points — it just pays at ×1 and starts the run again.{' '}
             <Link href="/faq#streak-multiplier" style={{ color: 'var(--court)' }}>
               How the multiplier works →
             </Link>

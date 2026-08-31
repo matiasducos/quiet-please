@@ -115,6 +115,19 @@ export function getPointsForRound(
 }
 
 /**
+ * The earlier of two optional ISO timestamps, or whichever one is present.
+ *
+ * Used to decide when a match stopped being predictable. Returns undefined only
+ * when neither is known, which the caller reads as "no evidence either way" and
+ * falls back to the pre-099 rule rather than guessing.
+ */
+function earliest(a?: string, b?: string): string | undefined {
+  if (!a) return b
+  if (!b) return a
+  return Date.parse(a) <= Date.parse(b) ? a : b
+}
+
+/**
  * Calculates the streak multiplier for a correct prediction.
  *
  * Formula: 1 + n, where n = number of consecutive previous rounds where
@@ -141,11 +154,19 @@ export function getPointsForRound(
  * Omitting `committed` scores every pick as committed. The anonymous brackets
  * rely on that: they run this same function and have no way to lock.
  *
- * `lockTimes` + `playedAt` add the stacking rule: a link counts only if the
- * pick was committed BEFORE the feeder match was decided — i.e. the player was
- * still a projection of yours when you called it, not a winner who had already
- * advanced. Waiting for a round to resolve and re-picking the winner is not a
- * prediction, and used to score the same as calling the run in advance.
+ * `lockTimes`, `playedAt` and `adminLockedAt` add the stacking rule: a link
+ * counts only if the pick was committed BEFORE the feeder match stopped being
+ * an honest unknown — i.e. the player was still a projection of yours when you
+ * called it, not one who was already through. Waiting for a round to resolve
+ * and re-picking the winner is not a prediction, and used to score the same as
+ * calling the run in advance.
+ *
+ * "Stopped being an unknown" is the EARLIER of two moments, and it has to be
+ * both: `played_at` is when the result was ENTERED, which on this app is by
+ * hand and can be hours after the match finished, while `locked_matches` is
+ * when the organiser froze the match because it was starting. Using the result
+ * alone would hand a stacking credit to anyone who watched the match end and
+ * locked their next round before the operator got to the keyboard.
  *
  * Both are optional, and that is the forward-only switch: `pick_lock_times`
  * only exists for picks committed after migration 099, so a link with no
@@ -162,8 +183,10 @@ export function calculateStreakMultiplier(
   committed?: ReadonlySet<string>,
   /** matchId -> ISO time the pick was committed (predictions.pick_lock_times). */
   lockTimes?: Record<string, string>,
-  /** matchId -> ISO time the match was decided (match_results.played_at). */
+  /** matchId -> ISO time the result was entered (match_results.played_at). */
   playedAt?: Record<string, string>,
+  /** matchId -> ISO time the organiser locked the match (draws.locked_matches). */
+  adminLockedAt?: Record<string, string>,
 ): number {
   // An uncommitted pick has no streak of its own to speak of — base points x1.
   if (committed && !committed.has(matchId)) return 1
@@ -230,7 +253,7 @@ export function calculateStreakMultiplier(
     // Judged per link, and skipped entirely when either timestamp is missing,
     // which is what keeps pre-099 brackets scoring exactly as they did.
     const committedAt = lockTimes?.[currentMatchId]
-    const decidedAt = playedAt?.[feederMatchId]
+    const decidedAt = earliest(playedAt?.[feederMatchId], adminLockedAt?.[feederMatchId])
     if (committedAt && decidedAt && Date.parse(committedAt) >= Date.parse(decidedAt)) {
       break
     }
