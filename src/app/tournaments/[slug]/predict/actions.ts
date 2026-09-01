@@ -11,6 +11,7 @@ import { trackServerEvent } from '@/lib/posthog/server'
 import { checkPredictionMilestones, checkEngagementAchievements, checkChallengeAchievements } from '@/lib/achievements/check'
 import { notifyAchievements } from '@/lib/achievements/notify'
 import { markReferralFirstPrediction } from '@/lib/referrals'
+import { matchIdsInScope } from '@/lib/challenges/scope'
 
 /** Just the parts of a draw match this file reads. */
 interface DrawMatchShape {
@@ -60,7 +61,7 @@ export type SaveResult =
  */
 export async function savePrediction({
   tournamentId,
-  picks,
+  picks: rawPicks,
   predictionId,
   challengeId = null,
   lockMatchIds,
@@ -89,6 +90,55 @@ export async function savePrediction({
   // Rate limit: 20 saves per minute per user
   const rl = rateLimit(`save:${user.id}`, { maxRequests: 20, windowMs: 60_000 })
   if (rl.limited) return { success: false, error: 'unknown', message: `Too many requests. Try again in ${rl.retryAfter}s.` }
+
+  // ── 0a. Challenge scope ────────────────────────────────────────────────
+  //
+  // A scoped challenge is played over part of the draw. The predictor only
+  // renders those rounds, but the scope has to be enforced here too — the
+  // client decides what to send, and a pick outside the scope would score for
+  // real while the opponent was never shown the match.
+  //
+  // Read even when the caller sent no scope hint at all: the row is the only
+  // authority, and there is no client-supplied field to spoof.
+  let challengeScopeRound: string | null = null
+  if (challengeId) {
+    const { data: challengeRow, error: challengeErr } = await supabase
+      .from('challenges')
+      .select('scope_round')
+      .eq('id', challengeId)
+      .maybeSingle()
+    if (challengeErr) {
+      console.error('[savePrediction] challenge scope read failed', challengeErr)
+      return { success: false, error: 'unknown', message: 'Could not read the challenge' }
+    }
+    challengeScopeRound = challengeRow?.scope_round ?? null
+  }
+
+  /** Match ids this save is allowed to touch. null = the whole draw. */
+  let scopeMatchIds: Set<string> | null = null
+  if (challengeScopeRound) {
+    const { data: scopeDraw, error: scopeDrawErr } = await supabase
+      .from('draws')
+      .select('bracket_data')
+      .eq('tournament_id', tournamentId)
+      .single()
+    if (scopeDrawErr || !scopeDraw?.bracket_data) {
+      return { success: false, error: 'unknown', message: scopeDrawErr?.message ?? 'Draw not found' }
+    }
+    const bracket = scopeDraw.bracket_data as { matches?: DrawMatchShape[]; rounds?: string[] }
+    scopeMatchIds = matchIdsInScope(
+      (bracket.matches ?? []) as any,
+      bracket.rounds ?? [],
+      challengeScopeRound,
+    )
+  }
+
+  // Silently dropped rather than rejected: an out-of-scope pick is not a thing
+  // the UI can produce, so a request carrying one is either stale or forged and
+  // neither deserves an error the honest path would have to explain.
+  const picks: Record<string, string> = scopeMatchIds
+    ? Object.fromEntries(Object.entries(rawPicks).filter(([m]) => scopeMatchIds!.has(m)))
+    : rawPicks
 
   // ── 0. Verify tournament status is allowed under current prediction mode ──
   const { data: tournamentRow } = await supabase
@@ -197,7 +247,12 @@ export async function savePrediction({
     }
 
     const drawMatches = (drawRow.bracket_data as { matches?: DrawMatchShape[] }).matches ?? []
+    // Scoped to the challenge: a challenge played from the quarterfinals is
+    // fully locked once its ten matches are picked. Measuring it against the
+    // whole draw would make `is_fully_locked` unreachable for every scoped
+    // bracket, which is exactly the trap the full-draw version already sprang.
     const outstanding = drawMatches.filter(m =>
+      (!scopeMatchIds || scopeMatchIds.has(m.matchId)) &&
       !isByeSlot(m) && !playedMatchIds.has(m.matchId) && !picks[m.matchId],
     ).length
 

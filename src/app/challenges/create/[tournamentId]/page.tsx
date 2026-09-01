@@ -5,6 +5,7 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import AnonymousCreateFlow from './AnonymousCreateFlow'
 import { isManualLockMode } from '@/lib/app-settings'
+import { availableScopes } from '@/lib/challenges/scope'
 
 export default async function CreateChallengeForTournamentPage({
   params,
@@ -58,6 +59,10 @@ export default async function CreateChallengeForTournamentPage({
     ? (drawData?.locked_matches as Record<string, string>) ?? {}
     : undefined
 
+  // What lengths of contest this draw can offer right now. Widens as the
+  // tournament runs — see src/lib/challenges/scope.ts.
+  const scopes = availableScopes(draw.matches, draw.rounds, matchResultsMap)
+
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       <Nav deletionRequestedAt={profile?.deletion_requested_at} username={profile?.username} points={profile?.ranking_points ?? 0} activePage="challenges" />
@@ -77,6 +82,7 @@ export default async function CreateChallengeForTournamentPage({
           draw={draw}
           matchResults={matchResultsMap}
           adminLockedMatches={adminLockedMatches}
+          scopes={scopes}
         />
       </div>
     </main>

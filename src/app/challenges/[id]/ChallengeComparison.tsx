@@ -22,6 +22,8 @@ interface Row {
   round: string
   mine:   string | null
   theirs: string | null
+  /** Their pick exists but its match has not been played, so it is concealed. */
+  theirsFaceDown: boolean
   differs: boolean
   winner: string | null
   decided: boolean
@@ -38,8 +40,10 @@ interface Row {
  * This view collapses that: agreements render as one muted line, disagreements
  * split into two columns, and the default filter hides the agreements entirely.
  *
- * Only rendered once picks are revealed (both locked, or the challenge is over)
- * — the poker rule is enforced by the caller, not here.
+ * Under progressive reveal the opponent's undecided picks never reach this
+ * component at all — the server strips them — so a match they have picked but
+ * which has not been played renders as a face-down card rather than as "No
+ * pick". Those two states look identical in the data and mean opposite things.
  */
 export default function ChallengeComparison({
   draw,
@@ -50,6 +54,9 @@ export default function ChallengeComparison({
   matchResults,
   myMatchPoints,
   theirMatchPoints,
+  scopeRounds,
+  progressiveReveal,
+  theirHiddenCount,
 }: {
   draw: Draw
   myPicks: Record<string, string>
@@ -59,8 +66,12 @@ export default function ChallengeComparison({
   matchResults: Record<string, string>
   myMatchPoints: Record<string, { points: number; streakMultiplier: number }>
   theirMatchPoints: Record<string, { points: number; streakMultiplier: number }>
+  /** Rounds the challenge covers. Undefined = the whole draw. */
+  scopeRounds?: string[]
+  progressiveReveal: boolean
+  /** How many of their picks the server withheld. */
+  theirHiddenCount: number
 }) {
-  const [showAll, setShowAll] = useState(false)
   // Collapsed rather than expanded: the table's job is to show picks, so open is
   // the default and a round that only appears under a different filter opens
   // with it instead of silently hiding itself.
@@ -79,29 +90,38 @@ export default function ChallengeComparison({
     return map
   }, [draw.matches])
 
-  const { rows, agreed, different, myCalls, theirCalls } = useMemo(() => {
+  const { rows, agreed, different, faceDown, myCalls, theirCalls } = useMemo(() => {
     const sortedRounds = draw.rounds.slice().sort(
       (a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b),
     )
     const roundRank = new Map(sortedRounds.map((r, i) => [r as string, i]))
+    const inScope = scopeRounds ? new Set(scopeRounds) : null
 
     const built: Row[] = []
     for (const m of draw.matches as DrawMatch[]) {
       // A bye is not a contested match — neither player can be credited for it.
       if (isByeMatch(m)) continue
+      if (inScope && !inScope.has(m.round)) continue
       const mine   = myPicks[m.matchId] ?? null
       const theirs = theirPicks[m.matchId] ?? null
-      // Nothing to compare when neither entered a pick.
+      // Nothing to compare when neither entered a visible pick.
       if (!mine && !theirs) continue
       const winner = matchResults[m.matchId] ?? null
+      const decided = winner !== null
+      // Withheld rather than absent: the server only strips undecided picks, so
+      // "not decided yet" is the one case where a missing opponent pick cannot
+      // be read as "they left it blank".
+      const theirsFaceDown = progressiveReveal && !decided && !theirs
       built.push({
         matchId: m.matchId,
         round: m.round,
         mine,
         theirs,
-        differs: mine !== theirs,
+        theirsFaceDown,
+        // Unknowable while their card is face-down, so not counted either way.
+        differs: !theirsFaceDown && mine !== theirs,
         winner,
-        decided: winner !== null,
+        decided,
         myPoints:    myMatchPoints[m.matchId]?.points ?? 0,
         theirPoints: theirMatchPoints[m.matchId]?.points ?? 0,
       })
@@ -120,13 +140,18 @@ export default function ChallengeComparison({
 
     return {
       rows: built,
-      agreed:    built.filter(r => !r.differs).length,
+      agreed:    built.filter(r => !r.differs && !r.theirsFaceDown).length,
       different: built.filter(r => r.differs).length,
+      faceDown:  built.filter(r => r.theirsFaceDown).length,
       myCalls,
       theirCalls,
     }
-  }, [draw, myPicks, theirPicks, matchResults, myMatchPoints, theirMatchPoints])
+  }, [draw, myPicks, theirPicks, matchResults, myMatchPoints, theirMatchPoints, scopeRounds, progressiveReveal])
 
+  // Open on whichever view has something in it. Early in a tournament almost
+  // every row is face-down, and defaulting to "Differences" there would greet
+  // the reader with an empty table on the tab that leads.
+  const [showAll, setShowAll] = useState(() => different === 0)
   const visible = showAll ? rows : rows.filter(r => r.differs)
 
   const label = (id: string | null) => {
@@ -142,7 +167,7 @@ export default function ChallengeComparison({
     return (
       <div className="bg-white rounded-sm border p-5" style={{ borderColor: 'var(--chalk-dim)' }}>
         <p style={{ ...mono, fontSize: '0.8rem', color: 'var(--muted)' }}>
-          Neither of you made any picks for this tournament.
+          Neither of you has made a pick in this part of the draw yet.
         </p>
       </div>
     )
@@ -169,18 +194,25 @@ export default function ChallengeComparison({
   const toggleAll = () =>
     setCollapsed(allCollapsed ? new Set() : new Set(grouped.map(g => g.round)))
 
+  const stats: Array<{ label: string; value: string; tone?: string }> = [
+    { label: 'Same pick', value: String(agreed) },
+    { label: 'Different', value: String(different) },
+    {
+      label: 'Split calls',
+      value: `${myCalls}–${theirCalls}`,
+      tone: myCalls > theirCalls ? WIN_GREEN : theirCalls > myCalls ? LOSS_RED : undefined,
+    },
+  ]
+  if (faceDown > 0) stats.push({ label: 'Face-down', value: String(faceDown) })
+
   return (
     <div className="flex flex-col gap-4">
 
       {/* ── Summary ─────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-2 md:gap-3">
-        <Stat label="Same pick" value={String(agreed)} />
-        <Stat label="Different" value={String(different)} />
-        <Stat
-          label="Split calls"
-          value={`${myCalls}–${theirCalls}`}
-          tone={myCalls > theirCalls ? WIN_GREEN : theirCalls > myCalls ? LOSS_RED : undefined}
-        />
+      <div
+        className={`grid gap-2 md:gap-3 ${stats.length === 4 ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-3'}`}
+      >
+        {stats.map(s => <Stat key={s.label} label={s.label} value={s.value} tone={s.tone} />)}
       </div>
 
       {/* ── Filter ──────────────────────────────────────────────────────── */}
@@ -198,14 +230,27 @@ export default function ChallengeComparison({
         )}
         <span className="ml-auto flex items-center">
           <InfoBubble label="comparison">
-            Every match where at least one of you made a pick. <strong>Same pick</strong> is where you
-            both backed the same player; <strong>different</strong> includes matches where one of you
-            picked and the other left it blank. <strong>Split calls</strong> counts only the matches
-            you disagreed on that have since been played — {myUsername} first, then {theirUsername}.
-            They need not add up, because you can both be wrong about the same match.
+            Every match in this challenge where at least one of you has a visible pick.{' '}
+            <strong>Same pick</strong> is where you both backed the same player;{' '}
+            <strong>different</strong> includes matches where one of you picked and the other
+            left it blank. <strong>Split calls</strong> counts only the matches you disagreed
+            on that have since been played — {myUsername} first, then {theirUsername}. They
+            need not add up, because you can both be wrong about the same match.
+            {progressiveReveal && (
+              <> <strong>Face-down</strong> is a pick {theirUsername} has made on a match that
+              has not been played. It turns over when the match finishes — until then, showing
+              it would let either of you copy the other.</>
+            )}
           </InfoBubble>
         </span>
       </div>
+
+      {progressiveReveal && theirHiddenCount > 0 && (
+        <p style={{ ...mono, fontSize: '0.66rem', color: 'var(--muted)', lineHeight: 1.6, marginTop: '-4px' }}>
+          {theirHiddenCount} of {theirUsername}&apos;s picks {theirHiddenCount === 1 ? 'is' : 'are'} still
+          face-down and turn over as their matches are played.
+        </p>
+      )}
 
       {/* ── Column headers ──────────────────────────────────────────────── */}
       <div className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
@@ -220,7 +265,7 @@ export default function ChallengeComparison({
 
         {visible.length === 0 ? (
           <p style={{ ...mono, fontSize: '0.75rem', color: 'var(--muted)', padding: '16px 12px' }}>
-            You picked identically on every match — no differences to show.
+            No differences to show yet.
           </p>
         ) : grouped.map(g => {
           const isOpen = !collapsed.has(g.round)
@@ -259,7 +304,13 @@ export default function ChallengeComparison({
             {isOpen && <div id={`cmp-round-${g.round}`}>
             {g.rows.map(r => (
               <div key={r.matchId} className="flex items-stretch" style={{ borderBottom: '1px solid var(--chalk-dim)' }}>
-                {r.differs ? (
+                {r.theirsFaceDown ? (
+                  <>
+                    <Side name={label(r.mine)} flag={flagOf(r.mine)} blank={!r.mine} correct={null} points={r.myPoints} first />
+                    <span style={{ width: '1px', background: 'var(--chalk-dim)', flexShrink: 0 }} />
+                    <FaceDown />
+                  </>
+                ) : r.differs ? (
                   <>
                     <Side name={label(r.mine)}   flag={flagOf(r.mine)}   blank={!r.mine}   correct={r.decided ? r.mine === r.winner : null}   points={r.myPoints} first />
                     <span style={{ width: '1px', background: 'var(--chalk-dim)', flexShrink: 0 }} />
@@ -340,6 +391,33 @@ function Mark({ correct }: { correct: boolean | null }) {
       style={{ ...mono, fontSize: '0.7rem', color: correct ? WIN_GREEN : LOSS_RED, flexShrink: 0, width: '11px' }}
     >
       {correct ? '✓' : '✕'}
+    </span>
+  )
+}
+
+/**
+ * The opponent's concealed pick.
+ *
+ * Hatched rather than blank: an empty cell is what "they made no pick" looks
+ * like, and the two must not be confused. The same pattern the bracket uses for
+ * a projected slot, for the same reason — it says "provisional", not "bad".
+ */
+function FaceDown() {
+  return (
+    <span
+      className="flex items-center gap-1.5"
+      aria-label="pick hidden until this match is played"
+      style={{
+        flex: 1,
+        minWidth: 0,
+        padding: '9px 10px 9px 8px',
+        background: 'repeating-linear-gradient(135deg, rgba(90,90,74,0.10) 0 1px, transparent 1px 10px)',
+      }}
+    >
+      <span aria-hidden="true" style={{ ...mono, fontSize: '0.7rem', color: 'var(--muted)', flexShrink: 0, width: '11px' }}>·</span>
+      <span style={{ ...mono, fontSize: '0.72rem', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        Face-down
+      </span>
     </span>
   )
 }

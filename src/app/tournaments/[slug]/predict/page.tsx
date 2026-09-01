@@ -7,6 +7,7 @@ import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
 import { canPredictForStatus, isManualLockMode } from '@/lib/app-settings'
 import { resolveTournamentParam } from '@/lib/tournaments/series'
 import { gateRedirect } from '@/lib/auth-redirect'
+import { roundsInScope } from '@/lib/challenges/scope'
 
 // An app surface, not a landing page: it sends signed-out visitors to sign
 // up, so there is nothing here for a crawler. `follow` still lets link
@@ -70,7 +71,7 @@ export default async function PredictPage({
     supabase.from('users').select('username').eq('id', user.id).single(),
     supabase.from('match_results').select('external_match_id, winner_external_id').eq('tournament_id', id),
     challengeId
-      ? supabase.from('challenges').select('challenger_id, challenged_id').eq('id', challengeId).single()
+      ? supabase.from('challenges').select('challenger_id, challenged_id, status, scope_round').eq('id', challengeId).single()
       : Promise.resolve({ data: null as any }),
   ])
 
@@ -178,8 +179,14 @@ export default async function PredictPage({
 
   // ── Challenge context (opponent lookup, already fetched challenge above) ─
   let challengeContext: { opponentUsername: string; challengeId: string } | undefined
+  let challengeScopeRounds: string[] | undefined
   if (challengeId && challengeRes.data) {
     const challenge = challengeRes.data
+    // A draft is the challenger's own unsent challenge. The other side has not
+    // been told it exists and must not be able to open its bracket by URL.
+    if (challenge.status === 'draft' && challenge.challenger_id !== user.id) {
+      redirect('/challenges')
+    }
     const opponentId = challenge.challenger_id === user.id
       ? challenge.challenged_id
       : challenge.challenger_id
@@ -191,6 +198,14 @@ export default async function PredictPage({
     challengeContext = {
       opponentUsername: opponentProfile?.username ?? 'Opponent',
       challengeId,
+    }
+    // A scoped challenge is played over part of the draw — the predictor only
+    // offers those rounds, and savePrediction drops anything outside them.
+    if (challenge.scope_round) {
+      challengeScopeRounds = roundsInScope(
+        (draw.bracket_data as any)?.rounds ?? [],
+        challenge.scope_round,
+      )
     }
   }
 
@@ -222,6 +237,7 @@ export default async function PredictPage({
       adminLockedMatches={adminLockedMatches}
       lockedPicks={(prediction?.locked_picks as string[]) ?? []}
       initialRound={initialRound}
+      scopeRounds={challengeScopeRounds}
     />
   )
 }

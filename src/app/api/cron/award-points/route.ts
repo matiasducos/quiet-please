@@ -724,13 +724,17 @@ export async function GET(request: Request) {
     let challengesScored = 0
     let challengesExpired = 0
     try {
-      // 11a. Expire pending challenges for completed tournaments only.
-      // in_progress is intentionally excluded — friends challenges allow
+      // 11a. Expire pending and drafted challenges for completed tournaments
+      // only. in_progress is intentionally excluded — friends challenges allow
       // predictions during in_progress tournaments, so the invite stays open.
+      //
+      // Drafts are included: an unsent challenge for a finished tournament can
+      // never be sent, and leaving it 'draft' would hold the one-per-pair slot
+      // (index 103) against that tournament for good.
       const { data: pendingChallenges } = await supabase
         .from('challenges')
         .select('id, tournament_id')
-        .eq('status', 'pending')
+        .in('status', ['draft', 'pending'])
 
       if (pendingChallenges?.length) {
         const pendingTournamentIds = Array.from(new Set(pendingChallenges.map(c => c.tournament_id)))

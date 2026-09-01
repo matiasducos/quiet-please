@@ -648,11 +648,17 @@ export async function checkChallengeAchievements(
 
   // Challenger / Challenge Master: count challenges created
   if (!existing.has('challenger') || !existing.has('challenge_master')) {
+    // Drafts excluded: since migration 103 a challenge row exists from the
+    // moment it is created, before the other side has been told anything.
+    // Counting those would let ten unsent drafts and one real invite earn
+    // Challenge Master. (Cancelled drafts are deleted outright rather than
+    // filed as 'cancelled', so this is the only place they can leak in.)
     const { count } = await admin
       .from('challenges')
       .select('id', { count: 'exact', head: true })
       .eq('challenger_id', userId)
       .eq('is_anonymous', false)
+      .neq('status', 'draft')
 
     const created = count ?? 0
     if (created >= 1 && !existing.has('challenger')) {
