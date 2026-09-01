@@ -252,34 +252,15 @@ export async function respondToChallenge(formData: FormData) {
   revalidatePath('/challenges')
 
   if (response === 'accepted') {
-    // Create challenge-specific prediction rows for both users.
-    // Use upsert with ignoreDuplicates to safely handle double-click / retries.
-    const predRows = [
-      {
-        user_id:       user.id,
-        tournament_id: challenge.tournament_id,
-        challenge_id:  challengeId,
-        picks:         {},
-        pick_locks:    {},
-        submitted_at:  new Date().toISOString(),
-      },
-      {
-        user_id:       challenge.challenger_id,
-        tournament_id: challenge.tournament_id,
-        challenge_id:  challengeId,
-        picks:         {},
-        pick_locks:    {},
-        submitted_at:  new Date().toISOString(),
-      },
-    ]
-    await admin
-      .from('predictions')
-      .upsert(predRows as any[], {
-        onConflict: 'user_id,tournament_id,challenge_id',
-        ignoreDuplicates: true,
-      })
-
-    // Redirect to make their picks for this challenge
+    // Deliberately no prediction rows are created here.
+    //
+    // This used to upsert an empty bracket for each side with
+    // `onConflict: 'user_id,tournament_id,challenge_id'`. There is no unique
+    // constraint on that triple, so every one of those calls returned 42P10 and
+    // wrote nothing — unnoticed since challenges shipped, because the return
+    // value was never checked and `savePrediction` creates the row on the first
+    // real save regardless. Every reader already treats a missing row as "no
+    // picks yet", which is true for a challenge nobody has picked in.
     redirect(`/tournaments/${challenge.tournament_id}/predict?challenge=${challengeId}`)
   }
 }

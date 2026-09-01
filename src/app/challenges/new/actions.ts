@@ -107,21 +107,17 @@ export async function createChallenge(formData: FormData) {
 
   if (error || !created) return { error: error?.message ?? 'Could not create the challenge' }
 
-  // The challenger's own bracket row, so the predict page has something to load
-  // rather than creating it as a side effect of the first save.
-  await admin
-    .from('predictions')
-    .upsert(
-      [{
-        user_id:       user.id,
-        tournament_id: tournamentId,
-        challenge_id:  created.id,
-        picks:         {},
-        pick_locks:    {},
-        submitted_at:  new Date().toISOString(),
-      }] as any[],
-      { onConflict: 'user_id,tournament_id,challenge_id', ignoreDuplicates: true },
-    )
+  // No prediction row is pre-created. `savePrediction` inserts one on the first
+  // save, and every reader already treats "no row" as "no picks yet", which is
+  // exactly what a fresh draft is.
+  //
+  // The obvious version of this — an upsert with
+  // `onConflict: 'user_id,tournament_id,challenge_id'` — cannot work: there is
+  // no unique constraint on that triple, so Postgres returns 42P10 every time.
+  // `respondToChallenge` has carried that same call since challenges shipped
+  // and has therefore never created anything; it went unnoticed because the
+  // rows get made on demand anyway. Both are now gone rather than propped up
+  // with a constraint that would exist only to serve a redundant write.
 
   trackServerEvent(user.id, 'challenge_created', {
     type: 'friend',
