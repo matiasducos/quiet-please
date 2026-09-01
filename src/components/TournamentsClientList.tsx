@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import TournamentCard from './TournamentCard'
 import TournamentMonthGroup from './TournamentMonthGroup'
+import { groupByMonth, currentMonthKey } from '@/lib/tournaments/group'
 
 type Season = number | 'all'
 
@@ -78,8 +79,7 @@ export default function TournamentsClientList({ tournaments, liveTournaments, ac
     ? tournaments.filter(t => t.name.toLowerCase().includes(q) || t.location?.toLowerCase().includes(q))
     : tournaments
 
-  const now = new Date()
-  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const thisMonth = currentMonthKey()
   const hasQuery = q.length > 0
 
   // A past season is four or five events spread over as many months, and the
@@ -89,26 +89,8 @@ export default function TournamentsClientList({ tournaments, liveTournaments, ac
   // back over.
   const showAllMonthsOpen = filtered.length <= 12
 
-  // Group by calendar month
-  const monthMap = new Map<string, { label: string; list: typeof filtered }>()
-  for (const t of filtered) {
-    let key: string
-    let label: string
-    if (t.starts_at) {
-      const d = new Date(t.starts_at)
-      key   = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      label = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
-    } else {
-      key   = '9999-99'
-      label = 'Date TBC'
-    }
-    if (!monthMap.has(key)) monthMap.set(key, { label, list: [] })
-    monthMap.get(key)!.list.push(t)
-  }
-
-  const groups = [...monthMap.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, { label, list }]) => ({ key, label, list }))
+  // Calendar order: this is the season as it unfolds, not an archive.
+  const groups = groupByMonth(filtered, 'asc')
 
   // The <select> must always contain its own value, or React renders a blank
   // control. seasons comes from a database read that can legitimately come back
@@ -342,7 +324,7 @@ export default function TournamentsClientList({ tournaments, liveTournaments, ac
               key={group.key}
               month={group.label}
               count={group.list.length}
-              defaultOpen={hasQuery || showAllMonthsOpen || group.key === currentMonthKey}
+              defaultOpen={hasQuery || showAllMonthsOpen || group.key === thisMonth}
             >
               {group.list.map((t: any) => (
                 <TournamentCard key={t.id} t={t} predictableStatuses={predictableStatuses} />

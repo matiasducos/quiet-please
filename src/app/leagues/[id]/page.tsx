@@ -10,6 +10,8 @@ import InviteCodeCard from './InviteCodeCard'
 import LeagueLeaderboard from './LeagueLeaderboard'
 import LeagueTournamentSelector from './LeagueTournamentSelector'
 import TournamentCard from '@/components/TournamentCard'
+import TournamentMonthGroup from '@/components/TournamentMonthGroup'
+import { groupByMonth, currentMonthKey } from '@/lib/tournaments/group'
 import LeagueChat from './LeagueChat'
 import { formatPoints } from '@/lib/utils/format'
 
@@ -157,6 +159,43 @@ export default async function LeagueDetailPage({
       }
     }
   }
+
+  // ── Tournaments section: what is on now, and an archive of what is not ──
+  //
+  // Same shape as /tournaments: live events stay as open cards because they are
+  // the reason to come back, and everything finished collapses into month
+  // accordions. A league counts 52 weeks of results, so by March the flat grid
+  // was twenty completed cards deep and the leaderboard's own tournaments were
+  // lost inside it.
+  const liveTournaments = leagueTournaments.filter(t => t.status !== 'completed')
+  const pastMonths = groupByMonth(
+    leagueTournaments.filter(t => t.status === 'completed'),
+    // Newest first: this is an archive, not a calendar. The season's opening
+    // week is the least interesting thing in it.
+    'desc'
+  )
+  const thisMonth = currentMonthKey()
+  // One group is always open, so the section never renders as a wall of shut
+  // rows: the current month if it has results, otherwise the most recent month
+  // that does. (/tournaments opens every month when the list is short — that
+  // rule is deliberately not carried over, since a league with eight completed
+  // events is exactly the case this grouping exists to tidy.)
+  const openMonthKey = pastMonths.some(g => g.key === thisMonth) ? thisMonth : pastMonths[0]?.key
+
+  // One card, rendered from two places now (the live grid and the month
+  // accordions), so it lives here rather than being copy-pasted into both.
+  const leagueTournamentCard = (t: (typeof leagueTournaments)[number]) => (
+    <div key={t.id} className="relative">
+      <TournamentCard t={t} disableLink />
+      <Link
+        href={`/leagues/${id}/tournaments/${t.id}`}
+        className="absolute bottom-3 right-4 px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
+        style={{ background: 'var(--court)', color: 'white', textDecoration: 'none', zIndex: 1 }}
+      >
+        See results
+      </Link>
+    </div>
+  )
 
   // Prepare leaderboard data for client component
   const leaderboardMembers = (members ?? []).map(m => ({
@@ -384,20 +423,36 @@ export default async function LeagueDetailPage({
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', letterSpacing: '-0.01em', marginBottom: '1rem' }}>
               Tournaments
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {leagueTournaments.map(t => (
-                <div key={t.id} className="relative">
-                  <TournamentCard t={t} disableLink />
-                  <Link
-                    href={`/leagues/${id}/tournaments/${t.id}`}
-                    className="absolute bottom-3 right-4 px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
-                    style={{ background: 'var(--court)', color: 'white', textDecoration: 'none', zIndex: 1 }}
-                  >
-                    See results
-                  </Link>
+
+            {/* On now — open cards, exactly as before. */}
+            {liveTournaments.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {liveTournaments.map(t => leagueTournamentCard(t))}
+              </div>
+            )}
+
+            {/* Finished — one collapsed row per month, each carrying its count,
+                so a shut group still says what is inside it. */}
+            {pastMonths.length > 0 && (
+              <div className={liveTournaments.length > 0 ? 'mt-6' : ''}>
+                <div
+                  className="mb-3"
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}
+                >
+                  Past tournaments
                 </div>
-              ))}
-            </div>
+                {pastMonths.map(group => (
+                  <TournamentMonthGroup
+                    key={group.key}
+                    month={group.label}
+                    count={group.list.length}
+                    defaultOpen={group.key === openMonthKey}
+                  >
+                    {group.list.map(t => leagueTournamentCard(t))}
+                  </TournamentMonthGroup>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
