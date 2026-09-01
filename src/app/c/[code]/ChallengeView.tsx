@@ -7,6 +7,7 @@ import { submitOpponentPicks } from '../actions'
 import { scoreAnonymousPicks } from '@/lib/tennis/anonymous-scoring'
 import { hashTokenInBrowser } from '@/lib/challenge-token'
 import AnonymousConversion from '@/components/AnonymousConversion'
+import { roundsInScope, matchIdsInScope, scopeLabel } from '@/lib/challenges/scope'
 import type { Round, TournamentCategory, DrawMatch } from '@/lib/tennis/types'
 
 interface MatchResultEntry {
@@ -80,12 +81,33 @@ export default function ChallengeView({
     return () => { cancelled = true }
   }, [shareCode, challenge.creator_token_hash, challenge.opponent_token_hash])
 
+  // ── Scope ───────────────────────────────────────────────────────────────
+  //
+  // The opponent plays exactly the part of the draw the creator chose. Passed
+  // to every bracket on the page so a "from the quarterfinals" challenge never
+  // renders the 117 matches it does not cover.
+  const scopeRound: string | null = challenge.scope_round ?? null
+  const scopedRounds = scopeRound && draw?.rounds
+    ? roundsInScope(draw.rounds, scopeRound)
+    : undefined
+  const scopedIds = draw?.matches
+    ? matchIdsInScope(draw.matches as DrawMatch[], draw.rounds ?? [], scopeRound)
+    : null
+
   const handlePicksChange = useCallback((newPicks: Record<string, string>) => {
     setOpponentPicks(newPicks)
   }, [])
 
+  /** Only the picks the challenge's scope covers count towards the submit. */
+  const scopedOpponentPicks = useMemo(
+    () => (scopedIds
+      ? Object.fromEntries(Object.entries(opponentPicks).filter(([m]) => scopedIds.has(m)))
+      : opponentPicks),
+    [opponentPicks, scopedIds],
+  )
+
   const handleSubmitOpponent = async () => {
-    if (Object.keys(opponentPicks).length === 0) {
+    if (Object.keys(scopedOpponentPicks).length === 0) {
       setError('Make at least one pick before submitting.')
       return
     }
@@ -98,7 +120,7 @@ export default function ChallengeView({
     const result = await submitOpponentPicks({
       shareCode,
       opponentName: opponentName.trim() || `Player ${Math.floor(Math.random() * 9000) + 1000}`,
-      opponentPicks,
+      opponentPicks: scopedOpponentPicks,
       opponentToken: opToken,
     })
 
@@ -225,6 +247,7 @@ export default function ChallengeView({
           hideBackLink={true}
           adminLockedMatches={adminLockedMatches}
           lockedPicks={creatorLockedPicks}
+          scopeRounds={scopedRounds}
         />
       </div>
     )
@@ -241,6 +264,11 @@ export default function ChallengeView({
           <p style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>
             {tournament?.flag_emoji && <span style={{ marginRight: '3px' }}>{tournament.flag_emoji}</span>}
             {tournament?.location ?? tournament?.name} · {tournament?.tour}
+            {scopeRound && (
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--court)' }}>
+                {' · '}{scopeLabel(scopeRound).toLowerCase()}
+              </span>
+            )}
           </p>
         </div>
 
@@ -281,6 +309,7 @@ export default function ChallengeView({
           onPicksChange={handlePicksChange}
           adminLockedMatches={adminLockedMatches}
           lockedPicks={opponentLockedPicks}
+          scopeRounds={scopedRounds}
         />
 
         {/* Submit button */}
@@ -292,11 +321,11 @@ export default function ChallengeView({
           )}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
-              {Object.keys(opponentPicks).length} pick{Object.keys(opponentPicks).length !== 1 ? 's' : ''} made
+              {Object.keys(scopedOpponentPicks).length} pick{Object.keys(scopedOpponentPicks).length !== 1 ? 's' : ''} made
             </span>
             <button
               onClick={handleSubmitOpponent}
-              disabled={submitting || Object.keys(opponentPicks).length === 0}
+              disabled={submitting || Object.keys(scopedOpponentPicks).length === 0}
               className="px-6 py-2.5 text-sm font-medium text-white rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
               style={{ background: 'var(--court)' }}
             >
@@ -452,6 +481,7 @@ export default function ChallengeView({
               hideNav={true}
               adminLockedMatches={adminLockedMatches}
               lockedPicks={bracketTab === 'creator' ? creatorLockedPicks : opponentLockedPicks}
+              scopeRounds={scopedRounds}
             />
           </div>
         )}

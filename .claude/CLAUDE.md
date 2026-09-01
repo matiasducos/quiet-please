@@ -16,7 +16,7 @@
 
 ### Supabase
 - Project is NOT linked locally — migrations must be run manually in the Supabase dashboard.
-- Latest migration: `102_revoke_user_unlock.sql` (remember to bump this file when you add a new migration)
+- Latest migration: `103_challenge_drafts_and_scope.sql` (remember to bump this file when you add a new migration)
 - Migration numbers must reflect the order they were APPLIED, not written. 066/067 are a permanent gap — those numbers were never applied to any database.
 
 ### Cookies & consent

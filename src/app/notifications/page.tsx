@@ -43,7 +43,12 @@ function getHref(
   viewerUsername?: string,
 ): string {
   if (n.type === 'friend_request' || n.type === 'friend_accepted') return '/friends'
-  if (n.type === 'challenge_received' || n.type === 'challenge_cancelled') return '/challenges'
+  // An invite now carries the challenge it is about, so it can open the bracket
+  // rather than the list. Older rows have no id and still land on the list.
+  if (n.type === 'challenge_received') {
+    return n.meta.challenge_id ? `/challenges/${n.meta.challenge_id}` : '/challenges'
+  }
+  if (n.type === 'challenge_cancelled') return '/challenges'
   if (n.type === 'challenge_picks_locked' && n.meta.challenge_id) return `/challenges/${n.meta.challenge_id}`
   if (n.type === 'friend_picks_locked' && n.tournament_id && n.meta.username) {
     return `/tournaments/${n.tournament_id}/picks/${n.meta.username}`
@@ -198,8 +203,15 @@ export default async function NotificationsPage() {
                             Load the new edition first, or {meta.affected_predictions ?? 0} scoring predictions drop off on the 52-week fallback.
                           </>
                         )}
+                        {/* The pick count and scope only exist on invites sent
+                            after the draft flow shipped; older rows fall back to
+                            the bare sentence rather than reading "0 picks". */}
                         {n.type === 'challenge_received' && (
-                          <><strong>{meta.challenger_username ?? 'Someone'}</strong> challenged you for {meta.tournament_flag_emoji && <>{meta.tournament_flag_emoji} </>}<strong>{meta.tournament_location ?? meta.tournament_name ?? 'a tournament'}</strong>.</>
+                          <><strong>{meta.challenger_username ?? 'Someone'}</strong> challenged you for {meta.tournament_flag_emoji && <>{meta.tournament_flag_emoji} </>}<strong>{meta.tournament_location ?? meta.tournament_name ?? 'a tournament'}</strong>
+                          {Number(meta.pick_count ?? 0) > 0
+                            ? <> — their bracket is in with <strong>{meta.pick_count} pick{Number(meta.pick_count) === 1 ? '' : 's'}</strong>{meta.scope_label ? <> ({String(meta.scope_label).toLowerCase()})</> : null}. Beat it.</>
+                            : <>.</>}
+                          </>
                         )}
                         {n.type === 'challenge_cancelled' && (
                           <><strong>{meta.challenger_username ?? 'Someone'}</strong> cancelled their challenge for {meta.tournament_flag_emoji && <>{meta.tournament_flag_emoji} </>}<strong>{meta.tournament_location ?? meta.tournament_name ?? 'a tournament'}</strong>.</>

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import BracketPredictor from '@/app/tournaments/[slug]/predict/BracketPredictor'
 import BracketConversion from '@/components/BracketConversion'
 import { claimAnonymousPrediction } from '@/app/play/actions'
+import ChallengeFromBracket from './ChallengeFromBracket'
 import { scoreAnonymousPicks } from '@/lib/tennis/anonymous-scoring'
 import { hashTokenInBrowser } from '@/lib/challenge-token'
 import type { Round, TournamentCategory, DrawMatch } from '@/lib/tennis/types'
@@ -217,6 +218,15 @@ export default function AnonymousBracketView({
         >
           {claim.message}
         </div>
+      )}
+
+      {/* ── Challenge ─────────────────────────────────────────────────── */}
+      {/* The author already has a bracket, which is the whole reason this is
+          the right place to offer a challenge: the three-step create funnel at
+          /challenges/create asks for one that does not exist yet. Held until
+          the identity check has run, for the same reason as the block below. */}
+      {identityChecked && isAuthor && !tournamentOver && pickCount > 0 && (
+        <ChallengeFromBracket shareCode={shareCode} token={myToken} pickCount={pickCount} />
       )}
 
       {/* ── The ask ───────────────────────────────────────────────────── */}

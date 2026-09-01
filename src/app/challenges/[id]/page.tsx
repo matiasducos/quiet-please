@@ -11,7 +11,11 @@ import { respondToChallenge as _respondToChallenge } from './actions'
 // Wrap to satisfy React's form action type (void | Promise<void>)
 const respondToChallenge = async (formData: FormData) => { 'use server'; await _respondToChallenge(formData) }
 import CancelButton from '../CancelButton'
+import SendChallengeButton from './SendChallengeButton'
 import ChallengePicksTabs from './ChallengePicksTabs'
+import ChallengeScoreboard from './ChallengeScoreboard'
+import { matchIdsInScope, roundsInScope, scopeLabel } from '@/lib/challenges/scope'
+import type { Draw } from '@/lib/tennis/types'
 
 /**
  * A challenge is a private bracket contest between friends, addressed by UUID.
@@ -49,7 +53,7 @@ export default async function ChallengeDetailPage({
 
   const { data: challenge } = await admin
     .from('challenges')
-    .select('id, challenger_id, challenged_id, tournament_id, status, challenger_points, challenged_points, challenger_predictions_count, challenged_predictions_count, winner_id, created_at')
+    .select('id, challenger_id, challenged_id, tournament_id, status, scope_round, challenger_points, challenged_points, challenger_predictions_count, challenged_predictions_count, winner_id, created_at')
     .eq('id', id)
     .single()
 
@@ -59,16 +63,20 @@ export default async function ChallengeDetailPage({
   const isChallenged = challenge.challenged_id === user.id
   if (!isChallenger && !isChallenged) redirect('/challenges')
 
+  // A draft belongs to the challenger alone — it exists, but the other side has
+  // not been told about it and must not be able to read it from a guessed URL.
+  if (challenge.status === 'draft' && !isChallenger) notFound()
+
   // Fetch both player profiles + tournament
   const [{ data: challengerProfile }, { data: challengedProfile }, { data: tournament }] = await Promise.all([
     admin.from('users').select('id, username').eq('id', challenge.challenger_id).single(),
     admin.from('users').select('id, username').eq('id', challenge.challenged_id).single(),
-    admin.from('tournaments').select('id, name, status, starts_at, ends_at, tour, surface, location, flag_emoji').eq('id', challenge.tournament_id).single(),
+    admin.from('tournaments').select('id, name, status, starts_at, ends_at, tour, surface, category, location, flag_emoji').eq('id', challenge.tournament_id).single(),
   ])
 
-  const myUsername   = isChallenger ? challengerProfile?.username : challengedProfile?.username
+  const myUsername    = isChallenger ? challengerProfile?.username : challengedProfile?.username
   const theirUsername = isChallenger ? challengedProfile?.username : challengerProfile?.username
-  const theirId      = isChallenger ? challenge.challenged_id : challenge.challenger_id
+  const theirId       = isChallenger ? challenge.challenged_id : challenge.challenger_id
 
   const myPoints    = isChallenger ? challenge.challenger_points : challenge.challenged_points
   const theirPoints = isChallenger ? challenge.challenged_points : challenge.challenger_points
@@ -77,94 +85,139 @@ export default async function ChallengeDetailPage({
 
   const isDraw    = challenge.status === 'completed' && challenge.winner_id === null
   const isWinner  = challenge.winner_id === user.id
-  const isLoser   = challenge.status === 'completed' && challenge.winner_id !== null && !isWinner
 
-  // Check challenge-specific predictions for lock status, pick counts, and live points
-  let myPicksLocked    = false
-  let theirPicksLocked = false
-  let myPickCount      = 0
-  let theirPickCount   = 0
-  let myLivePoints     = 0
-  let theirLivePoints  = 0
+  // ── Both brackets ────────────────────────────────────────────────────────
   let myPicks: Record<string, string> = {}
   let theirPicks: Record<string, string> = {}
+  let myLivePoints    = 0
+  let theirLivePoints = 0
   let myPredId: string | null = null
   let theirPredId: string | null = null
 
-  // Also runs for 'pending': the challenger can now save picks before the
-  // other side accepts (see below), so their count/lock state needs to be
-  // available on the pending screen too. Cheap either way — a single query
-  // scoped to this one challenge, not something that grows with the user base.
-  if (['pending', 'accepted', 'completed'].includes(challenge.status)) {
-    const { data: preds } = await admin
+  if (['draft', 'pending', 'accepted', 'completed'].includes(challenge.status)) {
+    const { data: preds, error: predsErr } = await admin
       .from('predictions')
-      .select('id, user_id, is_fully_locked, picks, points_earned')
+      .select('id, user_id, picks, points_earned')
       .eq('challenge_id', challenge.id)
       .eq('tournament_id', challenge.tournament_id)
+
+    if (predsErr) console.error('[challenge] predictions read failed', predsErr)
 
     const myPred    = (preds ?? []).find(p => p.user_id === user.id)
     const theirPred = (preds ?? []).find(p => p.user_id === theirId)
 
-    myPicksLocked    = myPred?.is_fully_locked === true
-    theirPicksLocked = theirPred?.is_fully_locked === true
-    myPicks          = (myPred?.picks as Record<string, string> | null) ?? {}
-    theirPicks       = (theirPred?.picks as Record<string, string> | null) ?? {}
-    myPickCount      = Object.keys(myPicks).length
-    theirPickCount   = Object.keys(theirPicks).length
-    myLivePoints     = myPred?.points_earned ?? 0
-    theirLivePoints  = theirPred?.points_earned ?? 0
-    myPredId         = myPred?.id ?? null
-    theirPredId      = theirPred?.id ?? null
+    myPicks         = (myPred?.picks as Record<string, string> | null) ?? {}
+    theirPicks      = (theirPred?.picks as Record<string, string> | null) ?? {}
+    myLivePoints    = myPred?.points_earned ?? 0
+    theirLivePoints = theirPred?.points_earned ?? 0
+    myPredId        = myPred?.id ?? null
+    theirPredId     = theirPred?.id ?? null
   }
 
-  // Fetch draw, match results, and per-match points once picks may be revealed.
+  // ── Draw, results and per-match points ───────────────────────────────────
   //
-  // The poker rule (hide the opponent until both have locked) only has to hold
-  // while the challenge is still live. `is_fully_locked` is set solely by an
-  // explicit user lock, so gating on it alone left a finished challenge with no
-  // bracket at all whenever either side never pressed lock — the result banner
-  // rendered, but the picks it referred to did not.
-  const picksRevealed =
-    (myPicksLocked && theirPicksLocked) || challenge.status === 'completed'
+  // Fetched unconditionally rather than behind a reveal gate. There is no
+  // longer a state in which this page shows nothing: your own bracket is always
+  // yours to look at, and the opponent's is revealed match by match rather than
+  // all at once (below).
+  const [{ data: drawRow }, { data: resultsData }, { data: myPointsData }, { data: theirPointsData }] = await Promise.all([
+    admin.from('draws').select('bracket_data').eq('tournament_id', challenge.tournament_id).maybeSingle(),
+    admin.from('match_results').select('external_match_id, winner_external_id').eq('tournament_id', challenge.tournament_id),
+    myPredId ? admin.from('point_ledger').select('points, streak_multiplier, match_results(external_match_id)').eq('prediction_id', myPredId) : Promise.resolve({ data: null }),
+    theirPredId ? admin.from('point_ledger').select('points, streak_multiplier, match_results(external_match_id)').eq('prediction_id', theirPredId) : Promise.resolve({ data: null }),
+  ])
 
-  let drawData: any = null
-  let matchResultsMap: Record<string, string> = {}
-  let myMatchPoints: Record<string, { points: number; streakMultiplier: number }> = {}
-  let theirMatchPoints: Record<string, { points: number; streakMultiplier: number }> = {}
+  const drawData = (drawRow?.bracket_data as Draw | null) ?? null
 
-  if (picksRevealed) {
-    const [{ data: drawRow }, { data: resultsData }, { data: myPointsData }, { data: theirPointsData }] = await Promise.all([
-      admin.from('draws').select('bracket_data').eq('tournament_id', challenge.tournament_id).single(),
-      admin.from('match_results').select('external_match_id, winner_external_id').eq('tournament_id', challenge.tournament_id),
-      myPredId ? admin.from('point_ledger').select('points, streak_multiplier, match_results(external_match_id)').eq('prediction_id', myPredId) : Promise.resolve({ data: null }),
-      theirPredId ? admin.from('point_ledger').select('points, streak_multiplier, match_results(external_match_id)').eq('prediction_id', theirPredId) : Promise.resolve({ data: null }),
-    ])
-
-    drawData = drawRow?.bracket_data ?? null
-    matchResultsMap = Object.fromEntries(
-      (resultsData ?? []).map((r: any) => [r.external_match_id, r.winner_external_id])
-    )
-    myMatchPoints = Object.fromEntries(
-      (myPointsData ?? []).filter((r: any) => r.match_results?.external_match_id).map((r: any) => [
+  const matchResultsMap: Record<string, string> = Object.fromEntries(
+    (resultsData ?? []).map((r: any) => [r.external_match_id, r.winner_external_id]),
+  )
+  const toPointsMap = (rows: any[] | null) => Object.fromEntries(
+    (rows ?? [])
+      .filter((r: any) => r.match_results?.external_match_id)
+      .map((r: any) => [
         r.match_results.external_match_id,
         { points: r.points, streakMultiplier: r.streak_multiplier ?? 1 },
-      ])
-    )
-    theirMatchPoints = Object.fromEntries(
-      (theirPointsData ?? []).filter((r: any) => r.match_results?.external_match_id).map((r: any) => [
-        r.match_results.external_match_id,
-        { points: r.points, streakMultiplier: r.streak_multiplier ?? 1 },
-      ])
-    )
-  }
+      ]),
+  )
+  const myMatchPoints    = toPointsMap(myPointsData as any[])
+  const theirMatchPoints = toPointsMap(theirPointsData as any[])
+
+  // ── Scope ────────────────────────────────────────────────────────────────
+  const scopeIds = drawData
+    ? matchIdsInScope(drawData.matches, drawData.rounds, challenge.scope_round)
+    : null
+  const scopeRounds = drawData
+    ? roundsInScope(drawData.rounds, challenge.scope_round)
+    : undefined
+
+  const countInScope = (picks: Record<string, string>) =>
+    scopeIds ? Object.keys(picks).filter(m => scopeIds.has(m)).length : Object.keys(picks).length
+
+  const myPickCount    = countInScope(myPicks)
+  const theirPickCount = countInScope(theirPicks)
+  const scopeTotal     = scopeIds?.size ?? null
+
+  // Matches still worth picking: in scope, no pick of mine, not yet played.
+  const myOutstanding = scopeIds
+    ? [...scopeIds].filter(m => !myPicks[m] && matchResultsMap[m] === undefined).length
+    : 0
+
+  // ── The reveal ───────────────────────────────────────────────────────────
+  //
+  // Replaces the both-locked gate. That rule made your side of the payoff
+  // depend on an action only your opponent could take: if they never pressed
+  // lock you saw nothing, for the whole tournament, having done everything
+  // right. Since "Lock all picks" started deriving `is_fully_locked` from
+  // "nothing left to pick" it got stricter still — on a slam it wanted 127
+  // picks from each of you before either could see anything.
+  //
+  // What actually needs concealing is a pick on a match that has NOT been
+  // played: reveal that and the second mover copies the bracket and the contest
+  // is void. A pick on a match that is over cannot be copied — the result is
+  // already known — so there is nothing left to protect. Each pick is a card
+  // laid face-down on its match and turned over when that match finishes.
+  //
+  // This is also what the accept screen has always promised ("picks are
+  // revealed as matches are played"); until now only the code's other half of
+  // that sentence was true.
+  const fullReveal = challenge.status === 'completed'
+  const theirVisiblePicks: Record<string, string> = fullReveal
+    ? theirPicks
+    : Object.fromEntries(
+        Object.entries(theirPicks).filter(([matchId]) => matchResultsMap[matchId] !== undefined),
+      )
+  const theirHiddenCount = Object.keys(theirPicks).length - Object.keys(theirVisiblePicks).length
 
   // Pending challenges only auto-expire for completed tournaments (not in_progress)
   const effectiveStatus =
-    challenge.status === 'pending' && tournament?.status === 'completed'
+    ['pending', 'draft'].includes(challenge.status) && tournament?.status === 'completed'
       ? 'expired'
       : challenge.status
 
   const formatDate = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  const predictHref = `/tournaments/${challenge.tournament_id}/predict?challenge=${challenge.id}`
+
+  const scopeIsPartial = Boolean(challenge.scope_round)
+
+  /** Shown on every state that has a bracket behind it. */
+  const bracketPanel = drawData ? (
+    <ChallengePicksTabs
+      tournament={tournament}
+      draw={drawData}
+      myPicks={myPicks}
+      theirPicks={theirVisiblePicks}
+      myUsername={myUsername ?? 'You'}
+      theirUsername={theirUsername ?? 'Opponent'}
+      matchResults={matchResultsMap}
+      myMatchPoints={myMatchPoints}
+      theirMatchPoints={theirMatchPoints}
+      scopeRounds={scopeRounds}
+      progressiveReveal={!fullReveal}
+      theirHiddenCount={theirHiddenCount}
+      opponentJoined={['accepted', 'completed'].includes(challenge.status)}
+    />
+  ) : null
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
@@ -187,18 +240,64 @@ export default async function ChallengeDetailPage({
             {tournament?.flag_emoji && <span style={{ marginRight: '3px' }}>{tournament.flag_emoji}</span>}
             {tournament?.location ?? tournament?.name} · {tournament?.tour} · {tournament?.starts_at ? formatDate(tournament.starts_at) : ''}
           </p>
+          {scopeIsPartial && (
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--court)', letterSpacing: '0.05em', marginTop: '0.5rem' }}>
+              {scopeLabel(challenge.scope_round).toUpperCase()}
+              {scopeTotal !== null && <span style={{ color: 'var(--muted)' }}> · {scopeTotal} matches</span>}
+            </p>
+          )}
         </div>
+
+        {/* ── Draft: picked, not yet sent ──────────────────────────────────── */}
+        {effectiveStatus === 'draft' && (
+          <div className="bg-white rounded-sm border p-5 md:p-6 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
+            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', marginBottom: '0.4rem' }}>
+              Not sent yet
+            </p>
+            <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.25rem', lineHeight: 1.6 }}>
+              {theirUsername} knows nothing about this until you send it. Fill in the bracket
+              you want to defend first — the invite goes out carrying your picks, so there is
+              something to answer rather than a bare name.
+            </p>
+            <div className="flex items-center gap-3 mb-4" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)' }}>
+              <span style={{ color: myPickCount > 0 ? 'var(--court)' : 'var(--muted)' }}>
+                {myPickCount}{scopeTotal !== null ? ` / ${scopeTotal}` : ''} picked
+              </span>
+              {myOutstanding > 0 && <span>· {myOutstanding} still open</span>}
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+              <Link
+                href={predictHref}
+                className="inline-block text-center px-5 py-2.5 text-sm rounded-sm border whitespace-nowrap"
+                style={{ borderColor: 'var(--chalk-dim)', color: 'var(--ink)', background: 'white', textDecoration: 'none' }}
+              >
+                {myPickCount > 0 ? 'Edit picks' : 'Make your picks'}
+              </Link>
+              <SendChallengeButton
+                challengeId={challenge.id}
+                opponentUsername={theirUsername ?? 'them'}
+                canSend={myPickCount > 0}
+              />
+            </div>
+            <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--chalk-dim)' }}>
+              <CancelButton challengeId={challenge.id} isDraft />
+            </div>
+          </div>
+        )}
 
         {/* ── Pending: needs response ─────────────────────────────────────── */}
         {effectiveStatus === 'pending' && isChallenged && (
-          <div className="bg-white rounded-sm border p-6 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
+          <div className="bg-white rounded-sm border p-5 md:p-6 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
             <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', marginBottom: '0.5rem' }}>
-              {challengerProfile?.username} is challenging you!
+              {challengerProfile?.username} is challenging you
             </p>
-            <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem' }}>
-              Accept to predict {tournament?.name} head-to-head. Picks are revealed as matches are played, or when both of you lock your full bracket.
+            <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+              Their bracket is already in{theirPickCount > 0 ? <> — <strong style={{ color: 'var(--ink)' }}>{theirPickCount} pick{theirPickCount === 1 ? '' : 's'}</strong></> : null}
+              {scopeIsPartial ? <> across {scopeLabel(challenge.scope_round).toLowerCase()}</> : <> on {tournament?.name}</>}.
+              Accept and fill in yours. Each pick stays face-down until its match is played,
+              then both of yours turn over together.
             </p>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <form action={respondToChallenge}>
                 <input type="hidden" name="challenge_id" value={challenge.id} />
                 <input type="hidden" name="response" value="accepted" />
@@ -226,32 +325,25 @@ export default async function ChallengeDetailPage({
         )}
 
         {effectiveStatus === 'pending' && isChallenger && (
-          <div className="bg-white rounded-sm border p-6 mb-6 text-center" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
-            <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1rem' }}>
-              Waiting for <strong>{theirUsername}</strong> to accept — no need to wait to start your picks.
+          <div className="bg-white rounded-sm border p-5 md:p-6 mb-6" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
+            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.15rem', marginBottom: '0.4rem' }}>
+              Waiting for {theirUsername}
             </p>
-            {myPickCount > 0 && (
-              <div className="flex items-center justify-center gap-2 mb-4">
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
-                  {myPickCount} picks
-                </span>
-                {myPicksLocked && (
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', letterSpacing: '0.05em' }}>
-                    LOCKED ✓
-                  </span>
-                )}
-              </div>
-            )}
-            <div className="flex items-center justify-center gap-3 flex-wrap">
-              {!myPicksLocked && (
-                <Link
-                  href={`/tournaments/${challenge.tournament_id}/predict?challenge=${challenge.id}`}
-                  className="inline-block px-5 py-2.5 text-sm font-medium text-white rounded-sm hover:opacity-90"
-                  style={{ background: 'var(--court)', textDecoration: 'none' }}
-                >
-                  {myPickCount > 0 ? 'Edit your picks →' : 'Make your picks →'}
-                </Link>
-              )}
+            <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: '1rem', lineHeight: 1.6 }}>
+              Your bracket is in and they have been told. You can keep editing until they accept.
+            </p>
+            <div className="flex items-center gap-3 mb-4" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)' }}>
+              <span>{myPickCount}{scopeTotal !== null ? ` / ${scopeTotal}` : ''} picked</span>
+              {myOutstanding > 0 && <span>· {myOutstanding} still open</span>}
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <Link
+                href={predictHref}
+                className="inline-block text-center px-5 py-2.5 text-sm font-medium text-white rounded-sm hover:opacity-90 whitespace-nowrap"
+                style={{ background: 'var(--court)', textDecoration: 'none' }}
+              >
+                {myPickCount > 0 ? 'Edit your picks →' : 'Make your picks →'}
+              </Link>
               <CancelButton challengeId={challenge.id} />
             </div>
           </div>
@@ -291,152 +383,55 @@ export default async function ChallengeDetailPage({
           </div>
         )}
 
-        {/* ── Active (accepted) ────────────────────────────────────────────── */}
-        {effectiveStatus === 'accepted' && (<>
-          <div className="bg-white rounded-sm border p-6 mb-6" style={{ borderColor: 'var(--chalk-dim)' }}>
-            <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '1rem' }}>Challenge active</p>
-            <div className="flex flex-col gap-2 mb-4">
-              <div className="flex items-center justify-between">
-                <span style={{ fontSize: '0.875rem', color: 'var(--ink)' }}>{myUsername} (you)</span>
-                <div className="flex items-center gap-2">
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
-                    {myPickCount} picks
-                  </span>
-                  {myPicksLocked
-                    ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', letterSpacing: '0.05em' }}>LOCKED ✓</span>
-                    : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#c17c00' }}>IN PROGRESS</span>}
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span style={{ fontSize: '0.875rem', color: 'var(--ink)' }}>{theirUsername}</span>
-                <div className="flex items-center gap-2">
-                  {/* Only show opponent's pick count if both locked (poker rule) */}
-                  {myPicksLocked && theirPicksLocked && (
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>
-                      {theirPickCount} picks
-                    </span>
-                  )}
-                  {theirPicksLocked
-                    ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--court)', letterSpacing: '0.05em' }}>LOCKED ✓</span>
-                    : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)' }}>IN PROGRESS</span>}
-                </div>
-              </div>
-            </div>
-            {/* Live score */}
-            <div className="border-t pt-3 mb-4" style={{ borderColor: 'var(--chalk-dim)' }}>
-              <div className="flex items-center justify-between mb-2">
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                  Live score
-                </div>
-                {myPicksLocked && theirPicksLocked && (
-                  <span style={{
-                    fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.06em',
-                    color: myLivePoints > theirLivePoints ? 'var(--court)' : theirLivePoints > myLivePoints ? '#c84b31' : 'var(--muted)',
-                  }}>
-                    {myLivePoints > theirLivePoints ? 'WINNING' : theirLivePoints > myLivePoints ? 'LOSING' : 'TIED'}
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between">
-                  <span style={{ fontSize: '0.85rem', color: 'var(--ink)' }}>{myUsername} (you)</span>
-                  <span style={{
-                    fontFamily: 'var(--font-mono)', fontSize: '1rem',
-                    color: myPicksLocked && theirPicksLocked && myLivePoints > theirLivePoints ? 'var(--court)' : 'var(--ink)',
-                  }}>
-                    {formatPoints(myLivePoints)} pts
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span style={{ fontSize: '0.85rem', color: 'var(--ink)' }}>{theirUsername}</span>
-                  {myPicksLocked && theirPicksLocked ? (
-                    <span style={{
-                      fontFamily: 'var(--font-mono)', fontSize: '1rem',
-                      color: theirLivePoints > myLivePoints ? '#c84b31' : 'var(--ink)',
-                    }}>
-                      {formatPoints(theirLivePoints)} pts
-                    </span>
-                  ) : (
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>
-                      hidden until both locked
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-            {!myPicksLocked && (
-              <div className="flex gap-3">
-                <Link
-                  href={`/tournaments/${challenge.tournament_id}/predict?challenge=${challenge.id}`}
-                  className="inline-block px-5 py-2.5 text-sm font-medium text-white rounded-sm hover:opacity-90"
-                  style={{ background: 'var(--court)', textDecoration: 'none' }}
-                >
-                  {myPickCount > 0 ? 'Edit your picks →' : 'Make your picks →'}
-                </Link>
-              </div>
-            )}
-          </div>
-          {myPicksLocked && theirPicksLocked && drawData && (
-            <ChallengePicksTabs
-              tournament={tournament}
-              draw={drawData}
-              myPicks={myPicks}
-              theirPicks={theirPicks}
-              myUsername={myUsername ?? 'You'}
-              theirUsername={theirUsername ?? 'Opponent'}
-              matchResults={matchResultsMap}
-              myMatchPoints={myMatchPoints}
-              theirMatchPoints={theirMatchPoints}
-            />
-          )}
-        </>)}
+        {/* ── Active ──────────────────────────────────────────────────────── */}
+        {effectiveStatus === 'accepted' && (
+          <ChallengeScoreboard
+            myUsername={myUsername ?? 'You'}
+            theirUsername={theirUsername ?? 'Opponent'}
+            myPoints={myLivePoints}
+            theirPoints={theirLivePoints}
+            myPickCount={myPickCount}
+            theirPickCount={theirPickCount}
+            scopeTotal={scopeTotal}
+            myOutstanding={myOutstanding}
+            hiddenCount={theirHiddenCount}
+            predictHref={predictHref}
+          />
+        )}
 
         {/* ── Completed ───────────────────────────────────────────────────── */}
         {effectiveStatus === 'completed' && (
-          <>
-            {/* Result banner */}
-            <div
-              className="rounded-sm border p-6 mb-6 text-center"
-              style={{
-                borderColor: isDraw ? 'var(--chalk-dim)' : isWinner ? '#97C459' : '#f4c5ba',
-                background: isDraw ? 'var(--chalk)' : isWinner ? '#eaf3de' : '#fdf1ee',
-              }}
-            >
-              <p style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: '1.75rem',
-                letterSpacing: '-0.02em',
-                color: isDraw ? 'var(--ink)' : isWinner ? '#27500A' : '#c84b31',
-                marginBottom: '0.25rem',
-              }}>
-                {isDraw ? 'Draw' : isWinner ? 'You win!' : `${theirUsername} wins`}
+          <div
+            className="rounded-sm border p-6 mb-6 text-center"
+            style={{
+              borderColor: isDraw ? 'var(--chalk-dim)' : isWinner ? '#97C459' : '#f4c5ba',
+              background: isDraw ? 'var(--chalk)' : isWinner ? '#eaf3de' : '#fdf1ee',
+            }}
+          >
+            <p style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '1.75rem',
+              letterSpacing: '-0.02em',
+              color: isDraw ? 'var(--ink)' : isWinner ? '#27500A' : '#c84b31',
+              marginBottom: '0.25rem',
+            }}>
+              {isDraw ? 'Draw' : isWinner ? 'You win!' : `${theirUsername} wins`}
+            </p>
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '1.1rem', color: 'var(--muted)' }}>
+              {formatPoints(myPoints ?? 0)} pts <span style={{ color: 'var(--muted)' }}>vs</span> {formatPoints(theirPoints ?? 0)} pts
+            </p>
+            {isDraw && myPredCount != null && (
+              <p style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '0.25rem' }}>
+                {myPredCount} vs {theirPredCount} predictions made
               </p>
-              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '1.1rem', color: 'var(--muted)' }}>
-                {myPoints ?? 0} pts <span style={{ color: 'var(--muted)' }}>vs</span> {theirPoints ?? 0} pts
-              </p>
-              {isDraw && myPredCount != null && (
-                <p style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '0.25rem' }}>
-                  {myPredCount} vs {theirPredCount} predictions made
-                </p>
-              )}
-            </div>
-
-            {/* Inline bracket tabs */}
-            {drawData && (
-              <ChallengePicksTabs
-                tournament={tournament}
-                draw={drawData}
-                myPicks={myPicks}
-                theirPicks={theirPicks}
-                myUsername={myUsername ?? 'You'}
-                theirUsername={theirUsername ?? 'Opponent'}
-                matchResults={matchResultsMap}
-                myMatchPoints={myMatchPoints}
-                theirMatchPoints={theirMatchPoints}
-              />
             )}
-          </>
+          </div>
         )}
+
+        {/* The bracket, on every state that has one. There is deliberately no
+            longer a challenge screen whose entire content is a grey box saying
+            "waiting" — your own picks are always yours to look at. */}
+        {['draft', 'pending', 'accepted', 'completed'].includes(effectiveStatus) && bracketPanel}
 
         {/* Tournament link */}
         <div className="mt-6 text-center">

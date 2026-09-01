@@ -7,6 +7,45 @@ import { generateShareCode } from '@/lib/share-code'
 import { rateLimit } from '@/lib/rate-limit'
 import { isManualLockMode } from '@/lib/app-settings'
 import { isBotEmail } from '@/lib/email'
+import { availableScopes, matchIdsInScope } from '@/lib/challenges/scope'
+import type { Draw } from '@/lib/tennis/types'
+
+/**
+ * Resolve a challenge scope against the live draw.
+ *
+ * Anonymous picks are stored as JSONB on the challenge row rather than in
+ * `predictions`, so nothing else constrains them — this is the only place an
+ * out-of-scope pick can be stopped. Returns the ids a save may keep, or null
+ * for a full-draw challenge.
+ */
+async function resolveScope(
+  admin: ReturnType<typeof createAdminClient>,
+  tournamentId: string,
+  scopeRound: string | null,
+  { validate }: { validate: boolean },
+): Promise<{ ok: true; ids: Set<string> | null } | { ok: false; error: string }> {
+  if (!scopeRound) return { ok: true, ids: null }
+
+  const [{ data: drawRow }, { data: results }] = await Promise.all([
+    admin.from('draws').select('bracket_data').eq('tournament_id', tournamentId).single(),
+    admin.from('match_results').select('external_match_id, winner_external_id').eq('tournament_id', tournamentId),
+  ])
+
+  const draw = drawRow?.bracket_data as Draw | null
+  if (!draw?.matches?.length) return { ok: false, error: 'The draw for this tournament is not available.' }
+
+  if (validate) {
+    const resultMap: Record<string, string> = Object.fromEntries(
+      (results ?? []).map(r => [r.external_match_id, r.winner_external_id]),
+    )
+    const allowed = availableScopes(draw.matches, draw.rounds, resultMap)
+    if (!allowed.some(o => o.round === scopeRound)) {
+      return { ok: false, error: 'That part of the draw is not available for a challenge.' }
+    }
+  }
+
+  return { ok: true, ids: matchIdsInScope(draw.matches, draw.rounds, scopeRound) }
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -32,6 +71,8 @@ export async function createAnonymousChallenge(data: {
   creatorName: string
   creatorPicks: Record<string, string>
   creatorToken: string
+  /** First round in scope. Null/absent = the whole draw. */
+  scopeRound?: string | null
 }): Promise<{ ok: true; shareCode: string } | { ok: false; error: string }> {
   // Rate limit: 3 per hour per IP
   const ip = await getClientIp()
@@ -53,8 +94,17 @@ export async function createAnonymousChallenge(data: {
     return { ok: false, error: 'This tournament is not open for predictions.' }
   }
 
+  // Resolve and enforce the scope before anything else looks at the picks.
+  const scopeRound = data.scopeRound?.trim() || null
+  const scope = await resolveScope(admin, data.tournamentId, scopeRound, { validate: true })
+  if (!scope.ok) return { ok: false, error: scope.error }
+
+  const creatorPicks = scope.ids
+    ? Object.fromEntries(Object.entries(data.creatorPicks ?? {}).filter(([m]) => scope.ids!.has(m)))
+    : (data.creatorPicks ?? {})
+
   // Validate picks (must have at least 1)
-  if (!data.creatorPicks || Object.keys(data.creatorPicks).length === 0) {
+  if (Object.keys(creatorPicks).length === 0) {
     return { ok: false, error: 'You must make at least one pick.' }
   }
 
@@ -68,7 +118,7 @@ export async function createAnonymousChallenge(data: {
       .single()
     const adminLocked = (drawRow?.locked_matches as Record<string, string>) ?? {}
     for (const matchId of Object.keys(adminLocked)) {
-      if (matchId in data.creatorPicks) creatorLockedPicks.push(matchId)
+      if (matchId in creatorPicks) creatorLockedPicks.push(matchId)
     }
   }
 
@@ -97,7 +147,8 @@ export async function createAnonymousChallenge(data: {
     is_anonymous: true,
     share_code: shareCode,
     creator_name: creatorName,
-    creator_picks: data.creatorPicks,
+    creator_picks: creatorPicks,
+    scope_round: scopeRound,
     creator_locked_picks: creatorLockedPicks,
     creator_token: data.creatorToken,
     created_at: new Date().toISOString(),
@@ -130,7 +181,7 @@ export async function submitOpponentPicks(data: {
   // Fetch challenge
   const { data: challenge } = await admin
     .from('challenges')
-    .select('id, tournament_id, status, opponent_picks')
+    .select('id, tournament_id, status, opponent_picks, scope_round')
     .eq('share_code', data.shareCode)
     .eq('is_anonymous', true)
     .single()
@@ -150,8 +201,18 @@ export async function submitOpponentPicks(data: {
     return { ok: false, error: 'This tournament is no longer open.' }
   }
 
+  // Same scope the creator played. Not re-validated: the scope was legal when
+  // the challenge was made, and a round that has since been played out must
+  // still resolve here or the opponent could never answer at all.
+  const scope = await resolveScope(admin, challenge.tournament_id, challenge.scope_round, { validate: false })
+  if (!scope.ok) return { ok: false, error: scope.error }
+
+  const opponentPicks = scope.ids
+    ? Object.fromEntries(Object.entries(data.opponentPicks ?? {}).filter(([m]) => scope.ids!.has(m)))
+    : (data.opponentPicks ?? {})
+
   // Validate picks
-  if (!data.opponentPicks || Object.keys(data.opponentPicks).length === 0) {
+  if (Object.keys(opponentPicks).length === 0) {
     return { ok: false, error: 'You must make at least one pick.' }
   }
 
@@ -165,7 +226,7 @@ export async function submitOpponentPicks(data: {
       .single()
     const adminLocked = (drawRow?.locked_matches as Record<string, string>) ?? {}
     for (const matchId of Object.keys(adminLocked)) {
-      if (matchId in data.opponentPicks) opponentLockedPicks.push(matchId)
+      if (matchId in opponentPicks) opponentLockedPicks.push(matchId)
     }
   }
 
@@ -178,7 +239,7 @@ export async function submitOpponentPicks(data: {
     .from('challenges')
     .update({
       opponent_name: opponentName,
-      opponent_picks: data.opponentPicks,
+      opponent_picks: opponentPicks,
       opponent_locked_picks: opponentLockedPicks,
       opponent_token: data.opponentToken,
       status: 'active',
@@ -280,7 +341,7 @@ export async function getAnonymousChallenge(shareCode: string) {
 
   const { data: challenge, error: challengeErr } = await admin
     .from('challenges')
-    .select('id, tournament_id, status, is_anonymous, share_code, creator_name, opponent_name, creator_picks, opponent_picks, creator_token, opponent_token, creator_pick_locks, opponent_pick_locks, challenger_points, challenged_points, winner_id, creator_email, opponent_email, created_at, updated_at')
+    .select('id, tournament_id, status, is_anonymous, share_code, scope_round, creator_name, opponent_name, creator_picks, opponent_picks, creator_token, opponent_token, creator_pick_locks, opponent_pick_locks, challenger_points, challenged_points, winner_id, creator_email, opponent_email, created_at, updated_at')
     .eq('share_code', shareCode)
     .eq('is_anonymous', true)
     .single()
@@ -323,4 +384,113 @@ export async function getAnonymousChallenge(shareCode: string) {
     lockedMatches: (drawData?.locked_matches as Record<string, string>) ?? {},
     matchResults: matchResults ?? [],
   }
+}
+
+// ── Turn a saved /play bracket into a challenge ─────────────────────────────
+
+/**
+ * Challenge someone with a bracket that already exists.
+ *
+ * This is the entry point the anonymous challenge should always have had.
+ * `/challenges/create` asks a visitor to choose a tournament, then fill in a
+ * bracket, then share — three steps before anything exists, and over 180 days
+ * it drew two page views and produced no challenge that anyone ever opened.
+ * `/play` draws 170 people to the same bracket-filling mechanic, because they
+ * arrive already holding one.
+ *
+ * So the funnel is inverted: the visitor has the bracket first, and challenging
+ * is one button on it. The picks are copied rather than referenced — a
+ * challenge is a frozen contest and the source bracket stays independently
+ * editable and claimable.
+ */
+export async function createChallengeFromBracket(data: {
+  shareCode: string
+  token: string
+}): Promise<{ ok: true; shareCode: string } | { ok: false; error: string }> {
+  const ip = await getClientIp()
+  const rl = rateLimit(`anon-create:${ip}`, { maxRequests: 3, windowMs: 3_600_000 })
+  if (rl.limited) return { ok: false, error: `Too many challenges created. Try again in ${rl.retryAfter}s.` }
+
+  const admin = createAdminClient()
+
+  const { data: bracket, error: bracketErr } = await admin
+    .from('anonymous_predictions')
+    .select('id, tournament_id, token, display_name, picks, locked_picks')
+    .eq('share_code', data.shareCode)
+    .maybeSingle()
+
+  if (bracketErr) {
+    console.error('[createChallengeFromBracket] bracket read failed', bracketErr)
+    return { ok: false, error: 'Could not read that bracket.' }
+  }
+  if (!bracket) return { ok: false, error: 'Bracket not found.' }
+
+  // Only the author may stake their own bracket. The raw token never leaves
+  // the browser that made it, so holding the public share link is not enough.
+  if (!data.token || data.token !== bracket.token) {
+    return { ok: false, error: 'Only the person who made this bracket can challenge with it.' }
+  }
+
+  const picks = (bracket.picks as Record<string, string> | null) ?? {}
+  if (Object.keys(picks).length === 0) {
+    return { ok: false, error: 'This bracket has no picks to play for.' }
+  }
+
+  const { data: tournament } = await admin
+    .from('tournaments')
+    .select('id, status')
+    .eq('id', bracket.tournament_id)
+    .single()
+
+  if (!tournament) return { ok: false, error: 'Tournament not found.' }
+  if (!['accepting_predictions', 'in_progress'].includes(tournament.status)) {
+    return { ok: false, error: 'This tournament is no longer open for challenges.' }
+  }
+
+  // One challenge per bracket. Without this, every press of the button mints
+  // another link and the author cannot tell which one they sent to whom.
+  const { data: existing } = await admin
+    .from('challenges')
+    .select('share_code')
+    .eq('source_bracket_id', bracket.id)
+    .maybeSingle()
+
+  if (existing?.share_code) return { ok: true, shareCode: existing.share_code }
+
+  let shareCode = generateShareCode()
+  let attempts = 0
+  while (attempts < 5) {
+    const { data: clash } = await admin
+      .from('challenges')
+      .select('id')
+      .eq('share_code', shareCode)
+      .maybeSingle()
+    if (!clash) break
+    shareCode = generateShareCode()
+    attempts++
+  }
+  if (attempts >= 5) return { ok: false, error: 'Failed to generate unique code. Please try again.' }
+
+  // The creator's token is the bracket's own, so the same browser is recognised
+  // as the creator on /c/<code> without anyone having to store a second one.
+  const { error } = await admin.from('challenges').insert({
+    tournament_id:        bracket.tournament_id,
+    status:               'waiting_opponent',
+    is_anonymous:         true,
+    share_code:           shareCode,
+    source_bracket_id:    bracket.id,
+    creator_name:         bracket.display_name || 'Player 1',
+    creator_picks:        picks,
+    creator_locked_picks: (bracket.locked_picks as string[] | null) ?? [],
+    creator_token:        bracket.token,
+    created_at:           new Date().toISOString(),
+    updated_at:           new Date().toISOString(),
+  })
+
+  if (error) {
+    console.error('[createChallengeFromBracket] insert error:', error)
+    return { ok: false, error: 'Failed to create the challenge.' }
+  }
+
+  return { ok: true, shareCode }
 }

@@ -272,6 +272,7 @@ export default function BracketPredictor({
   adminLockedMatches,
   lockedPicks = [],
   initialRound,
+  scopeRounds,
 }: {
   tournament: any
   draw: Draw
@@ -310,6 +311,17 @@ export default function BracketPredictor({
    * would yank the tab back every time the URL changed under a soft navigation.
    */
   initialRound?: string
+  /**
+   * Restrict the bracket to these rounds — a scoped challenge, played from the
+   * quarterfinals rather than over all 127 matches. Undefined is the whole draw
+   * and the only thing a global prediction ever passes.
+   *
+   * Only the round STRIP is narrowed. Every lookup that walks `draw.matches` —
+   * the feed map, `getEffectivePlayer`, the reverse map — deliberately keeps
+   * the full draw: an in-scope round gets its players from the results of the
+   * round before it, which is out of scope but very much still needed.
+   */
+  scopeRounds?: string[]
 }) {
   // ── State ────────────────────────────────────────────────────────────────
   const [picks, setPicks] = useState<Record<string, string>>(existingPicks)
@@ -331,17 +343,35 @@ export default function BracketPredictor({
   // preference.
   const [densityOverride, setDensityOverride] = useState<Density | null>(null)
   const [showMinimap, setShowMinimap] = useState(false)
+  /** null = the whole draw. See the `scopeRounds` prop. */
+  const scopeSet = scopeRounds && scopeRounds.length > 0 ? new Set(scopeRounds) : null
+
   const [activeRound, setActiveRound] = useState(() => {
-    const sorted = draw.rounds.slice().sort((a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b))
+    const sorted = draw.rounds
+      .slice()
+      .sort((a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b))
+      .filter(r => !scopeSet || scopeSet.has(r))
     if (initialRound && sorted.includes(initialRound)) return initialRound
     return sorted[0] ?? 'QF'
   })
 
-  const sortedRounds = draw.rounds.slice().sort((a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b))
+  const sortedRounds = draw.rounds
+    .slice()
+    .sort((a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b))
+    .filter(r => !scopeSet || scopeSet.has(r))
+
+  // Full draw on purpose — feed-in for the first in-scope round comes from the
+  // round before it.
   const feedMap = buildFeedMap(draw.matches)
   const byeMatchIds = new Set(draw.matches.filter(isByeMatch).map(m => m.matchId))
-  const totalMatches = draw.matches.length - byeMatchIds.size
-  const pickedCount = Object.keys(picks).filter(id => !byeMatchIds.has(id)).length
+
+  /** Contested matches this bracket is responsible for. */
+  const scopedMatches = draw.matches.filter(
+    m => (!scopeSet || scopeSet.has(m.round)) && !byeMatchIds.has(m.matchId),
+  )
+  const scopedMatchIds = new Set(scopedMatches.map(m => m.matchId))
+  const totalMatches = scopedMatches.length
+  const pickedCount = Object.keys(picks).filter(id => scopedMatchIds.has(id)).length
   const challengeId = challengeContext?.challengeId ?? null
 
   // ── Bracket navigation ─────────────────────────────────────────────────
@@ -799,13 +829,13 @@ export default function BracketPredictor({
    * can still make. The two must agree, or the copy promises a slot the save
    * has already closed.
    */
-  const unpickedOpenMatches = draw.matches.filter(m =>
-    !byeMatchIds.has(m.matchId) && !matchResults?.[m.matchId] && !picks[m.matchId],
+  const unpickedOpenMatches = scopedMatches.filter(m =>
+    !matchResults?.[m.matchId] && !picks[m.matchId],
   ).length
 
   /** Rounds with no pick at all — named in the note, since "9 matches" is vaguer than "the semis". */
   const forfeitedRounds = findForfeitedRounds(
-    toGapMatches(draw.matches),
+    toGapMatches(scopedMatches),
     new Set(Object.keys(matchResults ?? {})),
     new Set(Object.keys(picks).filter(id => picks[id])),
   )
@@ -1064,10 +1094,10 @@ export default function BracketPredictor({
 
   // Count correctly picked vs total played (for read-only summary), excluding BYE matches
   const correctPicks = readOnly && matchResults
-    ? Object.entries(picks).filter(([matchId, playerId]) => !byeMatchIds.has(matchId) && matchResults[matchId] === playerId).length
+    ? Object.entries(picks).filter(([matchId, playerId]) => scopedMatchIds.has(matchId) && matchResults[matchId] === playerId).length
     : null
   const totalResultsExcludingByes = matchResults
-    ? Object.keys(matchResults).filter(matchId => !byeMatchIds.has(matchId)).length
+    ? Object.keys(matchResults).filter(matchId => scopedMatchIds.has(matchId)).length
     : 0
 
   // Check if we're in challenge mode with empty picks (for import prompt)

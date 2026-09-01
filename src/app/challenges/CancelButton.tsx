@@ -3,7 +3,18 @@
 import { useTransition } from 'react'
 import { cancelChallenge } from './[id]/actions'
 
-export default function CancelButton({ challengeId }: { challengeId: string }) {
+/**
+ * Withdraw a challenge. `isDraft` only changes the wording: a draft has never
+ * been seen by anyone and is deleted outright, so "Cancel" would overstate what
+ * is happening and understate that it is gone for good.
+ */
+export default function CancelButton({
+  challengeId,
+  isDraft = false,
+}: {
+  challengeId: string
+  isDraft?: boolean
+}) {
   const [pending, startTransition] = useTransition()
 
   return (
@@ -20,7 +31,9 @@ export default function CancelButton({ challengeId }: { challengeId: string }) {
       className="px-3 py-1.5 text-xs rounded-sm border hover:bg-gray-50 transition-colors disabled:opacity-50"
       style={{ borderColor: 'var(--chalk-dim)', color: 'var(--muted)', background: 'white', whiteSpace: 'nowrap' }}
     >
-      {pending ? 'Cancelling…' : 'Cancel'}
+      {pending
+        ? (isDraft ? 'Discarding…' : 'Cancelling…')
+        : (isDraft ? 'Discard draft' : 'Cancel')}
     </button>
   )
 }
