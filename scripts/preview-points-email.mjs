@@ -58,6 +58,9 @@ Module._resolveFilename = function (request, ...rest) {
 const require = createRequire(import.meta.url)
 const { pointsAwardedHtml, pointsAwardedSubject } = require(join(out, 'lib/email.js'))
 
+// Round labels are ROUND_LABEL's, not prose: the real email says "R16" and
+// "Quarterfinal", and a fixture that said "Round of 16" would have this preview
+// quietly disagreeing with the thing it exists to show.
 const rounds = (...rows) => rows.map(([round, label, matches, wins, points]) => ({ round, label, matches, wins, points }))
 
 const CASES = [
@@ -75,9 +78,9 @@ const CASES = [
           flagEmoji: '🇺🇸',
           points: 380,
           rank: { position: 12, total: 91, movement: 4 },
-          rounds: rounds(['R16', 'Round of 16', 8, 6, 380]),
+          rounds: rounds(['R16', 'R16', 8, 6, 380]),
           upcoming: {
-            roundLabel: 'Quarterfinals',
+            roundLabel: 'Quarterfinal',
             matches: [
               { a: 'J. Sinner', b: 'C. Alcaraz', favourite: '62% of brackets have Sinner' },
               { a: 'A. Zverev', b: 'B. Shelton', favourite: '3 brackets have Zverev' },
@@ -123,9 +126,9 @@ const CASES = [
           flagEmoji: '🇺🇸',
           points: 145,
           rank: { position: 40, total: 91, movement: -3 },
-          rounds: rounds(['R32', 'Round of 32', 6, 3, 45], ['R16', 'Round of 16', 4, 2, 100]),
+          rounds: rounds(['R32', 'R32', 6, 3, 45], ['R16', 'R16', 4, 2, 100]),
           upcoming: {
-            roundLabel: 'Semifinals',
+            roundLabel: 'Semifinal',
             // Ampersand on purpose: names come from a hand-entered draw, and
             // this is the character that would break the markup unescaped.
             matches: [{ a: 'M. Navarro & Co', b: 'T. Paul', favourite: '5 brackets have Paul' }],
@@ -137,7 +140,7 @@ const CASES = [
           flagEmoji: '🇨🇦',
           points: 400,
           rank: null,
-          rounds: rounds(['QF', 'Quarterfinals', 4, 2, 400]),
+          rounds: rounds(['QF', 'Quarterfinal', 4, 2, 400]),
           upcoming: null,
         },
       ],
