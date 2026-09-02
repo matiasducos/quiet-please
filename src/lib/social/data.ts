@@ -84,12 +84,16 @@ export interface DrawCard {
 /**
  * A tie that has not been played yet, with what the field makes of it.
  *
- * `sample` is the number of brackets carrying a pick on THIS match, and it is
- * the denominator behind `pickedPct` — never the tournament's bracket count. The
- * two are not close: brackets are abandoned round by round, so a quarterfinal
- * routinely has an order of magnitude fewer picks than the tournament has
- * entries. See migration 077, and `canQuotePct` in recap-types for the same
- * discipline applied to the recap.
+ * `sample` — brackets carrying a pick on THIS match — is deliberately NOT the
+ * denominator. Every share here is out of the tournament's global bracket
+ * count, so the number falls as a round thins out instead of concentrating: a
+ * quarterfinal routinely has an order of magnitude fewer picks than the
+ * tournament has entries, and dividing by the survivors made four people look
+ * like a consensus. `sample` decides only whether there is a crowd line at all.
+ *
+ * See migration 077 for what the numerator counts. `canQuotePct` in
+ * recap-types still gates the stored tournament recap, where each stat carries
+ * its own sample and the field is not a usable denominator.
  */
 export interface UpcomingMatch {
   /**
@@ -103,18 +107,34 @@ export interface UpcomingMatch {
   a: CardPlayer
   b: CardPlayer
   /**
+   * The two players' external ids.
+   *
+   * The card never renders them; the points email compares them against a
+   * recipient's stored pick, which is a player id rather than a side. Carried
+   * here rather than re-derived because the walk that resolves who is in an
+   * unplayed tie is the expensive part, and it has just been done.
+   */
+  aId: string
+  bId: string
+  /**
    * The side more brackets are on. null when no bracket has picked this match —
    * which is the normal state for a round the field has not reached yet, and
    * must read as silence rather than as a 0% for either player.
    */
   favourite: {
     player: CardPlayer
-    /** Brackets on this player. A head count, always safe to print. */
-    count: number
-    /** Their share of `sample`, or null when the sample is too small to quote. */
-    pct: number | null
+    /**
+     * Their share of the FIELD — every global bracket in the tournament, not
+     * the brackets that picked this tie. So the two sides do not sum to 100,
+     * and a late round reads small because most brackets are abandoned by
+     * then, which is the honest shape of it. See `pct` in this file.
+     */
+    pct: number
   } | null
-  /** Brackets with a pick on this match. */
+  /**
+   * Brackets with a pick on this match. Not a denominator — it is only what
+   * decides whether there is a crowd line at all.
+   */
   sample: number
 }
 
@@ -590,7 +610,12 @@ export async function getSocialCard(
     const round = opts.round && roundsPending.includes(opts.round) ? opts.round : roundsPending[0]
     const rows = pending.filter(m => m.round === round)
 
-    const pickCounts = await loadUpcomingPickCounts(admin, tournamentId, rows.map(m => m.id))
+    // Awaited before the rows are built, not alongside the return: it is the
+    // denominator for every share on this card, not just a stat in its footer.
+    const [pickCounts, upcomingBracketCount] = await Promise.all([
+      loadUpcomingPickCounts(admin, tournamentId, rows.map(m => m.id)),
+      countBrackets(admin, tournamentId),
+    ])
 
     const matches: UpcomingMatch[] = rows.map(m => {
       const a = player(m.aId)
@@ -613,16 +638,27 @@ export async function getSocialCard(
         id: m.id,
         a,
         b,
+        aId: m.aId,
+        bId: m.bId,
         // No picks at all is silence, not a 50/50: printing "50% have Sinner"
-        // off zero brackets invents a consensus that does not exist.
+        // off zero brackets invents a consensus that does not exist. `sample`
+        // is what decides that — a tie nobody has picked has nothing to say,
+        // however many brackets the tournament holds.
         favourite:
-          pickCounts && sample > 0
+          pickCounts && sample > 0 && upcomingBracketCount > 0
             ? {
                 player: aLeads ? a : b,
-                count,
-                // Suppressed below MIN_SAMPLE, exactly as pct() does for played
-                // matches — the head count survives, the percentage does not.
-                pct: sample >= MIN_SAMPLE ? Math.round((count / sample) * 100) : null,
+                // Out of the field, exactly as pct() does for played matches.
+                // Note the two sides of a tie do NOT sum to 100: the rest of
+                // the field has no pick on it at all, which is the true and
+                // usually large remainder.
+                //
+                // Numerator and denominator have slightly different bases —
+                // 077 excludes picks placed after the match was locked, and
+                // countBrackets does not — so a bracket that picked too late
+                // sits in the denominator only. That is the same asymmetry the
+                // recap card already carries, and it errs downward.
+                pct: Math.round((count / upcomingBracketCount) * 100),
               }
             : null,
         sample,
@@ -645,7 +681,7 @@ export async function getSocialCard(
         availableRounds: roundsPending.map(r => ({ round: r, label: ROUND_LABEL[r] ?? r })),
         matches,
         selectedIds: opts.matchIds ? requested : null,
-        bracketCount: await countBrackets(admin, tournamentId),
+        bracketCount: upcomingBracketCount,
       },
     }
   }
@@ -766,28 +802,31 @@ export async function getSocialCard(
  * (lookup failed) and an absent key (nobody called it) are different facts, and
  * only the second one is safe to print.
  *
- * Below MIN_SAMPLE the percentage is suppressed too — "0% of 3 brackets" is
- * noise being dressed up as a finding.
+ * `total` is the tournament's global bracket count — everyone who filled in a
+ * prediction — and never a per-match sample. That is a product decision, and it
+ * decides what these numbers mean: a quarterfinal share reads as "3% of the
+ * field backs him", not "62% of the handful who filled in this round do". The
+ * first is small because most brackets are abandoned by the quarterfinals; the
+ * second was liable to read as a consensus that four people had.
+ *
+ * There is no small-sample suppression. It used to withhold the percentage
+ * below ten, on the argument that "33% of 3 brackets" is noise in a lab coat.
+ * With the field as the denominator the failure mode inverts — a thin round
+ * reads as a low share rather than a loud one — and a line that changed shape
+ * depending on the sample was the more confusing artefact in practice.
  */
-const MIN_SAMPLE = 10
-
 function pct(counts: Map<string, number> | null, matchId: string, total: number): number | null {
-  if (!counts || total < MIN_SAMPLE) return null
+  if (!counts || total === 0) return null
   return Math.round(((counts.get(matchId) ?? 0) / total) * 100)
 }
 
 /**
  * The raw head count behind pct(), which every featured match now prints.
  *
- * MIN_SAMPLE deliberately does *not* apply. "0% of 3 brackets" is a statistic
- * with no sample behind it, which is why pct() suppresses it; "1 bracket called
- * it" is a head count, and a head count is exactly as true at three brackets as
- * at three thousand.
- *
- * The two conditions that do suppress it are the ones where the number is
- * unknown rather than small: a failed lookup (null map), and a tournament with
- * no global brackets at all — there, "No bracket called it" would imply a field
- * that got it wrong instead of a field that does not exist.
+ * Suppressed under exactly the same two conditions as pct(), so a card never
+ * shows one without the other: a failed lookup (null map), and a tournament
+ * with no global brackets at all — there, "No bracket called it" would imply a
+ * field that got it wrong instead of a field that does not exist.
  */
 function count(counts: Map<string, number> | null, matchId: string, total: number): number | null {
   if (!counts || total === 0) return null

@@ -25,6 +25,7 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
       matchResults={matchResults ?? []}
       lockedMatches={lockedMatches ?? {}}
       predictionMode={predictionMode}
+      emailUpcomingMatchIds={tournament.email_upcoming_match_ids ?? null}
     />
   )
 }

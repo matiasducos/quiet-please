@@ -143,7 +143,7 @@ export async function listUpcomingMatches(
     id: m.id,
     a: m.a.name,
     b: m.b.name,
-    favourite: m.favourite ? favouriteLabel(m.favourite.player.name, m.favourite.count, m.favourite.pct) : null,
+    favourite: m.favourite ? favouriteLabel(m.favourite.player.name, m.favourite.pct) : null,
   })
 
   return {

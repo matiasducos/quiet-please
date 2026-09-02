@@ -1,8 +1,15 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { saveMatchResult, clearMatchResult, setTournamentStatus, revertTournamentCompletion, rebuildTournamentRecap, lockMatches, unlockMatches, lockRound } from '../../../actions'
+import { saveMatchResult, clearMatchResult, setTournamentStatus, revertTournamentCompletion, rebuildTournamentRecap, lockMatches, unlockMatches, lockRound, savePointsEmailUpcoming } from '../../../actions'
+// The social studio's loader, reused rather than reimplemented: "which ties are
+// still to be played" is derived by walking results forward through the draw's
+// feed map, not by querying, and a second derivation would drift from the one
+// the email itself uses. See `pendingMatches`.
+import { listUpcomingMatches, type UpcomingMatchList } from '../social/actions'
+import { MatchPicker } from '@/app/admin/MatchPicker'
+import { EMAIL_UPCOMING_CAPACITY } from '@/lib/social/layout'
 import { nameToFlag } from '@/app/admin/countries'
 import type { PredictionMode } from '@/lib/app-settings'
 
@@ -40,6 +47,12 @@ interface ResultsEntryProps {
   matchResults: MatchResult[]
   lockedMatches: Record<string, string>
   predictionMode: PredictionMode
+  /**
+   * The stored "up next" choice for the points email — migration 104's three
+   * states, passed through as they are stored: null is auto, an empty array is
+   * suppressed, a non-empty one is an explicit selection.
+   */
+  emailUpcomingMatchIds: string[] | null
 }
 
 /**
@@ -83,6 +96,7 @@ export default function ResultsEntry({
   matchResults: initialResults,
   lockedMatches: initialLocked,
   predictionMode,
+  emailUpcomingMatchIds,
 }: ResultsEntryProps) {
   const [results, setResults] = useState<MatchResult[]>(initialResults)
   const [savingMatch, setSavingMatch] = useState<string | null>(null)
@@ -109,6 +123,112 @@ export default function ResultsEntry({
   const [locked, setLocked] = useState<Record<string, string>>(initialLocked)
   const [lockingMatch, setLockingMatch] = useState<string | null>(null)
   const [lockingRound, setLockingRound] = useState<string | null>(null)
+
+  // ── The points email's "up next" block ──────────────────────────────────
+  // The counterpart to the social studio's up-next picker, and it is here
+  // rather than there because it is consumed three steps below: the choice is
+  // read by the award-points run, which is triggered by hand right after these
+  // results go in.
+  //
+  // Deliberately WITHOUT the studio's round dropdown. The email always shows
+  // the earliest round still to be played, because that is what the recipient
+  // is about to be scored on. Offering a later round here would be a foot-gun:
+  // ids from a round that is not the pending one are dropped at send time, so
+  // the selection would silently do nothing.
+  const [emailUpList, setEmailUpList] = useState<{ data?: UpcomingMatchList; error?: string } | null>(null)
+  // Mirrors the studio's contract exactly: null means "whatever fits, from the
+  // top", a list means these. The prop's empty array is not a selection — it is
+  // the block being switched off, which `emailUpOn` carries instead.
+  const [emailUpSelected, setEmailUpSelected] = useState<string[] | null>(
+    emailUpcomingMatchIds && emailUpcomingMatchIds.length > 0 ? emailUpcomingMatchIds : null,
+  )
+  const [emailUpOn, setEmailUpOn] = useState(
+    !(emailUpcomingMatchIds && emailUpcomingMatchIds.length === 0),
+  )
+  const [emailUpStatus, setEmailUpStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error'; message?: string }>({ type: 'idle' })
+
+  // Re-fetched whenever a result lands: entering the last R16 score is exactly
+  // what brings the quarterfinals into existence, and the list under this
+  // control should not still be offering the round you just finished.
+  //
+  // Keyed on the winners, not on `results.length`. Correcting a winner replaces
+  // one row with another and leaves the count identical, while changing who is
+  // in every tie downstream — the exact case where a stale list would offer a
+  // fixture that no longer exists.
+  const resultsKey = useMemo(
+    () => results.map(r => `${r.external_match_id}:${r.winner_external_id}`).sort().join('|'),
+    [results],
+  )
+  useEffect(() => {
+    let cancelled = false
+    // Debounced because entering a round is a burst: each saved result rewrites
+    // `resultsKey`, and this loader walks the draw and counts picks server-side.
+    // Un-debounced, filling in a 64-match round would fire sixty-four of them to
+    // display one list nobody is looking at yet.
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await listUpcomingMatches(tournamentId)
+          if (cancelled) return
+          setEmailUpList(res.ok ? { data: res.data } : { error: res.error })
+        } catch (e) {
+          if (!cancelled) setEmailUpList({ error: e instanceof Error ? e.message : 'Could not load matches' })
+        }
+      })()
+    }, 600)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [tournamentId, resultsKey])
+
+  const emailUpMatches = useMemo(() => emailUpList?.data?.matches ?? [], [emailUpList])
+  // The round the email will use, named. Derived from the response rather than
+  // held in state: there is no control that sets it.
+  const emailUpRoundLabel =
+    emailUpList?.data?.rounds.find(r => r.round === emailUpList.data?.round)?.label ?? 'Up next'
+  const emailUpChosenIds = useMemo(() => {
+    const pool =
+      emailUpSelected === null ? emailUpMatches : emailUpMatches.filter(m => emailUpSelected.includes(m.id))
+    return pool.map(m => m.id).slice(0, EMAIL_UPCOMING_CAPACITY)
+  }, [emailUpMatches, emailUpSelected])
+
+  const toggleEmailUpMatch = useCallback(
+    (id: string) => {
+      setEmailUpSelected(
+        emailUpChosenIds.includes(id)
+          ? emailUpChosenIds.filter(x => x !== id)
+          : [...emailUpChosenIds, id],
+      )
+      setEmailUpStatus({ type: 'idle' })
+    },
+    [emailUpChosenIds],
+  )
+
+  async function handleSaveEmailUpcoming() {
+    setEmailUpStatus({ type: 'loading' })
+    // Off wins over any ticks still showing: an empty array is the stored form
+    // of "no block", and the selection underneath it is kept in local state so
+    // switching back on restores it without a re-tick.
+    const payload = !emailUpOn ? [] : emailUpSelected === null ? null : emailUpChosenIds
+    const res = await savePointsEmailUpcoming(tournamentId, payload)
+    // Read off the payload rather than the controls, so that unticking every
+    // row reports the same thing as switching the block off — because it stores
+    // the same thing.
+    setEmailUpStatus(
+      res.ok
+        ? {
+            type: 'success',
+            message:
+              payload === null
+                ? `Saved — the email will show the first ${EMAIL_UPCOMING_CAPACITY} ties of whichever round is next.`
+                : payload.length === 0
+                  ? 'Saved — the points email will carry no “up next” block for this tournament.'
+                  : `Saved — ${payload.length} tie${payload.length === 1 ? '' : 's'} will appear in the next points email.`,
+          }
+        : { type: 'error', message: res.error ?? 'Could not save' },
+    )
+  }
 
   // Build a map of matchId → result
   const resultMap = useMemo(() => {
@@ -744,6 +864,103 @@ export default function ResultsEntry({
             </p>
           </div>
         )}
+
+        {/* ── Points email: what to play for next ──────────────────────────
+            Sits above the finishing procedure rather than inside it because it
+            is not part of finishing: this block matters most on the runs that
+            are NOT the last one, when there is still a round to come. */}
+        <div
+          className="mt-8 rounded-sm border px-4 py-4 md:px-5 md:py-5"
+          style={{ borderColor: 'var(--chalk-dim)', background: 'white' }}
+        >
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)', margin: 0 }}>
+            Points email &mdash; up next
+          </p>
+          <p style={{ fontSize: '0.9rem', lineHeight: 1.6, color: 'var(--ink)', margin: '10px 0 0' }}>
+            The &ldquo;+pts&rdquo; email everyone gets when you run <strong>Award Points</strong>{' '}reports the round
+            that just finished. This is what it points forward to &mdash; the same ties, and the same crowd line, as
+            the &ldquo;Up next&rdquo; social card. Saved here, read by the next run.
+          </p>
+
+          <label className="flex items-start gap-2 cursor-pointer" style={{ marginTop: '14px' }}>
+            <input
+              type="checkbox"
+              checked={emailUpOn}
+              onChange={e => {
+                setEmailUpOn(e.target.checked)
+                setEmailUpStatus({ type: 'idle' })
+              }}
+              className="mt-0.5 flex-shrink-0"
+            />
+            <span style={{ fontSize: '0.9rem', color: 'var(--ink)' }}>
+              Include an &ldquo;up next&rdquo; block in this tournament&rsquo;s points email
+            </span>
+          </label>
+
+          {emailUpOn && (
+            <div className="flex flex-col gap-2" style={{ marginTop: '14px' }}>
+              <span
+                style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--muted)' }}
+              >
+                {/* The count joins the label only once there is a list behind
+                    it — "0/3" while loading reads as an empty selection rather
+                    than an unanswered question. */}
+                {!emailUpList || emailUpList.error
+                  ? 'Matches'
+                  : `${emailUpRoundLabel} — ${emailUpChosenIds.length}/${EMAIL_UPCOMING_CAPACITY}`}
+              </span>
+              <MatchPicker
+                loading={!emailUpList}
+                error={emailUpList?.error}
+                capacity={EMAIL_UPCOMING_CAPACITY}
+                chosenIds={emailUpChosenIds}
+                onToggle={toggleEmailUpMatch}
+                onReset={() => {
+                  setEmailUpSelected(null)
+                  setEmailUpStatus({ type: 'idle' })
+                }}
+                onClear={() => {
+                  setEmailUpSelected([])
+                  setEmailUpStatus({ type: 'idle' })
+                }}
+                empty="Nothing left to play — every tie with two known players has a result."
+                rows={emailUpMatches.map(m => ({
+                  id: m.id,
+                  title: (
+                    <>
+                      {m.a} <span style={{ color: 'var(--muted)' }}>v</span> {m.b}
+                    </>
+                  ),
+                  // Spelled out rather than left blank: an empty line reads as a
+                  // failed lookup, and "no bracket has picked it" is a fact
+                  // about a round the field has not reached yet.
+                  subtitle: m.favourite ?? 'No bracket has picked this tie',
+                }))}
+              />
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3" style={{ marginTop: '14px' }}>
+            <button
+              onClick={handleSaveEmailUpcoming}
+              disabled={emailUpStatus.type === 'loading'}
+              className="px-5 py-2 text-sm font-medium rounded-sm border transition-opacity hover:opacity-90 disabled:opacity-40"
+              style={{ background: 'white', color: 'var(--ink)', borderColor: 'var(--chalk-dim)' }}
+            >
+              {emailUpStatus.type === 'loading' ? 'Saving…' : 'Save selection'}
+            </button>
+            {emailUpOn && emailUpSelected === null && !emailUpList?.error && (
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--muted)' }}>
+                Untouched &mdash; saves as &ldquo;first {EMAIL_UPCOMING_CAPACITY}, whichever round is next&rdquo;.
+              </span>
+            )}
+          </div>
+          {emailUpStatus.message && (
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: emailUpStatus.type === 'error' ? '#991b1b' : '#166534', marginTop: '8px' }}>
+              {emailUpStatus.message}
+            </p>
+          )}
+        </div>
 
         {/* Complete / un-complete — with global progress */}
         <div className="mt-8">

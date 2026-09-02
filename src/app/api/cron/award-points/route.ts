@@ -6,6 +6,7 @@ import { getPointsForRound, calculateStreakMultiplier, committedPicks, buildFeed
 import type { DrawMatch, Round, TournamentCategory } from '@/lib/tennis'
 import { sendPointsAwardedEmail, sendTournamentCompleteEmails, isBotEmail } from '@/lib/email'
 import type { PointsAwardedTournament } from '@/lib/email'
+import { buildPointsEmailUpcoming, personaliseUpcoming, type RecipientPicks } from '@/lib/email-upcoming'
 import { isEmailEnabled, type EmailPreferences } from '@/lib/email-preferences'
 import { ROUND_LABEL, ROUND_ORDER } from '@/lib/tennis/my-tournament'
 import { checkTournamentTrophies, checkCronAchievements, checkChallengeAchievements, checkPerfectPrediction } from '@/lib/achievements/check'
@@ -617,6 +618,36 @@ export async function GET(request: Request) {
       // scored in this run, each broken down by round.
       const emailJobs: Array<{ userId: string; correctPicks: number; totalPoints: number; tournaments: PointsAwardedTournament[] }> = []
 
+      // What to play for next, per tournament — built once for the whole run
+      // and shared by every recipient of that tournament, not rebuilt per user.
+      // See buildPointsEmailUpcoming for why that distinction matters and for
+      // the admin's three-state selection.
+      const scoredTournamentIds = [
+        ...new Set(Object.values(userTournamentPoints).flatMap(tPoints => Object.keys(tPoints))),
+      ]
+      const upcomingByTournament = await buildPointsEmailUpcoming(scoredTournamentIds)
+
+      // …and the one part of that block that IS per recipient: which side of
+      // each tie their own bracket has. No query — every prediction for these
+      // tournaments is already in `predictions`, loaded to be scored.
+      //
+      // Global brackets only. A user in three challenges carries four rows for
+      // the same match, and naming a challenge bracket's pick here would tell
+      // them they have a player their real bracket does not. Same scoping as
+      // migration 077 applies to the crowd line beside it, and unique per
+      // (user, tournament) by 015's partial index — so the last write wins is
+      // not a concern, there is only one row.
+      const bracketByUserTournament = new Map<string, RecipientPicks>()
+      if (upcomingByTournament.size > 0) {
+        for (const p of predictions) {
+          if (p.challenge_id) continue
+          bracketByUserTournament.set(`${p.user_id}:${p.tournament_id}`, {
+            picks: (p.picks as Record<string, string> | null) ?? null,
+            lockedPicks: (p.locked_picks as string[] | null) ?? null,
+          })
+        }
+      }
+
       for (const [userId, tPoints] of Object.entries(userTournamentPoints)) {
         const tournaments: PointsAwardedTournament[] = []
         let correctPicks = 0
@@ -643,6 +674,7 @@ export async function GET(request: Request) {
           correctPicks += rounds.reduce((acc, r) => acc + r.wins, 0)
 
           const rank = rankByTournament[tId]?.byUser[userId]
+          const upcomingPlan = upcomingByTournament.get(tId)
           tournaments.push({
             tournamentId: tId,
             tournamentName: tName,
@@ -652,6 +684,9 @@ export async function GET(request: Request) {
               ? { position: rank.position, total: rankByTournament[tId].total, movement: rank.previousPosition - rank.position }
               : null,
             rounds,
+            upcoming: upcomingPlan
+              ? personaliseUpcoming(upcomingPlan, bracketByUserTournament.get(`${userId}:${tId}`) ?? null)
+              : null,
           })
         }
         const totalPoints = Object.values(tPoints).reduce((a, b) => a + b, 0)
