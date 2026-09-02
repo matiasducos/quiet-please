@@ -436,6 +436,29 @@ export interface PointsAwardedRank {
   movement: number
 }
 
+/**
+ * A tie the email advertises as still to be played.
+ *
+ * Pre-formatted rather than structured: `favourite` arrives as the finished
+ * sentence, built by the same `favouriteLabel` helper the social card uses, so
+ * the mail and the post cannot end up quoting the crowd differently. null is a
+ * fact, not a gap — it means no bracket has picked the tie, which is the normal
+ * state for a round the field has not reached yet, and it must never render as
+ * a 50/50.
+ */
+export interface PointsAwardedUpcomingMatch {
+  a: string
+  b: string
+  favourite: string | null
+}
+
+/** The "up next" block under one tournament's round breakdown. */
+export interface PointsAwardedUpcoming {
+  roundLabel: string
+  /** Already capped and ordered by the caller; rendered as given. */
+  matches: PointsAwardedUpcomingMatch[]
+}
+
 export interface PointsAwardedTournament {
   tournamentId: string
   tournamentName: string
@@ -443,6 +466,63 @@ export interface PointsAwardedTournament {
   points: number
   rank: PointsAwardedRank | null
   rounds: PointsAwardedRoundBreakdown[]
+  /**
+   * What to play for next, or null when there is nothing to say — the
+   * tournament is over, the admin suppressed the block, or the next round's
+   * line-up is not known yet. See `buildPointsEmailUpcoming`.
+   */
+  upcoming: PointsAwardedUpcoming | null
+}
+
+/**
+ * Player names reach this template from the draw, which is hand-entered, so
+ * they are escaped where the surrounding lines are not. The older fields
+ * predate this and are left alone deliberately: retrofitting them is a separate
+ * change with its own blast radius, and an unescaped tournament name has been
+ * rendering safely for a year.
+ */
+function esc(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+/**
+ * Forward-looking half of the tournament block.
+ *
+ * Deliberately quiet: smaller than the points it sits under, no button of its
+ * own. The email's job is still to report what was scored — this is the line
+ * that says the story is not over, not a second call to action competing with
+ * "View your picks".
+ */
+function upcomingBlock(u: PointsAwardedUpcoming): string {
+  if (!u.matches.length) return ''
+  const rows = u.matches
+    .map(
+      m => `
+        <tr>
+          <td style="padding:9px 0 0;font-family:Georgia,serif;font-size:14px;color:#0d0d0d;">
+            ${esc(m.a)} <span style="color:#8a867e;">v</span> ${esc(m.b)}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:1px 0 9px;font-family:Georgia,serif;font-size:12px;color:#8a867e;">
+            ${m.favourite ? esc(m.favourite) : 'No bracket has picked this tie yet'}
+          </td>
+        </tr>`,
+    )
+    .join('')
+  return `
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 24px;">
+        <tr>
+          <td style="padding:0 0 2px;font-family:Georgia,serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#6b6b6b;">
+            Up next &#8212; ${esc(u.roundLabel)}
+          </td>
+        </tr>
+        ${rows}
+      </table>`
 }
 
 function rankLine(rank: PointsAwardedRank | null): string {
@@ -488,23 +568,33 @@ function tournamentBlock(t: PointsAwardedTournament): string {
         </tr>
         ${rankLine(t.rank)}
       </table>
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 24px;border-top:1px solid #e8e3d8;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 ${t.upcoming ? '16px' : '24px'};border-top:1px solid #e8e3d8;">
         ${roundRows}
-      </table>`
+      </table>${t.upcoming ? upcomingBlock(t.upcoming) : ''}`
 }
 
-export async function sendPointsAwardedEmail(opts: {
+export interface PointsAwardedEmail {
   to: string
   totalPoints: number
   correctPicks: number
   tournaments: PointsAwardedTournament[]
   unsubscribeToken: string
-}) {
-  if (!canSend()) return
-  const single = opts.tournaments.length === 1
-  const subject = single
+}
+
+export function pointsAwardedSubject(opts: PointsAwardedEmail): string {
+  return opts.tournaments.length === 1
     ? `+${opts.totalPoints} pts — ${opts.tournaments[0].tournamentName}`
     : `+${opts.totalPoints} pts across ${opts.tournaments.length} tournaments`
+}
+
+/**
+ * Split out from the send so it can be rendered without a network, a database
+ * or a Resend key — `scripts/preview-points-email.mjs` writes real HTML from
+ * fixtures. Matches how drawOpenHtml and tournamentCompleteHtml are already
+ * factored above; this one was the odd template still inlined in its sender.
+ */
+export function pointsAwardedHtml(opts: PointsAwardedEmail): string {
+  const single = opts.tournaments.length === 1
   const subLine = single
     ? `${opts.correctPicks} correct pick${opts.correctPicks === 1 ? '' : 's'}`
     : `Across ${opts.tournaments.length} tournaments · ${opts.correctPicks} correct pick${opts.correctPicks === 1 ? '' : 's'}`
@@ -514,12 +604,7 @@ export async function sendPointsAwardedEmail(opts: {
     ? `${BASE_URL}/tournaments/${opts.tournaments[0].tournamentId}`
     : `${BASE_URL}/dashboard`
 
-  await resend!.emails.send({
-    from: FROM,
-    replyTo: REPLY_TO,
-    to: opts.to,
-    subject,
-    html: `
+  return `
       <div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#f5f2eb;">
         <p style="font-size:12px;letter-spacing:0.08em;color:#6b6b6b;text-transform:uppercase;margin-bottom:24px;">Quiet Please</p>
         <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 6px;">+${opts.totalPoints} points earned.</h1>
@@ -532,7 +617,17 @@ export async function sendPointsAwardedEmail(opts: {
           </a>
         </div>
         ${unsubscribeFooter(opts.unsubscribeToken)}
-      </div>`,
+      </div>`
+}
+
+export async function sendPointsAwardedEmail(opts: PointsAwardedEmail) {
+  if (!canSend()) return
+  await resend!.emails.send({
+    from: FROM,
+    replyTo: REPLY_TO,
+    to: opts.to,
+    subject: pointsAwardedSubject(opts),
+    html: pointsAwardedHtml(opts),
   })
 }
 

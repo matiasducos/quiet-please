@@ -1422,6 +1422,41 @@ export async function rerunTournamentPoints(
   return { ok, erased, rerun: data, ...(ok ? {} : { error: 'Erase succeeded but award-points re-run failed — run it manually from this tab.' }) }
 }
 
+// ── The points email's "up next" block ────────────────────────────────────────
+/**
+ * Choose which pending ties the next points email advertises.
+ *
+ * The counterpart to the social studio's up-next picker, and it lives on the
+ * results page rather than in the studio on purpose: this choice is consumed by
+ * the award-points run, and the results page is where that run is triggered
+ * from — three steps below this control. A selection made in another tab, on
+ * another day, would be stale by the time it mattered.
+ *
+ * Stored, not passed as a parameter to the run, because award-points is also
+ * triggered from the admin panel and from `rerunTournamentPoints`, and a
+ * parameter would silently mean "no block" on both.
+ *
+ * @param matchIds null restores auto (the earliest pending round's first few
+ *   ties); an empty array suppresses the block; otherwise exactly these ids.
+ *   Ids are not validated here — see migration 104 for why the reader filters
+ *   instead, and `buildPointsEmailUpcoming` for what happens to a stale one.
+ */
+export async function savePointsEmailUpcoming(
+  tournamentId: string,
+  matchIds: string[] | null,
+): Promise<{ ok: boolean; error?: string }> {
+  await assertAdmin()
+  const admin = createAdminClient()
+
+  const { error } = await admin
+    .from('tournaments')
+    .update({ email_upcoming_match_ids: matchIds })
+    .eq('id', tournamentId)
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
 // ── Rebuild a tournament recap on demand ──────────────────────────────────────
 // The cron builds a recap once and never revisits it, which is right: the
 // numbers only change when the results do. When they DO change — a mis-entered
@@ -1699,6 +1734,8 @@ export async function getTournamentWithDraw(tournamentId: string): Promise<{
     id: string; name: string; external_id: string; tour: string; category: string
     status: string; draw_size: number | null; starts_at: string | null
     location: string | null; flag_emoji: string | null
+    /** See migration 104: null = auto, [] = no block, ids = exactly these. */
+    email_upcoming_match_ids: string[] | null
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   bracketData?: any
@@ -1711,7 +1748,7 @@ export async function getTournamentWithDraw(tournamentId: string): Promise<{
 
   const { data: tournament, error: tErr } = await admin
     .from('tournaments')
-    .select('id, name, external_id, tour, category, status, draw_size, starts_at, location, flag_emoji, draw_close_at')
+    .select('id, name, external_id, tour, category, status, draw_size, starts_at, location, flag_emoji, draw_close_at, email_upcoming_match_ids')
     .eq('id', tournamentId)
     .single()
 
@@ -1734,6 +1771,7 @@ export async function getTournamentWithDraw(tournamentId: string): Promise<{
       id: string; name: string; external_id: string; tour: string; category: string
       status: string; draw_size: number | null; starts_at: string | null
       location: string | null; flag_emoji: string | null
+      email_upcoming_match_ids: string[] | null
     },
     bracketData: draw?.bracket_data ?? null,
     lockedMatches: (draw?.locked_matches as Record<string, string>) ?? {},

@@ -6,6 +6,7 @@ import { getPointsForRound, calculateStreakMultiplier, committedPicks, buildFeed
 import type { DrawMatch, Round, TournamentCategory } from '@/lib/tennis'
 import { sendPointsAwardedEmail, sendTournamentCompleteEmails, isBotEmail } from '@/lib/email'
 import type { PointsAwardedTournament } from '@/lib/email'
+import { buildPointsEmailUpcoming } from '@/lib/email-upcoming'
 import { isEmailEnabled, type EmailPreferences } from '@/lib/email-preferences'
 import { ROUND_LABEL, ROUND_ORDER } from '@/lib/tennis/my-tournament'
 import { checkTournamentTrophies, checkCronAchievements, checkChallengeAchievements, checkPerfectPrediction } from '@/lib/achievements/check'
@@ -617,6 +618,15 @@ export async function GET(request: Request) {
       // scored in this run, each broken down by round.
       const emailJobs: Array<{ userId: string; correctPicks: number; totalPoints: number; tournaments: PointsAwardedTournament[] }> = []
 
+      // What to play for next, per tournament — built once for the whole run
+      // and shared by every recipient of that tournament, not rebuilt per user.
+      // See buildPointsEmailUpcoming for why that distinction matters and for
+      // the admin's three-state selection.
+      const scoredTournamentIds = [
+        ...new Set(Object.values(userTournamentPoints).flatMap(tPoints => Object.keys(tPoints))),
+      ]
+      const upcomingByTournament = await buildPointsEmailUpcoming(scoredTournamentIds)
+
       for (const [userId, tPoints] of Object.entries(userTournamentPoints)) {
         const tournaments: PointsAwardedTournament[] = []
         let correctPicks = 0
@@ -652,6 +662,7 @@ export async function GET(request: Request) {
               ? { position: rank.position, total: rankByTournament[tId].total, movement: rank.previousPosition - rank.position }
               : null,
             rounds,
+            upcoming: upcomingByTournament.get(tId) ?? null,
           })
         }
         const totalPoints = Object.values(tPoints).reduce((a, b) => a + b, 0)

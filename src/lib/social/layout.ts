@@ -1,7 +1,7 @@
 import type { CardSize } from './templates/frame'
 
 /**
- * The two facts the admin studio and the card renderer must agree on.
+ * The facts the admin studio, the card renderer and the mailer must agree on.
  *
  * Both live here, with no imports beyond a type, because the studio is a client
  * component: `./data` pulls in the service-role Supabase client and
@@ -53,6 +53,23 @@ export function recapCapacity(size: CardSize, hasPodium: boolean): number {
 export function upcomingCapacity(size: CardSize): number {
   return size === 'story' ? 8 : 6
 }
+
+/**
+ * How many of those ties fit in the points-awarded email.
+ *
+ * A third medium for the same list, and it lives beside the card's figure for
+ * the reason this file exists at all: the results page's checkbox list is what
+ * the admin approves and the email is what gets sent, and both are rendered
+ * from this number. A constant kept in the mailer would be invisible to the
+ * picker, which would then let someone tick five ties and send three.
+ *
+ * Half the smallest card. The card is a canvas that exists to show the matches;
+ * in the email this block sits under a headline, a rank line and a
+ * round-by-round table, and is the last thing before the button. Three is what
+ * stays a glance rather than becoming a fixture list. Not a function of size,
+ * because an email has one width that matters — the ~500px phone column.
+ */
+export const EMAIL_UPCOMING_CAPACITY = 3
 
 /**
  * How many highlighted ties fit on the "Draw published" card.

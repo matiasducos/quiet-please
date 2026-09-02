@@ -1,0 +1,204 @@
+/**
+ * Points-email preview — renders the real template with no database, no Resend
+ * key and no network.
+ *
+ * The "+pts" email is the one piece of this product that cannot be checked by
+ * looking at the site: it is assembled as an HTML string in `email.ts` and the
+ * only way it has ever been seen is by scoring a real tournament and mailing
+ * real people. That is a bad loop to iterate a layout in. This calls the actual
+ * exported `pointsAwardedHtml` — not a copy of it — over fixtures chosen to hit
+ * the branches that are easy to get wrong: a tournament with nothing left to
+ * play, a tie nobody has picked, a multi-tournament run, and a player name
+ * carrying an ampersand.
+ *
+ *   node scripts/preview-points-email.mjs
+ *   → writes points-email-preview.html and prints the path
+ */
+
+import { execFileSync } from 'child_process'
+import { mkdirSync, writeFileSync, rmSync } from 'fs'
+import { resolve, join } from 'path'
+import { createRequire } from 'module'
+import Module from 'module'
+
+const root = resolve(import.meta.dirname, '..')
+// Inside the project rather than in /tmp, so the compiled output can still
+// resolve `resend` by walking up to the real node_modules.
+const out = join(root, 'node_modules', '.cache', 'points-email-preview')
+rmSync(out, { recursive: true, force: true })
+mkdirSync(out, { recursive: true })
+
+const tsconfig = join(out, 'tsconfig.json')
+writeFileSync(
+  tsconfig,
+  JSON.stringify({
+    compilerOptions: {
+      outDir: out,
+      rootDir: join(root, 'src'),
+      module: 'commonjs',
+      target: 'es2022',
+      moduleResolution: 'node',
+      skipLibCheck: true,
+      baseUrl: root,
+      paths: { '@/*': ['src/*'] },
+    },
+    include: [join(root, 'src/lib/email.ts')],
+  }),
+)
+execFileSync('npx', ['tsc', '-p', tsconfig], { cwd: root, stdio: 'inherit' })
+
+// tsc emits the `@/...` specifiers verbatim — it rewrites types, not requires —
+// so the alias is resolved here instead.
+const originalResolve = Module._resolveFilename
+Module._resolveFilename = function (request, ...rest) {
+  if (request.startsWith('@/')) request = join(out, request.slice(2))
+  return originalResolve.call(this, request, ...rest)
+}
+
+const require = createRequire(import.meta.url)
+const { pointsAwardedHtml, pointsAwardedSubject } = require(join(out, 'lib/email.js'))
+
+const rounds = (...rows) => rows.map(([round, label, matches, wins, points]) => ({ round, label, matches, wins, points }))
+
+const CASES = [
+  {
+    name: 'One tournament, three curated ties',
+    email: {
+      to: 'preview@example.com',
+      totalPoints: 380,
+      correctPicks: 6,
+      unsubscribeToken: 'preview-token',
+      tournaments: [
+        {
+          tournamentId: 't1',
+          tournamentName: 'Cincinnati Open',
+          flagEmoji: '🇺🇸',
+          points: 380,
+          rank: { position: 12, total: 91, movement: 4 },
+          rounds: rounds(['R16', 'Round of 16', 8, 6, 380]),
+          upcoming: {
+            roundLabel: 'Quarterfinals',
+            matches: [
+              { a: 'J. Sinner', b: 'C. Alcaraz', favourite: '62% of brackets have Sinner' },
+              { a: 'A. Zverev', b: 'B. Shelton', favourite: '3 brackets have Zverev' },
+              // The branch that must never render as a 50/50.
+              { a: 'H. Rune', b: 'F. Cerundolo', favourite: null },
+            ],
+          },
+        },
+      ],
+    },
+  },
+  {
+    name: 'Nothing left to play — the block is absent, not empty',
+    email: {
+      to: 'preview@example.com',
+      totalPoints: 2000,
+      correctPicks: 1,
+      unsubscribeToken: 'preview-token',
+      tournaments: [
+        {
+          tournamentId: 't2',
+          tournamentName: 'US Open',
+          flagEmoji: '🇺🇸',
+          points: 2000,
+          rank: { position: 1, total: 91, movement: 7 },
+          rounds: rounds(['F', 'Final', 1, 1, 2000]),
+          upcoming: null,
+        },
+      ],
+    },
+  },
+  {
+    name: 'Two tournaments — one forward-looking, one finished',
+    email: {
+      to: 'preview@example.com',
+      totalPoints: 545,
+      correctPicks: 9,
+      unsubscribeToken: 'preview-token',
+      tournaments: [
+        {
+          tournamentId: 't3',
+          tournamentName: 'Mubadala Citi DC Open',
+          flagEmoji: '🇺🇸',
+          points: 145,
+          rank: { position: 40, total: 91, movement: -3 },
+          rounds: rounds(['R32', 'Round of 32', 6, 3, 45], ['R16', 'Round of 16', 4, 2, 100]),
+          upcoming: {
+            roundLabel: 'Semifinals',
+            // Ampersand on purpose: names come from a hand-entered draw, and
+            // this is the character that would break the markup unescaped.
+            matches: [{ a: 'M. Navarro & Co', b: 'T. Paul', favourite: '5 brackets have Paul' }],
+          },
+        },
+        {
+          tournamentId: 't4',
+          tournamentName: 'National Bank Open',
+          flagEmoji: '🇨🇦',
+          points: 400,
+          rank: null,
+          rounds: rounds(['QF', 'Quarterfinals', 4, 2, 400]),
+          upcoming: null,
+        },
+      ],
+    },
+  },
+]
+
+const sections = CASES.map(
+  c => `
+    <section>
+      <h2>${c.name}</h2>
+      <p class="subject">Subject: ${pointsAwardedSubject(c.email)}</p>
+      <div class="frame">${pointsAwardedHtml(c.email)}</div>
+    </section>`,
+).join('')
+
+const file = join(root, 'points-email-preview.html')
+writeFileSync(
+  file,
+  `<!doctype html>
+<meta charset="utf-8">
+<title>Points email preview</title>
+<style>
+  body { margin: 0; padding: 24px; background: #e9e6df; font-family: ui-sans-serif, system-ui, sans-serif; }
+  section { margin: 0 auto 40px; max-width: 560px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: #4a4a4a; margin: 0 0 4px; }
+  .subject { font: 12px ui-monospace, monospace; color: #6b6b6b; margin: 0 0 10px; }
+  /* 500px is the template's own max-width; the frame is what a phone gives it. */
+  .frame { width: 500px; max-width: 100%; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+</style>
+${sections}
+`,
+)
+
+// ── Assertions ───────────────────────────────────────────────────────────────
+// A preview nobody opens rots. These are the three facts about the block that
+// would be wrong silently — a missing block renders as nothing, and an
+// unescaped name renders as *almost* the right thing.
+const BLOCK = 'Up next &#8212;'
+const rendered = CASES.map(c => ({ name: c.name, html: pointsAwardedHtml(c.email) }))
+const failures = []
+const check = (label, ok) => {
+  if (!ok) failures.push(label)
+}
+
+check(
+  'a tournament with `upcoming` renders exactly one block',
+  rendered[0].html.split(BLOCK).length - 1 === 1,
+)
+check(
+  'a tournament with `upcoming: null` renders no block at all — not an empty one',
+  !rendered[1].html.includes(BLOCK),
+)
+check(
+  'in a two-tournament email only the forward-looking one carries a block',
+  rendered[2].html.split(BLOCK).length - 1 === 1,
+)
+check('a tie nobody has picked says so rather than quoting a share', rendered[0].html.includes('No bracket has picked this tie yet'))
+check('player names are escaped', rendered[2].html.includes('M. Navarro &amp; Co'))
+
+for (const f of failures) console.error(`FAIL  ${f}`)
+console.log(`\n${failures.length ? `${failures.length} FAILED` : `${5} checks passed`}`)
+console.log(`Wrote ${file}`)
+if (failures.length) process.exit(1)
