@@ -92,21 +92,27 @@ export function drawCapacity(size: CardSize): number {
 }
 
 /**
- * "68% of brackets have Sinner", as it reads on the card and in the picker.
+ * "7% of brackets have Sinner", as it reads on the card, in the picker and in
+ * the points email.
  *
- * The percentage is a share of the brackets that picked THIS match — never of
- * the tournament's entry count. Below MIN_SAMPLE (see ./data) the caller passes
- * a null pct and the head count carries the line alone: "7 brackets have Sinner"
- * is a fact at any sample size, where "23%" of seven brackets is not.
+ * One shape, always a percentage. It used to fall back to a head count ("3
+ * brackets have Sinner") whenever the sample was under ten, which fired on most
+ * later-round ties — three of the last six tournaments had a median of three or
+ * four brackets per match from the round of 16 on — so the line changed shape
+ * exactly where it was published most.
+ *
+ * The share is out of every global bracket in the tournament, which is what
+ * makes one shape safe: the number gets SMALLER as a round thins out, not
+ * louder. The two sides of a tie therefore do not sum to 100, and a
+ * quarterfinal reading "4% of brackets have Sinner" is not a broken statistic —
+ * it is what abandonment looks like. See `pct` in ./data.
  *
  * Only the surname is used. The registry stores "Sinner, Jannik", and the full
  * form turns a five-word line into a nine-word one on a card measured in rows.
  */
-export function favouriteLabel(name: string, count: number, pct: number | null): string {
+export function favouriteLabel(name: string, pct: number): string {
   const surname = name.includes(',') ? name.split(',')[0].trim() : name
-  if (pct != null) return `${pct}% of brackets have ${surname}`
-  const brackets = `${count.toLocaleString('en-GB')} ${count === 1 ? 'bracket has' : 'brackets have'}`
-  return `${brackets} ${surname}`
+  return `${pct}% of brackets have ${surname}`
 }
 
 /**
@@ -163,7 +169,8 @@ export function pickedLabel(count: number | null, pct: number | null): string | 
   if (count == null) return null
   if (count === 0) return 'No bracket called it'
   const brackets = `${count.toLocaleString('en-GB')} ${count === 1 ? 'bracket' : 'brackets'} called it`
-  // The percentage is suppressed on small fields (see MIN_SAMPLE in ./data), but
-  // the raw count is a plain fact and stays.
+  // pct() and count() now suppress under exactly the same two conditions, so a
+  // non-null count arrives with a percentage. The fallback is defensive only —
+  // it must never become the small-field behaviour again.
   return pct != null ? `${brackets} · ${pct}%` : brackets
 }

@@ -345,7 +345,7 @@ function UpcomingArt({ card, size }: { card: UpcomingCard; size: CardSize }): Re
                   see UpcomingMatch.favourite. */}
               {m.favourite && (
                 <div style={{ display: 'flex', fontFamily: BODY, fontSize: crowdSize, color: C.muted }}>
-                  {favouriteLabel(m.favourite.player.name, m.favourite.count, m.favourite.pct)}
+                  {favouriteLabel(m.favourite.player.name, m.favourite.pct)}
                 </div>
               )}
             </div>

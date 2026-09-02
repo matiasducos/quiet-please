@@ -164,7 +164,7 @@ export async function buildPointsEmailUpcoming(
             aId: m.aId,
             bId: m.bId,
             favourite: m.favourite
-              ? favouriteLabel(m.favourite.player.name, m.favourite.count, m.favourite.pct)
+              ? favouriteLabel(m.favourite.player.name, m.favourite.pct)
               : null,
           })),
         })

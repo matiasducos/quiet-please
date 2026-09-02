@@ -92,7 +92,7 @@ const CASES = [
               // pick name different players, which is the whole point of
               // showing both.
               { a: 'J. Sinner', b: 'C. Alcaraz', favourite: '62% of brackets have Sinner', picked: 'b' },
-              { a: 'A. Zverev', b: 'B. Shelton', favourite: '3 brackets have Zverev', picked: 'a' },
+              { a: 'A. Zverev', b: 'B. Shelton', favourite: '4% of brackets have Zverev', picked: 'a' },
               // No pick, and the branch that must never render as a 50/50.
               { a: 'H. Rune', b: 'F. Cerundolo', favourite: null, picked: null },
             ],
@@ -141,7 +141,7 @@ const CASES = [
             // Ampersand on purpose: names come from a hand-entered draw, and
             // this is the character that would break the markup unescaped.
             matches: [
-              { a: 'M. Navarro & Co', b: 'T. Paul', favourite: '5 brackets have Paul', picked: 'a' },
+              { a: 'M. Navarro & Co', b: 'T. Paul', favourite: '6% of brackets have Paul', picked: 'a' },
               // No pick, but the field has one: the nudge and the crowd line
               // have to sit on the same row without either being dropped.
               { a: 'L. Musetti', b: 'K. Khachanov', favourite: '71% of brackets have Musetti', picked: null },
@@ -228,6 +228,12 @@ check('a picked tie carries no nudge', !/C\. Alcaraz[\s\S]{0,200}?haven&rsquo;t 
 check('player names are escaped', rendered[2].html.includes('M. Navarro &amp; Co'))
 check("the recipient's own player is named in words, not only bolded", rendered[0].html.includes('You picked C. Alcaraz'))
 check('the pick and the crowd line coexist when they name different players', /You picked C. Alcaraz<\/span> &middot; 62% of brackets have Sinner/.test(rendered[0].html))
+// One shape, everywhere. A head count on its own was the old small-sample
+// fallback, and it fired on most later-round ties — see favouriteLabel.
+check(
+  'every crowd line quotes a percentage',
+  rendered.flatMap(r => r.html.match(/&middot; ([^<]*brackets[^<]*)/g) ?? []).every(l => /\d+%/.test(l)),
+)
 // The matchup line stays plain on both sides — the pick is stated underneath,
 // and marking it twice was redundant.
 check('neither player is emphasised in the matchup line', !/<strong>(C\. Alcaraz|J\. Sinner)<\/strong>/.test(rendered[0].html))
