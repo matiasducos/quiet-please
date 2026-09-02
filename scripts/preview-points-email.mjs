@@ -71,7 +71,7 @@ const rounds = (...rows) => rows.map(([round, label, matches, wins, points]) => 
 
 const CASES = [
   {
-    name: 'One tournament, three curated ties',
+    name: 'One tournament, a complete quarterfinal',
     email: {
       to: 'preview@example.com',
       totalPoints: 380,
@@ -87,6 +87,9 @@ const CASES = [
           rounds: rounds(['R16', 'R16', 8, 6, 380]),
           upcoming: {
             roundLabel: 'Quarterfinal',
+            // A quarterfinal is four ties in every draw size, and the capacity
+            // is four so that it always arrives whole.
+            hidden: 0,
             matches: [
               // Picked the underdog: the crowd line and the recipient's own
               // pick name different players, which is the whole point of
@@ -95,6 +98,7 @@ const CASES = [
               { a: 'A. Zverev', b: 'B. Shelton', favourite: '4% of brackets have Zverev', picked: 'a' },
               // No pick, and the branch that must never render as a 50/50.
               { a: 'H. Rune', b: 'F. Cerundolo', favourite: null, picked: null },
+              { a: 'T. Fritz', b: 'D. Medvedev', favourite: '38% of brackets have Fritz', picked: 'a' },
             ],
           },
         },
@@ -122,7 +126,7 @@ const CASES = [
     },
   },
   {
-    name: 'Two tournaments — one forward-looking, one finished',
+    name: 'Two tournaments — an early round that overflows, and one finished',
     email: {
       to: 'preview@example.com',
       totalPoints: 545,
@@ -137,7 +141,10 @@ const CASES = [
           rank: { position: 40, total: 91, movement: -3 },
           rounds: rounds(['R32', 'R32', 6, 3, 45], ['R16', 'R16', 4, 2, 100]),
           upcoming: {
-            roundLabel: 'Semifinal',
+            roundLabel: 'R32',
+            // The branch that used to be silent: an early round is far bigger
+            // than the block, and the heading names the round.
+            hidden: 12,
             // Ampersand on purpose: names come from a hand-entered draw, and
             // this is the character that would break the markup unescaped.
             matches: [
@@ -238,11 +245,19 @@ check(
 // and marking it twice was redundant.
 check('neither player is emphasised in the matchup line', !/<strong>(C\. Alcaraz|J\. Sinner)<\/strong>/.test(rendered[0].html))
 
+check('a complete round discloses nothing', !rendered[0].html.includes('more match'))
+check('an early round says how many ties it left out', rendered[2].html.includes('+ 12 more matches in this round'))
+check('the overflow line is singular at one', /\+ 1 more match in this round/.test(pointsAwardedHtml({
+  ...CASES[0].email,
+  tournaments: [{ ...CASES[0].email.tournaments[0], upcoming: { ...CASES[0].email.tournaments[0].upcoming, hidden: 1 } }],
+})))
+
 // ── personaliseUpcoming ──────────────────────────────────────────────────────
 // Every exclusion here is silent when it goes wrong: the wrong player's name
 // simply appears, and it looks exactly as plausible as the right one.
 const plan = {
   roundLabel: 'QF',
+  hidden: 0,
   matches: [{ id: 'm1', a: 'J. Sinner', b: 'C. Alcaraz', aId: 'p-sinner', bId: 'p-alcaraz', favourite: null }],
 }
 const sideOf = bracket => personaliseUpcoming(plan, bracket).matches[0].picked
