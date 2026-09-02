@@ -507,27 +507,30 @@ function upcomingBlock(u: PointsAwardedUpcoming): string {
   if (!u.matches.length) return ''
   const rows = u.matches
     .map(m => {
-      // The recipient's own player is named in words as well as bolded. Colour
-      // and weight are the first things an email client throws away — dark mode
-      // inverts, Outlook flattens — and "which one did I have?" has to survive
-      // that, so the line below says it in text.
-      const name = (side: 'a' | 'b') => (m.picked === side ? `<strong>${esc(m[side])}</strong>` : esc(m[side]))
+      // The recipient's own player is named in words rather than marked up in
+      // the line above. Colour and weight are the first things an email client
+      // throws away — dark mode inverts, Outlook flattens — so "which one did I
+      // have?" is answered by text that survives all of it.
+      //
+      // A missing pick is the actionable half of this block and gets the same
+      // clay the ranking uses for a drop: it is the one row here the recipient
+      // can still do something about, and the CTA below goes where they'd do it.
       const yours = m.picked
         ? `<span style="color:#1a6b3c;">You picked ${esc(m[m.picked])}</span>`
-        : null
-      // Both facts when there are two, and the "nobody has picked it" line only
-      // when there is genuinely nothing to say — a tie you picked always has a
-      // crowd line, because your own bracket is in that count.
+        : `<span style="color:#b3392c;">You haven&rsquo;t picked a winner</span>`
+      // The crowd line joins it when there is one. There is no third state to
+      // fall back to: `yours` always says something, and a tie no bracket has
+      // picked simply has nothing to add after it.
       const evidence = [yours, m.favourite ? esc(m.favourite) : null].filter(Boolean)
       return `
         <tr>
           <td style="padding:9px 0 0;font-family:Georgia,serif;font-size:14px;color:#0d0d0d;">
-            ${name('a')} <span style="color:#8a867e;">v</span> ${name('b')}
+            ${esc(m.a)} <span style="color:#8a867e;">v</span> ${esc(m.b)}
           </td>
         </tr>
         <tr>
           <td style="padding:1px 0 9px;font-family:Georgia,serif;font-size:12px;color:#8a867e;">
-            ${evidence.length ? evidence.join(' &middot; ') : 'No bracket has picked this tie yet'}
+            ${evidence.join(' &middot; ')}
           </td>
         </tr>`
     })

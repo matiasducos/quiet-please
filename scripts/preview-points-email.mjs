@@ -140,7 +140,12 @@ const CASES = [
             roundLabel: 'Semifinal',
             // Ampersand on purpose: names come from a hand-entered draw, and
             // this is the character that would break the markup unescaped.
-            matches: [{ a: 'M. Navarro & Co', b: 'T. Paul', favourite: '5 brackets have Paul', picked: 'a' }],
+            matches: [
+              { a: 'M. Navarro & Co', b: 'T. Paul', favourite: '5 brackets have Paul', picked: 'a' },
+              // No pick, but the field has one: the nudge and the crowd line
+              // have to sit on the same row without either being dropped.
+              { a: 'L. Musetti', b: 'K. Khachanov', favourite: '71% of brackets have Musetti', picked: null },
+            ],
           },
         },
         {
@@ -209,12 +214,23 @@ check(
   'in a two-tournament email only the forward-looking one carries a block',
   rendered[2].html.split(BLOCK).length - 1 === 1,
 )
-check('a tie nobody has picked says so rather than quoting a share', rendered[0].html.includes('No bracket has picked this tie yet'))
+// The honest-silence rule, asserted as what it actually is: a tie with no
+// sample must not carry a percentage. It used to be checked by looking for a
+// sentence, which stopped being the right test when the nudge replaced it.
+check(
+  'a tie nobody has picked quotes no share at all',
+  /H\. Rune[\s\S]{0,400}?<\/tr>/.test(rendered[0].html) &&
+    !/H\. Rune[\s\S]{0,400}?\d+% of brackets/.test(rendered[0].html),
+)
+check('an unpicked tie says so, in clay', /color:#b3392c;">You picked/.test(rendered[0].html) === false && rendered[0].html.includes('You haven&rsquo;t picked a winner'))
+check('the nudge and the crowd line coexist', /You haven&rsquo;t picked a winner<\/span> &middot; 71% of brackets have Musetti/.test(rendered[2].html))
+check('a picked tie carries no nudge', !/C\. Alcaraz[\s\S]{0,200}?haven&rsquo;t picked/.test(rendered[0].html))
 check('player names are escaped', rendered[2].html.includes('M. Navarro &amp; Co'))
 check("the recipient's own player is named in words, not only bolded", rendered[0].html.includes('You picked C. Alcaraz'))
 check('the pick and the crowd line coexist when they name different players', /You picked C. Alcaraz<\/span> &middot; 62% of brackets have Sinner/.test(rendered[0].html))
-check('the picked side is bolded in the matchup line', rendered[0].html.includes('<strong>C. Alcaraz</strong>'))
-check('the side the recipient does NOT have stays plain', !rendered[0].html.includes('<strong>J. Sinner</strong>'))
+// The matchup line stays plain on both sides — the pick is stated underneath,
+// and marking it twice was redundant.
+check('neither player is emphasised in the matchup line', !/<strong>(C\. Alcaraz|J\. Sinner)<\/strong>/.test(rendered[0].html))
 
 // ── personaliseUpcoming ──────────────────────────────────────────────────────
 // Every exclusion here is silent when it goes wrong: the wrong player's name
