@@ -39,10 +39,13 @@ writeFileSync(
       target: 'es2022',
       moduleResolution: 'node',
       skipLibCheck: true,
+      esModuleInterop: true,
+      allowSyntheticDefaultImports: true,
+      jsx: 'react-jsx',
       baseUrl: root,
       paths: { '@/*': ['src/*'] },
     },
-    include: [join(root, 'src/lib/email.ts')],
+    include: [join(root, 'src/lib/email.ts'), join(root, 'src/lib/email-upcoming.ts')],
   }),
 )
 execFileSync('npx', ['tsc', '-p', tsconfig], { cwd: root, stdio: 'inherit' })
@@ -57,6 +60,9 @@ Module._resolveFilename = function (request, ...rest) {
 
 const require = createRequire(import.meta.url)
 const { pointsAwardedHtml, pointsAwardedSubject } = require(join(out, 'lib/email.js'))
+// Pure, and never reached by the render below — it is what decides which side
+// of a tie the recipient is on, so it is checked directly.
+const { personaliseUpcoming } = require(join(out, 'lib/email-upcoming.js'))
 
 // Round labels are ROUND_LABEL's, not prose: the real email says "R16" and
 // "Quarterfinal", and a fixture that said "Round of 16" would have this preview
@@ -82,10 +88,13 @@ const CASES = [
           upcoming: {
             roundLabel: 'Quarterfinal',
             matches: [
-              { a: 'J. Sinner', b: 'C. Alcaraz', favourite: '62% of brackets have Sinner' },
-              { a: 'A. Zverev', b: 'B. Shelton', favourite: '3 brackets have Zverev' },
-              // The branch that must never render as a 50/50.
-              { a: 'H. Rune', b: 'F. Cerundolo', favourite: null },
+              // Picked the underdog: the crowd line and the recipient's own
+              // pick name different players, which is the whole point of
+              // showing both.
+              { a: 'J. Sinner', b: 'C. Alcaraz', favourite: '62% of brackets have Sinner', picked: 'b' },
+              { a: 'A. Zverev', b: 'B. Shelton', favourite: '3 brackets have Zverev', picked: 'a' },
+              // No pick, and the branch that must never render as a 50/50.
+              { a: 'H. Rune', b: 'F. Cerundolo', favourite: null, picked: null },
             ],
           },
         },
@@ -131,7 +140,7 @@ const CASES = [
             roundLabel: 'Semifinal',
             // Ampersand on purpose: names come from a hand-entered draw, and
             // this is the character that would break the markup unescaped.
-            matches: [{ a: 'M. Navarro & Co', b: 'T. Paul', favourite: '5 brackets have Paul' }],
+            matches: [{ a: 'M. Navarro & Co', b: 'T. Paul', favourite: '5 brackets have Paul', picked: 'a' }],
           },
         },
         {
@@ -182,7 +191,9 @@ ${sections}
 const BLOCK = 'Up next &#8212;'
 const rendered = CASES.map(c => ({ name: c.name, html: pointsAwardedHtml(c.email) }))
 const failures = []
+let checksRun = 0
 const check = (label, ok) => {
+  checksRun++
   if (!ok) failures.push(label)
 }
 
@@ -200,8 +211,38 @@ check(
 )
 check('a tie nobody has picked says so rather than quoting a share', rendered[0].html.includes('No bracket has picked this tie yet'))
 check('player names are escaped', rendered[2].html.includes('M. Navarro &amp; Co'))
+check("the recipient's own player is named in words, not only bolded", rendered[0].html.includes('You picked C. Alcaraz'))
+check('the pick and the crowd line coexist when they name different players', /You picked C. Alcaraz<\/span> &middot; 62% of brackets have Sinner/.test(rendered[0].html))
+check('the picked side is bolded in the matchup line', rendered[0].html.includes('<strong>C. Alcaraz</strong>'))
+check('the side the recipient does NOT have stays plain', !rendered[0].html.includes('<strong>J. Sinner</strong>'))
+
+// ── personaliseUpcoming ──────────────────────────────────────────────────────
+// Every exclusion here is silent when it goes wrong: the wrong player's name
+// simply appears, and it looks exactly as plausible as the right one.
+const plan = {
+  roundLabel: 'QF',
+  matches: [{ id: 'm1', a: 'J. Sinner', b: 'C. Alcaraz', aId: 'p-sinner', bId: 'p-alcaraz', favourite: null }],
+}
+const sideOf = bracket => personaliseUpcoming(plan, bracket).matches[0].picked
+
+check('a pick on the first player reads as side a', sideOf({ picks: { m1: 'p-sinner' } }) === 'a')
+check('a pick on the second player reads as side b', sideOf({ picks: { m1: 'p-alcaraz' } }) === 'b')
+check('no bracket at all is not a pick', sideOf(null) === null)
+check('a bracket with no pick on this tie is not a pick', sideOf({ picks: { m2: 'p-sinner' } }) === null)
+check(
+  'a pick naming someone the draw has overtaken is stale, not a vote for either side',
+  sideOf({ picks: { m1: 'qualifier-3' } }) === null,
+)
+check(
+  'a pick placed after the match was locked cannot score, so it is not shown',
+  sideOf({ picks: { m1: 'p-sinner' }, lockedPicks: ['m1'] }) === null,
+)
+check(
+  'a lock on a DIFFERENT match does not suppress this one',
+  sideOf({ picks: { m1: 'p-sinner' }, lockedPicks: ['m2'] }) === 'a',
+)
 
 for (const f of failures) console.error(`FAIL  ${f}`)
-console.log(`\n${failures.length ? `${failures.length} FAILED` : `${5} checks passed`}`)
+console.log(`\n${failures.length ? `${failures.length} FAILED` : `${checksRun} checks passed`}`)
 console.log(`Wrote ${file}`)
 if (failures.length) process.exit(1)

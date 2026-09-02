@@ -103,6 +103,16 @@ export interface UpcomingMatch {
   a: CardPlayer
   b: CardPlayer
   /**
+   * The two players' external ids.
+   *
+   * The card never renders them; the points email compares them against a
+   * recipient's stored pick, which is a player id rather than a side. Carried
+   * here rather than re-derived because the walk that resolves who is in an
+   * unplayed tie is the expensive part, and it has just been done.
+   */
+  aId: string
+  bId: string
+  /**
    * The side more brackets are on. null when no bracket has picked this match —
    * which is the normal state for a round the field has not reached yet, and
    * must read as silence rather than as a 0% for either player.
@@ -613,6 +623,8 @@ export async function getSocialCard(
         id: m.id,
         a,
         b,
+        aId: m.aId,
+        bId: m.bId,
         // No picks at all is silence, not a 50/50: printing "50% have Sinner"
         // off zero brackets invents a consensus that does not exist.
         favourite:

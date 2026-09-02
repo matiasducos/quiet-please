@@ -450,6 +450,12 @@ export interface PointsAwardedUpcomingMatch {
   a: string
   b: string
   favourite: string | null
+  /**
+   * Which side THIS recipient has in the tie, or null when they have no pick
+   * that can score on it. The one per-recipient field on the block — see
+   * `personaliseUpcoming`, which is also where "cannot score" is defined.
+   */
+  picked: 'a' | 'b' | null
 }
 
 /** The "up next" block under one tournament's round breakdown. */
@@ -500,19 +506,31 @@ function esc(s: string): string {
 function upcomingBlock(u: PointsAwardedUpcoming): string {
   if (!u.matches.length) return ''
   const rows = u.matches
-    .map(
-      m => `
+    .map(m => {
+      // The recipient's own player is named in words as well as bolded. Colour
+      // and weight are the first things an email client throws away — dark mode
+      // inverts, Outlook flattens — and "which one did I have?" has to survive
+      // that, so the line below says it in text.
+      const name = (side: 'a' | 'b') => (m.picked === side ? `<strong>${esc(m[side])}</strong>` : esc(m[side]))
+      const yours = m.picked
+        ? `<span style="color:#1a6b3c;">You picked ${esc(m[m.picked])}</span>`
+        : null
+      // Both facts when there are two, and the "nobody has picked it" line only
+      // when there is genuinely nothing to say — a tie you picked always has a
+      // crowd line, because your own bracket is in that count.
+      const evidence = [yours, m.favourite ? esc(m.favourite) : null].filter(Boolean)
+      return `
         <tr>
           <td style="padding:9px 0 0;font-family:Georgia,serif;font-size:14px;color:#0d0d0d;">
-            ${esc(m.a)} <span style="color:#8a867e;">v</span> ${esc(m.b)}
+            ${name('a')} <span style="color:#8a867e;">v</span> ${name('b')}
           </td>
         </tr>
         <tr>
           <td style="padding:1px 0 9px;font-family:Georgia,serif;font-size:12px;color:#8a867e;">
-            ${m.favourite ? esc(m.favourite) : 'No bracket has picked this tie yet'}
+            ${evidence.length ? evidence.join(' &middot; ') : 'No bracket has picked this tie yet'}
           </td>
-        </tr>`,
-    )
+        </tr>`
+    })
     .join('')
   return `
       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 24px;">
