@@ -61,15 +61,24 @@ export function upcomingCapacity(size: CardSize): number {
  * the reason this file exists at all: the results page's checkbox list is what
  * the admin approves and the email is what gets sent, and both are rendered
  * from this number. A constant kept in the mailer would be invisible to the
- * picker, which would then let someone tick five ties and send three.
+ * picker, which would then let someone tick five ties and send four.
  *
- * Half the smallest card. The card is a canvas that exists to show the matches;
- * in the email this block sits under a headline, a rank line and a
- * round-by-round table, and is the last thing before the button. Three is what
- * stays a glance rather than becoming a fixture list. Not a function of size,
- * because an email has one width that matters — the ~500px phone column.
+ * FOUR, because a quarterfinal round is four ties in every draw size — and so
+ * a semifinal is two and a final is one. At four, the sharp end of a tournament
+ * is always shown whole, and the cap only ever bites in the early rounds, where
+ * a round is 8 to 32 ties and some selection has to happen anyway. That is what
+ * the admin's picker is for.
+ *
+ * It was three, derived by halving the smallest card. That was the wrong
+ * reasoning applied to the wrong medium: the card's numbers are measurements,
+ * because Satori clips whatever overflows, while an email scrolls and is
+ * bounded only by attention. Copying the shape of a constraint into a medium
+ * that does not have it cost exactly one quarterfinal, silently.
+ *
+ * Not a function of size, because an email has one width that matters — the
+ * ~500px phone column.
  */
-export const EMAIL_UPCOMING_CAPACITY = 3
+export const EMAIL_UPCOMING_CAPACITY = 4
 
 /**
  * How many highlighted ties fit on the "Draw published" card.

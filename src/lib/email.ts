@@ -463,6 +463,14 @@ export interface PointsAwardedUpcoming {
   roundLabel: string
   /** Already capped and ordered by the caller; rendered as given. */
   matches: PointsAwardedUpcomingMatch[]
+  /**
+   * Ties in this round that did not make the block — counted against the whole
+   * round, not against the admin's selection, because the heading names the
+   * round. Disclosed for the same reason the social card discloses it: the list
+   * is a selection, and a heading that says "Quarterfinal" while showing three
+   * of four is a quiet lie.
+   */
+  hidden: number
 }
 
 export interface PointsAwardedTournament {
@@ -535,6 +543,15 @@ function upcomingBlock(u: PointsAwardedUpcoming): string {
         </tr>`
     })
     .join('')
+  const more =
+    u.hidden > 0
+      ? `
+        <tr>
+          <td style="padding:4px 0 0;font-family:Georgia,serif;font-size:12px;color:#8a867e;">
+            + ${u.hidden} more ${u.hidden === 1 ? 'match' : 'matches'} in this round
+          </td>
+        </tr>`
+      : ''
   return `
       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 24px;">
         <tr>
@@ -542,7 +559,7 @@ function upcomingBlock(u: PointsAwardedUpcoming): string {
             Up next &#8212; ${esc(u.roundLabel)}
           </td>
         </tr>
-        ${rows}
+        ${rows}${more}
       </table>`
 }
 

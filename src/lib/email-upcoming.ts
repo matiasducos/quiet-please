@@ -27,6 +27,8 @@ export interface UpcomingPlanMatch {
 export interface UpcomingPlan {
   roundLabel: string
   matches: UpcomingPlanMatch[]
+  /** Ties in the round that the cap or the admin's selection left out. */
+  hidden: number
 }
 
 /** A recipient's bracket, reduced to the two fields this needs. */
@@ -62,6 +64,7 @@ export function personaliseUpcoming(plan: UpcomingPlan, bracket: RecipientPicks 
   const locked = new Set(bracket?.lockedPicks ?? [])
   return {
     roundLabel: plan.roundLabel,
+    hidden: plan.hidden,
     matches: plan.matches.map(m => {
       const pick = picks && !locked.has(m.id) ? picks[m.id] : undefined
       return {
@@ -157,6 +160,10 @@ export async function buildPointsEmailUpcoming(
 
         out.set(tournamentId, {
           roundLabel: card.roundLabel,
+          // Against the whole round, exactly as UpcomingArt counts it — the
+          // heading names the round, so the remainder is of the round and not
+          // of whatever subset the admin ticked.
+          hidden: card.matches.length - matches.length,
           matches: matches.map(m => ({
             id: m.id,
             a: m.a.name,
