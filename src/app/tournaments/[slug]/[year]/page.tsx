@@ -10,6 +10,7 @@ import Nav from '@/components/Nav'
 import TournamentMatchList from '@/components/TournamentMatchList'
 import BracketPredictor from '../predict/BracketPredictor'
 import MyTournamentPanel from '../MyTournamentPanel'
+import type { Standing } from '../MyTournamentPanel'
 import DrawReminderForm from './DrawReminderForm'
 import PlayingNow from './PlayingNow'
 import { buildMyTournament, eliminationRounds, ROUND_LABEL } from '@/lib/tennis/my-tournament'
@@ -394,7 +395,14 @@ async function TourSection({
         </div>
       )}
 
-      {myTournament && <MyTournamentPanel data={myTournament} isComplete={isDone} />}
+      {myTournament && (
+        <MyTournamentPanel
+          data={myTournament}
+          isComplete={isDone}
+          standing={myBracket.standing}
+          leaderboardHref={`/leaderboard/tournaments/${t.id}`}
+        />
+      )}
 
       {/* Participants — real, per-edition content, and the `competitor` list
           backing the SportsEvent JSON-LD. */}
@@ -722,9 +730,75 @@ type MyBracket = {
   myTournament: MyTournament | null
   /** They pressed "Lock all picks" — nothing in the bracket can change. */
   isFullyLocked: boolean
+  /** Where this bracket sits on the tournament board. Null when it errored. */
+  standing: Standing | null
 }
 
-const NO_BRACKET: MyBracket = { myTournament: null, isFullyLocked: false }
+const NO_BRACKET: MyBracket = { myTournament: null, isFullyLocked: false, standing: null }
+
+/**
+ * Rank, field size and the gap to the leader, on the worldwide board.
+ *
+ * `behind` is measured against the stored `points_earned`, the same column the
+ * board sorts on — never against the panel's own ledger sum, so the gap can
+ * never contradict the rank printed next to it.
+ *
+ * WHY THE ADMIN CLIENT
+ * The number has to be the same one /leaderboard/tournaments/<id> shows, and
+ * that board counts every global entry — including brackets whose owners have
+ * not published them, which 098's RLS policy hides from the request-scoped
+ * client. Counting through that client would silently skip the unpublished
+ * entries above this one and hand back a flattering rank that disagrees with
+ * the board one click away. Only aggregates leave this function: three counts,
+ * no rows.
+ *
+ * The tiebreak (`id` ascending among equal scores) is copied from the board's
+ * own ordering. Without it every entrant on a shared score would be told they
+ * hold the same position, and on a tournament board scores cluster hard.
+ */
+async function fetchStanding(
+  tournamentId: string,
+  predictionId: string,
+  points: number,
+): Promise<Standing | null> {
+  const admin = createAdminClient()
+  const globalEntries = () =>
+    admin.from('predictions')
+      .select('id', { count: 'exact', head: true })
+      .eq('tournament_id', tournamentId)
+      .is('challenge_id', null)
+
+  const [above, total, leader] = await Promise.all([
+    globalEntries().or(
+      `points_earned.gt.${points},and(points_earned.eq.${points},id.lt.${predictionId})`,
+    ),
+    globalEntries(),
+    admin.from('predictions')
+      .select('points_earned')
+      .eq('tournament_id', tournamentId)
+      .is('challenge_id', null)
+      .order('points_earned', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ])
+
+  if (above.error || total.error) {
+    console.error(
+      '[edition] standing lookup failed:',
+      above.error?.message ?? total.error?.message,
+    )
+    return null
+  }
+  if (leader.error) console.error('[edition] leader lookup failed:', leader.error.message)
+
+  return {
+    rank: (above.count ?? 0) + 1,
+    total: total.count ?? 0,
+    // A failed leader lookup reads as "level with the top", which is the one
+    // claim that never overstates how well the bracket is doing.
+    behind: Math.max(0, (leader.data?.points_earned ?? points) - points),
+  }
+}
 
 async function loadMyBracket(
   tournamentId: string,
@@ -750,7 +824,11 @@ async function loadMyBracket(
 
   const picks = (prediction?.picks ?? {}) as Record<string, string>
   if (!prediction || Object.keys(picks).length === 0) return NO_BRACKET
-  if (detail.results.length === 0) return { myTournament: null, isFullyLocked }
+  if (detail.results.length === 0) return { myTournament: null, isFullyLocked, standing: null }
+
+  // Started here rather than awaited, so the three count queries overlap the
+  // ledger read below instead of adding a round trip after it.
+  const standing = fetchStanding(tournamentId, prediction.id, prediction.points_earned ?? 0)
 
   // Points are attributed per match so the panel can show which pick earned
   // what. Scoped to this prediction id so challenge points never leak in.
@@ -808,5 +886,6 @@ async function loadMyBracket(
       overrides,
     }),
     isFullyLocked,
+    standing: await standing,
   }
 }
