@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { MyTournament, PlayerSummary } from '@/lib/tennis/my-tournament'
 import { ROUND_LABEL } from '@/lib/tennis/my-tournament'
 import { isQualifierPlaceholder } from '@/lib/tennis/qualifier-remap'
@@ -9,11 +10,13 @@ const mono = { fontFamily: 'var(--font-mono)' } as const
 /** Accuracy bar colour — matches the profile Stats tab. */
 const ACCURACY_BLUE = '#378ADD'
 
-function Metric({ label, value, sub, foot, footTone = 'accent' }: {
+function Metric({ label, value, sub, foot, footTone = 'accent', href }: {
   label: string; value: string; sub?: string; foot?: string; footTone?: 'accent' | 'muted'
+  /** Turns the whole tile into a link. Only the standing tile has somewhere to go. */
+  href?: string
 }) {
-  return (
-    <div className="rounded-sm p-3 md:p-4" style={{ background: 'var(--chalk)' }}>
+  const body = (
+    <>
       <p style={{ ...mono, fontSize: '0.65rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '4px' }}>
         {label}
       </p>
@@ -24,7 +27,16 @@ function Metric({ label, value, sub, foot, footTone = 'accent' }: {
       {foot && (
         <p style={{ ...mono, fontSize: '0.7rem', color: footTone === 'muted' ? 'var(--muted)' : ACCURACY_BLUE, marginTop: '3px' }}>{foot}</p>
       )}
-    </div>
+    </>
+  )
+  const className = 'rounded-sm p-3 md:p-4'
+  const background = 'var(--chalk)'
+  return href ? (
+    <Link href={href} className={`${className} block transition-opacity hover:opacity-80`} style={{ background, textDecoration: 'none' }}>
+      {body}
+    </Link>
+  ) : (
+    <div className={className} style={{ background }}>{body}</div>
   )
 }
 
@@ -96,12 +108,37 @@ function PlayerLine({ p, tone, isChampion, isFinished }: { p: PlayerSummary; ton
   )
 }
 
+/** Where this bracket sits on the tournament's own leaderboard. */
+export type Standing = { rank: number; total: number; behind: number }
+
+const MEDAL: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' }
+
+/**
+ * The line under the position. The gap to the leader is the number that says
+ * whether the rank is still in play, so it gets the space rather than a
+ * percentile: "40 pts behind" is one good round, "4,000" is not.
+ *
+ * Kept short enough to hold one line in a half-width tile at 375px — the tile
+ * beside it sets the row height, and an orphaned last word is the one thing
+ * that makes this row look broken.
+ */
+function standingFoot({ rank, behind }: Standing, isComplete: boolean) {
+  if (rank === 1) return isComplete ? 'won this board' : 'leading the field'
+  if (behind === 0) return 'level with 1st'
+  return `${behind.toLocaleString()} ${behind === 1 ? 'pt' : 'pts'} behind`
+}
+
 export default function MyTournamentPanel({
   data,
   isComplete,
+  standing,
+  leaderboardHref,
 }: {
   data: MyTournament
   isComplete: boolean
+  /** Null when the rank queries failed — the tile is dropped rather than faked. */
+  standing?: Standing | null
+  leaderboardHref: string
 }) {
   const { pointsSoFar, correct, decided, activeCount, distinctPicked, currentRound, championExternalId, rounds, stillToCome, activeIdle, players } = data
 
@@ -110,6 +147,10 @@ export default function MyTournamentPanel({
   // the only route to more points. An empty `stillToCome` therefore means the
   // bracket is finished scoring, whatever the draw still has left to play.
   const canStillEarn = stillToCome.length > 0
+
+  // "Still active" is dropped once the tournament is over and the standing tile
+  // only appears when its queries succeeded, so the row is 2, 3 or 4 wide.
+  const metrics = 2 + (isComplete ? 0 : 1) + (standing ? 1 : 0)
 
   const topEarners = players.filter(p => p.points > 0).slice(0, 5)
   // Early in a draw almost nobody has been eliminated, so this list would run to
@@ -149,7 +190,9 @@ export default function MyTournamentPanel({
             against every match decided so far. <strong>Still active</strong> is how many of
             the players you picked have not lost yet — being in the draw is not the same
             as being able to score for you, so the line underneath counts only the ones
-            who can.
+            who can. <strong>Leaderboard</strong> is your place among everyone who entered
+            this tournament, ordered exactly as the full leaderboard is — tap it to see
+            the board.
           </InfoBubble>
         </h2>
         {currentRound && (
@@ -162,7 +205,7 @@ export default function MyTournamentPanel({
         )}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3 mb-6">
+      <div className={`grid grid-cols-2 ${metrics === 4 ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-2 md:gap-3 mb-6`}>
         <Metric label="Points so far" value={pointsSoFar.toLocaleString()} />
         <Metric
           label="Correct picks"
@@ -177,6 +220,15 @@ export default function MyTournamentPanel({
             sub={`of ${distinctPicked}`}
             foot={`${stillToCome.length} can still score`}
             footTone={canStillEarn ? 'accent' : 'muted'}
+          />
+        )}
+        {standing && (
+          <Metric
+            label="Leaderboard"
+            value={`${MEDAL[standing.rank] ? `${MEDAL[standing.rank]} ` : ''}#${standing.rank}`}
+            sub={`of ${standing.total.toLocaleString()}`}
+            foot={standingFoot(standing, isComplete)}
+            href={leaderboardHref}
           />
         )}
       </div>
