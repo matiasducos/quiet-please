@@ -476,13 +476,25 @@ export default function BracketPredictor({
    * the cron will actually pay. The winner it asks about is your own pick: the
    * question on the page is "if I'm right, what does this pay".
    *
-   * Two readings, because a multiplier is only fixed once you commit:
-   *   - committed → the real lock time, so this IS the answer.
-   *   - not committed → substitute "now" as the lock time. It answers "commit
-   *     this right now and it pays ×N", which is the only honest thing to show
-   *     while the number can still change under the user's feet. It decays on
-   *     its own: once the feeder is decided, committing now stops earning and
-   *     the preview drops to ×1 without anything having to invalidate it.
+   * The question it answers is "if you lock your picks now, what is this worth" —
+   * NOT "if you lock this one pick alone". Every pick on the board that could
+   * still be committed is treated as committed now, because that is what the
+   * page's primary button does, and what locking rounds in order does too.
+   *
+   * Scoping it to the single pick was wrong, and visibly so: a streak needs
+   * every feeder in the chain committed, so a quarterfinal pick sitting on a
+   * freshly made — and therefore uncommitted — round-of-16 pick read ×1, when
+   * one press of "Lock all picks" commits both and makes it ×3. The number has
+   * to describe the action the user is about to take.
+   *
+   * A pick on a match that has already been played is deliberately NOT treated
+   * as committable: the cron stamps those 'auto', which is a record and never a
+   * commitment, so counting one would promise a multiplier that cannot arrive.
+   *
+   * An already-committed pick keeps its real lock time, so for those this is
+   * not a preview at all — it is the answer. Everything else decays on its own:
+   * once a round below resolves, committing now stops earning that link and the
+   * badge falls without anything having to invalidate it.
    */
   function previewMultiplier(matchId: string): number {
     const pickedId = picks[matchId]
@@ -491,9 +503,12 @@ export default function BracketPredictor({
 
     const committed = committedPicks(currentPickLocks)
     const lockTimes = { ...(pickLockTimes ?? {}) }
-    if (!committed.has(matchId)) {
-      committed.add(matchId)
-      lockTimes[matchId] = new Date().toISOString()
+    const now = new Date().toISOString()
+    for (const m of Object.keys(picks)) {
+      if (committed.has(m)) continue        // keeps its real, earlier time
+      if (matchResults?.[m]) continue       // played: it will be 'auto', not a commitment
+      committed.add(m)
+      lockTimes[m] = now
     }
 
     // matchDecidedAt is already the earlier of the two boundaries, so it goes
@@ -1891,8 +1906,8 @@ export default function BracketPredictor({
                               const carries = mult > 1
                               return (
                                 <Tooltip text={carries
-                                  ? `Lock this pick now and it scores ×${mult} — ${mult - 1} round${mult - 1 === 1 ? '' : 's'} below it ${mult - 1 === 1 ? 'is' : 'are'} still undecided, and you have backed this player through every one of them. Wait until ${mult - 1 === 1 ? 'it is' : 'they are'} played and the same pick pays ×1.`
-                                  : 'Locking this pick now would score it at ×1. The multiplier counts the rounds below a pick that are still undecided when you commit it — everything under this one has already been played, so there is nothing left at stake but this match.'}>
+                                  ? `Lock your picks now and this one scores ×${mult} — ${mult - 1} round${mult - 1 === 1 ? '' : 's'} below it ${mult - 1 === 1 ? 'is' : 'are'} still undecided, and you have backed this player through every one of them. Wait until ${mult - 1 === 1 ? 'it is' : 'they are'} played and the same pick pays ×1.`
+                                  : 'Locking now would score this at ×1. The multiplier counts the rounds below a pick that are still undecided when you commit it, and everything under this one has already been decided — so this match is all that is still at stake.'}>
                                   <span style={{
                                     fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.04em',
                                     color: carries ? 'var(--court)' : 'var(--muted)',
