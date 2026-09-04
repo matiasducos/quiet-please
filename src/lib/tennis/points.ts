@@ -171,9 +171,10 @@ function earliest(a?: string, b?: string): string | undefined {
 /**
  * Calculates the streak multiplier for a correct prediction.
  *
- * Formula: 1 + n, where n = number of consecutive previous rounds where
- * the user correctly predicted the same player winning, traced backwards
- * through the bracket's feeder chain.
+ * Formula: 1 + n, where n = number of consecutive previous rounds where the
+ * user correctly predicted the same player winning, traced backwards through
+ * the bracket's feeder chain — and, once commit times exist, where that round
+ * was still undecided when this pick was committed.
  *
  * Example (ATP 250, user predicted Player X for every round):
  *   R32 → multiplier = 1 (no previous round)
@@ -196,11 +197,15 @@ function earliest(a?: string, b?: string): string | undefined {
  * rely on that: they run this same function and have no way to lock.
  *
  * `lockTimes`, `playedAt` and `adminLockedAt` add the stacking rule: a link
- * counts only if the pick was committed BEFORE the feeder match stopped being
- * an honest unknown — i.e. the player was still a projection of yours when you
- * called it, not one who was already through. Waiting for a round to resolve
- * and re-picking the winner is not a prediction, and used to score the same as
- * calling the run in advance.
+ * counts only if THIS pick was committed BEFORE that link's match stopped being
+ * an honest unknown. The multiplier therefore measures how many rounds below a
+ * pick were still open at the moment it was committed — the risk the pick
+ * actually carried — rather than how long the run happens to be.
+ *
+ * Waiting for a round to resolve and re-picking the winner is not a prediction.
+ * Neither is assembling a run one round at a time, each pick blind only to the
+ * round directly beneath it: that used to score the same as calling the whole
+ * run in advance, and no longer does.
  *
  * "Stopped being an unknown" is the EARLIER of two moments, and it has to be
  * both: `played_at` is when the result was ENTERED, which on this app is by
@@ -286,14 +291,28 @@ export function calculateStreakMultiplier(
     // is only a run while every link was called in advance.
     if (committed && !committed.has(feederMatchId)) break
 
-    // The stacking rule. This link is only a prediction-on-a-prediction if the
-    // pick on the DOWNSTREAM match was committed while the feeder was still
-    // undecided — otherwise the player was already through and the "call" was
-    // just reading the scoreboard.
+    // The stacking rule, anchored to THIS pick (2026-09-04).
     //
-    // Judged per link, and skipped entirely when either timestamp is missing,
-    // which is what keeps pre-099 brackets scoring exactly as they did.
-    const committedAt = lockTimes?.[currentMatchId]
+    // Every link is judged against the moment the scored pick was committed —
+    // `matchId`, fixed — not against the moment that link's own downstream pick
+    // was committed. So the multiplier counts exactly one thing: how many
+    // rounds below this pick were still undecided when the player called it.
+    //
+    // The walking version (`lockTimes[currentMatchId]`) let a chain be
+    // assembled a round at a time, each step blind only to the round directly
+    // beneath it, and paid that the same as a call made blind to all of them.
+    // Two players, same four picks on the same player: one who committed the
+    // whole chain before the first round was played, and one who waited to see
+    // that round land before committing the rest, both scored x4. Only the
+    // first took the risk the x4 is meant to price.
+    //
+    // Reward tracks risk now: commit deep and early with three rounds still
+    // open and it pays x4; commit the same pick once two of those rounds have
+    // resolved and it pays x2, because that is what was actually at stake.
+    //
+    // Still skipped when either timestamp is missing, which is what keeps
+    // pre-099 brackets scoring exactly as they always did.
+    const committedAt = lockTimes?.[matchId]
     const decidedAt = earliest(playedAt?.[feederMatchId], adminLockedAt?.[feederMatchId])
     if (committedAt && decidedAt && Date.parse(committedAt) >= Date.parse(decidedAt)) {
       break
