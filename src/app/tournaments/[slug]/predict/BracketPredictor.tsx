@@ -1891,8 +1891,8 @@ export default function BracketPredictor({
                               const carries = mult > 1
                               return (
                                 <Tooltip text={carries
-                                  ? `Lock this pick now and it scores ×${mult} — you have backed this player through ${mult - 1} straight round${mult - 1 === 1 ? '' : 's'}, committing each one before the round below it was decided. The multiplier is only earned once you lock.`
-                                  : 'Locking this pick now would score it at ×1. The multiplier needs the round below to still be undecided when you commit — back a player early and keep backing them to build it up.'}>
+                                  ? `Lock this pick now and it scores ×${mult} — ${mult - 1} round${mult - 1 === 1 ? '' : 's'} below it ${mult - 1 === 1 ? 'is' : 'are'} still undecided, and you have backed this player through every one of them. Wait until ${mult - 1 === 1 ? 'it is' : 'they are'} played and the same pick pays ×1.`
+                                  : 'Locking this pick now would score it at ×1. The multiplier counts the rounds below a pick that are still undecided when you commit it — everything under this one has already been played, so there is nothing left at stake but this match.'}>
                                   <span style={{
                                     fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.04em',
                                     color: carries ? 'var(--court)' : 'var(--muted)',
@@ -2207,10 +2207,11 @@ export default function BracketPredictor({
             previous match has not been played yet. A plain player is already through on a real result.
           </p>
           <p style={{ fontSize: '0.8rem', color: 'var(--muted)', lineHeight: 1.6, margin: 0 }}>
-            The streak multiplier is built on shaded players. Committing a pick before that player&apos;s
-            previous match gets under way extends your run, and the more rounds you stack that way, the
-            higher the multiplier climbs. Picking a player who has <em>already</em> won their way through
-            still scores full base points — it just pays at ×1 and starts the run again.{' '}
+            The streak multiplier counts the rounds below a pick that are still undecided when you
+            commit it. Lock a semifinal pick before your player has played and four rounds are still
+            open, so it pays ×5 if they get there; lock the same pick once they are already in the
+            quarterfinals and only one round is left at stake, so it pays ×2. Backing a player who has
+            <em> already</em> won their way through still scores full base points — it just pays at ×1.{' '}
             <Link href="/faq#streak-multiplier" style={{ color: 'var(--court)' }}>
               How the multiplier works →
             </Link>

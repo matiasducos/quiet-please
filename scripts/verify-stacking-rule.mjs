@@ -62,6 +62,7 @@ let realChanged = 0                         // property A — must be 0
 let stackedChanged = 0                      // property B1 — must be 0
 let followDropped = 0, followSame = 0       // property B2 — drops must be > 0
 let windowChecked = 0, windowDenied = 0, windowMissed = 0   // property C
+let gradeChecked = 0, gradeDropped = 0, gradeFlat = 0       // property D
 const examples = []
 
 for (const t of tournaments) {
@@ -128,6 +129,53 @@ for (const t of tournaments) {
         else if (allowed > 1) windowMissed++
       }
 
+      // D. The anchored rule. Every link is judged against when THIS pick was
+      // committed, so a run assembled a round at a time — each pick blind only
+      // to the round directly beneath it — must NOT score the same as one
+      // called blind to all of them.
+      //
+      // Built by walking this pick's own chain, taking the DEEPEST feeder in
+      // it (the earliest to be decided) and dating the commitment just after
+      // that one resolved. Exactly one link should die: the deepest. Under the
+      // walking rule it survives, because it was judged against its own pick's
+      // EARLY time rather than against this one — which is the whole bug, and
+      // why this property fails on the previous implementation.
+      const chain = []
+      {
+        let cur = r.external_match_id
+        while (true) {
+          const f = Object.keys(feedMap).find(x =>
+            feedMap[x].nextMatchId === cur && picks[x] === r.winner_external_id)
+          if (!f) break
+          chain.push(f)
+          cur = f
+        }
+      }
+      const decidedTimes = chain
+        .map(f => { const l = adminLockedAt[f], q = playedAt[f]
+          return [l, q].filter(Boolean).sort()[0] })
+        .filter(Boolean)
+      if (chain.length >= 2 && decidedTimes.length === chain.length) {
+        const deepest = decidedTimes.sort()[0]                     // earliest to resolve
+        const justAfter = new Date(Date.parse(deepest) + 1000).toISOString()
+        const blind   = calculateStreakMultiplier(...args, early, playedAt, adminLockedAt)
+        const partial = calculateStreakMultiplier(
+          ...args, { ...early, [r.external_match_id]: justAfter }, playedAt, adminLockedAt)
+        // Only chains where every link actually counts. Otherwise the link
+        // this dates out may be one the trace never reached — already cut off
+        // by an uncommitted or stranded pick further up — and nothing moves,
+        // which says nothing either way about the rule under test.
+        if (blind >= 2 && blind === chain.length + 1) {
+          gradeChecked++
+          if (partial < blind) gradeDropped++
+          else {
+            gradeFlat++
+            if (examples.length < 15) examples.push(
+              `GRADE FLAT ${t.name} pred=${p.id} ${r.external_match_id}: blind=${blind} partial=${partial} chain=${chain.length}`)
+          }
+        }
+      }
+
       if (withReal !== base) {
         realChanged++
         if (examples.length < 5) examples.push(`REAL DRIFT ${t.name} pred=${p.id} ${r.external_match_id}: ${base} -> ${withReal}`)
@@ -150,8 +198,12 @@ console.log(`    (dropped must be > 0, or the new rule is dead code)`)
 console.log(`\nC. committed AFTER the organiser locked the feeder but BEFORE the result`)
 console.log(`   was entered — the window this change closes:`)
 console.log(`   ${windowChecked} such links found, ${windowDenied} now denied, ${windowMissed} still allowed (must be 0)`)
+console.log(`\nD. a run assembled one round at a time must not score as a blind call:`)
+console.log(`   ${gradeChecked} chains tested, ${gradeDropped} pay less once a round below had resolved,`)
+console.log(`   ${gradeFlat} unchanged (must be 0 — that is the walking rule's signature)`)
 if (examples.length) console.log('\n' + examples.join('\n'))
 
 const ok = realChanged === 0 && stackedChanged === 0 && followDropped > 0 && windowMissed === 0
+  && gradeChecked > 0 && gradeFlat === 0
 console.log(`\n${ok ? 'PASS' : 'FAIL'}`)
 process.exit(ok ? 0 : 1)
