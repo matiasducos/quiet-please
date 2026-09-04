@@ -47,7 +47,7 @@ export default async function PredictPage({
   // ── Parallel fetch: tournament, draw, prediction, profile, results ─────
   let predictionQuery = supabase
     .from('predictions')
-    .select('id, picks, pick_locks, is_fully_locked, points_earned, challenge_id, locked_picks')
+    .select('id, picks, pick_locks, pick_lock_times, is_fully_locked, points_earned, challenge_id, locked_picks')
     .eq('tournament_id', id)
     .eq('user_id', user.id)
 
@@ -69,7 +69,7 @@ export default async function PredictPage({
     supabase.from('draws').select('bracket_data, locked_matches').eq('tournament_id', id).single(),
     predictionQuery.single(),
     supabase.from('users').select('username').eq('id', user.id).single(),
-    supabase.from('match_results').select('external_match_id, winner_external_id').eq('tournament_id', id),
+    supabase.from('match_results').select('external_match_id, winner_external_id, played_at').eq('tournament_id', id),
     challengeId
       ? supabase.from('challenges').select('challenger_id, challenged_id, status, scope_round').eq('id', challengeId).single()
       : Promise.resolve({ data: null as any }),
@@ -219,6 +219,26 @@ export default async function PredictPage({
     ? (draw.locked_matches as Record<string, string>) ?? {}
     : undefined
 
+  // ── When each match stopped being an honest unknown ───────────────────
+  //
+  // The same boundary the scorer uses: the EARLIER of the result being entered
+  // and the organiser freezing the match. Collapsed to one map here so the
+  // predictor can preview a multiplier with the very function that awards it.
+  //
+  // Read from `draw.locked_matches` directly, NOT from `adminLockedMatches`
+  // above — that one is gated on manual_lock mode because it drives what the
+  // UI lets you click, while award-points reads the column unconditionally. A
+  // preview built on the gated map would promise a multiplier the cron denies.
+  const rawAdminLocks = (draw.locked_matches as Record<string, string> | null) ?? {}
+  const matchDecidedAt: Record<string, string> = {}
+  for (const r of resultsData ?? []) {
+    if (r.played_at) matchDecidedAt[r.external_match_id] = r.played_at
+  }
+  for (const [matchId, lockedAt] of Object.entries(rawAdminLocks)) {
+    const known = matchDecidedAt[matchId]
+    if (!known || Date.parse(lockedAt) < Date.parse(known)) matchDecidedAt[matchId] = lockedAt
+  }
+
   return (
     <BracketPredictor
       tournament={tournament}
@@ -236,6 +256,8 @@ export default async function PredictPage({
       shareUrl={!challengeId && profile?.username ? `/tournaments/${id}/picks/${profile.username}` : undefined}
       adminLockedMatches={adminLockedMatches}
       lockedPicks={(prediction?.locked_picks as string[]) ?? []}
+      pickLockTimes={(prediction?.pick_lock_times as Record<string, string>) ?? {}}
+      matchDecidedAt={matchDecidedAt}
       initialRound={initialRound}
       scopeRounds={challengeScopeRounds}
     />

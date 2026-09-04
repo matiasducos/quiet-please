@@ -8,6 +8,8 @@ import CountryFlag from '@/components/CountryFlag'
 import Tooltip from '@/components/Tooltip'
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation'
 import { findForfeitedRounds, listRounds, toGapMatches } from '@/lib/tennis/pick-gaps'
+import { calculateStreakMultiplier, committedPicks } from '@/lib/tennis/points'
+import type { DrawMatch as LibDrawMatch } from '@/lib/tennis/types'
 
 // Small "i in a circle" affordance placed next to tooltip-bearing tags.
 // Inherits color from parent via currentColor so it adapts to each tag's palette.
@@ -270,6 +272,8 @@ export default function BracketPredictor({
   hideNav = false,
   drawResultsMode = false,
   adminLockedMatches,
+  pickLockTimes,
+  matchDecidedAt,
   lockedPicks = [],
   initialRound,
   scopeRounds,
@@ -301,6 +305,15 @@ export default function BracketPredictor({
   adminLockedMatches?: Record<string, string>
   /** Match IDs that were admin-locked when the user made their pick (no points) */
   lockedPicks?: string[]
+  /** matchId → ISO time the pick was committed (predictions.pick_lock_times). */
+  pickLockTimes?: Record<string, string>
+  /**
+   * matchId → ISO time the match stopped being an honest unknown: the earlier
+   * of its result being entered and the organiser freezing it. Collapsed
+   * server-side, and fed to `calculateStreakMultiplier` as its `playedAt`
+   * argument so the preview runs the scorer's own rule rather than a copy.
+   */
+  matchDecidedAt?: Record<string, string>
   /**
    * Which round to open on, from `?round=` — the campaign links in the social
    * studio carry the round their post is about.
@@ -454,6 +467,46 @@ export default function BracketPredictor({
    * lock and has not changed since, so a timely picker is paid normally.
    */
   const latePickIds = useMemo(() => new Set(lockedPicks), [lockedPicks])
+
+  /**
+   * What this pick would be worth, as a multiplier, if it comes in.
+   *
+   * Runs `calculateStreakMultiplier` — the function award-points itself calls —
+   * rather than restating its rules here, so the badge cannot drift from what
+   * the cron will actually pay. The winner it asks about is your own pick: the
+   * question on the page is "if I'm right, what does this pay".
+   *
+   * Two readings, because a multiplier is only fixed once you commit:
+   *   - committed → the real lock time, so this IS the answer.
+   *   - not committed → substitute "now" as the lock time. It answers "commit
+   *     this right now and it pays ×N", which is the only honest thing to show
+   *     while the number can still change under the user's feet. It decays on
+   *     its own: once the feeder is decided, committing now stops earning and
+   *     the preview drops to ×1 without anything having to invalidate it.
+   */
+  function previewMultiplier(matchId: string): number {
+    const pickedId = picks[matchId]
+    if (!pickedId || byeMatchIds.has(matchId)) return 1
+    if (latePickIds.has(matchId)) return 1   // scores nothing at all
+
+    const committed = committedPicks(currentPickLocks)
+    const lockTimes = { ...(pickLockTimes ?? {}) }
+    if (!committed.has(matchId)) {
+      committed.add(matchId)
+      lockTimes[matchId] = new Date().toISOString()
+    }
+
+    // matchDecidedAt is already the earlier of the two boundaries, so it goes
+    // in as `playedAt` and the admin argument is left off — earliest(a,
+    // undefined) is a, which is exactly the collapsed value.
+    return calculateStreakMultiplier(
+      // This file types a match's `round` as a plain string (the draw is server
+      // data), while the scorer narrows it to the Round union. Same objects,
+      // and the multiplier never reads `round` — it walks the feed map.
+      matchId, pickedId, picks, feedMap, draw.matches as unknown as LibDrawMatch[],
+      latePickIds, committed, lockTimes, matchDecidedAt, undefined,
+    )
+  }
 
   /** Display state for the match header badge */
   type LockDisplay = 'editable' | 'voluntary_locked' | 'auto_locked' | 'admin_locked_pickable' | 'admin_locked_secured' | 'fully_locked' | 'bye'
@@ -697,10 +750,31 @@ export default function BracketPredictor({
     return resolveSlot(match, slot, source).player
   }
 
-  const pickWinner = (matchId: string, playerExternalId: string) => {
+  const pickWinner = (matchId: string, playerExternalId: string) =>
+    applyPickChange(matchId, { ...picks, [matchId]: playerExternalId })
+
+  /**
+   * Remove a pick entirely, leaving the match unpicked.
+   *
+   * Switching to the other player was always possible; taking the pick back was
+   * not, so a match touched by accident stayed answered. It runs through the
+   * same guard and the same cascade as a change, because that is exactly what
+   * it is — the downstream slot it fed now resolves to nobody, and any pick
+   * standing on it has to go with it.
+   *
+   * Refused once the pick is committed: locking is one-way, and clearing would
+   * be the unlock that migration 102 deliberately took away.
+   */
+  const clearPick = (matchId: string) => {
+    if (currentPickLocks[matchId]) return
+    const next = { ...picks }
+    delete next[matchId]
+    applyPickChange(matchId, next)
+  }
+
+  const applyPickChange = (matchId: string, newPicks: Record<string, string>) => {
     if (isMatchLocked(matchId)) return
     if (byeMatchIds.has(matchId)) return  // BYE matches are auto-resolved
-    const newPicks = { ...picks, [matchId]: playerExternalId }
 
     /**
      * Would this change strand a pick the user can no longer clear?
@@ -768,8 +842,13 @@ export default function BracketPredictor({
       if (matchResults?.[nextMatch.matchId] || currentPickLocks[nextMatch.matchId]) return
       const nextPick = newPicks[nextMatch.matchId]
       if (nextPick) {
-        const p1 = getEffectivePlayer(nextMatch, 'player1')
-        const p2 = getEffectivePlayer(nextMatch, 'player2')
+        // Against `newPicks`, not the component's `picks`: this walk is
+        // deciding what the bracket looks like AFTER the change, and a cleared
+        // feeder still resolves to its old player under the stale map — which
+        // would leave every downstream pick standing on someone who is no
+        // longer sent through.
+        const p1 = getEffectivePlayer(nextMatch, 'player1', newPicks)
+        const p2 = getEffectivePlayer(nextMatch, 'player2', newPicks)
         const validIds = [p1?.externalId, p2?.externalId].filter(Boolean)
         if (!validIds.includes(nextPick)) {
           delete newPicks[nextMatch.matchId]
@@ -1583,14 +1662,25 @@ export default function BracketPredictor({
                 const isProjected = origin === 'projected'
                 return (
                   <button
-                    onClick={() => player && pickWinner(match.matchId, player.externalId)}
+                    onClick={() => {
+                      if (!player) return
+                      // Click the player you already chose to take the pick back.
+                      // Discoverable without hanging a control off all 127 rows,
+                      // and it reads the way a selected option should behave.
+                      if (picks[match.matchId] === player.externalId) clearPick(match.matchId)
+                      else pickWinner(match.matchId, player.externalId)
+                    }}
                     disabled={!player || matchLocked || isBye}
                     className={`pick-btn w-full flex items-center justify-between px-3 text-left${withBorderBottom ? ' border-b' : ''}`}
                     // Not colour/pattern alone: the same fact reaches a screen
                     // reader and a hover through the accessible name.
-                    title={isProjected && player
-                      ? `${player.name} is here because you picked them to win their previous match — not confirmed yet.`
-                      : undefined}
+                    title={
+                      isClickable && player && picks[match.matchId] === player.externalId
+                        ? `Clear your pick on ${player.name}`
+                        : isProjected && player
+                          ? `${player.name} is here because you picked them to win their previous match — not confirmed yet.`
+                          : undefined
+                    }
                     style={{
                       paddingTop: d.playerPadY,
                       paddingBottom: d.playerPadY,
@@ -1793,7 +1883,32 @@ export default function BracketPredictor({
                               </Tooltip>
                             )}
 
-{/* Lock status / hint — voluntary (user chose to lock THIS pick) → green */}
+{/* What this pick is worth, while it can still change. Shown only in
+                                the editable state: once committed the LOCKED badge takes
+                                this slot and the number is already settled. */}
+                            {!voidPick && lockDisplay === 'editable' && !!pickedId && !isBye && (() => {
+                              const mult = previewMultiplier(match.matchId)
+                              const carries = mult > 1
+                              return (
+                                <Tooltip text={carries
+                                  ? `Lock this pick now and it scores ×${mult} — you have backed this player through ${mult - 1} straight round${mult - 1 === 1 ? '' : 's'}, committing each one before the round below it was decided. The multiplier is only earned once you lock.`
+                                  : 'Locking this pick now would score it at ×1. The multiplier needs the round below to still be undecided when you commit — back a player early and keep backing them to build it up.'}>
+                                  <span style={{
+                                    fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.04em',
+                                    color: carries ? 'var(--court)' : 'var(--muted)',
+                                    background: carries ? '#e4efe7' : 'transparent',
+                                    padding: carries ? '1px 6px' : '1px 0',
+                                    borderRadius: '2px',
+                                    display: 'inline-flex', alignItems: 'center', cursor: 'help',
+                                  }}>
+                                    {carries ? `LOCKS AT ×${mult}` : 'LOCKS AT ×1'}
+                                    <InfoIcon />
+                                  </span>
+                                </Tooltip>
+                              )
+                            })()}
+
+                            {/* Lock status / hint — voluntary (user chose to lock THIS pick) → green */}
                             {!voidPick && lockDisplay === 'voluntary_locked' && (
                               <Tooltip text="You locked this pick yourself. It earns the streak multiplier and can't be changed anymore.">
                                 <span style={{
