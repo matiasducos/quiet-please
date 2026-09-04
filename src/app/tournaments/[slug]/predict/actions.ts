@@ -12,6 +12,7 @@ import { checkPredictionMilestones, checkEngagementAchievements, checkChallengeA
 import { notifyAchievements } from '@/lib/achievements/notify'
 import { markReferralFirstPrediction } from '@/lib/referrals'
 import { matchIdsInScope } from '@/lib/challenges/scope'
+import { mergeLockState } from '@/lib/tennis/lock-merge'
 
 /** Just the parts of a draw match this file reads. */
 interface DrawMatchShape {
@@ -300,13 +301,14 @@ export async function savePrediction({
     }
   }
 
-  // Every lock written in THIS save happened now. Kept as a parallel map to
-  // pick_locks (which records how) rather than folded into it, because changing
-  // that column's shape would break committedPicks() and all of its callers.
+  // Every lock written in THIS save happened now. Times are kept as a parallel
+  // map to pick_locks (which records how) rather than folded into it, because
+  // changing that column's shape would break committedPicks() and its callers.
+  //
+  // WHICH matches get a time is decided by mergeLockState, not here: only a
+  // lock this save creates. A re-lock of an already committed pick leaves its
+  // time alone — including when it has none.
   const lockedNow = new Date().toISOString()
-  const pickLockTimesUpdate = pickLocksUpdate
-    ? Object.fromEntries(Object.keys(pickLocksUpdate).map(m => [m, lockedNow]))
-    : undefined
 
   // ── 3. Build the row ──────────────────────────────────────────────────
   const row: Record<string, any> = {
@@ -327,12 +329,13 @@ export async function savePrediction({
     row.is_fully_locked = true
     row.fully_locked_at = fullyLockedAt
   }
-  // For INSERT path: set pick_locks directly on the row
+  // For INSERT path: no prior lock state to merge against, so every requested
+  // lock is new. Routed through the same merge as the UPDATE path so there is
+  // one definition of what a lock write means.
   if (pickLocksUpdate) {
-    row.pick_locks = pickLocksUpdate
-  }
-  if (pickLockTimesUpdate) {
-    row.pick_lock_times = pickLockTimesUpdate
+    const { pickLocks, pickLockTimes } = mergeLockState(null, null, pickLocksUpdate, lockedNow)
+    row.pick_locks = pickLocks
+    row.pick_lock_times = pickLockTimes
   }
 
   // ── 4. UPDATE or INSERT ──────────────────────────────────────────────
@@ -347,29 +350,19 @@ export async function savePrediction({
       .single()
 
     if (pickLocksUpdate) {
-      // First lock wins. A lock records when a pick stopped being changeable, so
-      // a later one must not rewrite it — and now that the multiplier is gated on
-      // committing *before* the result, overwriting would matter: 'auto' is what
-      // the cron stamps on a played match, and letting a subsequent "lock all"
-      // turn that into 'auto_lock_all' would back-date a commitment nobody made.
-      // Same non-overwriting rule the cron itself follows.
-      const merged = { ...((existingPred?.pick_locks as Record<string, string>) ?? {}) }
-      for (const [matchId, lockType] of Object.entries(pickLocksUpdate)) {
-        if (!merged[matchId]) merged[matchId] = lockType
-      }
-      row.pick_locks = merged
-    }
-
-    if (pickLockTimesUpdate) {
-      // First write wins here too, and for a sharper reason than the locks: a
-      // commitment time is now worth points. Letting a later lock rewrite an
-      // earlier one would be harmless, but letting it rewrite a LATER one
-      // backwards would hand out a stacking credit that was never earned.
-      const mergedTimes = { ...((existingPred?.pick_lock_times as Record<string, string>) ?? {}) }
-      for (const [matchId, at] of Object.entries(pickLockTimesUpdate)) {
-        if (!mergedTimes[matchId]) mergedTimes[matchId] = at
-      }
-      row.pick_lock_times = mergedTimes
+      // First lock wins, on both maps, and only a lock this save CREATES gets a
+      // time — a re-lock of an already committed pick must change nothing, even
+      // when that pick predates 099 and carries no time at all. The rules and
+      // the reasons live with the merge itself; it is pure so that
+      // scripts/verify-lock-merge.mjs can replay it.
+      const { pickLocks, pickLockTimes } = mergeLockState(
+        existingPred?.pick_locks as Record<string, string> | null,
+        existingPred?.pick_lock_times as Record<string, string> | null,
+        pickLocksUpdate,
+        lockedNow,
+      )
+      row.pick_locks = pickLocks
+      row.pick_lock_times = pickLockTimes
     }
 
     // Merge pick_sources: preserve existing "auto" for untouched matches,
