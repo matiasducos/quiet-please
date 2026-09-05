@@ -10,6 +10,7 @@ import { useSwipeNavigation } from '@/hooks/useSwipeNavigation'
 import { findForfeitedRounds, listRounds, toGapMatches } from '@/lib/tennis/pick-gaps'
 import { calculateStreakMultiplier, committedPicks, getPointsForRound, POINTS_TABLE } from '@/lib/tennis/points'
 import type { DrawMatch as LibDrawMatch, Round } from '@/lib/tennis/types'
+import { celebrateMultiplier } from '@/lib/tennis/multiplier-celebration'
 
 // Small "i in a circle" affordance placed next to tooltip-bearing tags.
 // Inherits color from parent via currentColor so it adapts to each tag's palette.
@@ -529,15 +530,15 @@ export default function BracketPredictor({
   }
 
 
-  function previewMultiplier(matchId: string): number {
-    const pickedId = picks[matchId]
+  function previewMultiplier(matchId: string, srcPicks: Record<string, string> = picks): number {
+    const pickedId = srcPicks[matchId]
     if (!pickedId || byeMatchIds.has(matchId)) return 1
     if (latePickIds.has(matchId)) return 1   // scores nothing at all
 
     const committed = committedPicks(currentPickLocks)
     const lockTimes = { ...(pickLockTimes ?? {}) }
     const now = new Date().toISOString()
-    for (const m of Object.keys(picks)) {
+    for (const m of Object.keys(srcPicks)) {
       if (committed.has(m)) continue        // keeps its real, earlier time
       if (matchResults?.[m]) continue       // played: it will be 'auto', not a commitment
       committed.add(m)
@@ -551,7 +552,7 @@ export default function BracketPredictor({
       // This file types a match's `round` as a plain string (the draw is server
       // data), while the scorer narrows it to the Round union. Same objects,
       // and the multiplier never reads `round` — it walks the feed map.
-      matchId, pickedId, picks, feedMap, draw.matches as unknown as LibDrawMatch[],
+      matchId, pickedId, srcPicks, feedMap, draw.matches as unknown as LibDrawMatch[],
       latePickIds, committed, lockTimes, matchDecidedAt, undefined,
     )
   }
@@ -906,10 +907,44 @@ export default function BracketPredictor({
     }
     clearDownstream(matchId)
 
+    /**
+     * Celebrate only a pick that just became worth MORE, and only the card the
+     * user actually clicked.
+     *
+     * Three things this deliberately does not fire on:
+     *  - a re-render. previewMultiplier runs during render, so an effect
+     *    watching its value would fire on cards nobody touched: picking one
+     *    match changes who is projected into the slots below it, and their
+     *    multipliers move with it.
+     *  - the cascade. clearDownstream has just deleted the picks this change
+     *    invalidated; those cards changed too, and none of them is the one the
+     *    user chose.
+     *  - flipping between two players. Comparing against what this card was
+     *    already showing means going back and forth is silent unless the pick
+     *    genuinely improves.
+     *
+     * The remaining flood — laying out a fresh bracket, where every deep pick
+     * carries a big multiplier because nothing has been decided yet — is capped
+     * inside celebrateMultiplier by a minimum gap between celebrations.
+     */
+    const before = previewMultiplier(matchId)
+    const after = previewMultiplier(matchId, newPicks)
+
     setPicks(newPicks)
     onPicksChange?.(newPicks)
     setSaved(false)
     setSlotError(null)
+
+    if (after > before) {
+      // A macrotask, not requestAnimationFrame: React has committed the new
+      // badge by the time this runs, and unlike rAF it still fires when the
+      // document is hidden — so the celebration cannot queue up and go off
+      // minutes later when the tab is looked at again.
+      setTimeout(() => {
+        const round = draw.matches.find(m => m.matchId === matchId)?.round
+        celebrateMultiplier(matchId, after, round ? roundPoints(round) : null)
+      }, 0)
+    }
   }
 
   // ── Handlers ─────────────────────────────────────────────────────────────
@@ -1910,7 +1945,7 @@ export default function BracketPredictor({
                       const showLockBtn = lockDisplay === 'editable' && !!pickedId && !isBye && !voidPick
 
                       return (
-                        <div key={match.matchId} className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: isBye ? '#bfdbfe' : 'var(--chalk-dim)' }}>
+                        <div key={match.matchId} data-mc={match.matchId} className="bg-white rounded-sm border overflow-hidden" style={{ borderColor: isBye ? '#bfdbfe' : 'var(--chalk-dim)', position: 'relative' }}>
                           {/* Match header */}
                           <div className="px-3 border-b flex items-center justify-between" style={{ paddingTop: d.headerPadY, paddingBottom: d.headerPadY, borderColor: isBye ? '#bfdbfe' : 'var(--chalk-dim)', background: isBye ? '#eff6ff' : '#fafaf8' }}>
                             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: isBye ? '#1e40af' : 'var(--muted)', letterSpacing: '0.05em' }}>
@@ -1949,7 +1984,7 @@ export default function BracketPredictor({
                                   : carries
                                     ? `Lock your picks now and this one scores ×${mult}${total === null ? '' : ` — ${total.toLocaleString()} points`} if it comes in. ${mult - 1} round${mult - 1 === 1 ? '' : 's'} below it ${mult - 1 === 1 ? 'is' : 'are'} still undecided, and you have backed this player through every one of them. Wait until ${mult - 1 === 1 ? 'it is' : 'they are'} played and the same pick pays ×1.`
                                     : `Locking now would score this at ×1${total === null ? '' : `, ${total.toLocaleString()} points`}. The multiplier counts the rounds below a pick that are still undecided when you commit it, and everything under this one has already been decided — so this match is all that is still at stake.`}>
-                                  <span style={{
+                                  <span data-badge="" style={{
                                     fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.04em',
                                     color: carries && !noPoints ? 'var(--court)' : 'var(--muted)',
                                     background: carries && !noPoints ? '#e4efe7' : 'transparent',
