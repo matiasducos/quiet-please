@@ -8,8 +8,8 @@ import CountryFlag from '@/components/CountryFlag'
 import Tooltip from '@/components/Tooltip'
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation'
 import { findForfeitedRounds, listRounds, toGapMatches } from '@/lib/tennis/pick-gaps'
-import { calculateStreakMultiplier, committedPicks } from '@/lib/tennis/points'
-import type { DrawMatch as LibDrawMatch } from '@/lib/tennis/types'
+import { calculateStreakMultiplier, committedPicks, getPointsForRound, POINTS_TABLE } from '@/lib/tennis/points'
+import type { DrawMatch as LibDrawMatch, Round } from '@/lib/tennis/types'
 
 // Small "i in a circle" affordance placed next to tooltip-bearing tags.
 // Inherits color from parent via currentColor so it adapts to each tag's palette.
@@ -508,6 +508,26 @@ export default function BracketPredictor({
    * props rather than a confident lie.
    */
   const canShowMultiplier = !!matchDecidedAt
+
+  /**
+   * Base points for a match's round, or null when we cannot say.
+   *
+   * `tournament` arrives as `any` and several read-only call sites pass a
+   * trimmed record, so the category is checked against POINTS_TABLE rather than
+   * trusted — `POINTS_TABLE[undefined][round]` would throw and take the page
+   * with it.
+   *
+   * The Final is forced to `isWinner`, exactly as all three scoring callers do:
+   * a final pays the CHAMPION's points (2,000 at a slam), and the table's `F`
+   * row is the unreachable runner-up figure. Reading it here would quietly
+   * under-report the biggest number on the page.
+   */
+  function roundPoints(round: string): number | null {
+    const cat = tournament?.category
+    if (!cat || !(cat in POINTS_TABLE)) return null
+    return getPointsForRound(cat, round as Round, round === 'F')
+  }
+
 
   function previewMultiplier(matchId: string): number {
     const pickedId = picks[matchId]
@@ -1917,19 +1937,27 @@ export default function BracketPredictor({
                             {!voidPick && lockDisplay === 'editable' && !!pickedId && !isBye && (() => {
                               const mult = previewMultiplier(match.matchId)
                               const carries = mult > 1
+                              const base = roundPoints(match.round)
+                              const total = base === null ? null : base * mult
+                              // A round that pays nothing is worth saying out loud: at a 250 or
+                              // 500 the first round has no POINTS_TABLE row and a correct pick
+                              // earns zero, which has read as a bug every time somebody hits it.
+                              const noPoints = base === 0
                               return (
-                                <Tooltip text={carries
-                                  ? `Lock your picks now and this one scores ×${mult} — ${mult - 1} round${mult - 1 === 1 ? '' : 's'} below it ${mult - 1 === 1 ? 'is' : 'are'} still undecided, and you have backed this player through every one of them. Wait until ${mult - 1 === 1 ? 'it is' : 'they are'} played and the same pick pays ×1.`
-                                  : 'Locking now would score this at ×1. The multiplier counts the rounds below a pick that are still undecided when you commit it, and everything under this one has already been decided — so this match is all that is still at stake.'}>
+                                <Tooltip text={noPoints
+                                  ? 'This round pays no ranking points at this level, so a correct pick here scores nothing and no multiplier applies. That is the ATP rule for a first-round win at a 250 or 500, not a mistake.'
+                                  : carries
+                                    ? `Lock your picks now and this one scores ×${mult}${total === null ? '' : ` — ${total.toLocaleString()} points`} if it comes in. ${mult - 1} round${mult - 1 === 1 ? '' : 's'} below it ${mult - 1 === 1 ? 'is' : 'are'} still undecided, and you have backed this player through every one of them. Wait until ${mult - 1 === 1 ? 'it is' : 'they are'} played and the same pick pays ×1.`
+                                    : `Locking now would score this at ×1${total === null ? '' : `, ${total.toLocaleString()} points`}. The multiplier counts the rounds below a pick that are still undecided when you commit it, and everything under this one has already been decided — so this match is all that is still at stake.`}>
                                   <span style={{
                                     fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.04em',
-                                    color: carries ? 'var(--court)' : 'var(--muted)',
-                                    background: carries ? '#e4efe7' : 'transparent',
-                                    padding: carries ? '1px 6px' : '1px 0',
+                                    color: carries && !noPoints ? 'var(--court)' : 'var(--muted)',
+                                    background: carries && !noPoints ? '#e4efe7' : 'transparent',
+                                    padding: carries && !noPoints ? '1px 6px' : '1px 0',
                                     borderRadius: '2px',
-                                    display: 'inline-flex', alignItems: 'center', cursor: 'help',
+                                    display: 'inline-flex', alignItems: 'center', cursor: 'help', whiteSpace: 'nowrap',
                                   }}>
-                                    {carries ? `LOCKS AT ×${mult}` : 'LOCKS AT ×1'}
+                                    {noPoints ? 'NO POINTS' : total === null ? `LOCKS AT ×${mult}` : `×${mult} · ${total.toLocaleString()} PTS`}
                                     <InfoIcon />
                                   </span>
                                 </Tooltip>
@@ -1939,17 +1967,21 @@ export default function BracketPredictor({
                             {/* Lock status / hint — voluntary (user chose to lock THIS pick) → green */}
                             {!voidPick && lockDisplay === 'voluntary_locked' && (() => {
                               const mult = canShowMultiplier ? previewMultiplier(match.matchId) : null
+                              const base = roundPoints(match.round)
+                              const total = mult === null || base === null ? null : base * mult
                               return (
                                 <Tooltip text={mult === null
                                   ? "You locked this pick yourself. It earns the streak multiplier and can't be changed anymore."
-                                  : mult > 1
-                                    ? `Committed, and it scores ×${mult} if it comes in — ${mult - 1} round${mult - 1 === 1 ? '' : 's'} below it ${mult - 1 === 1 ? 'was' : 'were'} still undecided when you locked it. That number is settled now and cannot fall.`
-                                    : 'Committed at ×1 — every round below it had already been decided when you locked, so this match was all that was still at stake. Full base points, no multiplier.'}>
+                                  : base === 0
+                                    ? 'Committed, but this round pays no ranking points at this level — a correct pick here scores nothing. That is the ATP rule for a first-round win at a 250 or 500, not a mistake.'
+                                    : mult > 1
+                                      ? `Committed, and worth ${total === null ? `×${mult}` : `${total.toLocaleString()} points`} if it comes in — ${mult - 1} round${mult - 1 === 1 ? '' : 's'} below it ${mult - 1 === 1 ? 'was' : 'were'} still undecided when you locked it. Settled now, and it cannot fall.`
+                                      : `Committed at ×1${total === null ? '' : `, worth ${total.toLocaleString()} points`} if it comes in — every round below it had already been decided when you locked, so this match was all that was still at stake.`}>
                                   <span style={{
                                     fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em',
-                                    color: 'var(--court)', display: 'inline-flex', alignItems: 'center', cursor: 'help',
+                                    color: 'var(--court)', display: 'inline-flex', alignItems: 'center', cursor: 'help', whiteSpace: 'nowrap',
                                   }}>
-                                    LOCKED{mult === null ? '' : ` ×${mult}`} ✓
+                                    {mult === null ? 'LOCKED' : base === 0 ? 'LOCKED · NO POINTS' : total === null ? `LOCKED ×${mult}` : `LOCKED ×${mult} · ${total.toLocaleString()} PTS`} ✓
                                     <InfoIcon />
                                   </span>
                                 </Tooltip>
@@ -1959,20 +1991,24 @@ export default function BracketPredictor({
                             {!voidPick && lockDisplay === 'fully_locked' && (() => {
                               const mult = canShowMultiplier && !!pickedId && !isBye
                                 ? previewMultiplier(match.matchId) : null
+                              const base = roundPoints(match.round)
+                              const total = mult === null || base === null ? null : base * mult
                               return (
                                 <Tooltip text={mult === null
                                   ? 'This bracket is locked. Predictions are final — no more changes possible.'
-                                  : mult > 1
-                                    ? `Final, and worth ×${mult} if it comes in — ${mult - 1} round${mult - 1 === 1 ? '' : 's'} below it ${mult - 1 === 1 ? 'was' : 'were'} still undecided when this bracket was locked.`
-                                    : 'Final, at ×1 — every round below it had already been decided when this bracket was locked. Full base points, no multiplier.'}>
+                                  : base === 0
+                                    ? 'Final, but this round pays no ranking points at this level — a correct pick here scores nothing. That is the ATP rule for a first-round win at a 250 or 500, not a mistake.'
+                                    : mult > 1
+                                      ? `Final, and worth ${total === null ? `×${mult}` : `${total.toLocaleString()} points`} if it comes in — ${mult - 1} round${mult - 1 === 1 ? '' : 's'} below it ${mult - 1 === 1 ? 'was' : 'were'} still undecided when this bracket was locked.`
+                                      : `Final, at ×1${total === null ? '' : `, worth ${total.toLocaleString()} points`} if it comes in — every round below it had already been decided when this bracket was locked.`}>
                                   <span style={{
                                     fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em',
-                                    color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', cursor: 'help',
+                                    color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', cursor: 'help', whiteSpace: 'nowrap',
                                   }}>
                                     LOCKED
                                     {mult !== null && (
-                                      <span style={{ color: mult > 1 ? 'var(--court)' : 'inherit', margin: '0 0 0 0.3em' }}>
-                                        ×{mult}
+                                      <span style={{ color: mult > 1 && base !== 0 ? 'var(--court)' : 'inherit', margin: '0 0 0 0.3em' }}>
+                                        {base === 0 ? '· NO POINTS' : total === null ? `×${mult}` : `×${mult} · ${total.toLocaleString()} PTS`}
                                       </span>
                                     )}
                                     <span style={{ marginLeft: '0.3em' }}>✓</span>
