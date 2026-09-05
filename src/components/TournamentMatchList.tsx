@@ -40,9 +40,18 @@ interface TournamentMatchListProps {
   matches: DrawMatch[]
   matchResults: MatchResult[]
   mode: 'results' | 'upcoming'
+  /**
+   * Start with every round shut instead of auto-expanding one.
+   *
+   * On the edition page this list sits above the full bracket, so an
+   * auto-expanded round pushes the draw itself a screen and a half down for a
+   * reader who came to see it. Shut, the five round headers are a compact
+   * index and opening one is a single click.
+   */
+  defaultCollapsed?: boolean
 }
 
-export default function TournamentMatchList({ rounds, matches, matchResults, mode }: TournamentMatchListProps) {
+export default function TournamentMatchList({ rounds, matches, matchResults, mode, defaultCollapsed = false }: TournamentMatchListProps) {
   // Build result map for O(1) lookup
   const resultMap = useMemo(() => {
     const map = new Map<string, MatchResult>()
@@ -106,7 +115,12 @@ export default function TournamentMatchList({ rounds, matches, matchResults, mod
     }
   }, [rounds, matches, resultMap, mode])
 
-  const [expandedRounds, setExpandedRounds] = useState<Set<string>>(new Set([defaultExpanded]))
+  // defaultExpanded is still computed either way — it is a useMemo over props,
+  // not a fetch — so the caller can flip this without the auto-expand choice
+  // going stale.
+  const [expandedRounds, setExpandedRounds] = useState<Set<string>>(
+    defaultCollapsed ? new Set() : new Set([defaultExpanded])
+  )
 
   function toggleRound(round: string) {
     setExpandedRounds(prev => {
