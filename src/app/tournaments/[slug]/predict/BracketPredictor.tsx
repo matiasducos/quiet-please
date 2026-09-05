@@ -558,8 +558,14 @@ export default function BracketPredictor({
   }
 
   /** Display state for the match header badge */
-  type LockDisplay = 'editable' | 'voluntary_locked' | 'auto_locked' | 'admin_locked_pickable' | 'admin_locked_secured' | 'fully_locked' | 'bye'
+  type LockDisplay = 'editable' | 'voluntary_locked' | 'auto_locked' | 'admin_locked_pickable' | 'admin_locked_secured' | 'fully_locked' | 'bye' | 'none'
   function getMatchLockDisplay(matchId: string): LockDisplay {
+    // Draw results are nobody's bracket. There are no picks here to be locked,
+    // unlocked or scored, so every one of these badges describes a thing that
+    // does not exist — a reader seeing "LOCKED ✓" on a result reasonably asks
+    // whose picks are locked, and the answer is none. 'none' matches no branch
+    // below, exactly like 'bye', so the header renders bare.
+    if (drawResultsMode) return 'none'
     if (byeMatchIds.has(matchId)) return 'bye'
     if (readOnly || fullyLocked) return 'fully_locked'
     if (matchResults?.[matchId]) return 'auto_locked'
@@ -1432,6 +1438,12 @@ export default function BracketPredictor({
             and the control at its widest wanted 177px.
           */}
           <div className="ml-auto flex items-center gap-1 px-2 py-2 flex-shrink-0">
+            {/* The minimap exists to show one bracket's picks running through
+                the draw at a glance. On draw results there is no bracket — it
+                would render the same results the rounds below already show,
+                one pixel wide. Zoom still earns its place: a 128-draw is long
+                whether or not anyone picked it. */}
+            {!drawResultsMode && (
             <button
               onClick={() => setShowMinimap(v => !v)}
               aria-pressed={showMinimap}
@@ -1447,6 +1459,7 @@ export default function BracketPredictor({
             >
               MAP
             </button>
+            )}
             {/*
               Fixed width, because the label is the widest thing in here and it
               changes when you press the button next to it. "COMPACT" is two
@@ -2321,7 +2334,14 @@ export default function BracketPredictor({
             Deliberately OUTSIDE the isEditing block above it. The hatching is
             drawn on read-only views too — the picks page, the admin bracket —
             and a legend that vanishes exactly where a reader has no other way
-            to ask would be worse than one in the wrong place. */}
+            to ask would be worse than one in the wrong place.
+
+            Draw results are the one exception, and for the opposite reason to
+            the rule: there is no bracket, so nothing on the page is hatched
+            and nothing can earn a multiplier. The legend would be explaining
+            a shading the reader cannot find and a scoring rule that applies to
+            no mark on the screen. */}
+        {!drawResultsMode && (
         <div
           className="mt-6 rounded-sm border px-4 py-3 flex flex-col gap-2"
           style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}
@@ -2354,6 +2374,7 @@ export default function BracketPredictor({
             </Link>
           </p>
         </div>
+        )}
 
 
         {/* Locked confirmation (just locked during this session) */}

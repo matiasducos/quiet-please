@@ -287,6 +287,25 @@ async function TourSection({
 
   return (
     <section className="mb-12">
+      {/* Disclosure styling for the participants list below. Inline rather
+          than in globals.css because it styles one element on one page, and
+          the same <style> trick the nav uses for its avatar menu. */}
+      <style>{`
+        .participants > summary {
+          list-style: none;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          user-select: none;
+        }
+        .participants > summary::-webkit-details-marker { display: none; }
+        .participants > summary:hover { background: var(--chalk); }
+        .participants > summary:hover .chevron { color: var(--ink); }
+        .participants .chevron { transition: transform 0.15s ease, color 0.15s ease; }
+        .participants[open] > summary .chevron { transform: rotate(180deg); }
+      `}</style>
       <div className="rounded-sm border bg-white overflow-hidden mb-8" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div style={{ background: tier.bg, padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: tier.text, fontWeight: 600 }}>
@@ -405,18 +424,38 @@ async function TourSection({
       )}
 
       {/* Participants — real, per-edition content, and the `competitor` list
-          backing the SportsEvent JSON-LD. */}
+          backing the SportsEvent JSON-LD.
+
+          A <details> rather than a client component with useState: the page is
+          a server component and this is the only interactive thing on it, so a
+          disclosure element keeps it that way and works with no JS at all —
+          the same trade the nav's avatar menu makes.
+
+          Closed by default. At a slam this is 128 rows in three columns, which
+          is most of a screen standing between the header and the draw, and the
+          count line above it — "128 players · 24 still in" — is the answer
+          most readers came for. The names stay in the HTML either way, so the
+          JSON-LD competitor list and the crawlable per-edition content this
+          section exists for are untouched: collapsed content is rendered,
+          indexed and weighted normally. */}
       {detail.participants.length > 0 && (
-        <div className="rounded-sm border bg-white p-5 mb-8" style={{ borderColor: 'var(--chalk-dim)' }}>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.25rem' }}>
-            Players in the {series.name} {year} draw
-          </h2>
-          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)', marginBottom: stillIn.length > 0 ? '0.6rem' : '1rem' }}>
-            {detail.participants.length} players
-            {detail.results.length > 0 && !isDone && (
-              <> · <span style={{ color: '#1a6b3c', fontWeight: 600 }}>{stillIn.length} still in</span></>
-            )}
-          </p>
+        <details className="participants rounded-sm border bg-white mb-8" style={{ borderColor: 'var(--chalk-dim)' }}>
+          <summary className="p-5">
+            <div className="min-w-0">
+              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.25rem' }}>
+                Players in the {series.name} {year} draw
+              </h2>
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--muted)', margin: 0 }}>
+                {detail.participants.length} players
+                {detail.results.length > 0 && !isDone && (
+                  <> · <span style={{ color: '#1a6b3c', fontWeight: 600 }}>{stillIn.length} still in</span></>
+                )}
+              </p>
+            </div>
+            <span aria-hidden="true" className="chevron" style={{ fontSize: '0.9rem', lineHeight: 1, color: 'var(--muted)', flexShrink: 0 }}>▾</span>
+          </summary>
+
+          <div className="px-5 pb-5">
 
           {/* Naming them is only readable while the field is short. Early on
               "48 still in" is the whole answer and a list of 48 is just the
@@ -456,7 +495,8 @@ async function TourSection({
               />
             ))}
           </ul>
-        </div>
+          </div>
+        </details>
       )}
 
       {/* Upcoming matches — folded in from the old /upcoming route. */}
@@ -470,6 +510,7 @@ async function TourSection({
             matches={renderDraw.matches}
             matchResults={detail.results}
             mode="upcoming"
+            defaultCollapsed
           />
         </div>
       )}
