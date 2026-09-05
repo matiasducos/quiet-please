@@ -496,6 +496,19 @@ export default function BracketPredictor({
    * once a round below resolves, committing now stops earning that link and the
    * badge falls without anything having to invalidate it.
    */
+  /**
+   * Whether the multiplier can be shown at all.
+   *
+   * Only `predict/page.tsx` passes the timing inputs. Every other surface that
+   * renders this component — the picks page, challenge views, the anonymous
+   * bracket, admin — renders it read-only WITHOUT them, and with both maps
+   * absent `calculateStreakMultiplier` skips its timing check entirely and
+   * returns the full chain length. That is not a smaller number, it is a wrong
+   * and inflated one, so those pages show no multiplier until they pass the
+   * props rather than a confident lie.
+   */
+  const canShowMultiplier = !!matchDecidedAt
+
   function previewMultiplier(matchId: string): number {
     const pickedId = picks[matchId]
     if (!pickedId || byeMatchIds.has(matchId)) return 1
@@ -1924,29 +1937,50 @@ export default function BracketPredictor({
                             })()}
 
                             {/* Lock status / hint — voluntary (user chose to lock THIS pick) → green */}
-                            {!voidPick && lockDisplay === 'voluntary_locked' && (
-                              <Tooltip text="You locked this pick yourself. It earns the streak multiplier and can't be changed anymore.">
-                                <span style={{
-                                  fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em',
-                                  color: 'var(--court)', display: 'inline-flex', alignItems: 'center', cursor: 'help',
-                                }}>
-                                  LOCKED ✓
-                                  <InfoIcon />
-                                </span>
-                              </Tooltip>
-                            )}
+                            {!voidPick && lockDisplay === 'voluntary_locked' && (() => {
+                              const mult = canShowMultiplier ? previewMultiplier(match.matchId) : null
+                              return (
+                                <Tooltip text={mult === null
+                                  ? "You locked this pick yourself. It earns the streak multiplier and can't be changed anymore."
+                                  : mult > 1
+                                    ? `Committed, and it scores ×${mult} if it comes in — ${mult - 1} round${mult - 1 === 1 ? '' : 's'} below it ${mult - 1 === 1 ? 'was' : 'were'} still undecided when you locked it. That number is settled now and cannot fall.`
+                                    : 'Committed at ×1 — every round below it had already been decided when you locked, so this match was all that was still at stake. Full base points, no multiplier.'}>
+                                  <span style={{
+                                    fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em',
+                                    color: 'var(--court)', display: 'inline-flex', alignItems: 'center', cursor: 'help',
+                                  }}>
+                                    LOCKED{mult === null ? '' : ` ×${mult}`} ✓
+                                    <InfoIcon />
+                                  </span>
+                                </Tooltip>
+                              )
+                            })()}
                             {/* Fully locked — whole bracket is final (read-only or "Lock all picks") → gray */}
-                            {!voidPick && lockDisplay === 'fully_locked' && (
-                              <Tooltip text="This bracket is locked. Predictions are final — no more changes possible.">
-                                <span style={{
-                                  fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em',
-                                  color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', cursor: 'help',
-                                }}>
-                                  LOCKED ✓
-                                  <InfoIcon />
-                                </span>
-                              </Tooltip>
-                            )}
+                            {!voidPick && lockDisplay === 'fully_locked' && (() => {
+                              const mult = canShowMultiplier && !!pickedId && !isBye
+                                ? previewMultiplier(match.matchId) : null
+                              return (
+                                <Tooltip text={mult === null
+                                  ? 'This bracket is locked. Predictions are final — no more changes possible.'
+                                  : mult > 1
+                                    ? `Final, and worth ×${mult} if it comes in — ${mult - 1} round${mult - 1 === 1 ? '' : 's'} below it ${mult - 1 === 1 ? 'was' : 'were'} still undecided when this bracket was locked.`
+                                    : 'Final, at ×1 — every round below it had already been decided when this bracket was locked. Full base points, no multiplier.'}>
+                                  <span style={{
+                                    fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em',
+                                    color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', cursor: 'help',
+                                  }}>
+                                    LOCKED
+                                    {mult !== null && (
+                                      <span style={{ color: mult > 1 ? 'var(--court)' : 'inherit', margin: '0 0 0 0.3em' }}>
+                                        ×{mult}
+                                      </span>
+                                    )}
+                                    <span style={{ marginLeft: '0.3em' }}>✓</span>
+                                    <InfoIcon />
+                                  </span>
+                                </Tooltip>
+                              )
+                            })()}
                             {!voidPick && lockDisplay === 'auto_locked' && (
                               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em', color: 'var(--muted)' }}>
                                 PLAYED
