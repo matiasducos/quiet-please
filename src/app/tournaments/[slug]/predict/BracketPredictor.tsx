@@ -2022,18 +2022,35 @@ export default function BracketPredictor({
                                 PLAYED
                               </span>
                             )}
-                            {!voidPick && lockDisplay === 'admin_locked_secured' && (
-                              <Tooltip text="Your pick was in before the admin locked this match, so it scores as normal. Changing it now would forfeit the points.">
-                                <span style={{
-                                  fontFamily: 'var(--font-mono)', fontSize: '0.55rem', letterSpacing: '0.04em',
-                                  color: '#166534', background: '#dcfce7', padding: '1px 6px', borderRadius: '2px',
-                                  display: 'inline-flex', alignItems: 'center', cursor: 'help',
-                                }}>
-                                  PICKED IN TIME
-                                  <InfoIcon />
-                                </span>
-                              </Tooltip>
-                            )}
+                            {!voidPick && lockDisplay === 'admin_locked_secured' && (() => {
+                              // "In time" and "committed" are different things, and this state
+                              // covers both. Admin-locked wins over voluntary_locked in
+                              // getMatchLockDisplay, so a pick here may be committed — real lock
+                              // time, real multiplier — or merely early, in which case the cron
+                              // will stamp it 'auto' and it pays base points at ×1. previewMultiplier
+                              // already draws that line; the copy has to say which side it landed on.
+                              const isCommitted = committedPicks(currentPickLocks).has(match.matchId)
+                              const mult = canShowMultiplier ? previewMultiplier(match.matchId) : null
+                              const base = roundPoints(match.round)
+                              const total = mult === null || base === null ? null : base * mult
+                              const value = base === 0
+                                ? '· NO POINTS'
+                                : total === null ? (mult === null ? '' : `· ×${mult}`) : `· ×${mult} · ${total.toLocaleString()} PTS`
+                              return (
+                                <Tooltip text={base === 0
+                                  ? 'Your pick was in before the admin locked this match, but this round pays no ranking points at this level — a correct pick here scores nothing either way. Changing it now would still forfeit it.'
+                                  : `Your pick was in before the admin locked this match, so it scores as normal${total === null ? '' : ` — ${total.toLocaleString()} points if it comes in`}. ${isCommitted ? 'It is committed, so that figure is settled.' : 'It is not committed yet, so it pays at ×1 unless you lock your picks.'} Changing it now would forfeit the points.`}>
+                                  <span style={{
+                                    fontFamily: 'var(--font-mono)', fontSize: '0.55rem', letterSpacing: '0.04em',
+                                    color: '#166534', background: '#dcfce7', padding: '1px 6px', borderRadius: '2px',
+                                    display: 'inline-flex', alignItems: 'center', cursor: 'help', whiteSpace: 'nowrap',
+                                  }}>
+                                    {`PICKED IN TIME ${value}`.trim()}
+                                    <InfoIcon />
+                                  </span>
+                                </Tooltip>
+                              )
+                            })()}
                             {!voidPick && lockDisplay === 'admin_locked_pickable' && (
                               <Tooltip text="You can still make a pick, but no points will be awarded — the admin locked this match after it started.">
                                 <span style={{
