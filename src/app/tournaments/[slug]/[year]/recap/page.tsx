@@ -246,7 +246,12 @@ function RecapSection({
           <Card
             label="Chalk vs chaos"
             headline={`${recap.chalk_vs_chaos.upsets} of ${recap.chalk_vs_chaos.decided}`}
-            body={`matches went against the crowd's majority pick — ${recap.chalk_vs_chaos.upset_pct}% of the tournament.`}
+            // "the crowd's majority pick" made a reader do the mental
+            // translation themselves. The plain reading of the number is the
+            // one to print: the most-picked player lost. Not "the underdog
+            // won" — a match can carry picks on players who never reached it,
+            // so all this measures is that the top pick was not the winner.
+            body={`matches ended with the most-picked player losing — ${recap.chalk_vs_chaos.upset_pct}% of the tournament.`}
           />
         )}
 

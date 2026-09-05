@@ -3,6 +3,7 @@ import { Suspense } from 'react'
 import NotificationBell from './NotificationBell'
 import SiteNotices from './SiteNotices'
 import ChatBubbleIconServer from './ChatBubbleIconServer'
+import LeagueUnreadDotServer from './LeagueUnreadDotServer'
 import PostHogIdentify from './PostHogIdentify'
 
 interface NavProps {
@@ -165,6 +166,15 @@ export default function Nav({ username, activePage, userId, deletionRequestedAt 
                 }}
               >
                 {link.label}
+                {/* League chat has no other way to announce itself: it is two
+                    clicks down and nothing pushes. Guarded on userId so a guest
+                    render stays free of the query entirely — the dot is inside
+                    the label's flow, so an empty one costs no layout. */}
+                {link.page === 'leagues' && userId && (
+                  <Suspense fallback={null}>
+                    <LeagueUnreadDotServer className="ml-1.5" />
+                  </Suspense>
+                )}
               </Link>
             ))}
           </div>
@@ -326,6 +336,16 @@ export default function Nav({ username, activePage, userId, deletionRequestedAt 
             }}
           >
             {link.label}
+            {/* The strip is width-critical — every label is nowrap and the row
+                divides evenly — so this rides INSIDE the cell rather than being
+                absolutely positioned. An absolute dot would be clipped by the
+                cell's own overflow-hidden, and "Leagues" is short enough that
+                7px plus a gap changes no other label. */}
+            {link.page === 'leagues' && userId && (
+              <Suspense fallback={null}>
+                <LeagueUnreadDotServer className="ml-1" />
+              </Suspense>
+            )}
           </Link>
         ))}
       </div>

@@ -5,6 +5,8 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import { formatPoints } from '@/lib/utils/format'
+import { getUnreadLeagueIds } from '@/lib/leagues/unread'
+import LeagueUnreadDot from '@/components/LeagueUnreadDot'
 
 export const metadata: Metadata = { title: 'Leagues' }
 
@@ -54,6 +56,10 @@ export default async function LeaguesPage() {
     const rank = members.findIndex((m: any) => m.user_id === user.id) + 1
     leagueStats[lid] = { rank: rank || 1, count: members.length }
   }
+
+  // One RPC for every row's dot, not one per row. React.cache() also means the
+  // nav above already paid for this call, so the page adds nothing.
+  const unreadLeagueIds = await getUnreadLeagueIds()
 
   const leagues = (memberships ?? []).map(m => ({
     ...(m.leagues as any),
@@ -123,6 +129,12 @@ export default async function LeaguesPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span style={{ fontSize: '0.85rem' }}>{league.is_public ? '🌐' : '🔒'}</span>
                       <span className="truncate" style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--ink)' }}>{league.name}</span>
+                      {/* Sits after the name and before the owner tag: the dot
+                          is about this league, and putting it out at the points
+                          column on the right would read as a property of the
+                          score. `truncate` on the name means a long one
+                          ellipsises rather than pushing the dot off the row. */}
+                      <LeagueUnreadDot initialIds={unreadLeagueIds} leagueId={league.id} />
                       {league.owner_id === user.id && (
                         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--court)', background: '#eaf3de', padding: '1px 6px', borderRadius: '2px', flexShrink: 0 }}>owner</span>
                       )}

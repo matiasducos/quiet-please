@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import LeagueChatInput from './LeagueChatInput'
+import { markLeagueChatRead } from '@/lib/leagues/unread-store'
 
 type Message = {
   id: string
@@ -85,6 +86,15 @@ export default function LeagueChat({
     load()
   }, [leagueId])
 
+  // Mounting this component IS opening the chat — the league page only renders
+  // it on ?tab=chat. Marked on mount rather than after the fetch resolves: a
+  // failed load still means the user asked to read, and leaving the dot lit
+  // because the request timed out would send them back to a chat they have
+  // already looked at.
+  useEffect(() => {
+    markLeagueChatRead(leagueId)
+  }, [leagueId])
+
   // Scroll to bottom after initial load
   useEffect(() => {
     if (!loading && isInitialLoadRef.current) {
@@ -118,6 +128,11 @@ export default function LeagueChat({
           setMessages(prev => [...prev, ...newMsgs])
           lastTimestampRef.current = newMsgs[newMsgs.length - 1].createdAt
           requestAnimationFrame(() => scrollToBottom('smooth'))
+          // The poll only runs on a visible tab, so arriving here means the
+          // message landed in front of someone. Without this the marker would
+          // stay at mount time and every message read live would light the dot
+          // again the moment they navigated away.
+          markLeagueChatRead(leagueId)
         }
       } catch {
         // Swallow
