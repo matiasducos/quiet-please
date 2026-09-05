@@ -267,7 +267,7 @@ export function cardHighlights(payload: RecapPayload | null | undefined, max = 3
     out.push({
       label: 'Upsets',
       value: `${chaos.upsets} of ${chaos.decided}`,
-      detail: 'matches went against the crowd',
+      detail: 'matches the most-picked player lost',
     })
   }
 

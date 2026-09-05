@@ -13,6 +13,8 @@ import TournamentCard from '@/components/TournamentCard'
 import TournamentMonthGroup from '@/components/TournamentMonthGroup'
 import { groupByMonth, currentMonthKey } from '@/lib/tournaments/group'
 import LeagueChat from './LeagueChat'
+import LeagueUnreadDot from '@/components/LeagueUnreadDot'
+import { getUnreadLeagueIds } from '@/lib/leagues/unread'
 import { formatPoints } from '@/lib/utils/format'
 
 /**
@@ -66,11 +68,15 @@ export default async function LeagueDetailPage({
   const activeTab = tab === 'chat' ? 'chat' : 'leaderboard'
   const supabase = await createClient()
 
-  // ── Parallel fetch: league, membership, members ─────────────────────────
-  const [leagueRes, membershipRes, membersRes] = await Promise.all([
+  // ── Parallel fetch: league, membership, members, unread ─────────────────
+  // getUnreadLeagueIds is React.cache()'d, so the nav's own two dots and this
+  // one share a single RPC. Joining the Promise.all keeps it off the critical
+  // path rather than adding a fourth serial round trip.
+  const [leagueRes, membershipRes, membersRes, unreadLeagueIds] = await Promise.all([
     supabase.from('leagues').select('*').eq('id', id).single(),
     supabase.from('league_members').select('total_points').eq('league_id', id).eq('user_id', user.id).single(),
     supabase.from('league_members').select('user_id, total_points, joined_at, users(username)').eq('league_id', id).order('total_points', { ascending: false }),
+    getUnreadLeagueIds(),
   ])
 
   if (leagueRes.error) console.error('[league] fetch error:', leagueRes.error)
@@ -300,7 +306,7 @@ export default async function LeagueDetailPage({
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
-      <Nav deletionRequestedAt={profile?.deletion_requested_at} username={profile?.username} points={profile?.ranking_points ?? 0} activePage="leagues" />
+      <Nav deletionRequestedAt={profile?.deletion_requested_at} username={profile?.username} points={profile?.ranking_points ?? 0} activePage="leagues" userId={user.id} />
 
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
         <div className="flex items-center gap-2 mb-6" style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
@@ -385,6 +391,12 @@ export default async function LeagueDetailPage({
             }}
           >
             Chat
+            {/* Only on the tab the user is not on: opening chat marks it read,
+                so a dot beside an active "Chat" would be contradicted by the
+                messages underneath it a moment later. */}
+            {activeTab !== 'chat' && (
+              <LeagueUnreadDot initialIds={unreadLeagueIds} leagueId={id} size={6} className="ml-1.5" />
+            )}
           </Link>
         </div>
 
