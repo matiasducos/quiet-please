@@ -14,3 +14,21 @@
  * handlers stay referenced, so the compiler keeps checking them.
  */
 export const SHOW_FACEBOOK_LOGIN: boolean = false
+
+/**
+ * The chicken-and-egg this flag created: the button has to be exercised against
+ * production to find out why it fails, and it cannot be exercised while it is
+ * hidden from everyone. Flipping the constant to test would put a button known
+ * to be broken in front of real visitors for the length of the experiment.
+ *
+ * `?fb=1` opens it for whoever holds the link and nobody else. It is not a
+ * secret and does not need to be — the worst a stranger can do with it is reach
+ * the same broken sign-in we are trying to diagnose, on an app that is still in
+ * Meta development mode and admits only accounts with a role on it.
+ *
+ * Delete this function once SHOW_FACEBOOK_LOGIN is true; at that point the
+ * button is public and the override means nothing.
+ */
+export function showFacebookLogin(params: { get(name: string): string | null }): boolean {
+  return SHOW_FACEBOOK_LOGIN || params.get('fb') === '1'
+}
