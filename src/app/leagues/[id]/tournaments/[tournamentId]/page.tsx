@@ -8,6 +8,7 @@ import Nav from '@/components/Nav'
 import TournamentResultsTable from '@/components/TournamentResultsTable'
 import type { TournamentInfo, PlayerResult } from '@/components/TournamentResultsTable'
 import LeagueTournamentSelector from '../../LeagueTournamentSelector'
+import { fetchLedgerStats, streakPower } from '@/lib/tennis/ledger-stats'
 
 export default async function LeagueTournamentResultsPage({ params }: { params: Promise<{ id: string; tournamentId: string }> }) {
   const { user, profile } = await getNavProfile()
@@ -44,24 +45,13 @@ export default async function LeagueTournamentResultsPage({ params }: { params: 
         .in('user_id', memberIds)
     : { data: [] as any[] }
 
-  // Count correct picks + streak power per user from point_ledger (GLOBAL predictions only)
+  // Correct picks + streak power per user from point_ledger (GLOBAL predictions
+  // only). Same aggregation as the worldwide board, deliberately shared: the
+  // two boards show the same user the same tournament one click apart, so a
+  // second copy of this arithmetic is a second chance for them to disagree —
+  // which is exactly what happened while each page counted rows itself.
   const globalPredIds = (predictions ?? []).map((p: any) => p.id).filter(Boolean)
-  const correctPicksByUser: Record<string, number> = {}
-  const streakAccumByUser: Record<string, { totalPts: number; basePts: number }> = {}
-  if (globalPredIds.length > 0) {
-    const { data: ledgerRows } = await admin.from('point_ledger')
-      .select('user_id, points, streak_multiplier')
-      .in('prediction_id', globalPredIds)
-      .gt('points', 0)
-    for (const row of ledgerRows ?? []) {
-      correctPicksByUser[row.user_id] = (correctPicksByUser[row.user_id] ?? 0) + 1
-      const pts = row.points ?? 0
-      const mult = row.streak_multiplier ?? 1
-      if (!streakAccumByUser[row.user_id]) streakAccumByUser[row.user_id] = { totalPts: 0, basePts: 0 }
-      streakAccumByUser[row.user_id].totalPts += pts
-      streakAccumByUser[row.user_id].basePts += pts / mult
-    }
-  }
+  const ledgerStats = await fetchLedgerStats(admin, globalPredIds)
 
   // Fetch all league tournament IDs for the selector dropdown
   const { data: memberPreds } = memberIds.length > 0
@@ -100,14 +90,13 @@ export default async function LeagueTournamentResultsPage({ params }: { params: 
   const players: PlayerResult[] = (predictions ?? [])
     .filter((p: any) => p.points_earned > 0 || Object.keys(p.picks ?? {}).length > 0)
     .map((p: any) => {
-      const acc = streakAccumByUser[p.user_id]
       return {
         user_id: p.user_id,
         username: p.users?.username ?? 'Unknown',
         points: p.points_earned ?? 0,
-        correct_picks: correctPicksByUser[p.user_id] ?? 0,
+        correct_picks: ledgerStats[p.user_id]?.correctPicks ?? 0,
         total_picks: Object.keys(p.picks ?? {}).length,
-        streak_power: acc && acc.basePts > 0 ? acc.totalPts / acc.basePts : 1,
+        streak_power: streakPower(ledgerStats[p.user_id]),
         isMe: p.user_id === user.id,
         // Same rule as the global leaderboard — predictions.is_published (097).
         picks_locked: p.is_published === true,
