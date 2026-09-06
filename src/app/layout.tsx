@@ -3,6 +3,7 @@ import { DM_Serif_Display, DM_Mono, DM_Sans } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Suspense } from 'react'
 import PostHogPageviews from '@/components/PostHogPageviews'
+import NavigationProgress from '@/components/NavigationProgress'
 import ConsentBanner from '@/components/ConsentBanner'
 import Footer from '@/components/Footer'
 import { SITE_URL, DEFAULT_OG } from '@/lib/site'
@@ -118,6 +119,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             boundary here. Keep {children} a direct child of <body>. */}
         <Suspense fallback={null}>
           <PostHogPageviews />
+        </Suspense>
+        {/* Same shape and the same reason: NavigationProgress calls
+            useSearchParams() so it needs a boundary, and it is childless so
+            that boundary covers the hook and nothing else. It renders a bar
+            across the top of the viewport while a route change is in flight —
+            the one kind of loading feedback available on the routes that can
+            never take a `loading.tsx`, because that would be a Suspense
+            boundary over the page tree. */}
+        <Suspense fallback={null}>
+          <NavigationProgress />
         </Suspense>
         {children}
         {/* Site-wide so every page carries a way to reach us. It lives here

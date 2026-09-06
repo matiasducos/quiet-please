@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { startNavigationProgress } from '@/components/NavigationProgress'
 
 /**
  * Small chat icon button that creates or opens a conversation with a friend.
@@ -26,6 +27,7 @@ export default function StartChatButton({ friendId }: { friendId: string }) {
       if (!res.ok) return
       const data = await res.json()
       if (data.conversationId) {
+        startNavigationProgress()
         router.push(`/messages/${data.conversationId}`)
       }
     } catch {

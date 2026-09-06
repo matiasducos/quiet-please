@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { startNavigationProgress } from '@/components/NavigationProgress'
 
 interface Tournament {
   id: string
@@ -30,8 +31,10 @@ export default function LeaderboardSelector({
     // them from the viewer's profile.
     const qs = currentScope && currentScope !== 'worldwide' ? `?scope=${currentScope}` : ''
     if (value === 'global') {
+      startNavigationProgress()
       router.push(`/leaderboard${qs}`)
     } else {
+      startNavigationProgress()
       router.push(`/leaderboard/tournaments/${value}${qs}`)
     }
   }
