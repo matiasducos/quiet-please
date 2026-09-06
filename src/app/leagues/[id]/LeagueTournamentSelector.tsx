@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { startNavigationProgress } from '@/components/NavigationProgress'
 
 interface Tournament {
   id: string
@@ -25,8 +26,10 @@ export default function LeagueTournamentSelector({
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const value = e.target.value
     if (value === 'overall') {
+      startNavigationProgress()
       router.push(`/leagues/${leagueId}`)
     } else {
+      startNavigationProgress()
       router.push(`/leagues/${leagueId}/tournaments/${value}`)
     }
   }

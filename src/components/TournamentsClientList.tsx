@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import TournamentCard from './TournamentCard'
 import TournamentMonthGroup from './TournamentMonthGroup'
 import { groupByMonth, currentMonthKey } from '@/lib/tournaments/group'
+import { startNavigationProgress } from '@/components/NavigationProgress'
 
 type Season = number | 'all'
 
@@ -155,6 +156,7 @@ export default function TournamentsClientList({ tournaments, liveTournaments, ac
               value={String(activeYear)}
               onChange={e => {
                 const next = e.target.value
+                startNavigationProgress()
                 router.push(href({ year: next === 'all' ? 'all' : Number(next) }))
               }}
               className="appearance-none pl-3 pr-8 py-2 text-sm border rounded-sm bg-white cursor-pointer"

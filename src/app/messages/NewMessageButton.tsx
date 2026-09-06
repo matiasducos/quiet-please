@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { startNavigationProgress } from '@/components/NavigationProgress'
 
 type Friend = { id: string; username: string }
 
@@ -65,6 +66,7 @@ export default function NewMessageButton({
       if (!res.ok) return
       const data = await res.json()
       if (data.conversationId) {
+        startNavigationProgress()
         router.push(`/messages/${data.conversationId}`)
       }
     } catch {

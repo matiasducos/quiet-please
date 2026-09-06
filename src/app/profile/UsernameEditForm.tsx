@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { updateUsername } from '@/app/profile/actions'
+import { startNavigationProgress } from '@/components/NavigationProgress'
 
 export default function UsernameEditForm({ username }: { username: string }) {
   const [value, setValue] = useState(username)
@@ -28,6 +29,7 @@ export default function UsernameEditForm({ username }: { username: string }) {
       if (result.error) {
         setError(result.error)
       } else {
+        startNavigationProgress()
         router.push(`/profile/${clean}?msg=Username+updated&type=success`)
         router.refresh()
       }

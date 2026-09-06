@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { resetTour } from './DashboardTour'
+import { startNavigationProgress } from '@/components/NavigationProgress'
 
 export default function ReplayTourButton() {
   const router = useRouter()
@@ -10,6 +11,7 @@ export default function ReplayTourButton() {
     <button
       onClick={() => {
         resetTour()
+        startNavigationProgress()
         router.push('/dashboard')
       }}
       className="px-4 py-2 text-sm rounded-sm border hover:opacity-80"

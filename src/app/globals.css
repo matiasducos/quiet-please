@@ -109,3 +109,57 @@ a:active {
   transform: none !important;
   opacity: 1 !important;
 }
+
+/* ── Navigation progress bar ──────────────────────────────────────────────
+   Feedback for the gap between clicking a link and the next page painting.
+   See src/components/NavigationProgress.tsx for why this is a client-side bar
+   and not a `loading.tsx` per route, and why the creep is a keyframe rather
+   than a transition. */
+@keyframes nav-progress-creep {
+  from { width: 0; }
+  to   { width: 90%; }
+}
+
+.nav-progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 0;
+  z-index: 9999;
+  background: var(--court);
+  pointer-events: none;
+  /* Long and decelerating: still visibly moving after a second on a slow route,
+     but never arriving — a full bar would claim the page is ready when it is
+     not. `forwards` holds it at 90% rather than snapping back to 0. */
+  animation: nav-progress-creep 8s cubic-bezier(0, 0.7, 0.2, 1) forwards;
+  opacity: 1;
+  transition: opacity 260ms ease-out;
+}
+
+/* The route committed. The animation is left running so the width cannot jump;
+   the bar simply leaves. */
+.nav-progress-bar[data-phase='done'] {
+  opacity: 0;
+}
+
+/* A progress indicator is information, not decoration, so reduced motion keeps
+   the bar and drops only the travel — it appears at its resting position. */
+@media (prefers-reduced-motion: reduce) {
+  .nav-progress-bar {
+    animation: none;
+    width: 90%;
+  }
+}
+
+.nav-progress-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
