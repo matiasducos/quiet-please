@@ -173,19 +173,23 @@ not necessarily a second fault — but confirm **Dominios de la app** lists
    - **Nothing in either log** ⇒ the round trip never reached us. Check the URL
      you landed on: a `bad_oauth_state` failure bounces to the site root, and
      nothing on `/` reads `?error=`
-2. ⬅️ **THE FIX. Meta → Casos de uso → Personalizar → Permisos y funciones**:
-   **add `email`.** Confirmed absent 2026-09-06 by the dialog error above — this
-   is no longer "the most likely cause", it is the cause. `public_profile` should
-   already be there. Without `email`, Facebook completes the login and returns no
-   address, and every signup dies on the 083 guard.
-   - If, once added, it reads *Requiere revisión de la app* rather than *Listo
-     para probar*, that is the next gate — App Review. It should still work
-     immediately for accounts holding a role on the app, which is enough to
-     finish the round trip and prove the rest of the chain
-3. **Live mode** (Meta → Publicar, currently *Sin publicar*). Development mode
-   only admits accounts holding a role on the app, so it works for Matias and
-   fails for everyone else. Not the cause of the current failure — testing was as
-   admin — but it blocks real users
+2. ✅ **THE FIX, applied 2026-09-06. Meta → Casos de uso → Personalizar →
+   Permisos y funciones**: `email` added. It was absent, which is why the dialog
+   answered *Invalid Scopes: email* and never rendered. **A real sign-in
+   completed immediately afterwards** — see item 5.
+3. ⬅️ **THE LAST GATE. Live mode** (Meta → Publicar). Development mode only
+   admits accounts holding a role on the app. The 2026-09-06 sign-in was as
+   admin, so it proves the plumbing and says **nothing** about a stranger.
+   - Where to look: `developers.facebook.com/apps/800967199747016` — the
+     *En desarrollo* / *Activa* toggle at the top, or **Revisión de la app →
+     Publicar** in the sidebar
+   - The empirical check, which beats reading the toggle: have someone with **no
+     role on the app** open `/login?fb=1`. In development mode Facebook tells
+     them the app is unavailable
+   - **`SHOW_FACEBOOK_LOGIN` stays `false` until this is done.** Flipping it
+     while the app is unpublished puts a button on `/login` and `/signup` that
+     works for Matias and fails for every real visitor — which is worse than no
+     button, and is the state this flag exists to prevent
 4. ✅ **App icon at 1024×1024** (2026-09-06) — `public/app-icon-1024.png`, RGB with
    no alpha (Meta rejects transparency). Redrawn at 1024 rather than upscaled,
    by `scripts/make-app-icon.py`, which asserts a >0.95 pixel IoU against
@@ -199,8 +203,24 @@ not necessarily a second fault — but confirm **Dominios de la app** lists
    - **Matching the ink box's extent proves nothing about its shape.** A first
      attempt used the `next/font` subset, which carries no Q or P, and converged
      to within half a pixel on two `.notdef` tofu boxes
-5. Once a sign-in completes: flip `SHOW_FACEBOOK_LOGIN` to `true`, and check the
-   created row has the email, a sane auto-username and `terms_accepted_at`
+5. ✅ **A real sign-in completed, 2026-09-06 16:04 UTC** — the thing this whole
+   section was waiting on. Verified against prod with the service-role key:
+
+   | check | result |
+   |---|---|
+   | `app_metadata.provider` | `facebook` |
+   | email returned | present — **the 083 guard passed** |
+   | identity | `('facebook', <the address>)` |
+   | `auth.users` → `public.users` | row mirrored, trigger fired |
+   | `unsubscribe_token` | present |
+   | `username_is_set` | `false` → routed to `/setup-username`, correct |
+   | `terms_accepted_at` | `NULL` — **correct**, the sign-in came from `/login`, which carries no `?consent=`. Same as Google, by design; see `legal_todo.md` |
+
+   Facebook returns `name`, `full_name`, `nickname`, `slug`, `email`,
+   `avatar_url`, `provider_id` — and **no `username` key**, so 083's COALESCE
+   falls through to the email prefix as intended.
+
+   **Still not done: flipping the flag.** That waits on item 3, not on this.
 
 #### Already done and verified — do not redo
 
