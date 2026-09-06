@@ -144,6 +144,34 @@ before starting.
    Authorized domains, and sign-in breaks if you remove it
 7. Submit for verification and wait — it is a human review
 
+**2026-09-06 — branding saved, and it does not take effect yet.** App name, logo,
+the three URLs and the contact email are all in. The verification panel then said:
+
+> *No se requiere la verificación porque tu app tiene el estado **Prueba**.*
+
+**That is the blocker.** Verification is what swaps the domain for the app name,
+and Google will not run it while the app sits in Prueba. The logo section states
+the same rule from the other side — uploading a logo requires verification
+*unless* the status is Prueba. So:
+
+7a. **Google Auth Platform → Público → change publication status to
+    "En producción"**, then return to Información de la marca and submit.
+
+**Testing status is NOT gating real users** — checked before assuming it was. 18
+Google accounts belonging to unrelated strangers exist in `auth.users`. The
+apparent "no Google signup since 2026-08-30" is a **red herring: email signups
+stopped the same day.** There have been no signups of any kind in a week, which
+is a separate question; nothing about Google auth is broken.
+
+**Also: `Dominios autorizados` lists `quiet-please.vercel.app`.** Remove it.
+Nothing needs it — the only redirect URI is the Supabase callback, and note that
+`supabase.co` is *not* in that list while sign-in works, which confirms redirect
+URIs do not have to be authorized domains. Google requires proof of ownership for
+every authorized domain, and a domain that cannot be cleanly verified is exactly
+the mismatch that stalls brand review. Confirm nothing in
+**Clientes → Authorized redirect URIs** points at the vercel.app host first.
+It is already tracked as duplicate-content debt under "Canonical host hygiene".
+
 #### Already verified against prod (2026-09-06), so the review should not fail on these
 
 | Google requires | state |
