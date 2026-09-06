@@ -95,6 +95,37 @@ is usually the missing half.
 **Still not audited:** the other three slam landing pages (the US Open one is clean and
 they share a template), `/activity`, `/onboarding`, `/challenges/[id]`, `/leagues/browse`.
 
+### ✅ Google consent screen — fixed 2026-09-06, route A, free
+
+**Google's sign-in page now reads "to continue to Quiet Please"**, with the QP
+logo and a line offering the Privacy Policy and Terms. Verified against the live
+page, not assumed — the rendered markup is
+`to continue to <button data-app-name="Quiet Please">Quiet Please</button>`,
+and the logo is served from `lh3.googleusercontent.com` with `alt="Quiet Please"`.
+
+**No waiting.** The expected "few business days" review never happened: branding
+verification passed immediately, and Data access verification is *not required*
+because the app requests only non-sensitive scopes (`email`, `profile`,
+`openid`). Centro de verificación shows both green.
+
+**What actually unblocked it was the publication status.** Filling in the
+branding did nothing while the app sat in *Prueba* — Google will not verify a
+Testing app, and without verification it keeps showing the callback domain. The
+step that mattered was **Público → En producción**, then returning to the
+branding page.
+
+**Route B (Supabase custom domain, $35/mo) was not needed** and is not worth
+buying for this. Its details are kept below in case it is ever wanted for another
+reason — note the `next.config.ts` CSP line it would require.
+
+**Loose end, now cosmetic only:** `quiet-please.vercel.app` is still in
+*Dominios autorizados*. It was flagged as a verification risk; verification has
+since passed with it present, so it is no longer a risk — just an unnecessary
+entry, and duplicate-content debt already tracked under "Canonical host hygiene".
+
+<details>
+<summary>Original entry — the diagnosis and both routes</summary>
+
 ### ⬜ Google consent screen says `nqmjrwqcqnxoocodgedj.supabase.co`
 
 **What a new user sees before they trust us.** Google's sign-in page prints
@@ -200,6 +231,8 @@ Facebook, keeping the old one live during cutover.
 
 **Cosmetic for Facebook only.** Meta's dialog shows the app name, not a domain.
 It is Google that leaks the host.
+
+</details>
 
 ---
 
