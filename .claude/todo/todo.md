@@ -145,8 +145,19 @@ handlers type-checked and the state honest.
    only admits accounts holding a role on the app, so it works for Matias and
    fails for everyone else. Not the cause of the current failure — testing was as
    admin — but it blocks real users
-4. **App icon at 1024×1024.** Largest asset today is `public/pwa-512.png` (512).
-   `public/favicon.svg` is a flat green tile with "QP", so it rescales cleanly
+4. ✅ **App icon at 1024×1024** (2026-09-06) — `public/app-icon-1024.png`, RGB with
+   no alpha (Meta rejects transparency). Redrawn at 1024 rather than upscaled,
+   by `scripts/make-app-icon.py`, which asserts a >0.95 pixel IoU against
+   `pwa-512.png` before it will save.
+   - The face is **Georgia**, not DM Serif Display. `favicon.svg`'s stack reads
+     `Georgia, 'DM Serif Display', serif` — Georgia first — and DM Serif's Q has
+     a long swash tail the 512 asset does not
+   - The geometry is `favicon.svg`'s own at 32×: font-size 640, letter-spacing
+     −32, baseline 736. Solving for best overlap independently landed on
+     639.3 / −30 / 735, which is what identifies the reference as that SVG
+   - **Matching the ink box's extent proves nothing about its shape.** A first
+     attempt used the `next/font` subset, which carries no Q or P, and converged
+     to within half a pixel on two `.notdef` tofu boxes
 5. Once a sign-in completes: flip `SHOW_FACEBOOK_LOGIN` to `true`, and check the
    created row has the email, a sane auto-username and `terms_accepted_at`
 
