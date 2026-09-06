@@ -14,6 +14,7 @@ import ScopeSegmented from '../../ScopeSegmented'
 import CountryFlag from '@/components/CountryFlag'
 import { SITE_NAME } from '@/lib/site'
 import { SEARCH_LIMIT, isSearchActive, sanitizeSearch } from '@/lib/utils/search'
+import { fetchLedgerStats, streakPower } from '@/lib/tennis/ledger-stats'
 
 type Scope = 'worldwide' | 'country' | 'city' | 'community'
 
@@ -25,41 +26,6 @@ const PAGE_SIZE = 50
  * tournament board.
  */
 const PREVIEW_ROWS = 10
-
-type AdminClient = ReturnType<typeof createAdminClient>
-
-/**
- * Correct-pick counts and streak power per user, from the ledger rows attached
- * to a set of predictions.
- *
- * Shared by the signed-in board and the public preview so the preview never has
- * to invent the two numbers it cannot read off the prediction row — they end up
- * in crawlable HTML, and a table of fabricated zeroes is worse than no table.
- */
-async function aggregateLedger(admin: AdminClient, predictionIds: string[]) {
-  const correctPicksByUser: Record<string, number> = {}
-  const streakAccumByUser: Record<string, { totalPts: number; basePts: number }> = {}
-  if (predictionIds.length === 0) return { correctPicksByUser, streakAccumByUser }
-
-  const { data: ledgerRows, error } = await admin.from('point_ledger')
-    .select('user_id, points, streak_multiplier')
-    .in('prediction_id', predictionIds)
-    .gt('points', 0)
-  if (error) console.error('[tournament-leaderboard] ledger query failed:', error.message)
-
-  for (const row of ledgerRows ?? []) {
-    correctPicksByUser[row.user_id] = (correctPicksByUser[row.user_id] ?? 0) + 1
-    const pts  = row.points ?? 0
-    const mult = row.streak_multiplier ?? 1
-    if (!streakAccumByUser[row.user_id]) streakAccumByUser[row.user_id] = { totalPts: 0, basePts: 0 }
-    streakAccumByUser[row.user_id].totalPts += pts
-    streakAccumByUser[row.user_id].basePts  += pts / mult
-  }
-  return { correctPicksByUser, streakAccumByUser }
-}
-
-const streakPower = (acc?: { totalPts: number; basePts: number }) =>
-  acc && acc.basePts > 0 ? acc.totalPts / acc.basePts : 1
 
 /**
  * Name, year and the slug URL of the edition this board belongs to.
@@ -347,7 +313,7 @@ export default async function GlobalTournamentResultsPage({
 
   // ── Correct-picks + streak-power per user from point_ledger ─────────────
   const globalPredIds = (predictions ?? []).map((p: any) => p.id).filter(Boolean)
-  const { correctPicksByUser, streakAccumByUser } = await aggregateLedger(admin, globalPredIds)
+  const ledgerStats = await fetchLedgerStats(admin, globalPredIds)
 
   const players: PlayerResult[] = (predictions ?? []).map((p: any, i: number) => {
     return {
@@ -358,9 +324,9 @@ export default async function GlobalTournamentResultsPage({
       username: p.users?.username ?? 'Unknown',
       country: p.users?.country ?? null,
       points: p.points_earned ?? 0,
-      correct_picks: correctPicksByUser[p.user_id] ?? 0,
+      correct_picks: ledgerStats[p.user_id]?.correctPicks ?? 0,
       total_picks: Object.keys(p.picks ?? {}).length,
-      streak_power: streakPower(streakAccumByUser[p.user_id]),
+      streak_power: streakPower(ledgerStats[p.user_id]),
       isMe: p.user_id === user.id,
       // `is_published` (097) — committed any round, or locked the whole
       // bracket. Computed in Postgres so the feeds that must FILTER on it
@@ -569,7 +535,7 @@ async function PublicTournamentBoard({ tournamentId }: { tournamentId: string })
   }
 
   const rows = (previewRows ?? []) as unknown as PreviewRow[]
-  const { correctPicksByUser, streakAccumByUser } = await aggregateLedger(admin, rows.map(r => r.id))
+  const ledgerStats = await fetchLedgerStats(admin, rows.map(r => r.id))
 
   const players: PlayerResult[] = rows.map((p, i) => ({
     rank: i + 1,
@@ -577,9 +543,9 @@ async function PublicTournamentBoard({ tournamentId }: { tournamentId: string })
     username: p.users?.username ?? 'Unknown',
     country: p.users?.country ?? null,
     points: p.points_earned ?? 0,
-    correct_picks: correctPicksByUser[p.user_id] ?? 0,
+    correct_picks: ledgerStats[p.user_id]?.correctPicks ?? 0,
     total_picks: Object.keys(p.picks ?? {}).length,
-    streak_power: streakPower(streakAccumByUser[p.user_id]),
+    streak_power: streakPower(ledgerStats[p.user_id]),
     isMe: false,
   }))
 

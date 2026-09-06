@@ -164,6 +164,7 @@ export default function TournamentResultsTable({
         <div className="grid grid-cols-12 px-5 py-3 border-b" style={{ borderColor: 'var(--chalk-dim)', background: '#fafaf8' }}>
           <div className="col-span-1" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>RANK</div>
           <div className="col-span-3" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>PLAYER</div>
+          <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>POINTS</div>
           <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>ACCURACY</div>
           <div className="col-span-1 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>RATE</div>
           <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>
@@ -171,7 +172,6 @@ export default function TournamentResultsTable({
               <span style={{ cursor: 'help', borderBottom: '1px dotted var(--muted)' }}>STREAK POWER</span>
             </Tooltip>
           </div>
-          <div className="col-span-2 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>POINTS</div>
           <div className="col-span-1 text-right" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>PICKS</div>
         </div>
 
@@ -200,6 +200,11 @@ export default function TournamentResultsTable({
                   {p.isMe && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: '#1e4e8c', background: '#dbeafe', padding: '1px 6px', borderRadius: '2px' }}>you</span>}
                 </div>
                 <div className="col-span-2 flex items-center justify-end">
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: p.points > 0 ? 'var(--court)' : 'var(--muted)', fontWeight: 500 }}>
+                    {p.points > 0 ? `+${formatPoints(p.points)}` : '0'}
+                  </span>
+                </div>
+                <div className="col-span-2 flex items-center justify-end">
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--muted)' }}>{accuracy}</span>
                 </div>
                 <div className="col-span-1 flex items-center justify-end">
@@ -211,11 +216,6 @@ export default function TournamentResultsTable({
                       {p.streak_power.toFixed(1)}x
                     </span>
                   </Tooltip>
-                </div>
-                <div className="col-span-2 flex items-center justify-end">
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: p.points > 0 ? 'var(--court)' : 'var(--muted)', fontWeight: 500 }}>
-                    {p.points > 0 ? `+${formatPoints(p.points)}` : '0'}
-                  </span>
                 </div>
                 <div className="col-span-1 flex items-center justify-end">
                   {canViewPicks ? (
