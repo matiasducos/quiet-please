@@ -95,6 +95,86 @@ is usually the missing half.
 **Still not audited:** the other three slam landing pages (the US Open one is clean and
 they share a template), `/activity`, `/onboarding`, `/challenges/[id]`, `/leagues/browse`.
 
+### ⬜ Google consent screen says `nqmjrwqcqnxoocodgedj.supabase.co`
+
+**What a new user sees before they trust us.** Google's sign-in page prints
+*"to continue to nqmjrwqcqnxoocodgedj.supabase.co"*, because Google shows the
+**root domain of the OAuth callback**, not an app name — and the callback is
+Supabase's. Supabase's own docs on this: it *"does not inspire trust and can
+make your application more susceptible to successful phishing attempts."*
+
+**The obvious workaround does not work.** Proxying `/auth/v1/*` through
+`quietplease.app` with a rewrite changes nothing: GoTrue generates the
+`redirect_uri` server-side from its own external URL. Confirmed by hitting the
+endpoint — `/auth/v1/authorize?provider=…` answers with
+`redirect_uri=https://nqmjrwqcqnxoocodgedj.supabase.co/auth/v1/callback`
+regardless of what sits in front of it. Don't spend an evening on it.
+
+**Two routes work. We are taking A.**
+
+- **A — Google brand verification. Free.** Google swaps the domain for the
+  **App name** once branding is verified. Google-only, manual review, a few
+  business days.
+- **B — Supabase custom domain.** `auth.quietplease.app` becomes the callback,
+  so every provider shows it. Immediate and permanent, and the better fix on the
+  merits — but **not available on Free**: Pro $25/mo + $10/mo per domain =
+  **$35/mo**. Revisit if we end up on Pro for other reasons.
+
+#### A — the steps (all in Google Cloud Console)
+
+**Prerequisite:** `quietplease.app` must be verified in **Google Search Console**
+under the same Google account — Google requires ownership of every domain in
+Authorized domains. We already use GSC, so this is likely already true; confirm
+before starting.
+
+1. **Google Auth Platform → Branding** (`console.cloud.google.com/auth/branding`;
+   older UI: APIs & Services → OAuth consent screen)
+2. **App name** → `Quiet Please`. This is the string that replaces the domain
+3. **Logo** → `public/app-icon-1024.png` (square, RGB, no alpha, 57 KB — under
+   Google's 1 MB cap; it renders at 120×120)
+4. **App home page** `https://quietplease.app`,
+   **Privacy policy** `https://quietplease.app/privacy`,
+   **Terms** `https://quietplease.app/terms`
+5. **Authorized domains → leave only `quietplease.app`.** If `supabase.co` is
+   listed, **clear the field before deleting the row**. You cannot verify a
+   domain you do not own, and that mismatch is the most-reported reason this
+   review stalls
+6. **Do not touch Credentials → OAuth 2.0 Client IDs → Authorized redirect
+   URIs.** The Supabase callback must stay there. That list is separate from
+   Authorized domains, and sign-in breaks if you remove it
+7. Submit for verification and wait — it is a human review
+
+#### Already verified against prod (2026-09-06), so the review should not fail on these
+
+| Google requires | state |
+|---|---|
+| Homepage on a domain you own, describing the product (not login-only) | ✅ 200, full landing page |
+| Privacy policy on the same domain, publicly reachable | ✅ `/privacy` 200, no auth |
+| Terms on the same domain | ✅ `/terms` 200, no auth |
+| Privacy policy linked prominently from the homepage | ✅ `href="/privacy"` present |
+
+#### Known uncertainty
+
+Step 5 comes from community reports of verification stalling on exactly this
+Supabase-domain mismatch, **not** from Google's own documentation. It is the
+best-attested workaround, but the callback host still is not ours, and Google
+may balk anyway. If the review stalls on a name/domain mismatch, route B is the
+escape hatch.
+
+#### If we ever do B, the repo change is one line and easy to miss
+
+`next.config.ts:53` — `connect-src 'self' https://*.supabase.co …`.
+`auth.quietplease.app` is a **different origin** from `quietplease.app`, so
+`'self'` does not cover it and CSP silently blocks every auth call. Add the new
+host there. Otherwise only `NEXT_PUBLIC_SUPABASE_URL` changes — nothing else
+hardcodes the project ref — plus adding the new callback to **both** Google and
+Facebook, keeping the old one live during cutover.
+
+**Cosmetic for Facebook only.** Meta's dialog shows the app name, not a domain.
+It is Google that leaks the host.
+
+---
+
 ### ⬜ Facebook OAuth — WORKS, but still hidden behind a flag
 
 > ## 📌 PICK UP HERE — paused 2026-09-06, blocked on Meta
