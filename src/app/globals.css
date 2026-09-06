@@ -124,7 +124,11 @@ a:active {
   position: fixed;
   top: 0;
   left: 0;
-  height: 2px;
+  /* Mobile-first, so the thicker bar is the default and desktop opts down.
+     3px on a phone is what 2px is on a laptop: the viewport is narrower, the
+     screen is further from being scanned at a glance, and a hairline at the
+     very top edge is the first thing lost to a notch or a rounded corner. */
+  height: 3px;
   width: 0;
   z-index: 9999;
   background: var(--court);
@@ -141,6 +145,15 @@ a:active {
    the bar simply leaves. */
 .nav-progress-bar[data-phase='done'] {
   opacity: 0;
+}
+
+/* Desktop has the pixel density and the steadier viewing distance to read a
+   hairline, and a thicker bar there starts to feel like chrome. Tailwind's `md`
+   (768px), so it lines up with every other breakpoint in the app. */
+@media (min-width: 768px) {
+  .nav-progress-bar {
+    height: 2px;
+  }
 }
 
 /* A progress indicator is information, not decoration, so reduced motion keeps
