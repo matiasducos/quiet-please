@@ -95,7 +95,40 @@ is usually the missing half.
 **Still not audited:** the other three slam landing pages (the US Open one is clean and
 they share a template), `/activity`, `/onboarding`, `/challenges/[id]`, `/leagues/browse`.
 
-### ⬜ Facebook OAuth — UNFINISHED, button hidden behind a flag
+### ⬜ Facebook OAuth — WORKS, but still hidden behind a flag
+
+> ## 📌 PICK UP HERE — paused 2026-09-06, blocked on Meta
+>
+> **The sign-in works.** A real Facebook round trip completed on prod at
+> 16:04 UTC and every link in the chain was verified against the database
+> (item 5 below). The month-long blocker was a missing `email` permission on
+> the Meta app; adding it fixed it.
+>
+> **One thing is left, and it is not code: item 3, Live mode.** The Meta app's
+> publish state was never confirmed, and Matias reported being blocked on the
+> Meta side before it could be. **The nature of that block is not recorded
+> here — establish what it is first.** If it is an account or app restriction,
+> that is the whole task; if it is only "not published yet", it is a toggle.
+>
+> **Do NOT flip `SHOW_FACEBOOK_LOGIN` to `true` just because the sign-in
+> worked.** It worked *as an app admin*, and in development mode Facebook
+> admits only accounts holding a role on the app. Flipping it while the app is
+> unpublished puts a button on `/login` and `/signup` that works for one person
+> and fails for every real visitor. That is the exact state this flag exists to
+> prevent, and it is the mistake a reader of "Facebook OAuth works" will make.
+>
+> **The check that settles it**, better than reading the dashboard toggle: have
+> someone with **no role on the app** open `https://quietplease.app/login?fb=1`.
+> If they get in, the app is Live and the flag can go.
+>
+> **When it can go**, the close-out is: set `SHOW_FACEBOOK_LOGIN = true`, delete
+> `showFacebookLogin()` and the `?fb=1` override in
+> `src/lib/auth-providers.ts`, update its two callers on `/login` and `/signup`,
+> verify both buttons at 375px, and mark this section ✅.
+>
+> Shipped this session: **#216** (the callback captures OAuth failures instead
+> of discarding them), **#217** (the 1024×1024 app icon), **#218** and **#219**
+> (this record).
 
 **Status 2026-08-13: parked, not shipped.** A real sign-in did not work, so the
 button is hidden behind `SHOW_FACEBOOK_LOGIN` in `src/lib/auth-providers.ts`
