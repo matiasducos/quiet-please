@@ -103,6 +103,20 @@ button is hidden behind `SHOW_FACEBOOK_LOGIN` in `src/lib/auth-providers.ts`
 to true to bring it back. **The specific failure was never captured; get the
 error message first, it decides which of the two open items below is the cause.**
 
+**2026-09-06 — the reason it was never captured (PR #216).** `/auth/callback`
+read only `code`. A failed OAuth round trip carries no `code` at all: GoTrue
+forwards it to `redirect_to` with `error`, `error_code` and `error_description`
+in the query string. The route found no code, fell through, and answered
+`auth_callback_failed` — the same code a dead reset link produces. The
+`exchangeCodeForSession` error was destructured and never logged. **Both real
+reasons were discarded on arrival**, which is why a month of "just sign in and
+note the message" could never have worked: the message was a constant.
+
+Now the reason is read, logged to Vercel *and* Sentry, and classified into
+`provider_no_email` / `oauth_declined` / `auth_callback_failed`, each with its
+own copy on `/login`. `?fb=1` reveals the button to whoever holds the link, so
+this can be exercised on prod without flipping the flag for everyone.
+
 Hidden behind a flag rather than commented out on purpose. The previous attempt
 commented the buttons, which left the handlers unreferenced and left this file
 claiming the feature had shipped when nothing rendered — a flag keeps the
@@ -110,11 +124,19 @@ handlers type-checked and the state honest.
 
 #### Still to do
 
-1. **Capture the actual failure.** Sign in at `/login` with the flag on and note
-   what comes back. If it is *"check that you allowed access to your email
-   address"*, that is the 083 guard firing and the cause is item 2. Anything else
-   — a Facebook error page, a bounce with no message — means something not yet
-   diagnosed
+1. **Capture the actual failure.** Open `https://quietplease.app/login?fb=1` and
+   sign in with Facebook. Read the result in **Sentry** (`auth/callback: the
+   identity provider refused the sign-in`) or **Supabase → Logs → Auth**. Do not
+   read it off the page — `/login` shows mapped copy, and the mapping is a guess
+   until the log confirms it.
+   - `provider_no_email`, or `no_email_from_provider` in the auth log ⇒ the 083
+     guard fired, Facebook returned no address ⇒ **the cause is item 2**
+   - `oauth_declined` ⇒ the dialog was cancelled; that is not the bug, retry
+   - `auth_callback_failed` with an `error_description` not seen before ⇒ the
+     undiagnosed case. Paste the description into this file
+   - **Nothing in either log** ⇒ the round trip never reached us. Check the URL
+     you landed on: a `bad_oauth_state` failure bounces to the site root, and
+     nothing on `/` reads `?error=`
 2. **Meta → Casos de uso → Personalizar → Permisos y funciones**: confirm
    `public_profile` **and** `email` both read *Listo para probar*. Never verified.
    Without `email`, Facebook completes the login and returns no address, and every
