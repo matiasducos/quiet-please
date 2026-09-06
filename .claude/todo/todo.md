@@ -122,9 +122,45 @@ commented the buttons, which left the handlers unreferenced and left this file
 claiming the feature had shipped when nothing rendered — a flag keeps the
 handlers type-checked and the state honest.
 
+#### ✅ The failure, captured 2026-09-06
+
+Facebook's own dialog, before any redirect back:
+
+> **Este contenido no está disponible en este momento**
+> Invalid Scopes: email. This message is only shown to developers. Users of your
+> app will ignore these permissions if present.
+
+**`email` is not among the app's available permissions.** It is not "added but
+unapproved" — Facebook rejects the scope outright, so the consent dialog never
+renders. Item 2 below was the cause, and it is a stronger fault than that item
+assumed.
+
+Two things follow from the second sentence of that message. For anyone without a
+role on the app the scope is **silently dropped**, not rejected — Facebook
+completes the login and returns no address, migration 083's guard fires, and the
+signup dies. So this is not cosmetic and cannot be worked around by ignoring the
+warning: `users.email` is `NOT NULL`, and an account cannot be created without
+one. Requesting `email` is correct; the permission has to exist.
+
+**PR #216's diagnostics never fired, and could not have.** The Supabase auth log
+for the attempt holds a single `GET /auth/v1/authorize → 302` and nothing after
+it. The round trip dies at Facebook, so nothing ever reaches `/auth/callback`
+and there is no `error=` to classify. Those diagnostics cover the *other* shape —
+a provider that redirects back with a reason — which is still the shape to expect
+once the scope is valid and 083 starts refusing addressless accounts. The
+screenshot was the diagnosis here, not the code.
+
+**Also seen, probably secondary.** Dismissing the dialog lands on
+`facebook.com/v26.0/dialog/close/` with *"El dominio de esta URL no está incluido
+en los dominios de la app"*. That is the aborted dialog failing to bounce back,
+not necessarily a second fault — but confirm **Dominios de la app** lists
+`quietplease.app` while you are in there.
+
 #### Still to do
 
-1. **Capture the actual failure.** Open `https://quietplease.app/login?fb=1` and
+1. ~~**Capture the actual failure.**~~ ✅ done, above. Left in place because the
+   method matters: read the log, not the page.
+   **Original text:** Capture the actual failure. Open `https://quietplease.app/login?fb=1` and
    sign in with Facebook. Read the result in **Sentry** (`auth/callback: the
    identity provider refused the sign-in`) or **Supabase → Logs → Auth**. Do not
    read it off the page — `/login` shows mapped copy, and the mapping is a guess
@@ -137,10 +173,15 @@ handlers type-checked and the state honest.
    - **Nothing in either log** ⇒ the round trip never reached us. Check the URL
      you landed on: a `bad_oauth_state` failure bounces to the site root, and
      nothing on `/` reads `?error=`
-2. **Meta → Casos de uso → Personalizar → Permisos y funciones**: confirm
-   `public_profile` **and** `email` both read *Listo para probar*. Never verified.
-   Without `email`, Facebook completes the login and returns no address, and every
-   signup dies on the 083 guard. This is the most likely cause
+2. ⬅️ **THE FIX. Meta → Casos de uso → Personalizar → Permisos y funciones**:
+   **add `email`.** Confirmed absent 2026-09-06 by the dialog error above — this
+   is no longer "the most likely cause", it is the cause. `public_profile` should
+   already be there. Without `email`, Facebook completes the login and returns no
+   address, and every signup dies on the 083 guard.
+   - If, once added, it reads *Requiere revisión de la app* rather than *Listo
+     para probar*, that is the next gate — App Review. It should still work
+     immediately for accounts holding a role on the app, which is enough to
+     finish the round trip and prove the rest of the chain
 3. **Live mode** (Meta → Publicar, currently *Sin publicar*). Development mode
    only admits accounts holding a role on the app, so it works for Matias and
    fails for everyone else. Not the cause of the current failure — testing was as
