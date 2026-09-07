@@ -118,6 +118,39 @@ branding page.
 buying for this. Its details are kept below in case it is ever wanted for another
 reason — note the `next.config.ts` CSP line it would require.
 
+**Support email — done 2026-09-07.** The consent screen now shows
+`matias@quietplease.app` instead of `matiasducos9@gmail.com`. Verified on the
+live page, not in the console: the rendered markup carries
+`data-app-name="Quiet Please"` and `data-third-party-email="matias@quietplease.app"`.
+
+Three things that cost time and are worth not rediscovering:
+
+1. **The field is a dropdown, and aliases are not accepted.** Google takes only
+   the logged-in account's own address or a Google Group you manage. So the
+   address has to *be* a Google account: create one at `accounts.google.com/signup`
+   via **"Use my current email address instead"**, grant it **Editor** on
+   `quiet-please-490414`, sign in as it, then select it.
+2. **Pick "For my personal use", not "For my child".** The first attempt used
+   `support@quietplease.app` and landed as a *supervised member* of the family
+   group. Google will not let you edit the birthday of an under-13 account, and
+   will not graduate it — the only exit is deleting the account.
+3. **Deleting locks the address for ~a month.** *"This email is taken by a
+   recently deleted account"* — the address stays reserved for the ~20–30 day
+   account-recovery window. `support@quietplease.app` is blocked until roughly
+   **2026-10-07**; `matias@quietplease.app` was used instead. (This is not the
+   Gmail case, where a deleted username is retired permanently.)
+
+**Known, deliberate divergence:** the site publishes `support@quietplease.app`
+in the footer, `/terms` and `/privacy`, while the consent screen shows
+`matias@quietplease.app`. Both are on-domain and reach the operator. Swap it if
+`support@` ever frees up and it seems worth the churn.
+
+**Confirmed along the way:** `support@quietplease.app` and
+`matias@quietplease.app` are both real Hostinger mailboxes — proven by SMTP
+`RCPT TO` (250) against a negative control that was rejected (550), so the server
+is not catch-all. That closes the old "set up support@ mailbox" item in
+`legal_todo.md`.
+
 **Loose end, now cosmetic only:** `quiet-please.vercel.app` is still in
 *Dominios autorizados*. It was flagged as a verification risk; verification has
 since passed with it present, so it is no longer a risk — just an unnecessary
