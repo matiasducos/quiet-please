@@ -8,8 +8,10 @@
   ⚠️ Note `029` is a **duplicate number** — `029_collision_safe_username_trigger.sql`
   shares it. Both are applied. Left as-is because migration numbers here record the
   order they were applied; renumbering after the fact would be the bigger hazard.
-- ⬜ Set up `support@quietplease.app` mailbox — worth confirming, since it is already
-  published as the contact in the footer, `/terms` and `/privacy`
+- ✅ `support@quietplease.app` mailbox exists (confirmed 2026-09-07). Proven by an
+  SMTP `RCPT TO` probe against `mx1.hostinger.com` — 250 for `support@`, and 550
+  for a nonsense address, so the server is not catch-all and the 250 is real.
+  `matias@quietplease.app` exists too. No mail was sent (no `DATA`).
 
 ## Phase 2 — High Priority
 - ✅ Cookie consent banner (2026-08-04, PR #99) — `src/components/ConsentBanner.tsx` +
