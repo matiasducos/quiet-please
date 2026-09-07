@@ -29,6 +29,24 @@ const CATEGORY_LABEL: Record<string, string> = {
   '250': 'ATP 250',
 }
 
+/** Display name for a `tournaments.category`, e.g. "Grand Slam". */
+export function categoryLabel(category: string | null | undefined): string | null {
+  return category ? CATEGORY_LABEL[category] ?? null : null
+}
+
+/**
+ * "a" or "an" for a category label.
+ *
+ * A first-letter vowel test is enough for all four labels, but only because
+ * "ATP" is spoken "ay-tee-pee" and happens to *start* with a vowel too — the
+ * rule is really about sound, not spelling. A future label like "United Cup"
+ * ("a United Cup event") would break it, so add such a label to the exception
+ * list rather than trusting the test.
+ */
+function articleFor(label: string): 'a' | 'an' {
+  return /^[aeiou]/i.test(label) ? 'an' : 'a'
+}
+
 const SURFACE_LABEL: Record<string, string> = {
   hard: 'hard court',
   clay: 'clay',
@@ -102,6 +120,14 @@ export function editionDescription(page: EditionPage): string {
     sentences.push(
       `Full ${surface ? `${surface} ` : ''}draw with all ${players} players, round-by-round results and the complete bracket.`,
     )
+  } else if (isDone) {
+    // A finished edition with no draw is an archive row: the final and nothing
+    // else. Promising "results as they happen" here contradicted the page's own
+    // body copy, which says outright that the bracket isn't held — and a meta
+    // description that argues with the page it describes is the exact signal
+    // the thin-content filters look for. Point at the hub instead, which is
+    // where the rest of this series' history actually lives.
+    sentences.push(`Every ${series.name} champion year by year, and a free bracket for the next edition.`)
   } else if (dates) {
     sentences.push('Draw, schedule and results as they happen, plus a free bracket you can fill in.')
   }
@@ -165,12 +191,26 @@ export function buildHubMetadata(hub: SeriesHub): Metadata {
 
   const title = hubTitle(series)
 
-  const description = [
-    [name, category ? `is an ${category} event` : null, venue ? `in ${venue}` : null]
-      .filter(Boolean).join(' ') + '.',
-    hub.featuredYear ? `Follow the ${hub.featuredYear} draw and results` : null,
-    years.length > 0 ? `browse every edition${span ? ` (${span})` : ''} with past champions` : null,
-  ].filter(Boolean).join(', ').replace(/,([^,]*)$/, ' and$1') + '.'
+  // Built as two explicit sentences rather than one joined array. The array
+  // version joined with ", " over a first element that already ended in a full
+  // stop, so every hub on the site shipped "... in Paris, France., Follow the
+  // 2026 draw ...". It also hardcoded "an", giving "an Grand Slam event".
+  const opening =
+    [name, category ? `is ${articleFor(category)} ${category} event` : null, venue ? `in ${venue}` : null]
+      .filter(Boolean)
+      .join(' ') + '.'
+
+  // Champions lead: this URL is the series' history page, and the edition and
+  // slam-landing pages deliberately do not compete for that intent.
+  const spanPhrase = years.length > 1 ? ` from ${span}` : ''
+  const detail =
+    years.length > 0
+      ? hub.featuredYear
+        ? `Every champion${spanPhrase}, plus the ${hub.featuredYear} draw, results and a free bracket you can fill in.`
+        : `Every champion${spanPhrase}, with the draw and results for each edition.`
+      : 'Draw, results and a free bracket you can fill in.'
+
+  const description = `${opening} ${detail}`
 
   return {
     title: { absolute: `${title} | ${SITE_NAME}` },
