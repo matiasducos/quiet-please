@@ -7,7 +7,7 @@ import Nav from '@/components/Nav'
 import { isUuid } from '@/lib/tournaments/slug'
 import { getSeriesHub, isSeriesIndexable, resolveLegacyTournamentId, resolveRenamedSeriesSlug } from '@/lib/tournaments/series'
 import type { EditionSummary, SeriesHub } from '@/lib/tournaments/series'
-import { buildHubMetadata, buildHubJsonLd, seriesVenue } from '@/lib/tournaments/seo'
+import { buildHubMetadata, buildHubJsonLd, seriesVenue, categoryLabel } from '@/lib/tournaments/seo'
 import { STATUS_STYLES, formatDateRange } from './tournament-ui'
 
 /**
@@ -20,6 +20,23 @@ import { STATUS_STYLES, formatDateRange } from './tournament-ui'
  *
  * It also absorbs the legacy /tournaments/<uuid> links: a UUID-shaped param is
  * a tournament id and gets a permanent redirect to that edition's canonical URL.
+ *
+ * ── This page owns the series' HISTORY intent ───────────────────────────────
+ * Three URLs could answer "who won Wimbledon in 2023": this hub, the edition
+ * page, and — for the four majors — the slam landing at /wimbledon-bracket-
+ * challenge. Google only ranks one of them and files the rest away, so the
+ * split is deliberate:
+ *
+ *   /wimbledon-bracket-challenge  → "play a bracket" (transactional; the route
+ *                                   was chosen for search volume)
+ *   /tournaments/wimbledon        → "who has won it" (this page)
+ *   /tournaments/wimbledon/2026   → one edition's draw and results
+ *
+ * On 2026-09-07 this page had ZERO vocabulary of its own against the edition
+ * page — 119 shared tokens, 0 unique — which is why it sat under "Crawled –
+ * currently not indexed". Anything added here must be something neither of the
+ * other two says. The champion record below is the first of those: it is a
+ * fact about the series across time, which a single edition cannot express.
  */
 
 export const revalidate = 300
@@ -79,6 +96,7 @@ export default async function SeriesHubPage({ params }: { params: Promise<{ slug
   const featured = hub.editions.find(e => e.year === hub.featuredYear) ?? null
   const past = hub.editions.filter(e => e.year !== hub.featuredYear)
   const venue = seriesVenue(hub.series)
+  const titleHolders = countTitles(hub.editions)
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
@@ -118,9 +136,11 @@ export default async function SeriesHubPage({ params }: { params: Promise<{ slug
           <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--muted)', letterSpacing: '0.03em' }}>
             {[venue, hub.series.surface ? `${hub.series.surface} court` : null].filter(Boolean).join(' · ')}
           </p>
+          <SeriesIntro hub={hub} />
         </header>
 
         {featured && <FeaturedEdition hub={hub} edition={featured} />}
+        {titleHolders.length > 0 && <TitleRecord hub={hub} holders={titleHolders} />}
         {past.length > 0 && <PastEditions hub={hub} editions={past} />}
 
         {hub.editions.length === 0 && (
@@ -172,6 +192,124 @@ function FeaturedEdition({ hub, edition }: { hub: SeriesHub; edition: EditionSum
 }
 
 /**
+ * One line of coverage facts under the h1.
+ *
+ * Deliberately does NOT restate the venue or surface — the mono line directly
+ * above already carries those, and this page's whole problem was saying things
+ * that are said better somewhere else. What is new here is the span: how many
+ * editions this URL actually accounts for, which is the one question a history
+ * page should answer before anything else.
+ */
+function SeriesIntro({ hub }: { hub: SeriesHub }) {
+  const years = [...new Set(hub.editions.map(e => e.year))]
+  if (years.length === 0) return null
+
+  const category = categoryLabel(hub.series.category)
+  const from = Math.min(...years)
+  const to = Math.max(...years)
+  const span = from === to ? `${from}` : `${from}–${to}`
+  const count = years.length
+
+  return (
+    <p style={{ color: 'var(--muted)', fontSize: '0.92rem', lineHeight: 1.7, marginTop: '12px', maxWidth: '55ch' }}>
+      {category ? `${category}. ` : ''}
+      {count === 1 ? 'One edition' : `${count} editions`} on record, {span}, with the champion of each.
+    </p>
+  )
+}
+
+type TitleHolder = {
+  externalId: string
+  name: string
+  country: string | null
+  titles: number
+  /** Winning years, newest first. */
+  years: number[]
+}
+
+/**
+ * Multiple-time champions, most titles first.
+ *
+ * This is the one thing on the hub that neither the edition pages nor the slam
+ * landing can say: it is a fact about the series ACROSS time, and it only
+ * exists once you hold several editions. That makes it the right anchor for
+ * the "who has won the most French Opens" family of queries.
+ *
+ * Returns empty when nobody has won twice — the list would then be the
+ * champions table below re-sorted, which is the duplication this page is
+ * supposed to be getting out of.
+ *
+ * Keyed on the feed's player id rather than the display name: `resolveMissing-
+ * Players` can name the same person "C. Alcaraz" in one row and leave another
+ * unresolved, and grouping on the rendered string would split their count.
+ * ATP and WTA champions are ranked together, matching the editions table —
+ * a player only ever appears on one tour, so no count is ever merged across.
+ */
+function countTitles(editions: EditionSummary[]): TitleHolder[] {
+  const byPlayer = new Map<string, TitleHolder>()
+
+  for (const edition of editions) {
+    // An unfinished edition has no F-round result and so no champion yet.
+    if (edition.status !== 'completed') continue
+    const champion = edition.champion
+    if (!champion?.name) continue
+
+    const existing = byPlayer.get(champion.externalId)
+    if (existing) {
+      existing.titles += 1
+      existing.years.push(edition.year)
+    } else {
+      byPlayer.set(champion.externalId, {
+        externalId: champion.externalId,
+        name: champion.name,
+        country: champion.country,
+        titles: 1,
+        years: [edition.year],
+      })
+    }
+  }
+
+  return [...byPlayer.values()]
+    .filter(holder => holder.titles > 1)
+    .map(holder => ({ ...holder, years: [...holder.years].sort((a, b) => b - a) }))
+    .sort((a, b) => b.titles - a.titles || b.years[0] - a.years[0])
+}
+
+function TitleRecord({ hub, holders }: { hub: SeriesHub; holders: TitleHolder[] }) {
+  return (
+    <section className="mb-10">
+      <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', marginBottom: '0.75rem' }}>
+        Most {hub.series.name} titles
+      </h2>
+
+      <ul
+        className="rounded-sm border bg-white"
+        style={{ borderColor: 'var(--chalk-dim)', listStyle: 'none', padding: 0, margin: 0 }}
+      >
+        {holders.map(holder => (
+          <li
+            key={holder.externalId}
+            className="flex items-baseline gap-3 px-4 py-3 border-b last:border-0 flex-wrap"
+            style={{ borderColor: 'var(--chalk-dim)', fontSize: '0.9rem' }}
+          >
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--court)', minWidth: '3.5rem' }}>
+              {holder.titles} {holder.titles === 1 ? 'title' : 'titles'}
+            </span>
+            <span>
+              {holder.name}
+              {holder.country ? <span style={{ color: 'var(--muted)' }}> ({holder.country})</span> : null}
+            </span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--muted)' }}>
+              {holder.years.join(', ')}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+/**
  * Past editions with winners.
  *
  * The grid is wrapped in overflow-x-auto with a min-width inner block, so on a
@@ -182,7 +320,7 @@ function PastEditions({ hub, editions }: { hub: SeriesHub; editions: EditionSumm
   return (
     <section>
       <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', marginBottom: '0.75rem' }}>
-        Past {hub.series.name} winners
+        Every {hub.series.name} champion
       </h2>
 
       <div className="overflow-x-auto rounded-sm border bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>

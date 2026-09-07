@@ -105,12 +105,19 @@ export default async function SlamLanding({
    * The hub already computes the champion per edition, so this reuses that
    * rather than adding a second way to derive the same fact. Cached and tagged
    * with the rest of the series data, so a corrected result shows here too.
+   *
+   * THREE, not six, since 2026-09-07. At six this list was the series hub's
+   * champion table reproduced in full, on a page that outranks it — so the two
+   * URLs competed for "<slam> winners" and Google indexed neither reliably.
+   * The split now is: this page answers "<slam> bracket" and shows just enough
+   * history to be credible; /tournaments/<slam> answers "who has won it" and
+   * carries the full record. Widening this back re-creates the collision.
    */
   const hub = seriesSlug ? await getSeriesHub(seriesSlug) : null
   const pastChampions = (hub?.editions ?? [])
     .filter(e => e.status === 'completed' && e.champion?.name)
     .sort((a, b) => b.year - a.year)
-    .slice(0, 6)
+    .slice(0, 3)
 
   // Points at /play, not /predict.
   //

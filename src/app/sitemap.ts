@@ -20,11 +20,31 @@ export const revalidate = 3600
  */
 const MAX_EDITION_ROWS = 900
 
+type DrawEmbed = { synced_at: string | null }
+
 type EditionRow = {
   starts_year: number | null
+  status: string | null
   updated_at: string | null
   tournament_series: { slug: string; slug_reviewed: boolean; updated_at: string | null } | null
-  draws: { synced_at: string | null }[] | null
+  /**
+   * PostgREST embeds a to-ONE relation as an OBJECT, not an array. `draws` has
+   * a unique `tournament_id`, so this arrives as `{ synced_at }` or `null`.
+   *
+   * It was typed as an array here until 2026-09-07, which made the
+   * `row.draws?.[0]?.synced_at` below silently `undefined` on every single row
+   * — so `lastModified` never once reflected a draw sync, with no error and no
+   * type complaint (the hand-written type was simply wrong, and every Supabase
+   * call in this repo returns `any`). Typed as a union so that if the relation
+   * ever does become to-many, this degrades instead of quietly regressing.
+   */
+  draws: DrawEmbed | DrawEmbed[] | null
+}
+
+/** Normalises PostgREST's to-one object / to-many array embed to an array. */
+function drawsOf(embed: EditionRow['draws']): DrawEmbed[] {
+  if (!embed) return []
+  return Array.isArray(embed) ? embed : [embed]
 }
 
 function latest(...dates: (string | null | undefined)[]): Date | undefined {
@@ -69,7 +89,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const { data, error } = await supabase
     .from('tournaments')
     .select(
-      'starts_year, updated_at, tournament_series!inner(slug, slug_reviewed, updated_at), draws(synced_at)',
+      'starts_year, status, updated_at, tournament_series!inner(slug, slug_reviewed, updated_at), draws(synced_at)',
     )
     .not('series_id', 'is', null)
     .order('starts_year', { ascending: false })
@@ -85,7 +105,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const rows = (data ?? []) as unknown as EditionRow[]
 
   // One entry per (series, year): the two tours of an edition share a URL.
-  const editions = new Map<string, { slug: string; year: number; lastModified?: Date }>()
+  const editions = new Map<
+    string,
+    { slug: string; year: number; lastModified?: Date; indexable: boolean }
+  >()
   // Hub lastModified is the most recent change across all of its editions.
   const hubs = new Map<string, { slug: string; lastModified?: Date }>()
 
@@ -96,8 +119,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // that explicitly ask not to be indexed.
     if (!series?.slug_reviewed || row.starts_year == null) continue
 
-    const drawSyncedAt = row.draws?.[0]?.synced_at ?? null
+    const draws = drawsOf(row.draws)
+    const drawSyncedAt = draws[0]?.synced_at ?? null
     const changed = latest(row.updated_at, drawSyncedAt)
+
+    // Mirrors isEditionIndexable() in lib/tournaments/series.ts: a finished
+    // edition with no draw carries `noindex`, and listing a noindex URL only
+    // spends crawl budget to be told no. A draw ROW is the proxy for a bracket
+    // here — reading bracket_data for 900 rows to count matches is not worth
+    // it, and the only rows with a draw but no matches would be a sync that
+    // failed mid-write.
+    const hasDraw = draws.length > 0
+    const indexable = row.status !== 'completed' || hasDraw
 
     const editionKey = `${series.slug}/${row.starts_year}`
     const existingEdition = editions.get(editionKey)
@@ -108,6 +141,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         existingEdition?.lastModified?.toISOString(),
         changed?.toISOString(),
       ),
+      // ATP and WTA share one URL, so the edition is listed if either tour
+      // has something to show.
+      indexable: (existingEdition?.indexable ?? false) || indexable,
     })
 
     const existingHub = hubs.get(series.slug)
@@ -132,16 +168,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.9,
   }))
 
-  const editionRoutes: MetadataRoute.Sitemap = [...editions.values()].map(edition => {
-    const isCurrent = edition.year >= currentYear
-    return {
-      url: `${SITE_URL}/tournaments/${edition.slug}/${edition.year}`,
-      lastModified: edition.lastModified,
-      // Past editions are frozen archives; this season's still move.
-      changeFrequency: isCurrent ? 'daily' : 'yearly',
-      priority: isCurrent ? 0.8 : 0.5,
-    }
-  })
+  const editionRoutes: MetadataRoute.Sitemap = [...editions.values()]
+    .filter(edition => edition.indexable)
+    .map(edition => {
+      const isCurrent = edition.year >= currentYear
+      return {
+        url: `${SITE_URL}/tournaments/${edition.slug}/${edition.year}`,
+        lastModified: edition.lastModified,
+        // Past editions are frozen archives; this season's still move.
+        changeFrequency: isCurrent ? 'daily' : 'yearly',
+        priority: isCurrent ? 0.8 : 0.5,
+      }
+    })
 
   return [...staticRoutes, ...hubRoutes, ...editionRoutes]
 }

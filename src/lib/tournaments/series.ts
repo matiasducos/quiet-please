@@ -524,10 +524,27 @@ export async function resolveTournamentParam(
  * JSON-LD and nothing that answers a dated query. Draw-less upcoming editions
  * ARE indexed on purpose — a dated future event is exactly what Google's event
  * results want, and they carry the previous edition's champion as real content.
+ *
+ * A FINISHED edition with no draw is the opposite case and is deliberately not
+ * indexed. All it can say is who won and who they lost to, over a body that
+ * states outright that the bracket isn't held — perhaps forty words of unique
+ * content, and the same forty already on the series hub's champion table. On
+ * 2026-09-07 Search Console had eight such URLs under "Crawled – currently not
+ * indexed", which is Google reaching this conclusion on its own; asking for the
+ * index and being refused is strictly worse than not asking. The hub owns this
+ * intent instead.
+ *
+ * This is reversible and per-edition: import a real draw and the page becomes
+ * indexable again on the next revalidate, with no code change. `follow` stays
+ * on at the call site, so the links out of these pages still carry.
  */
 export function isEditionIndexable(page: EditionPage): boolean {
   if (!page.series.slug_reviewed) return false
-  return page.tours.some(t => Boolean(t.tournament.starts_at))
+  if (!page.tours.some(t => Boolean(t.tournament.starts_at))) return false
+
+  const isDone = page.tours.every(t => t.tournament.status === 'completed')
+  const hasDraw = page.tours.some(t => (t.bracket?.matches?.length ?? 0) > 0)
+  return !isDone || hasDraw
 }
 
 export function isSeriesIndexable(hub: SeriesHub): boolean {
