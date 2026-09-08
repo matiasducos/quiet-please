@@ -421,12 +421,54 @@ export async function sendDrawReminderEmails(recipients: DrawReminderEmail[]): P
   return sent
 }
 
+/**
+ * One decided match, from the recipient's side of it.
+ *
+ * The counterpart of PointsAwardedUpcomingMatch, and deliberately narrower: a
+ * finished tie has no crowd line to quote and nothing to act on, so it carries
+ * the result, the recipient's own pick and what it paid, and nothing else.
+ */
+export interface PointsAwardedResultMatch {
+  winner: string
+  loser: string
+  /**
+   * Which side the recipient had. `null` does NOT mean "no pick" — these rows
+   * exist only where a pick was made. It means the pick named neither of these
+   * two players, which is the ordinary state of a bracket: a prediction is
+   * filled in for the whole draw up front, so a later-round pick routinely
+   * names someone who lost before they got there. (The other route to it is a
+   * draw overwritten by a resolved qualifier or a withdrawal.)
+   */
+  picked: 'winner' | 'loser' | null
+  /**
+   * Who they had, for the `picked: null` case only — worth naming, because
+   * "your player never got here" is the explanation for a tie that paid
+   * nothing. null when the id resolves to no one, which is the overwritten-draw
+   * case: the pick names a player the draw no longer contains.
+   */
+  pickedName?: string | null
+  /** What this tie paid THIS recipient — 0 on a losing pick. */
+  points: number
+}
+
+/** How many decided ties fit under one round's summary line. */
+export const EMAIL_RESULTS_CAPACITY = 4
+
 export interface PointsAwardedRoundBreakdown {
   round: string
   label: string
   matches: number
   wins: number
   points: number
+  /**
+   * The ties behind `matches` and `wins`, capped at EMAIL_RESULTS_CAPACITY and
+   * ordered by what they paid. Optional because it is an expansion of a line
+   * that already reads correctly without it — an older payload, or a run that
+   * could not resolve player names, renders the summary alone.
+   */
+  results?: PointsAwardedResultMatch[]
+  /** Decided ties of this round left out by the cap. */
+  resultsHidden?: number
 }
 
 export interface PointsAwardedRank {
@@ -579,20 +621,90 @@ function rankLine(rank: PointsAwardedRank | null): string {
         </tr>`
 }
 
+/**
+ * The decided ties under one round's summary line.
+ *
+ * Shaped like `upcomingBlock` on purpose — same two-line rhythm, same rule that
+ * the recipient's own player is named in WORDS rather than left to colour and
+ * weight, which are the first things an email client throws away. The
+ * difference is what the second line carries: up next it is a nudge, here it is
+ * a receipt.
+ */
+function resultLines(r: PointsAwardedRoundBreakdown): string {
+  const results = r.results ?? []
+  if (!results.length) return ''
+  const rows = results
+    .map((m, i) => {
+      const yours =
+        m.picked === 'winner'
+          ? `<span style="color:#1a6b3c;">You picked ${esc(m.winner)}</span>`
+          : m.picked === 'loser'
+            ? `<span style="color:#b3392c;">You picked ${esc(m.loser)}</span>`
+            : m.pickedName
+            ? `<span style="color:#8a867e;">You picked ${esc(m.pickedName)}, who never reached this match</span>`
+            : `<span style="color:#8a867e;">Your pick is no longer in the draw</span>`
+      // Only a paying tie states a figure. "0 pts" on every losing line turns
+      // the block into a column of zeroes, and the round total above already
+      // says what the round was worth.
+      const paid = m.points > 0 ? `<span style="color:#1a6b3c;">+${m.points} pts</span>` : null
+      return `
+        <tr>
+          <td style="padding:${i === 0 ? 0 : 7}px 0 0;font-family:Georgia,serif;font-size:13px;color:#0d0d0d;">
+            ${esc(m.winner)} <span style="color:#8a867e;">def.</span> ${esc(m.loser)}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:1px 0 0;font-family:Georgia,serif;font-size:12px;color:#8a867e;">
+            ${[yours, paid].filter(Boolean).join(' &middot; ')}
+          </td>
+        </tr>`
+    })
+    .join('')
+  const hidden = r.resultsHidden ?? 0
+  // Worded away from the "up next" overflow line it sits near: both can appear
+  // in one tournament block, and two identical sentences under two different
+  // headings read as a repeat rather than as two counts.
+  const more =
+    hidden > 0
+      ? `
+        <tr>
+          <td style="padding:5px 0 0;font-family:Georgia,serif;font-size:12px;color:#8a867e;">
+            + ${hidden} more decided in this round
+          </td>
+        </tr>`
+      : ''
+  // Nested in its own table rather than continuing the round's two-column one:
+  // the rule that closes the round then sits on a cell with content in it,
+  // which is the difference between a divider that survives Outlook and one
+  // that collapses to nothing.
+  return `
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+        ${rows}${more}
+      </table>`
+}
+
 function tournamentBlock(t: PointsAwardedTournament): string {
   const roundRows = t.rounds
-    .map(
-      r => `
+    .map(r => {
+      // The rule under the summary line moves to the bottom of the group when
+      // there are ties to list, so it still separates one round from the next
+      // instead of cutting the round in half.
+      const detail = resultLines(r)
+      const rule = 'border-bottom:1px solid #e8e3d8;'
+      return `
         <tr>
           <td style="padding:7px 0 0;font-family:Georgia,serif;font-size:13px;color:#6b6b6b;">${r.label}</td>
           <td align="right" style="padding:7px 0 0;font-family:Georgia,serif;font-size:13px;color:#0d0d0d;white-space:nowrap;">${r.points} pts</td>
         </tr>
         <tr>
-          <td colspan="2" style="padding:0 0 7px;font-family:Georgia,serif;font-size:12px;color:#8a867e;border-bottom:1px solid #e8e3d8;">
+          <td colspan="2" style="padding:0 0 7px;font-family:Georgia,serif;font-size:12px;color:#8a867e;${detail ? '' : rule}">
             ${r.matches} match${r.matches === 1 ? '' : 'es'} played (${r.wins} winner${r.wins === 1 ? '' : 's'})
           </td>
-        </tr>`,
-    )
+        </tr>${detail ? `
+        <tr>
+          <td colspan="2" style="padding:0 0 9px;${rule}">${detail}</td>
+        </tr>` : ''}`
+    })
     .join('')
   return `
       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-bottom:8px;">

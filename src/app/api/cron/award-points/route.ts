@@ -4,8 +4,8 @@ import { revalidateTag } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPointsForRound, calculateStreakMultiplier, committedPicks, buildFeedMap } from '@/lib/tennis'
 import type { DrawMatch, Round, TournamentCategory } from '@/lib/tennis'
-import { sendPointsAwardedEmails, sendTournamentCompleteEmails, isBotEmail } from '@/lib/email'
-import type { PointsAwardedTournament } from '@/lib/email'
+import { sendPointsAwardedEmails, sendTournamentCompleteEmails, isBotEmail, EMAIL_RESULTS_CAPACITY } from '@/lib/email'
+import type { PointsAwardedTournament, PointsAwardedResultMatch } from '@/lib/email'
 import { buildPointsEmailUpcoming, personaliseUpcoming, type RecipientPicks } from '@/lib/email-upcoming'
 import { isEmailEnabled, type EmailPreferences } from '@/lib/email-preferences'
 import { ROUND_LABEL, ROUND_ORDER } from '@/lib/tennis/my-tournament'
@@ -27,6 +27,24 @@ const RECAPS_PER_RUN = 3
  * mail production users a localhost link.
  */
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://quietplease.app'
+
+/** One decided tie of a recipient's, as the scoring loop knows it. */
+interface RoundBucketDetail {
+  winnerId: string
+  loserId: string | null
+  /** The recipient's pick — an external id, which may name neither of the two. */
+  pickedId: string
+  /** What this tie paid THIS recipient, filled in on the winning path. */
+  points: number
+}
+
+/** One round of one tournament, for one recipient's email. */
+interface RoundBucket {
+  points: number
+  matches: number
+  wins: number
+  details: RoundBucketDetail[]
+}
 
 /**
  * One row of `tournament_result_email_batch` (migration 090).
@@ -105,7 +123,7 @@ export async function GET(request: Request) {
           // status/ends_at ride along on the join the query already does: the
           // achievement phase below needs them, and fetching them per result
           // was costing one sequential round trip per match result.
-          .select('id, tournament_id, round, external_match_id, winner_external_id, scored_at, tournaments(id, category, starts_at, status, ends_at)')
+          .select('id, tournament_id, round, external_match_id, winner_external_id, loser_external_id, scored_at, tournaments(id, category, starts_at, status, ends_at)')
           .or('score.neq.BYE,score.is.null')
           .order('played_at', { ascending: true })
           .range(from, from + RESULT_PAGE - 1)
@@ -274,7 +292,12 @@ export async function GET(request: Request) {
     // `matches` = predicted matches processed for the FIRST time in this run
     // (win or loss), `wins` = how many of those were correct; only wins add
     // `points`. Scoped by match_results.scored_at — see newResultIds below.
-    const userTournamentRounds: Record<string, Record<string, Record<string, { points: number; matches: number; wins: number }>>> = {}
+    // `details` is the same set of ties the counters count, kept per tie so the
+    // email can show the results behind the line rather than only its
+    // arithmetic. Ids, not names: the id set is the run's decided ties, which
+    // is a handful however many brackets picked them, so it is resolved once in
+    // step 10 rather than per prediction.
+    const userTournamentRounds: Record<string, Record<string, Record<string, RoundBucket>>> = {}
     // Match results this run is processing for the first time. Losing picks
     // leave no trace in point_ledger, so without this marker every past loss
     // would be re-counted into the email breakdown on every single run.
@@ -345,6 +368,10 @@ export async function GET(request: Request) {
         // Per-match check: the pick for THIS specific match must match the winner
         const didPickWinnerForThisMatch = userPick === result.winner_external_id
 
+        // Filled in by the block below when this tie is recorded, and read
+        // again on the points path — declared here so both see the same row.
+        let detailRow: RoundBucketDetail | null = null
+
         // Record the win/loss outcome for the email breakdown regardless of
         // correctness — only wins earn points (below), but both count as a
         // match "played and predicted" this run.
@@ -360,9 +387,18 @@ export async function GET(request: Request) {
           if (!userTournamentRounds[prediction.user_id]) userTournamentRounds[prediction.user_id] = {}
           if (!userTournamentRounds[prediction.user_id][result.tournament_id]) userTournamentRounds[prediction.user_id][result.tournament_id] = {}
           const roundBucket = userTournamentRounds[prediction.user_id][result.tournament_id]
-          if (!roundBucket[result.round]) roundBucket[result.round] = { points: 0, matches: 0, wins: 0 }
+          if (!roundBucket[result.round]) roundBucket[result.round] = { points: 0, matches: 0, wins: 0, details: [] }
           roundBucket[result.round].matches += 1
           if (didPickWinnerForThisMatch) roundBucket[result.round].wins += 1
+          // Held by reference so the points line below can fill in what this
+          // tie paid — the multiplier is not known until after the streak walk.
+          detailRow = {
+            winnerId: result.winner_external_id,
+            loserId: result.loser_external_id ?? null,
+            pickedId: userPick,
+            points: 0,
+          }
+          roundBucket[result.round].details.push(detailRow)
         }
 
         if (!didPickWinnerForThisMatch) continue
@@ -414,6 +450,7 @@ export async function GET(request: Request) {
 
           // Bucket already exists — created above when this match's win/loss was recorded.
           userTournamentRounds[prediction.user_id][result.tournament_id][result.round].points += totalPoints
+          if (detailRow) detailRow.points = totalPoints
         }
       }
     }
@@ -660,6 +697,36 @@ export async function GET(request: Request) {
         }
       }
 
+      // Names for the ties the email lists. Bounded by the run's decided
+      // matches, not by its recipients — every bracket that picked the same tie
+      // resolves to the same two names — so this is one small query however
+      // large the field gets. `players.external_id` is unique, which is what
+      // makes a flat id → name map the right shape.
+      const playerIds = [...new Set(
+        Object.values(userTournamentRounds)
+          .flatMap(tRounds => Object.values(tRounds))
+          .flatMap(rounds => Object.values(rounds))
+          .flatMap(b => b.details)
+          .flatMap(d => [d.winnerId, d.loserId, d.pickedId])
+          .filter((id): id is string => !!id),
+      )]
+      const playerNames = new Map<string, string>()
+      for (let i = 0; i < playerIds.length; i += 200) {
+        const { data: players, error: playersErr } = await supabase
+          .from('players')
+          .select('external_id, name')
+          .in('external_id', playerIds.slice(i, i + 200))
+          .returns<Array<{ external_id: string; name: string }>>()
+        if (playersErr) {
+          // Logged, not thrown: an unresolved name drops that tie from the
+          // block below and leaves the round's summary line — which is the
+          // whole email's actual job — untouched.
+          console.error('[award-points] player name lookup failed:', playersErr)
+          continue
+        }
+        for (const pl of players ?? []) playerNames.set(pl.external_id, pl.name)
+      }
+
       for (const [userId, tRounds] of Object.entries(userTournamentRounds)) {
         const tournaments: PointsAwardedTournament[] = []
         let correctPicks = 0
@@ -683,13 +750,50 @@ export async function GET(request: Request) {
           const roundOrder: readonly string[] = ROUND_ORDER
           const rounds = Object.entries(roundBucket)
             .sort(([a], [b]) => roundOrder.indexOf(a) - roundOrder.indexOf(b))
-            .map(([round, { points, matches, wins }]) => ({
-              round,
-              label: ROUND_LABEL[round] ?? round,
-              matches,
-              wins,
-              points,
-            }))
+            .map(([round, { points, matches, wins, details }]) => {
+              // A tie whose players cannot both be named is dropped rather than
+              // rendered with an id in it, and falls into the "+ N more" count
+              // alongside the ones the cap left out — so the disclosure covers
+              // every tie missing from the list, not only the capped ones.
+              const renderable: PointsAwardedResultMatch[] = details.flatMap(d => {
+                const winner = playerNames.get(d.winnerId)
+                const loser = d.loserId ? playerNames.get(d.loserId) : undefined
+                if (!winner || !loser) return []
+                const picked = d.pickedId === d.winnerId ? 'winner' as const
+                  : d.pickedId === d.loserId ? 'loser' as const
+                  : null
+                return [{
+                  winner,
+                  loser,
+                  // Neither side is the common case, not the exotic one: a
+                  // bracket names a winner for every tie in the draw up front,
+                  // so most later-round picks are on a player who lost before
+                  // reaching them. Naming that player is the explanation for a
+                  // tie that paid nothing.
+                  picked,
+                  pickedName: picked === null ? playerNames.get(d.pickedId) ?? null : null,
+                  points: d.points,
+                }]
+              })
+              // What paid comes first — every tie in a round shares a base, so
+              // this orders by the streak multiplier, the part worth reading.
+              // Then the ties they actually had a runner in, and only then the
+              // ones their player never reached, which are the least
+              // interesting thing that can be said about a round.
+              const rank = (m: PointsAwardedResultMatch) => (m.picked === null ? 1 : 0)
+              renderable.sort((a, b) =>
+                b.points - a.points || rank(a) - rank(b) || a.winner.localeCompare(b.winner))
+              const shown = renderable.slice(0, EMAIL_RESULTS_CAPACITY)
+              return {
+                round,
+                label: ROUND_LABEL[round] ?? round,
+                matches,
+                wins,
+                points,
+                results: shown,
+                resultsHidden: details.length - shown.length,
+              }
+            })
           correctPicks += rounds.reduce((acc, r) => acc + r.wins, 0)
 
           const rank = rankByTournament[tId]?.byUser[userId]
