@@ -600,8 +600,8 @@ function tournamentBlock(t: PointsAwardedTournament): string {
           <td style="padding:0 0 2px;font-family:Georgia,serif;font-size:16px;color:#0d0d0d;">
             ${t.flagEmoji ? `${t.flagEmoji} ` : ''}${t.tournamentName}
           </td>
-          <td align="right" style="padding:0 0 2px;font-family:Georgia,serif;font-size:16px;color:#1a6b3c;white-space:nowrap;">
-            +${t.points} pts
+          <td align="right" style="padding:0 0 2px;font-family:Georgia,serif;font-size:16px;color:${t.points > 0 ? '#1a6b3c' : '#8a867e'};white-space:nowrap;">
+            ${t.points > 0 ? `+${t.points}` : '0'} pts
           </td>
         </tr>
         ${rankLine(t.rank)}
@@ -617,10 +617,21 @@ export interface PointsAwardedEmail {
   correctPicks: number
   tournaments: PointsAwardedTournament[]
   unsubscribeToken: string
+  /** Only used to build the preferences deep link; the mail reads fine without it. */
+  username?: string | null
 }
 
 export function pointsAwardedSubject(opts: PointsAwardedEmail): string {
-  return opts.tournaments.length === 1
+  const single = opts.tournaments.length === 1
+  // A zero-point run is a real result, not an empty one — the recipient played
+  // matches and lost them. It gets its own line rather than "+0 pts", which
+  // reads as a bug in the product rather than a bad week at the tennis.
+  if (opts.totalPoints === 0) {
+    return single
+      ? `No points this time — ${opts.tournaments[0].tournamentName}`
+      : `No points across ${opts.tournaments.length} tournaments`
+  }
+  return single
     ? `+${opts.totalPoints} pts — ${opts.tournaments[0].tournamentName}`
     : `+${opts.totalPoints} pts across ${opts.tournaments.length} tournaments`
 }
@@ -633,19 +644,35 @@ export function pointsAwardedSubject(opts: PointsAwardedEmail): string {
  */
 export function pointsAwardedHtml(opts: PointsAwardedEmail): string {
   const single = opts.tournaments.length === 1
-  const subLine = single
-    ? `${opts.correctPicks} correct pick${opts.correctPicks === 1 ? '' : 's'}`
-    : `Across ${opts.tournaments.length} tournaments · ${opts.correctPicks} correct pick${opts.correctPicks === 1 ? '' : 's'}`
+  const scored = opts.totalPoints > 0
+  // Only stated when there is nothing else to state. A scored email leads with
+  // its points and the correct picks that produced them; a blank one has to
+  // answer "why am I being told this?", and the answer is the matches that
+  // were decided while the recipient had a pick on them.
+  const matchesPlayed = opts.tournaments
+    .flatMap(t => t.rounds)
+    .reduce((acc, r) => acc + r.matches, 0)
+  const subLine = [
+    single ? null : `Across ${opts.tournaments.length} tournaments`,
+    scored
+      ? `${opts.correctPicks} correct pick${opts.correctPicks === 1 ? '' : 's'}`
+      : `${matchesPlayed} match${matchesPlayed === 1 ? '' : 'es'} played`,
+  ]
+    .filter(Boolean)
+    .join(' · ')
   // Deep-link to the single tournament when there's only one; otherwise send
   // users to their dashboard where all affected tournaments are visible.
   const ctaHref = single
     ? `${BASE_URL}/tournaments/${opts.tournaments[0].tournamentId}`
     : `${BASE_URL}/dashboard`
+  const prefsHref = opts.username
+    ? `${BASE_URL}/profile/${encodeURIComponent(opts.username)}#email-preferences`
+    : undefined
 
   return `
       <div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#f5f2eb;">
         <p style="font-size:12px;letter-spacing:0.08em;color:#6b6b6b;text-transform:uppercase;margin-bottom:24px;">Quiet Please</p>
-        <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 6px;">+${opts.totalPoints} points earned.</h1>
+        <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 6px;">${scored ? `+${opts.totalPoints} points earned.` : 'No points this time.'}</h1>
         <p style="color:#6b6b6b;font-size:14px;margin:0 0 28px;">${subLine}</p>
         ${opts.tournaments.map(tournamentBlock).join('')}
         <div>
@@ -654,19 +681,44 @@ export function pointsAwardedHtml(opts: PointsAwardedEmail): string {
             View your picks →
           </a>
         </div>
-        ${unsubscribeFooter(opts.unsubscribeToken)}
+        ${unsubscribeFooter(opts.unsubscribeToken, 'points_awarded', prefsHref)}
       </div>`
 }
 
-export async function sendPointsAwardedEmail(opts: PointsAwardedEmail) {
-  if (!canSend()) return
-  await resend!.emails.send({
-    from: FROM,
-    replyTo: REPLY_TO,
-    to: opts.to,
-    subject: pointsAwardedSubject(opts),
-    html: pointsAwardedHtml(opts),
-  })
+/**
+ * Batched for the same reason `sendDrawOpenEmails` is, and for a newer one: the
+ * recipient set is no longer "people who scored" but "people whose picks were
+ * decided", which on a full round is most of the field. One HTTP round trip per
+ * address did not survive that on a 60s budget.
+ *
+ * Returns the number of messages accepted, so a fan-out that quietly reached
+ * nobody shows up in the cron log instead of looking like a quiet week.
+ */
+export async function sendPointsAwardedEmails(recipients: PointsAwardedEmail[]): Promise<number> {
+  if (!canSend() || recipients.length === 0) return 0
+  let sent = 0
+  for (let i = 0; i < recipients.length; i += RESEND_BATCH_LIMIT) {
+    const chunk = recipients.slice(i, i + RESEND_BATCH_LIMIT)
+    try {
+      const { error } = await resend!.batch.send(
+        chunk.map(r => ({
+          from: FROM,
+          replyTo: REPLY_TO,
+          to: r.to,
+          subject: pointsAwardedSubject(r),
+          html: pointsAwardedHtml(r),
+        })),
+      )
+      if (error) {
+        console.error('[email] points-awarded batch failed:', error.message)
+        continue
+      }
+      sent += chunk.length
+    } catch (e) {
+      console.error('[email] points-awarded batch threw:', e)
+    }
+  }
+  return sent
 }
 
 /* ── Tournament complete ──────────────────────────────────────────────────── */
