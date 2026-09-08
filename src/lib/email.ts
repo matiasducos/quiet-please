@@ -597,7 +597,7 @@ function upcomingBlock(u: PointsAwardedUpcoming): string {
   return `
       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 24px;">
         <tr>
-          <td style="padding:0 0 2px;font-family:Georgia,serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#6b6b6b;">
+          <td style="padding:0 0 2px;font-family:Georgia,serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#0d0d0d;font-weight:bold;">
             Up next &#8212; ${esc(u.roundLabel)}
           </td>
         </tr>
@@ -685,12 +685,19 @@ function resultLines(r: PointsAwardedRoundBreakdown): string {
 
 function tournamentBlock(t: PointsAwardedTournament): string {
   const roundRows = t.rounds
-    .map(r => {
+    .map((r, i) => {
       // The rule under the summary line moves to the bottom of the group when
       // there are ties to list, so it still separates one round from the next
       // instead of cutting the round in half.
       const detail = resultLines(r)
-      const rule = 'border-bottom:1px solid #e8e3d8;'
+      // Two weights, one job each. A hairline in the section's own grey parts
+      // one round from the next; the last one closes the section — everything
+      // above it is what happened, everything below is what is still to play —
+      // so it is the email's only heavy rule and carries the text colour.
+      const rule =
+        i === t.rounds.length - 1
+          ? 'border-bottom:2px solid #0d0d0d;'
+          : 'border-bottom:1px solid #e8e3d8;'
       return `
         <tr>
           <td style="padding:7px 0 0;font-family:Georgia,serif;font-size:13px;color:#6b6b6b;">${r.label}</td>
@@ -718,7 +725,7 @@ function tournamentBlock(t: PointsAwardedTournament): string {
         </tr>
         ${rankLine(t.rank)}
       </table>
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 ${t.upcoming ? '16px' : '24px'};border-top:1px solid #e8e3d8;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 ${t.upcoming ? '20px' : '24px'};border-top:1px solid #e8e3d8;">
         ${roundRows}
       </table>${t.upcoming ? upcomingBlock(t.upcoming) : ''}`
 }
