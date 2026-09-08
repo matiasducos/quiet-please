@@ -9,7 +9,8 @@
  * exported `pointsAwardedHtml` — not a copy of it — over fixtures chosen to hit
  * the branches that are easy to get wrong: a tournament with nothing left to
  * play, a tie nobody has picked, a multi-tournament run, a player name
- * carrying an ampersand, and a run that scored nothing at all.
+ * carrying an ampersand, a run that scored nothing at all, and a round with
+ * more decided ties than the list can hold.
  *
  *   node scripts/preview-points-email.mjs
  *   → writes points-email-preview.html and prints the path
@@ -59,7 +60,7 @@ Module._resolveFilename = function (request, ...rest) {
 }
 
 const require = createRequire(import.meta.url)
-const { pointsAwardedHtml, pointsAwardedSubject } = require(join(out, 'lib/email.js'))
+const { pointsAwardedHtml, pointsAwardedSubject, EMAIL_RESULTS_CAPACITY } = require(join(out, 'lib/email.js'))
 // Pure, and never reached by the render below — it is what decides which side
 // of a tie the recipient is on, so it is checked directly.
 const { personaliseUpcoming } = require(join(out, 'lib/email-upcoming.js'))
@@ -67,7 +68,17 @@ const { personaliseUpcoming } = require(join(out, 'lib/email-upcoming.js'))
 // Round labels are ROUND_LABEL's, not prose: the real email says "R16" and
 // "Quarterfinal", and a fixture that said "Round of 16" would have this preview
 // quietly disagreeing with the thing it exists to show.
-const rounds = (...rows) => rows.map(([round, label, matches, wins, points]) => ({ round, label, matches, wins, points }))
+const rounds = (...rows) =>
+  rows.map(([round, label, matches, wins, points, results, resultsHidden]) => ({
+    round, label, matches, wins, points,
+    ...(results ? { results, resultsHidden: resultsHidden ?? 0 } : {}),
+  }))
+// [winner, loser, picked, points, pickedName] — `picked` is 'winner' | 'loser'
+// | null, and null is a pick on a player who never reached the tie, not the
+// absence of one. pickedName is who that was, or null when the draw no longer
+// contains them.
+const ties = (...rows) =>
+  rows.map(([winner, loser, picked, points, pickedName]) => ({ winner, loser, picked, points, pickedName: pickedName ?? null }))
 
 const CASES = [
   {
@@ -84,7 +95,16 @@ const CASES = [
           flagEmoji: '🇺🇸',
           points: 380,
           rank: { position: 12, total: 91, movement: 4 },
-          rounds: rounds(['R16', 'R16', 8, 6, 380]),
+          rounds: rounds(['R16', 'R16', 8, 6, 380, ties(
+            // A streak-multiplied tie sorts above a flat one, which is the
+            // whole reason the list is ordered by what it paid.
+            ['J. Sinner', 'A. Rublev', 'winner', 180],
+            ['C. Alcaraz', 'A. Zverev', 'winner', 90],
+            ['B. Shelton', 'H. Rune', 'loser', 0],
+            // The ordinary case, and the reason it sorts last: the bracket
+            // named a player for this tie who lost two rounds earlier.
+            ['F. Cerundolo', 'T. Fritz', null, 0, 'D. Medvedev'],
+          ), 4]),
           upcoming: {
             roundLabel: 'Quarterfinal',
             // A quarterfinal is four ties in every draw size, and the capacity
@@ -119,7 +139,7 @@ const CASES = [
           flagEmoji: '🇺🇸',
           points: 2000,
           rank: { position: 1, total: 91, movement: 7 },
-          rounds: rounds(['F', 'Final', 1, 1, 2000]),
+          rounds: rounds(['F', 'Final', 1, 1, 2000, ties(['J. Sinner', 'C. Alcaraz', 'winner', 2000]), 0]),
           upcoming: null,
         },
       ],
@@ -188,7 +208,14 @@ const CASES = [
           // A standing that only went one way. Scoring nothing while the field
           // scores is exactly when the rank line has something to say.
           rank: { position: 63, total: 91, movement: -11 },
-          rounds: rounds(['R32', 'R32', 5, 0, 0]),
+          rounds: rounds(['R32', 'R32', 5, 0, 0, ties(
+            ['L. Musetti', 'M. Navarro & Co', 'loser', 0],
+            ['A. de Minaur', 'K. Khachanov', 'loser', 0],
+            // The rarer null: a resolved qualifier rewrote the slot, so the
+            // pick names a player the draw no longer contains at all and there
+            // is nobody to name.
+            ['F. Tiafoe', 'A. Michelsen', null, 0],
+          ), 2]),
           upcoming: {
             roundLabel: 'R16',
             hidden: 4,
@@ -263,7 +290,15 @@ check(
   /H\. Rune[\s\S]{0,400}?<\/tr>/.test(rendered[0].html) &&
     !/H\. Rune[\s\S]{0,400}?\d+% of brackets/.test(rendered[0].html),
 )
-check('an unpicked tie says so, in clay', /color:#b3392c;">You picked/.test(rendered[0].html) === false && rendered[0].html.includes('You haven&rsquo;t picked a winner'))
+// Scoped to the up-next block since the decided-ties list arrived: clay + "You
+// picked" is correct THERE (a pick that lost) and wrong here (a pick still to
+// be played is never in the losing colour).
+const upNextOf = html => html.slice(html.indexOf(BLOCK))
+check(
+  'an unpicked tie says so, in clay',
+  !/color:#b3392c;">You picked/.test(upNextOf(rendered[0].html)) &&
+    rendered[0].html.includes('You haven&rsquo;t picked a winner'),
+)
 check('the nudge and the crowd line coexist', /You haven&rsquo;t picked a winner<\/span> &middot; 71% of brackets have Musetti/.test(rendered[2].html))
 check('a picked tie carries no nudge', !/C\. Alcaraz[\s\S]{0,200}?haven&rsquo;t picked/.test(rendered[0].html))
 check('player names are escaped', rendered[2].html.includes('M. Navarro &amp; Co'))
@@ -285,6 +320,39 @@ check('the overflow line is singular at one', /\+ 1 more match in this round/.te
   ...CASES[0].email,
   tournaments: [{ ...CASES[0].email.tournaments[0], upcoming: { ...CASES[0].email.tournaments[0].upcoming, hidden: 1 } }],
 })))
+
+// ── The decided-ties list ────────────────────────────────────────────────────
+// The block that says what actually happened. Every failure here is a
+// misattribution — the wrong player named as the winner, or as the recipient's
+// pick — which looks exactly as plausible as the truth.
+const won = rendered[0].html
+check('a decided tie names winner and loser in that order', /J\. Sinner <span[^>]*>def\.<\/span> A\. Rublev/.test(won))
+check('a correct pick names the player, in the scoring green', /color:#1a6b3c;">You picked J\. Sinner<\/span>/.test(won))
+check('and states what that tie paid', /You picked J\. Sinner<\/span> &middot; <span[^>]*>\+180 pts/.test(won))
+check('a losing pick names the player the recipient had, not the winner', /color:#b3392c;">You picked H\. Rune<\/span>/.test(won))
+check('a losing tie quotes no figure at all', !/You picked H\. Rune<\/span> &middot;/.test(won))
+check('a pick on a player who never got there names them and says so', won.includes('You picked D. Medvedev, who never reached this match'))
+check('a pick the draw no longer contains names nobody', rendered[3].html.includes('Your pick is no longer in the draw'))
+check('what paid sorts above what did not', won.indexOf('You picked J. Sinner') < won.indexOf('You picked H. Rune'))
+check(
+  'a tie they had a runner in sorts above one their player never reached',
+  won.indexOf('You picked H. Rune') < won.indexOf('who never reached this match'),
+)
+check('the ties the cap left out are disclosed', won.includes('+ 4 more decided in this round'))
+check(
+  'that disclosure is worded apart from the up-next one, which sits in the same block',
+  won.includes('+ 4 more decided in this round') && !/\+ 4 more matches in this round/.test(won),
+)
+check('a round with nothing left over discloses nothing', !rendered[1].html.includes('more decided in this round'))
+check('a round carrying no list still renders its summary line', 
+  !rendered[2].html.includes('def.') && rendered[2].html.includes('6 matches played (3 winners)'))
+check('names in the list are escaped', rendered[3].html.includes('You picked M. Navarro &amp; Co'))
+// The cap is applied by the cron, not the template, so a fixture that exceeded
+// it would be previewing an email that cannot be sent.
+check(
+  'no fixture lists more ties than the cron would send',
+  CASES.every(c => c.email.tournaments.every(t => t.rounds.every(r => (r.results ?? []).length <= EMAIL_RESULTS_CAPACITY))),
+)
 
 // ── The zero-point email ─────────────────────────────────────────────────────
 // Every one of these fails silently: the mail still sends, it just reads as a
