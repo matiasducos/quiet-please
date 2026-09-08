@@ -8,8 +8,8 @@
  * real people. That is a bad loop to iterate a layout in. This calls the actual
  * exported `pointsAwardedHtml` — not a copy of it — over fixtures chosen to hit
  * the branches that are easy to get wrong: a tournament with nothing left to
- * play, a tie nobody has picked, a multi-tournament run, and a player name
- * carrying an ampersand.
+ * play, a tie nobody has picked, a multi-tournament run, a player name
+ * carrying an ampersand, and a run that scored nothing at all.
  *
  *   node scripts/preview-points-email.mjs
  *   → writes points-email-preview.html and prints the path
@@ -167,6 +167,40 @@ const CASES = [
       ],
     },
   },
+  {
+    // The mail that never used to be sent at all. Everything here is a zero,
+    // and every zero has to read as a result rather than as a broken template:
+    // no "+0 pts", no green, and a reason for the mail to exist in the round
+    // line and the block underneath it.
+    name: 'A losing week — nothing scored, and the email still goes',
+    email: {
+      to: 'preview@example.com',
+      totalPoints: 0,
+      correctPicks: 0,
+      unsubscribeToken: 'preview-token',
+      username: 'preview',
+      tournaments: [
+        {
+          tournamentId: 't5',
+          tournamentName: 'Winston-Salem Open',
+          flagEmoji: '🇺🇸',
+          points: 0,
+          // A standing that only went one way. Scoring nothing while the field
+          // scores is exactly when the rank line has something to say.
+          rank: { position: 63, total: 91, movement: -11 },
+          rounds: rounds(['R32', 'R32', 5, 0, 0]),
+          upcoming: {
+            roundLabel: 'R16',
+            hidden: 4,
+            matches: [
+              { a: 'L. Musetti', b: 'A. de Minaur', favourite: '58% of brackets have Musetti', picked: 'b' },
+              { a: 'K. Khachanov', b: 'F. Tiafoe', favourite: null, picked: null },
+            ],
+          },
+        },
+      ],
+    },
+  },
 ]
 
 const sections = CASES.map(
@@ -251,6 +285,36 @@ check('the overflow line is singular at one', /\+ 1 more match in this round/.te
   ...CASES[0].email,
   tournaments: [{ ...CASES[0].email.tournaments[0], upcoming: { ...CASES[0].email.tournaments[0].upcoming, hidden: 1 } }],
 })))
+
+// ── The zero-point email ─────────────────────────────────────────────────────
+// Every one of these fails silently: the mail still sends, it just reads as a
+// bug ("+0 points earned") to someone who did nothing wrong but lose.
+const zero = rendered[3].html
+check('a zero run leads with a result, not a plus sign', zero.includes('No points this time.') && !zero.includes('+0 points'))
+check('its tournament line is a plain 0, unsigned', />\s*0 pts\s*</.test(zero) && !zero.includes('+0 pts'))
+check('and it is not painted in the scoring green', !/color:#1a6b3c;white-space:nowrap;">\s*0 pts/.test(zero))
+// The count of decided matches replaces the correct-pick count rather than
+// joining it: "0 correct picks" under a headline that already says no points
+// is the same zero said twice, and the round line below says it a third time.
+check('it says how many matches were decided, which is why it arrived', zero.includes('5 matches played'))
+check('and does not also count the correct picks it plainly has none of', !zero.includes('0 correct picks'))
+check('the forward-looking block survives — it is the actionable half', zero.includes(BLOCK))
+check('the rank line still runs, downward', zero.includes('down 11'))
+check(
+  'the subject names the result rather than a zero total',
+  pointsAwardedSubject(CASES[3].email) === 'No points this time — Winston-Salem Open',
+)
+check(
+  'a scored email is untouched by any of that',
+  pointsAwardedSubject(CASES[0].email) === '+380 pts — Cincinnati Open' &&
+    rendered[0].html.includes('+380 points earned.') &&
+    !rendered[0].html.includes('matches played ·'),
+)
+// Per-type opt-out, like the other two mails that reach the whole field. A
+// "stop telling me I lost" that only exists as "stop all email" is the one
+// that gets answered with the spam button instead.
+check('the footer offers points emails specifically', zero.includes('Unsubscribe from points awarded emails'))
+check('and deep-links the preferences panel when the username is known', zero.includes('/profile/preview#email-preferences'))
 
 // ── personaliseUpcoming ──────────────────────────────────────────────────────
 // Every exclusion here is silent when it goes wrong: the wrong player's name

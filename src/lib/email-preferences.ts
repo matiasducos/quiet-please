@@ -27,7 +27,7 @@ export const DEFAULT_EMAIL_PREFERENCES: EmailPreferences = {
 /** Labels for the profile UI */
 export const EMAIL_PREF_LABELS: Record<EmailPrefKey, { label: string; description: string }> = {
   draw_open:          { label: 'Draw open',        description: 'When a tournament draw opens for predictions' },
-  points_awarded:     { label: 'Points awarded',   description: 'When you earn points from completed matches' },
+  points_awarded:     { label: 'Points awarded',   description: 'When your picks are decided — points earned, or none this time' },
   friend_request:     { label: 'Friend requests',  description: 'When someone sends you a friend request' },
   friend_accepted:    { label: 'Friend accepted',  description: 'When someone accepts your friend request' },
   challenge_received: { label: 'Challenges',        description: 'When someone challenges you' },

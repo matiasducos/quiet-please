@@ -4,7 +4,7 @@ import { revalidateTag } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPointsForRound, calculateStreakMultiplier, committedPicks, buildFeedMap } from '@/lib/tennis'
 import type { DrawMatch, Round, TournamentCategory } from '@/lib/tennis'
-import { sendPointsAwardedEmail, sendTournamentCompleteEmails, isBotEmail } from '@/lib/email'
+import { sendPointsAwardedEmails, sendTournamentCompleteEmails, isBotEmail } from '@/lib/email'
 import type { PointsAwardedTournament } from '@/lib/email'
 import { buildPointsEmailUpcoming, personaliseUpcoming, type RecipientPicks } from '@/lib/email-upcoming'
 import { isEmailEnabled, type EmailPreferences } from '@/lib/email-preferences'
@@ -582,9 +582,12 @@ export async function GET(request: Request) {
     // tournament leaderboard (`challenge_id is null`).
     const rankByTournament: Record<string, { total: number; byUser: Record<string, { position: number; previousPosition: number }> }> = {}
     {
+      // Driven off userTournamentRounds, not userTournamentPoints: the email
+      // now goes to everyone whose picks were decided, and a tournament where
+      // nobody scored this run still has to carry a standing for them.
       const tournamentIdsNeedingRank = new Set<string>()
-      for (const tPoints of Object.values(userTournamentPoints)) {
-        for (const tId of Object.keys(tPoints)) tournamentIdsNeedingRank.add(tId)
+      for (const tRounds of Object.values(userTournamentRounds)) {
+        for (const tId of Object.keys(tRounds)) tournamentIdsNeedingRank.add(tId)
       }
       for (const tId of tournamentIdsNeedingRank) {
         const globalPreds = (predsByTournament[tId] ?? []).filter(p => !p.challenge_id)
@@ -614,8 +617,17 @@ export async function GET(request: Request) {
     } else try {
       const notifRows: Array<{ user_id: string; type: string; tournament_id: string; meta: any }> = []
 
-      // One email per user per cron run — aggregates every tournament they
-      // scored in this run, each broken down by round.
+      // One email per user per cron run — aggregates every tournament where a
+      // pick of theirs was decided this run, each broken down by round.
+      //
+      // The gate is userTournamentRounds, NOT userTournamentPoints: a user who
+      // got everything wrong played the same matches as one who got everything
+      // right, and used to hear nothing at all until the tournament ended.
+      // userTournamentRounds is exactly "picks decided this run" — it is
+      // written for wins and losses alike, global brackets only, and only when
+      // the result is new to this run, so a re-run cannot re-mail anyone.
+      // Points are a superset check away: every points bucket has a rounds
+      // bucket (the win path creates it), never the reverse.
       const emailJobs: Array<{ userId: string; correctPicks: number; totalPoints: number; tournaments: PointsAwardedTournament[] }> = []
 
       // What to play for next, per tournament — built once for the whole run
@@ -623,7 +635,7 @@ export async function GET(request: Request) {
       // See buildPointsEmailUpcoming for why that distinction matters and for
       // the admin's three-state selection.
       const scoredTournamentIds = [
-        ...new Set(Object.values(userTournamentPoints).flatMap(tPoints => Object.keys(tPoints))),
+        ...new Set(Object.values(userTournamentRounds).flatMap(tRounds => Object.keys(tRounds))),
       ]
       const upcomingByTournament = await buildPointsEmailUpcoming(scoredTournamentIds)
 
@@ -648,19 +660,26 @@ export async function GET(request: Request) {
         }
       }
 
-      for (const [userId, tPoints] of Object.entries(userTournamentPoints)) {
+      for (const [userId, tRounds] of Object.entries(userTournamentRounds)) {
         const tournaments: PointsAwardedTournament[] = []
         let correctPicks = 0
-        for (const [tId, pts] of Object.entries(tPoints)) {
+        let totalPoints = 0
+        for (const [tId, roundBucket] of Object.entries(tRounds)) {
+          const pts = userTournamentPoints[userId]?.[tId] ?? 0
+          totalPoints += pts
           const tName = tournamentNames[tId] ?? 'a tournament'
-          notifRows.push({
-            user_id: userId,
-            type: 'points_awarded',
-            tournament_id: tId,
-            meta: { points: pts, tournament_name: tName, tournament_location: tournamentLocations[tId] ?? null, tournament_flag_emoji: tournamentFlags[tId] ?? null },
-          })
+          // The bell stays as it was: a notification titled "points awarded"
+          // that awards none is noise, and unlike the email it carries no
+          // round breakdown to justify itself.
+          if (pts > 0) {
+            notifRows.push({
+              user_id: userId,
+              type: 'points_awarded',
+              tournament_id: tId,
+              meta: { points: pts, tournament_name: tName, tournament_location: tournamentLocations[tId] ?? null, tournament_flag_emoji: tournamentFlags[tId] ?? null },
+            })
+          }
 
-          const roundBucket = userTournamentRounds[userId]?.[tId] ?? {}
           const roundOrder: readonly string[] = ROUND_ORDER
           const rounds = Object.entries(roundBucket)
             .sort(([a], [b]) => roundOrder.indexOf(a) - roundOrder.indexOf(b))
@@ -689,7 +708,6 @@ export async function GET(request: Request) {
               : null,
           })
         }
-        const totalPoints = Object.values(tPoints).reduce((a, b) => a + b, 0)
         emailJobs.push({ userId, correctPicks, totalPoints, tournaments })
       }
 
@@ -698,57 +716,74 @@ export async function GET(request: Request) {
         await (supabase as any).from('notifications').insert(notifRows)
       }
 
-      // Fire-and-forget emails — don't block the cron response on slow SMTP calls.
       // Errors are logged but won't fail the cron run.
       if (emailJobs.length > 0) {
-        // Fetch email preferences for all users in this batch
+        // Fetch email preferences for everyone being mailed this run
         const emailUserIds = [...new Set(emailJobs.map(j => j.userId))]
         // `email` rides along on the prefs query. It used to come from a
         // per-recipient supabase.auth.admin.getUserById() call inside the send
-        // loop below — one GoTrue round trip per user, serialised behind the
+        // loop — one GoTrue round trip per user, serialised behind the
         // batch, for a value public.users already stores. 083 documents why
         // that column is `text not null` and safe to read here: the signup
         // trigger copies auth.users.email into it and refuses any provider
         // sign-in that arrives without one.
-        const { data: emailPrefs, error: prefsErr } = await supabase
-          .from('users')
-          .select('id, email, email_notifications, email_preferences, unsubscribe_token')
-          .in('id', emailUserIds)
-        if (prefsErr) {
-          // Destructured deliberately: falling through with an empty list would
-          // silently send nobody their points email and look like success.
-          console.error('[award-points] email prefs lookup failed:', prefsErr)
-          Sentry.captureException(prefsErr)
-        }
-        const prefsMap = new Map((emailPrefs ?? []).map((p: any) => [p.id, p]))
-
-        const sendEmails = async () => {
-          for (let i = 0; i < emailJobs.length; i += 10) {
-            await Promise.all(
-              emailJobs.slice(i, i + 10).map(async (job) => {
-                try {
-                  const prefs = prefsMap.get(job.userId)
-                  if (!isEmailEnabled(prefs?.email_notifications, prefs?.email_preferences, 'points_awarded')) return
-                  if (prefs?.email && !isBotEmail(prefs.email)) {
-                    await sendPointsAwardedEmail({
-                      to: prefs.email,
-                      totalPoints: job.totalPoints,
-                      correctPicks: job.correctPicks,
-                      tournaments: job.tournaments,
-                      unsubscribeToken: prefs?.unsubscribe_token ?? '',
-                    })
-                  }
-                } catch (emailErr) {
-                  console.error(`[award-points] email error for ${job.userId}:`, emailErr)
-                  Sentry.captureException(emailErr)
-                }
-              })
-            )
+        //
+        // Chunked, and that is not defensive padding: this list used to be the
+        // users who scored and is now the users whose picks were decided, so
+        // both of PostgREST's silent truncations are now in range — a `.in()`
+        // long enough to overflow the request URL, and a reply capped at 1000
+        // rows. Either one returns success and mails a subset.
+        const prefsMap = new Map<string, any>()
+        for (let i = 0; i < emailUserIds.length; i += 200) {
+          const { data: emailPrefs, error: prefsErr } = await supabase
+            .from('users')
+            .select('id, email, username, email_notifications, email_preferences, unsubscribe_token')
+            .in('id', emailUserIds.slice(i, i + 200))
+          if (prefsErr) {
+            // Destructured deliberately: falling through with an empty list would
+            // silently send nobody their points email and look like success.
+            console.error('[award-points] email prefs lookup failed:', prefsErr)
+            Sentry.captureException(prefsErr)
+            continue
           }
+          for (const row of emailPrefs ?? []) prefsMap.set((row as any).id, row)
         }
-        // Await emails — Vercel freezes the runtime after response, so fire-and-forget would drop them.
-        // Individual emails are already wrapped in try/catch so one failure won't kill the batch.
-        await sendEmails()
+
+        // Bots are filtered here rather than upstream: they are scored like
+        // anyone else and still need their ledger rows, they just never get
+        // mail. At 101 bots in a field of 111 this is most of the list.
+        const recipients = emailJobs.flatMap(job => {
+          const prefs = prefsMap.get(job.userId)
+          if (!prefs?.email || isBotEmail(prefs.email)) return []
+          if (!isEmailEnabled(prefs.email_notifications, prefs.email_preferences, 'points_awarded')) return []
+          return [{
+            to: prefs.email as string,
+            totalPoints: job.totalPoints,
+            correctPicks: job.correctPicks,
+            tournaments: job.tournaments,
+            unsubscribeToken: prefs.unsubscribe_token ?? '',
+            username: prefs.username ?? null,
+          }]
+        })
+
+        // Awaited — Vercel freezes the runtime after the response, so
+        // fire-and-forget would drop them. Batched rather than one request per
+        // address: this used to be sent only to users who scored, and now goes
+        // to everyone whose picks were decided, which on a full round of a
+        // popular draw is the entire human field.
+        const sentCount = await sendPointsAwardedEmails(recipients)
+        console.log(
+          `[award-points] points emails: ${sentCount} sent of ${recipients.length} recipients ` +
+          `(${emailJobs.length} users had picks decided, ${emailJobs.length - recipients.length} not mailable)`
+        )
+        if (sentCount < recipients.length) {
+          // The per-address send used to report each failure to Sentry. A batch
+          // reports a chunk, so the shortfall is raised here instead — silence
+          // on a send path is indistinguishable from a quiet week.
+          Sentry.captureMessage(
+            `[award-points] points emails: ${recipients.length - sentCount} of ${recipients.length} not accepted`,
+          )
+        }
       }
     } catch (notifyErr) {
       console.error('[award-points] notification error:', notifyErr)
