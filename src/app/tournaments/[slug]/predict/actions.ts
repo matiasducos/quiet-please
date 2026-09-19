@@ -8,6 +8,7 @@ import { insertNotifications } from '@/lib/notifications'
 import { rateLimit } from '@/lib/rate-limit'
 import { canPredictForStatus, isManualLockMode } from '@/lib/app-settings'
 import { trackServerEvent } from '@/lib/posthog/server'
+import { parseBracketView, type BracketView } from '@/lib/bracket/view'
 import { checkPredictionMilestones, checkEngagementAchievements, checkChallengeAchievements } from '@/lib/achievements/check'
 import { notifyAchievements } from '@/lib/achievements/notify'
 import { markReferralFirstPrediction } from '@/lib/referrals'
@@ -69,6 +70,7 @@ export async function savePrediction({
   lockRound,
   lockAll = false,
   importFromGlobal = false,
+  bracketView,
 }: {
   tournamentId: string
   picks: Record<string, string>
@@ -83,6 +85,11 @@ export async function savePrediction({
   lockRound?: string
   lockAll?: boolean
   importFromGlobal?: boolean
+  /**
+   * The layout the save came from. Analytics only — it is how the full-draw
+   * experiment is judged against the round list, and it never touches a pick.
+   */
+  bracketView?: BracketView
 }): Promise<SaveResult> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -585,6 +592,7 @@ export async function savePrediction({
     challenge_id: challengeId ?? undefined,
     type: challengeId ? 'challenge' : 'global',
     picks_count: Object.keys(picks).length,
+    bracket_view: bracketView ? parseBracketView(bracketView) : undefined,
   })
 
   // ── 7. Achievement checks (fire-and-forget) ─────────────────────────────
