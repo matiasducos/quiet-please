@@ -11,6 +11,9 @@ import { findForfeitedRounds, listRounds, toGapMatches } from '@/lib/tennis/pick
 import { calculateStreakMultiplier, committedPicks, getPointsForRound, POINTS_TABLE } from '@/lib/tennis/points'
 import type { DrawMatch as LibDrawMatch, Round } from '@/lib/tennis/types'
 import { celebrateMultiplier } from '@/lib/tennis/multiplier-celebration'
+import type { BracketView } from '@/lib/bracket/view'
+import { setBracketView } from './view-actions'
+import FullDrawView, { type FullDrawCard, type FullDrawFocus } from './FullDrawView'
 
 // Small "i in a circle" affordance placed next to tooltip-bearing tags.
 // Inherits color from parent via currentColor so it adapts to each tag's palette.
@@ -253,6 +256,13 @@ const DENSITY: Record<Density, {
   dense:   { label: 'Dense',   groupGap: '0.625rem', cardGap: '0.25rem', headerPadY: '1px', playerPadY: '2px', nameSize: '0.8rem',  labelSize: '0.6rem',  flagSize: 11, seedBox: '13px', seedSize: '0.5rem',  showVsRow: false },
 }
 
+/**
+ * Zoom steps for the full-draw view. Its zoom is a real scale, unlike the list's
+ * densities: 0.4 gets a 128-draw's first two rounds of a phone screen into view
+ * as an overview, and 1 is the size the cards are designed to be read at.
+ */
+const FULL_ZOOM_STEPS = [0.4, 0.6, 0.8, 1]
+
 export default function BracketPredictor({
   tournament,
   draw,
@@ -278,6 +288,7 @@ export default function BracketPredictor({
   lockedPicks = [],
   initialRound,
   scopeRounds,
+  initialView = 'rounds',
 }: {
   tournament: any
   draw: Draw
@@ -336,6 +347,12 @@ export default function BracketPredictor({
    * round before it, which is out of scope but very much still needed.
    */
   scopeRounds?: string[]
+  /**
+   * The layout to open in — the signed-in user's `users.bracket_view` where the
+   * page has it. Every other surface opens on the round list, and the switch
+   * still works there; it just is not remembered for a signed-out visitor.
+   */
+  initialView?: BracketView
 }) {
   // ── State ────────────────────────────────────────────────────────────────
   const [picks, setPicks] = useState<Record<string, string>>(existingPicks)
@@ -357,6 +374,10 @@ export default function BracketPredictor({
   // preference.
   const [densityOverride, setDensityOverride] = useState<Density | null>(null)
   const [showMinimap, setShowMinimap] = useState(false)
+  const [view, setView] = useState<BracketView>(initialView)
+  /** Scale of the full-draw tree. Session-only, for the same reason as density. */
+  const [fullZoom, setFullZoom] = useState(1)
+  const [fullFocus, setFullFocus] = useState<FullDrawFocus | null>(null)
   /** null = the whole draw. See the `scopeRounds` prop. */
   const scopeSet = scopeRounds && scopeRounds.length > 0 ? new Set(scopeRounds) : null
 
@@ -413,7 +434,9 @@ export default function BracketPredictor({
         el.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }
     })
-  }, [activeRound])
+    // `view` too: coming back from the full draw may land on the round already
+    // active, and the list it scrolls in has only just mounted.
+  }, [activeRound, view])
 
   /** Navigate forward: go to next round, scroll to the target match */
   const navigateForward = useCallback((nextMatchId: string) => {
@@ -447,7 +470,32 @@ export default function BracketPredictor({
   const swipeRef = useSwipeNavigation({
     onSwipeLeft: handleSwipeLeft,
     onSwipeRight: handleSwipeRight,
+    // The tree scrolls sideways natively; a swipe there is a scroll, not a
+    // request to change round.
+    enabled: view === 'rounds',
   })
+
+  /** Scroll the full-draw tree; a no-op request in the list view. */
+  const focusFull = (round: string, matchId?: string) =>
+    setFullFocus(prev => ({ round, matchId, seq: (prev?.seq ?? 0) + 1 }))
+
+  /** Which surface a view switch came from, for the experiment's analytics. */
+  const viewSurface = drawResultsMode ? 'draw_results'
+    : challengeContext ? 'challenge'
+    : readOnly ? 'read_only'
+    : 'predict'
+
+  const switchView = (next: BracketView) => {
+    if (next === view) return
+    setView(next)
+    if (next === 'full') focusFull(activeRound)
+    // Fire and forget: the switch has already happened on screen, and a failed
+    // save only means it is not remembered next time.
+    setBracketView(next, viewSurface)
+      .then(r => { if (r.error) console.error('[BracketPredictor] view not saved:', r.error) })
+      .catch(err => console.error('[BracketPredictor] view not saved:', err))
+  }
+
 
   // ── Per-match lock state ─────────────────────────────────────────────────
   /** Check if a match is locked (result, voluntary, full lock — NOT admin lock, which is now pickable) */
@@ -701,6 +749,11 @@ export default function BracketPredictor({
   }
 
   const jumpToMatch = (matchId: string, round: string) => {
+    if (view === 'full') {
+      setActiveRound(round)
+      focusFull(round, matchId)
+      return
+    }
     const target = groupLeaderFor(matchId)
     if (round === activeRound) {
       matchContainerRef.current
@@ -962,6 +1015,7 @@ export default function BracketPredictor({
     setSlotError(null)
     try {
       const result = await savePrediction({
+        bracketView: view,
         tournamentId: tournament.id,
         picks,
         predictionId: currentPredictionId,
@@ -1030,6 +1084,7 @@ export default function BracketPredictor({
     setSlotError(null)
     try {
       const result = await savePrediction({
+        bracketView: view,
         tournamentId: tournament.id,
         picks,
         predictionId: currentPredictionId,
@@ -1128,6 +1183,7 @@ export default function BracketPredictor({
     setSlotError(null)
     try {
       const result = await savePrediction({
+        bracketView: view,
         tournamentId: tournament.id,
         picks,
         predictionId: currentPredictionId,
@@ -1171,6 +1227,7 @@ export default function BracketPredictor({
     setSlotError(null)
     try {
       const result = await savePrediction({
+        bracketView: view,
         tournamentId: tournament.id,
         picks,
         predictionId: currentPredictionId,
@@ -1281,6 +1338,108 @@ export default function BracketPredictor({
   const d = DENSITY[density]
 
   const hasResults = !!matchResults && Object.keys(matchResults).length > 0
+
+  // ── Full-draw view ──────────────────────────────────────────────────────
+  const matchById = useMemo(
+    () => new Map(draw.matches.map(m => [m.matchId, m])),
+    [draw.matches],
+  )
+  const fullMatchesByRound: Record<string, DrawMatch[]> = {}
+  for (const round of sortedRounds) fullMatchesByRound[round] = matchesForRound(round)
+
+  const PICK_MARKS: Partial<Record<ReturnType<typeof getPickState>, { text: string; color: string }>> = {
+    correct: { text: '✓', color: '#166534' },
+    wrong:   { text: '✗', color: '#991b1b' },
+    picked:  { text: '●', color: 'var(--court)' },
+    winner:  { text: 'W', color: '#92400e' },
+  }
+
+  /**
+   * One match, reduced to what a compact card can carry.
+   *
+   * The same derivations the list's card makes — slot resolution, the void
+   * test, pick state, lock display, the multiplier — condensed into a single
+   * header badge. Anything that needs a sentence to explain stays in the list,
+   * one DETAILS tap away.
+   */
+  const fullCardFor = (matchId: string): FullDrawCard => {
+    const match = matchById.get(matchId)!
+    const isBye = byeMatchIds.has(matchId)
+    const slot1 = resolveSlot(match, 'player1')
+    const slot2 = resolveSlot(match, 'player2')
+    const pickedId = picks[matchId]
+    const actualWinnerId = matchResults?.[matchId]
+    const locked = isMatchLocked(matchId)
+    const voidPick = !isBye && !!pickedId && !actualWinnerId && (
+      eliminatedPlayers.has(pickedId)
+      || (!!slot1.player && !!slot2.player && pickedId !== slot1.player.externalId && pickedId !== slot2.player.externalId)
+    )
+
+    const side = (slot: typeof slot1, base: Player | null): FullDrawCard['sides'][number] => {
+      const state = isBye
+        ? (base ? 'bye' as const : 'none' as const)
+        : getPickState(voidPick ? undefined : pickedId, slot.player?.externalId, actualWinnerId)
+      const player = slot.player
+      const clickable = !locked && !!player && !isBye
+      return {
+        player,
+        bg: PICK_STYLES[state].bg,
+        projected: slot.origin === 'projected',
+        clickable,
+        mark: state === 'bye' || state === 'none' ? undefined : PICK_MARKS[state],
+        title: player && clickable && pickedId === player.externalId
+          ? `Clear your pick on ${player.name}`
+          : player?.name,
+      }
+    }
+
+    const lockDisplay = getMatchLockDisplay(matchId)
+    const mult = canShowMultiplier && !!pickedId && !isBye && !voidPick ? previewMultiplier(matchId) : null
+    const noPoints = roundPoints(match.round) === 0
+    const multText = mult === null ? '' : noPoints ? ' · NO PTS' : ` ×${mult}`
+
+    let badge: FullDrawCard['badge']
+    if (voidPick) {
+      badge = { text: 'PICK OUT', color: '#991b1b', bg: '#fee2e2', title: 'Your pick lost in an earlier round.' }
+    } else if (lockDisplay === 'editable' && mult !== null) {
+      badge = mult > 1 && !noPoints
+        ? { text: `×${mult} IF LOCKED`, color: 'var(--court)', bg: '#e4efe7', title: 'What this pick scores if you lock your picks now.' }
+        : { text: noPoints ? 'NO POINTS' : '×1', color: 'var(--muted)' }
+    } else if (lockDisplay === 'voluntary_locked' || lockDisplay === 'fully_locked') {
+      badge = { text: `LOCKED${multText}`, color: lockDisplay === 'voluntary_locked' ? 'var(--court)' : 'var(--muted)' }
+    } else if (lockDisplay === 'auto_locked') {
+      badge = { text: 'PLAYED', color: 'var(--muted)' }
+    } else if (lockDisplay === 'admin_locked_secured') {
+      badge = { text: `PICKED IN TIME${multText}`, color: '#166534', bg: '#dcfce7' }
+    } else if (lockDisplay === 'admin_locked_pickable') {
+      badge = { text: 'NO POINTS', color: '#b45309', bg: '#fef3c7', title: 'The admin locked this match after it started — a pick made now scores nothing.' }
+    } else if (isBye) {
+      badge = { text: 'BYE', color: '#1e40af' }
+    }
+
+    return {
+      sides: [side(slot1, match.player1), side(slot2, match.player2)],
+      isBye,
+      badge,
+    }
+  }
+
+  /** The list's own click rule: tap your pick to take it back. */
+  const fullPlayerClick = (matchId: string, playerExternalId: string) => {
+    if (picks[matchId] === playerExternalId) clearPick(matchId)
+    else pickWinner(matchId, playerExternalId)
+  }
+
+  /**
+   * Hand a match to the list, where locking and STATS live. Not `jumpToMatch`:
+   * that reads `view`, which is still 'full' until this render commits. The
+   * pending target is picked up by the scroll effect once the list has mounted.
+   */
+  const openInList = (matchId: string, round: string) => {
+    pendingScrollTarget.current = groupLeaderFor(matchId)
+    setActiveRound(round)
+    switchView('rounds')
+  }
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--chalk)' }}>
@@ -1395,7 +1554,10 @@ export default function BracketPredictor({
             return (
               <button
                 key={round}
-                onClick={() => setActiveRound(round)}
+                onClick={() => {
+                  setActiveRound(round)
+                  if (view === 'full') focusFull(round)
+                }}
                 className="px-2.5 sm:px-5 py-3 text-xs whitespace-nowrap border-b-2 transition-colors flex-shrink-0 flex items-center gap-1.5"
                 style={{
                   borderBottomColor: activeRound === round ? 'var(--court)' : 'transparent',
@@ -1438,6 +1600,31 @@ export default function BracketPredictor({
             and the control at its widest wanted 177px.
           */}
           <div className="ml-auto flex items-center gap-1 px-2 py-2 flex-shrink-0">
+            {/*
+              LIST | DRAW. The full draw is an experiment beside the list, not a
+              replacement — the list stays the default and this is the only way
+              off it. Both halves are the same size so neither reads as the
+              recommended one.
+            */}
+            <div role="group" aria-label="Bracket layout" className="flex mr-1 rounded-sm border overflow-hidden" style={{ borderColor: 'var(--chalk-dim)' }}>
+              {([['rounds', 'LIST', 'One round at a time'], ['full', 'DRAW', 'The whole draw as a tree']] as const).map(([v, label, title]) => (
+                <button
+                  key={v}
+                  onClick={() => switchView(v)}
+                  aria-pressed={view === v}
+                  title={title}
+                  style={{
+                    fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.06em',
+                    width: '38px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    border: 'none',
+                    color: view === v ? 'var(--court)' : 'var(--muted)',
+                    background: view === v ? '#eef4ff' : 'transparent',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             {/* The minimap exists to show one bracket's picks running through
                 the draw at a glance. On draw results there is no bracket — it
                 would render the same results the rounds below already show,
@@ -1468,16 +1655,23 @@ export default function BracketPredictor({
               that one zoom level, so it jumped lines as you clicked through.
             */}
             <span className="hidden sm:inline-block text-center" style={{ width: '52px', flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.08em', color: 'var(--muted)', textTransform: 'uppercase' }}>
-              {d.label}
+              {view === 'full' ? `${Math.round(fullZoom * 100)}%` : d.label}
             </span>
             {([['out', '−', 'Show more matches'], ['in', '+', 'Show fewer, larger matches']] as const).map(([dir, glyph, title]) => {
-              const idx = DENSITY_ORDER.indexOf(density)
+              // One control, two meanings: a density step in the list, a real
+              // scale step in the full draw.
+              const steps: readonly (Density | number)[] = view === 'full' ? FULL_ZOOM_STEPS : DENSITY_ORDER
+              const idx = view === 'full' ? FULL_ZOOM_STEPS.indexOf(fullZoom) : DENSITY_ORDER.indexOf(density)
               const nextIdx = dir === 'out' ? idx - 1 : idx + 1
-              const disabled = nextIdx < 0 || nextIdx >= DENSITY_ORDER.length
+              const disabled = nextIdx < 0 || nextIdx >= steps.length
               return (
                 <button
                   key={dir}
-                  onClick={() => !disabled && setDensityOverride(DENSITY_ORDER[nextIdx])}
+                  onClick={() => {
+                    if (disabled) return
+                    if (view === 'full') setFullZoom(FULL_ZOOM_STEPS[nextIdx])
+                    else setDensityOverride(DENSITY_ORDER[nextIdx])
+                  }}
                   disabled={disabled}
                   aria-label={title}
                   title={title}
@@ -1682,7 +1876,10 @@ export default function BracketPredictor({
 
       {/* Matches */}
       <div
-        className="max-w-xl mx-auto px-4 md:px-6 py-6"
+        // The tree needs the width the list does not: a list is one column, the
+        // draw is up to seven. The page gutter stays px-4, so on a phone the
+        // tree still sits on the same 343px as every other block here.
+        className={`${view === 'full' ? 'max-w-6xl' : 'max-w-xl'} mx-auto px-4 md:px-6 py-6`}
         ref={(el) => {
           matchContainerRef.current = el
           ;(swipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el
@@ -1718,6 +1915,29 @@ export default function BracketPredictor({
           </div>
         )}
 
+        {view === 'full' ? (
+          <>
+            {/* The submit area that normally shows this sits below the whole
+                tree — thousands of pixels away from the card that was refused. */}
+            {slotError && (
+              <div className="rounded-sm px-4 py-3 mb-4 text-sm" style={{ background: '#fdecea', color: '#c84b31', border: '1px solid #f5c0b8', fontFamily: 'var(--font-mono)' }}>
+                {slotError}
+              </div>
+            )}
+            <FullDrawView
+              rounds={sortedRounds}
+              matchesByRound={fullMatchesByRound}
+              feeders={reverseFeedMap}
+              roundLabels={ROUND_LABELS}
+              cardFor={fullCardFor}
+              onPlayerClick={fullPlayerClick}
+              onOpenMatch={openInList}
+              zoom={fullZoom}
+              focus={fullFocus}
+              onVisibleRoundChange={setActiveRound}
+            />
+          </>
+        ) : (<>
         <div className="flex flex-col" style={{ gap: d.groupGap }}>
           {(() => {
             // Group matches that share the same next-round match (bracket pairs)
@@ -2240,6 +2460,7 @@ export default function BracketPredictor({
             Next →
           </button>
         </div>
+        </>)}
 
         {/* Submit area — editing mode only (hidden when parent provides own buttons) */}
         {isEditing && !hideSaveButtons && (

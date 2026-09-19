@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import BracketPredictor from './BracketPredictor'
+import { parseBracketView } from '@/lib/bracket/view'
 import { TEST_EXTERNAL_ID } from '@/app/test-tournaments/constants'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
 import { canPredictForStatus, isManualLockMode } from '@/lib/app-settings'
@@ -62,6 +63,7 @@ export default async function PredictPage({
     { data: draw },
     { data: prediction },
     { data: profile },
+    viewRes,
     { data: resultsData },
     challengeRes,
   ] = await Promise.all([
@@ -69,6 +71,9 @@ export default async function PredictPage({
     supabase.from('draws').select('bracket_data, locked_matches').eq('tournament_id', id).single(),
     predictionQuery.single(),
     supabase.from('users').select('username').eq('id', user.id).single(),
+    // Its own query so the preference can fail alone: folded into the username
+    // read, a missing column would blank the username and the share link too.
+    supabase.from('users').select('bracket_view').eq('id', user.id).single(),
     supabase.from('match_results').select('external_match_id, winner_external_id, played_at').eq('tournament_id', id),
     challengeId
       ? supabase.from('challenges').select('challenger_id, challenged_id, status, scope_round').eq('id', challengeId).single()
@@ -76,6 +81,7 @@ export default async function PredictPage({
   ])
 
   if (!tournament) notFound()
+  if (viewRes.error) console.error('[predict] bracket_view read failed', viewRes.error)
 
   const isTest = tournament.external_id === TEST_EXTERNAL_ID
   const isManual = tournament.is_manual === true
@@ -260,6 +266,7 @@ export default async function PredictPage({
       matchDecidedAt={matchDecidedAt}
       initialRound={initialRound}
       scopeRounds={challengeScopeRounds}
+      initialView={parseBracketView(viewRes.data?.bracket_view)}
     />
   )
 }

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { notFound } from 'next/navigation'
 import BracketPredictor from '../../predict/BracketPredictor'
+import { parseBracketView } from '@/lib/bracket/view'
 import { resolveTournamentParam } from '@/lib/tournaments/series'
 
 // A per-user bracket for every tournament is one URL per user per tournament —
@@ -28,11 +29,18 @@ export default async function UserPicksPage({
 
   const supabase = createAdminClient()
 
-  const [{ data: tournament }, { data: draw }, { data: targetUser }] = await Promise.all([
+  const [{ data: tournament }, { data: draw }, { data: targetUser }, viewerRes] = await Promise.all([
     supabase.from('tournaments').select('*').eq('id', id).single(),
     supabase.from('draws').select('bracket_data').eq('tournament_id', id).single(),
     supabase.from('users').select('id, username').eq('username', username).single(),
+    // The VIEWER's layout, not the bracket owner's: it is a reading preference.
+    viewer
+      ? userClient.from('users').select('bracket_view').eq('id', viewer.id).single()
+      : Promise.resolve({ data: null, error: null }),
   ])
+  // A failed read only costs the preference — the page opens on the list.
+  if (viewerRes.error) console.error('[picks] bracket_view read failed', viewerRes.error)
+  const initialView = parseBracketView(viewerRes.data?.bracket_view)
 
   if (!tournament || !draw?.bracket_data) notFound()
   if (!targetUser) notFound()
@@ -115,6 +123,7 @@ export default async function UserPicksPage({
       matchResults={matchResults}
       matchPoints={matchPoints}
       readOnly
+      initialView={initialView}
     />
   )
 }
