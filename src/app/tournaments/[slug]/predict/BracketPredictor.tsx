@@ -1403,8 +1403,8 @@ export default function BracketPredictor({
       badge = { text: 'PICK OUT', color: '#991b1b', bg: '#fee2e2', title: 'Your pick lost in an earlier round.' }
     } else if (lockDisplay === 'editable' && mult !== null) {
       badge = mult > 1 && !noPoints
-        ? { text: `×${mult} IF LOCKED`, color: 'var(--court)', bg: '#e4efe7', title: 'What this pick scores if you lock your picks now.' }
-        : { text: noPoints ? 'NO POINTS' : '×1', color: 'var(--muted)' }
+        ? { text: `×${mult} IF LOCKED`, color: 'var(--court)', bg: '#e4efe7', title: 'What this pick scores if you lock your picks now.', value: true }
+        : { text: noPoints ? 'NO POINTS' : '×1', color: 'var(--muted)', value: true }
     } else if (lockDisplay === 'voluntary_locked' || lockDisplay === 'fully_locked') {
       badge = { text: `LOCKED${multText}`, color: lockDisplay === 'voluntary_locked' ? 'var(--court)' : 'var(--muted)' }
     } else if (lockDisplay === 'auto_locked') {
