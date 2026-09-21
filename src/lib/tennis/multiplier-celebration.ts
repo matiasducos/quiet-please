@@ -55,9 +55,20 @@ export function celebrateMultiplier(matchId: string, mult: number, basePoints: n
   if (now - lastCelebrationAt < MIN_GAP_MS) return
   lastCelebrationAt = now
 
+  // Both views write `data-mc` on the match card and `data-badge` on the
+  // multiplier badge, and only one of them is ever mounted — so one selector
+  // reaches the card the user clicked whichever way they are looking at it.
   const card = document.querySelector<HTMLElement>(`[data-mc="${CSS.escape(matchId)}"]`)
   if (!card) return
   const badge = card.querySelector<HTMLElement>('[data-badge]')
+
+  /**
+   * The draw view draws the whole tree on one layer and zooms it with a
+   * transform, so a client rect there is in zoomed pixels while everything this
+   * module injects into the card is laid out in the card's own, unzoomed ones.
+   * One ratio converts between the two; it is 1 in the list view.
+   */
+  const scale = card.getBoundingClientRect().width / card.offsetWidth || 1
 
   const tier = Math.min(mult, TOP_TIER)
   const court = token('--court', '#1a6b3c')
@@ -98,8 +109,8 @@ export function celebrateMultiplier(matchId: string, mult: number, basePoints: n
     const cs = getComputedStyle(badge)
     Object.assign(clone.style, {
       position: 'absolute',
-      left: `${box.left - cardBox.left}px`, top: `${box.top - cardBox.top}px`,
-      height: `${box.height}px`,
+      left: `${(box.left - cardBox.left) / scale}px`, top: `${(box.top - cardBox.top) / scale}px`,
+      height: `${box.height / scale}px`,
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       font: cs.font, letterSpacing: cs.letterSpacing, color: cs.color,
       background: cs.backgroundColor, padding: cs.padding, borderRadius: cs.borderRadius,
@@ -148,7 +159,7 @@ export function celebrateMultiplier(matchId: string, mult: number, basePoints: n
 
   // ── ×5+: a spark burst from the badge ──
   if (tier >= TOP_TIER && badge) {
-    burst(card, badge, court, clay, tier, railEndsAt - 220)
+    burst(card, badge, court, clay, tier, scale, railEndsAt - 220)
   }
 
   setTimeout(() => rail.remove(), railEndsAt + 80)
@@ -160,14 +171,16 @@ export function celebrateMultiplier(matchId: string, mult: number, basePoints: n
  */
 function burst(
   card: HTMLElement, badge: HTMLElement,
-  court: string, clay: string, tier: number, delay: number,
+  court: string, clay: string, tier: number, scale: number, delay: number,
 ): void {
   setTimeout(() => {
     const cardBox = card.getBoundingClientRect()
     const cv = document.createElement('canvas')
     cv.setAttribute('aria-hidden', 'true')
-    cv.width = Math.max(1, Math.round(cardBox.width))
-    cv.height = Math.max(1, Math.round(cardBox.height))
+    // Laid out in the card's own pixels, like every other injected node, so the
+    // particle coordinates below are in that space too.
+    cv.width = Math.max(1, card.offsetWidth)
+    cv.height = Math.max(1, card.offsetHeight)
     Object.assign(cv.style, {
       position: 'absolute', inset: '0', width: '100%', height: '100%',
       pointerEvents: 'none', zIndex: '2',
@@ -177,8 +190,8 @@ function burst(
     const ctx = cv.getContext('2d')
     if (!ctx) { cv.remove(); return }
     const b = badge.getBoundingClientRect()
-    const ox = b.left - cardBox.left + b.width / 2
-    const oy = b.top - cardBox.top + b.height / 2
+    const ox = (b.left - cardBox.left + b.width / 2) / scale
+    const oy = (b.top - cardBox.top + b.height / 2) / scale
 
     const parts = Array.from({ length: 10 + tier * 6 }, () => {
       const a = Math.random() * Math.PI * 2

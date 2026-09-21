@@ -46,7 +46,18 @@ export interface FullDrawCard {
   sides: [FullDrawSide, FullDrawSide]
   isBye: boolean
   /** Short status for the header strip: LOCKED, PLAYED, ×3, … */
-  badge?: { text: string; color: string; bg?: string; title?: string }
+  badge?: {
+    text: string
+    color: string
+    bg?: string
+    title?: string
+    /**
+     * This is the "what the pick is worth" badge rather than a status, so the
+     * multiplier celebration may count up over it. Marked the same way, and in
+     * the same state, as the list view's own value badge.
+     */
+    value?: boolean
+  }
 }
 
 export interface FullDrawMatch {
@@ -304,7 +315,10 @@ export default function FullDrawView({
             return (
               <div
                 key={m.matchId}
-                data-full-match-id={m.matchId}
+                // The hook the multiplier celebration looks the card up by. The
+                // list view writes the same attribute; only one view is ever
+                // mounted, so the id stays unique.
+                data-mc={m.matchId}
                 className="bg-white rounded-sm overflow-hidden"
                 style={{
                   position: 'absolute', left: col[m.matchId] * colPitch, top: TITLE_H + y[m.matchId],
@@ -318,6 +332,7 @@ export default function FullDrawView({
                 >
                   {card.badge ? (
                     <span
+                      data-badge={card.badge.value ? '' : undefined}
                       title={card.badge.title}
                       style={{
                         fontFamily: 'var(--font-mono)', fontSize: '0.5rem', letterSpacing: '0.05em',
