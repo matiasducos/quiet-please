@@ -55,9 +55,9 @@ const ALWAYS_HIDDEN_PREFIXES = [
 /**
  * Everything the bar would say and do for this major.
  *
- * Pure, and exported for the same reason as `pickGapNoticeSpec`: /admin/banners
- * reports the live copy by reading this, so the report cannot drift away from
- * what is actually on the site.
+ * Pure, and exported so it is not the component that owns the copy:
+ * /admin/banners reports the live copy by reading this, so the report cannot
+ * drift away from what is actually on the site.
  */
 export function featuredSlamNoticeSpec({ config, editions }: FeaturedSlam): NoticeSpec {
   return {
