@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, type ReactNode } from 'react'
 import Link from 'next/link'
 import { saveMatchResult, clearMatchResult, setTournamentStatus, revertTournamentCompletion, rebuildTournamentRecap, lockMatches, unlockMatches, lockRound, savePointsEmailUpcoming } from '../../../actions'
 // The social studio's loader, reused rather than reimplemented: "which ties are
@@ -53,6 +53,8 @@ interface ResultsEntryProps {
    * suppressed, a non-empty one is an explicit selection.
    */
   emailUpcomingMatchIds: string[] | null
+  /** ‹ Hangzhou › — rendered in the sticky nav so it stays in reach while entering a long draw. */
+  switcher?: ReactNode
 }
 
 /**
@@ -97,6 +99,7 @@ export default function ResultsEntry({
   lockedMatches: initialLocked,
   predictionMode,
   emailUpcomingMatchIds,
+  switcher,
 }: ResultsEntryProps) {
   const [results, setResults] = useState<MatchResult[]>(initialResults)
   const [savingMatch, setSavingMatch] = useState<string | null>(null)
@@ -495,11 +498,13 @@ export default function ResultsEntry({
     <main className="min-h-screen" style={{ background: 'var(--chalk)' }}>
       {/* Sticky admin nav */}
       <nav className="border-b bg-white sticky top-0 z-50" style={{ borderColor: 'var(--chalk-dim)' }}>
-        <div className="max-w-5xl mx-auto flex items-center justify-between px-6 py-4">
-          <Link href="/admin" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)' }}>
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-3 px-4 md:px-6 py-3">
+          <Link href="/admin" className="flex-shrink-0" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--ink)', whiteSpace: 'nowrap' }}>
             &larr; Admin
           </Link>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: 'var(--muted)', textTransform: 'uppercase' }}>
+          {switcher}
+          {/* The page's name yields to the switcher at phone width — the H1 below already says where you are. */}
+          <span className="hidden md:inline flex-shrink-0" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', letterSpacing: '0.08em', color: 'var(--muted)', textTransform: 'uppercase' }}>
             Results{isManualLock ? ' + Locks' : ''}
           </span>
         </div>

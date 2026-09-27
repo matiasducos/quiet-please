@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
@@ -5,7 +6,9 @@ import BracketPredictor from './BracketPredictor'
 import { parseBracketView } from '@/lib/bracket/view'
 import { TEST_EXTERNAL_ID } from '@/app/test-tournaments/constants'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
-import { canPredictForStatus, isManualLockMode } from '@/lib/app-settings'
+import { canPredictForStatus, getPredictableStatuses, isManualLockMode } from '@/lib/app-settings'
+import TournamentSwitcher from '@/components/TournamentSwitcher'
+import { getPublicSwitcherRows, predictHref, predictSwitcherItems } from '@/lib/tournaments/switcher'
 import { resolveTournamentParam } from '@/lib/tournaments/series'
 import { gateRedirect } from '@/lib/auth-redirect'
 import { roundsInScope } from '@/lib/challenges/scope'
@@ -245,8 +248,29 @@ export default async function PredictPage({
     if (!known || Date.parse(lockedAt) < Date.parse(known)) matchDecidedAt[matchId] = lockedAt
   }
 
+  // ── Switcher: the other tournaments on the "Live right now" strip ───────
+  //
+  // Not in a challenge: a challenge bracket belongs to one tournament and one
+  // opponent, and "next" would leave the challenge rather than move within it.
+  // Both reads are globally cached, so this adds no per-user query.
+  let switcher: ReactNode = null
+  if (!challengeId) {
+    const [switcherRows, predictableStatuses] = await Promise.all([getPublicSwitcherRows(), getPredictableStatuses()])
+    switcher = (
+      <TournamentSwitcher
+        items={predictSwitcherItems(switcherRows, predictableStatuses)}
+        currentHref={predictHref({ id, slug: resolved.slug })}
+        className="w-full md:w-96"
+      />
+    )
+  }
+
   return (
     <BracketPredictor
+      // A fresh predictor per tournament — picks, active round and view state
+      // must never carry from one draw into the next when the switcher moves on.
+      key={id}
+      switcher={switcher}
       tournament={tournament}
       draw={draw.bracket_data as any}
       existingPicks={(prediction?.picks as Record<string, string>) ?? {}}
