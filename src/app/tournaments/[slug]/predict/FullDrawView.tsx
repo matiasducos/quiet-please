@@ -18,16 +18,18 @@ import CountryFlag from '@/components/CountryFlag'
  * of the two cards that feed it. Zoom scales that one layer with a transform,
  * so nothing reflows while zooming.
  *
- * The tree starts at the round you are looking at, not at the first round.
+ * The tree is laid out from the round you are looking at, not the first one.
  * Midpoint placement doubles the gap every round — in a 128 draw a QF card is
- * ~1,260px from the next and a semi ~2,530px — so a tree anchored at R128 shows
- * one card per screen by the quarters. Instead the leftmost round on screen is
- * packed at the first-round pitch and the rounds to its left are dropped: a
- * round tab (via `focus`) sets it, and so does a sideways scroll once it
- * settles, which is the Wimbledon / ATP draw pattern. A pill in the first
- * title row, or the round tabs, brings the previous round back. The card nearest the middle of the screen is
- * held in place across every re-anchor, so the tree tightens around what you
- * were reading instead of jumping to its top.
+ * ~1,260px from the next and a semi ~2,530px — so a tree built from R128 shows
+ * one card per screen by the quarters. So the leftmost round on screen (the
+ * anchor) packs at the first-round pitch and the rounds after it hang off it
+ * as a tree. Every round stays in the scroll, so scrolling back works: the
+ * rounds before the anchor sit packed at the first-round pitch too, and once a
+ * sideways scroll settles on one of them the tree re-forms from there — all
+ * the way back to the original shape at the first round. A round tab (via
+ * `focus`) moves the anchor the same way. Across every re-anchor the card
+ * nearest mid-screen is held in place, so the tree reshapes around what you
+ * were reading instead of jumping.
  *
  * Scrolling is native on purpose. The tree scrolls sideways inside its own box
  * and the page scrolls down as usual, which gets touch momentum, trackpads and
@@ -151,7 +153,7 @@ export default function FullDrawView({
   const { cardW, colGap, nameSize } = wide ? SIZES.wide : SIZES.narrow
   const colPitch = cardW + colGap
 
-  // ── Anchor: the round the tree starts from ──────────────────────────────
+  // ── Anchor: the leftmost round, which the tree is laid out from ─────────
   //
   // A focus request (round tab, minimap, switching into this view) anchors at
   // its round. Adjusted during render rather than in an effect, so the layout
@@ -167,25 +169,27 @@ export default function FullDrawView({
   }
   // Clamped at read: a scoped challenge can hand in fewer rounds than an old anchor.
   const start = Math.min(anchor, Math.max(0, rounds.length - 1))
-  const shown = rounds.slice(start)
 
   // ── Positions ───────────────────────────────────────────────────────────
-  // One forward pass: a card's y is known once both of its feeders are. The
-  // first shown round has no feeders drawn, so it packs at the base pitch.
+  // The anchor round and every round before it pack at the first-round pitch.
+  // Rounds after it sit at the midpoint of their two feeders — one forward
+  // pass, since a card's y is known once both of its feeders are.
+  const BASE = CARD_H + V_GAP
   const y: Record<string, number> = {}
   const col: Record<string, number> = {}
   let maxY = 0
-  shown.forEach((round, ri) => {
+  rounds.forEach((round, ri) => {
     const matches = matchesByRound[round] ?? []
-    // Spacing for a round whose feeders are not drawn (the first column, or
-    // the first in-scope round of a scoped challenge) — the first-round pitch,
-    // doubled once per round, so an orphan column still lines up with the tree.
-    const pitch = (CARD_H + V_GAP) * (ri === 0 ? 1 : 2 ** ri)
-    const offset = ri === 0 ? 0 : (pitch - (CARD_H + V_GAP)) / 2
+    // Spacing for a round whose feeders are not drawn (a scoped challenge's
+    // first round) — the base pitch doubled per round past the anchor, so an
+    // orphan column still lines up with the tree.
+    const rel = Math.max(0, ri - start)
+    const pitch = BASE * 2 ** rel
+    const offset = (pitch - BASE) / 2
     matches.forEach((m, i) => {
       col[m.matchId] = ri
       const f = feeders[m.matchId]
-      const ys = [f?.player1Feeder, f?.player2Feeder]
+      const ys = rel === 0 ? [] : [f?.player1Feeder, f?.player2Feeder]
         .filter((id): id is string => !!id && y[id] !== undefined)
         .map(id => y[id])
       y[m.matchId] = ys.length > 0
@@ -195,7 +199,7 @@ export default function FullDrawView({
     })
   })
 
-  const layoutW = shown.length * colPitch - colGap
+  const layoutW = rounds.length * colPitch - colGap
   const layoutH = TITLE_H + maxY + CARD_H
 
   // ── Scrolling ───────────────────────────────────────────────────────────
@@ -204,10 +208,17 @@ export default function FullDrawView({
   const lastReported = useRef<string | null>(null)
 
   // The committed layout, for handlers that fire from a timer after render.
-  const layoutRef = useRef({ y, shown, start, zoom })
+  const layoutRef = useRef({ y, start, zoom })
   useLayoutEffect(() => {
-    layoutRef.current = { y, shown, start, zoom }
+    layoutRef.current = { y, start, zoom }
   })
+
+  /** The column at the left edge of the scroll box. */
+  const leftColumn = () => {
+    const el = scrollRef.current
+    if (!el) return 0
+    return Math.min(rounds.length - 1, Math.max(0, Math.round(el.scrollLeft / layoutRef.current.zoom / colPitch)))
+  }
 
   /**
    * Keep the round tabs following the column at the left edge, so switching
@@ -215,67 +226,45 @@ export default function FullDrawView({
    * change — this runs on every scroll frame.
    */
   const reportVisibleRound = () => {
-    const el = scrollRef.current
-    const L = layoutRef.current
-    if (!el) return
-    const idx = Math.min(
-      L.shown.length - 1,
-      Math.max(0, Math.round(el.scrollLeft / L.zoom / colPitch)),
-    )
-    const round = L.shown[idx]
+    const round = rounds[leftColumn()]
     if (round && round !== lastReported.current) {
       lastReported.current = round
       onVisibleRoundChange(round)
     }
   }
 
-  /**
-   * What to restore after a re-anchor: where the sideways scroll should sit,
-   * and which card to hold at the same height on screen.
-   */
-  const pending = useRef<{ left: number; hold: { id: string; screenY: number } | null } | null>(null)
+  /** Which card to hold at the same height on screen across a re-anchor. */
+  const pendingHold = useRef<{ id: string; screenY: number } | null>(null)
 
-  /** The card of `round` nearest the middle of the screen, and where it is now. */
-  const holdFor = (round: string) => {
+  /**
+   * Re-anchor at `next`, holding the card of that round nearest mid-screen —
+   * it is on screen, since `next` is the column the reader scrolled to.
+   */
+  const reanchorTo = (next: number) => {
     const layer = layerRef.current
     const L = layoutRef.current
-    if (!layer) return null
+    if (next === L.start || !layer) return
     const layerTop = layer.getBoundingClientRect().top
     const centre = (window.innerHeight / 2 - layerTop) / L.zoom - TITLE_H - CARD_H / 2
     let best: string | null = null
     let bestD = Infinity
-    for (const m of matchesByRound[round] ?? []) {
+    for (const m of matchesByRound[rounds[next]] ?? []) {
       const d = Math.abs((L.y[m.matchId] ?? Infinity) - centre)
       if (d < bestD) { best = m.matchId; bestD = d }
     }
-    return best ? { id: best, screenY: layerTop + (TITLE_H + L.y[best]) * L.zoom } : null
-  }
-
-  const reanchorTo = (nextStart: number, left: number) => {
-    const L = layoutRef.current
-    if (nextStart === L.start || nextStart < 0 || nextStart >= rounds.length) return
-    // Hold the card the reader is on: in the new first round when moving
-    // forward, in the current first round when stepping back.
-    const holdRound = rounds[Math.max(nextStart, L.start)]
-    pending.current = { left, hold: holdFor(holdRound) }
-    setAnchor(nextStart)
+    pendingHold.current = best ? { id: best, screenY: layerTop + (TITLE_H + L.y[best]) * L.zoom } : null
+    setAnchor(next)
   }
 
   /**
-   * Re-anchor once a sideways scroll has settled — never mid-gesture, or the
-   * columns would be swapped out from under a finger.
+   * Re-anchor once a sideways scroll has settled, in either direction — never
+   * mid-gesture, or the cards would move under a finger.
    */
   const touching = useRef(false)
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const settle = () => {
-    const el = scrollRef.current
-    const L = layoutRef.current
-    if (!el || touching.current || drag.current) return
-    const px = colPitch * L.zoom
-    const idx = Math.min(L.shown.length - 1, Math.round(el.scrollLeft / px))
-    if (idx <= 0) return
-    // Keep any part-column offset, so the columns do not visibly slide.
-    reanchorTo(L.start + idx, Math.max(0, el.scrollLeft - idx * px))
+    if (touching.current || drag.current) return
+    reanchorTo(leftColumn())
   }
   const scheduleSettle = () => {
     if (settleTimer.current) clearTimeout(settleTimer.current)
@@ -290,30 +279,30 @@ export default function FullDrawView({
     scheduleSettle()
   }
 
-  // After a re-anchor: restore the sideways offset, put the held card back
-  // where it was on screen, and tell the tabs which round now leads.
-  // Skipped on mount: reporting then would overwrite a `?round=` deep link
-  // with whatever the tree happens to start at.
-  const mounted = useRef(false)
+  // After a re-anchor, put the held card back where it was on screen. Nothing
+  // moves sideways — every column keeps its x — so there is no scroll to restore.
   useLayoutEffect(() => {
-    if (!mounted.current) { mounted.current = true; return }
-    const p = pending.current
-    pending.current = null
-    const el = scrollRef.current
+    const hold = pendingHold.current
+    pendingHold.current = null
     const layer = layerRef.current
-    if (p && el) el.scrollLeft = p.left
-    if (p?.hold && layer) {
-      const L = layoutRef.current
-      const y1 = L.y[p.hold.id]
-      if (y1 !== undefined) {
-        const now = layer.getBoundingClientRect().top + (TITLE_H + y1) * L.zoom
-        window.scrollBy(0, now - p.hold.screenY)
-      }
-    }
-    reportVisibleRound()
-    // Only when the anchor moves.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!hold || !layer) return
+    const L = layoutRef.current
+    const y1 = L.y[hold.id]
+    if (y1 === undefined) return
+    const now = layer.getBoundingClientRect().top + (TITLE_H + y1) * L.zoom
+    window.scrollBy(0, now - hold.screenY)
   }, [start])
+
+  // Open scrolled to the anchor round, so the column the tree is built from
+  // is the one at the left edge. Not reported: the predictor chose this round.
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollLeft = start * colPitch * zoom
+    lastReported.current = rounds[start] ?? null
+    // Mount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   /**
    * Zoom around the column you are on. Changing the scale moves every x, so
@@ -331,10 +320,14 @@ export default function FullDrawView({
     if (!focus) return
     const el = scrollRef.current
     if (!el) return
-    // The anchor already moved to this round during render, so it is the
-    // first column: scroll home, then bring the card on screen.
-    el.scrollLeft = 0
+    const ri = rounds.indexOf(focus.round)
+    if (ri < 0) return
+    // The anchor already moved to this round during render. Instant rather
+    // than smooth: the settle check below reads where the scroll landed, and
+    // near the end of the draw the box cannot reach a late round's column.
+    el.scrollLeft = ri * colPitch * zoom
     lastReported.current = focus.round
+    scheduleSettle()
 
     if (focus.matchId && y[focus.matchId] !== undefined && layerRef.current) {
       const top = layerRef.current.getBoundingClientRect().top + window.scrollY
@@ -377,7 +370,7 @@ export default function FullDrawView({
 
   // ── Connectors ──────────────────────────────────────────────────────────
   const paths: { d: string; key: string }[] = []
-  for (const round of shown.slice(1)) {
+  for (const round of rounds.slice(1)) {
     for (const m of matchesByRound[round] ?? []) {
       const f = feeders[m.matchId]
       for (const feederId of [f?.player1Feeder, f?.player2Feeder]) {
@@ -392,30 +385,8 @@ export default function FullDrawView({
     }
   }
 
-  const prevRound = start > 0 ? rounds[start - 1] : null
-
   return (
     <div className="relative">
-    {/* Brings back the round the tree has dropped, from the left of the first
-        column's title row. Not sticky: pinned over the tree it covered the
-        first letters of whichever name sat at mid-screen, and further down the
-        pinned round tabs already do the same job. */}
-    {prevRound && (
-      <button
-        type="button"
-        onClick={() => reanchorTo(start - 1, 0)}
-        aria-label={`Show ${roundLabels[prevRound] ?? prevRound}`}
-        style={{
-          position: 'absolute', left: 0, top: 0, zIndex: 5,
-          height: (TITLE_H - 8) * zoom, display: 'flex', alignItems: 'center', padding: '0 8px',
-          fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.05em', whiteSpace: 'nowrap',
-          color: 'var(--ink)', background: 'white', border: '1px solid var(--chalk-dim)', borderRadius: '2px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.12)', cursor: 'pointer',
-        }}
-      >
-        ‹ {roundLabels[prevRound] ?? prevRound}
-      </button>
-    )}
     <div
       ref={scrollRef}
       onScroll={onScroll}
@@ -439,15 +410,12 @@ export default function FullDrawView({
             transform: `scale(${zoom})`, transformOrigin: '0 0',
           }}
         >
-          {shown.map((round, ri) => (
+          {rounds.map((round, ri) => (
             <div
               key={round}
               style={{
                 position: 'absolute', left: ri * colPitch, top: 0, width: cardW, height: TITLE_H - 8,
-                // Right-aligned when the back pill occupies the left of this row.
-                display: 'flex', alignItems: 'center',
-                justifyContent: ri === 0 && prevRound ? 'flex-end' : 'center',
-                paddingRight: ri === 0 && prevRound ? 10 : undefined,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.06em',
                 color: 'var(--muted)', background: 'white', border: '1px solid var(--chalk-dim)', borderRadius: '2px',
                 textTransform: 'uppercase',
@@ -468,7 +436,7 @@ export default function FullDrawView({
             ))}
           </svg>
 
-          {shown.flatMap(round => (matchesByRound[round] ?? []).map(m => {
+          {rounds.flatMap(round => (matchesByRound[round] ?? []).map(m => {
             const card = cardFor(m.matchId)
             const border = card.isBye ? '#bfdbfe' : 'var(--chalk-dim)'
             return (
