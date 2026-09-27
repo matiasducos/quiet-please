@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import * as Sentry from '@sentry/nextjs'
+import * as Sentry from '@/lib/sentry-lazy'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { withCronLogging } from '@/lib/cron-logger'
 import { insertNotifications } from '@/lib/notifications'

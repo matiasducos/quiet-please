@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { revalidateTag } from 'next/cache'
-import * as Sentry from '@sentry/nextjs'
+import * as Sentry from '@/lib/sentry-lazy'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { tennisAdapter } from '@/lib/tennis'
 import { withCronLogging } from '@/lib/cron-logger'
