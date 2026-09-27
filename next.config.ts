@@ -2,6 +2,22 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Reuse a dynamic page the browser rendered in the last 30s instead of
+    // asking the server again — tab-hopping between the dashboard, a
+    // tournament and its bracket becomes instant, and each reuse is one fewer
+    // function invocation (and one fewer cold-start chance) on the CPU budget.
+    //
+    // The cost is staleness, and it is closed where it matters: calling
+    // revalidatePath/revalidateTag in a server action clears this cache, so
+    // every action that writes must call one — see the note in
+    // src/app/admin/actions.ts. Two reads are knowingly left to the window:
+    // the bell after /notifications marks everything read, and the predictor's
+    // remembered LIST/DRAW choice. Chat and messages fetch on mount and are
+    // unaffected.
+    staleTimes: { dynamic: 30 },
+  },
+
   // The social-card renderer reads .ttf files off disk at request time (see
   // src/lib/social/fonts.ts). Nothing imports them, so build-time tracing has no
   // way to know they are needed and would leave them out of the serverless

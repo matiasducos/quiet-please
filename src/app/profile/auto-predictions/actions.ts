@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
 
 type PlayerSlot = {
   externalId: string
@@ -141,6 +142,7 @@ export async function saveAutoPredictList(
     if (insError) return { ok: false, error: insError.message }
   }
 
+  revalidatePath('/profile/auto-predictions')
   return { ok: true }
 }
 
@@ -162,5 +164,6 @@ export async function removeAutoPredictOverride(
     .eq('tour', tour)
     .eq('surface', surface)
 
+  revalidatePath('/profile/auto-predictions')
   return { ok: true }
 }

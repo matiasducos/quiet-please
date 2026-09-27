@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { rateLimit } from '@/lib/rate-limit'
@@ -128,5 +129,7 @@ export async function createChallenge(formData: FormData) {
   // Achievements are checked when the challenge is actually sent, not here — a
   // draft nobody has seen should not earn a badge.
 
+  // The /challenges list may be in the browser's router cache; this clears it.
+  revalidatePath('/challenges')
   redirect(`/tournaments/${tournamentId}/predict?challenge=${created.id}`)
 }
