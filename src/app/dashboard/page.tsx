@@ -41,12 +41,30 @@ export default async function DashboardPage() {
   // through the admin client — the user client is explicitly revoked.
   const admin = createAdminClient()
 
-  // Shared tournament data is cached (60s TTL); user-specific data is not
-  // The all-time aggregates sit in this batch rather than after it: they are the
-  // slowest queries on the page (they scan every prediction the user has made),
-  // so running them in parallel keeps them off the critical path.
-  const [onNowTournaments, { count: predictionCount }, roundRes, playerRes, missedRes] = await Promise.all([
-    getOnNowTournaments(4),
+  // Everything below starts at once. The only real dependency is the on-now
+  // list (cached, shared) — engagement counts and the viewer's standing need
+  // its ids — so those two are chained off it rather than awaited after the
+  // whole batch. Before this the page ran five rounds of queries in a row.
+  //
+  // The all-time aggregates are the slowest queries on the page (they scan
+  // every prediction the user has made); in the one batch they set the
+  // critical path instead of adding to it.
+  const onNowP = getOnNowTournaments(4)
+  const onNowIdsP = onNowP.then(ts => ts.map(t => t.id))
+
+  const [
+    onNowTournaments,
+    { count: predictionCount },
+    roundRes,
+    playerRes,
+    missedRes,
+    { count: higherCount },
+    engagement,
+    liveStatuses,
+    activity,
+    recentResults,
+  ] = await Promise.all([
+    onNowP,
     supabase.from('predictions')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.id)
@@ -54,6 +72,19 @@ export default async function DashboardPage() {
     admin.rpc('user_round_stats', { p_user_id: user.id }),
     admin.rpc('user_player_stats', { p_user_id: user.id, p_limit: 14 }),
     admin.rpc('user_missed_winners', { p_user_id: user.id, p_limit: 6 }),
+    supabase
+      .from('users')
+      .select('id', { count: 'exact', head: true })
+      .gt('ranking_points', profile?.ranking_points ?? 0),
+    onNowIdsP.then(ids => getTournamentEngagement(ids)),
+    // The viewer's own standing in each tournament on the strip. Not cached
+    // alongside getOnNowTournaments(), which is shared across all users.
+    // Returns nothing for a tournament that has not started — no results means
+    // no standing — so those cards simply render without a footer.
+    onNowIdsP.then(ids => getLiveStatuses(user.id, ids)),
+    getActivity(user.id, 15),
+    // Every recent finish, with this user's own result attached where they played.
+    getRecentResultsForUser(user.id, 2).then(withRecaps),
   ])
 
   if (roundRes.error)  console.error('[dashboard] user_round_stats failed:', roundRes.error.message)
@@ -62,16 +93,6 @@ export default async function DashboardPage() {
   const roundStats  = (roundRes.data ?? []) as RoundStat[]
   const playerStats = (playerRes.data ?? []) as PlayerStat[]
   const missedStats = (missedRes.data ?? []) as MissedPlayerStat[]
-
-  // Rank + engagement in parallel (both depend on prior data)
-  const onNowIds = onNowTournaments.map(t => t.id)
-  const [{ count: higherCount }, engagement] = await Promise.all([
-    supabase
-      .from('users')
-      .select('id', { count: 'exact', head: true })
-      .gt('ranking_points', profile?.ranking_points ?? 0),
-    getTournamentEngagement(onNowIds),
-  ])
 
   const globalRank = (higherCount ?? 0) + 1
 
@@ -82,23 +103,11 @@ export default async function DashboardPage() {
     challenge_count: engagement[t.id]?.challenges ?? 0,
   }))
 
-  // The viewer's own standing in each tournament on the strip. Not cached
-  // alongside getOnNowTournaments(), which is shared across all users.
-  //
-  // Returns nothing for a tournament that has not started — no results means no
-  // standing — so those cards simply render without a footer.
-  const liveStatuses = await getLiveStatuses(user.id, onNowIds)
-
   const stats = [
     { label: 'Ranking points', value: formatPoints(profile?.ranking_points ?? 0) },
     { label: 'Predictions',    value: predictionCount ?? 0 },
     { label: 'Global rank',    value: `#${globalRank}` },
   ]
-
-  const activity = await getActivity(user.id, 15)
-
-  // Every recent finish, with this user's own result attached where they played.
-  const recentResults = await withRecaps(await getRecentResultsForUser(user.id, 2))
 
   // A line about *this* moment rather than a restatement of the page. When
   // something is running the dashboard's job is to point at it; when nothing is,
