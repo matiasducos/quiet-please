@@ -78,26 +78,6 @@ export const getUpcomingTournaments = unstable_cache(
 )
 
 /**
- * Cached query for live (in_progress) tournaments (shared across all users).
- * Invalidated by the tournament-list tag; see LIST_BACKSTOP for the window.
- */
-export const getLiveTournaments = unstable_cache(
-  async (limit: number = 4) => {
-    const supabase = createAdminClient()
-    const { data, error } = await supabase
-      .from('tournaments')
-      .select(TOURNAMENT_FIELDS)
-      .eq('status', 'in_progress')
-      .order('starts_at', { ascending: true })
-      .limit(limit)
-    if (error) console.error('cached live tournaments error:', error.message)
-    return withEditionRef(data ?? [])
-  },
-  ['live-tournaments'],
-  { revalidate: LIST_BACKSTOP, tags: ['tournament-list'] },
-)
-
-/**
  * The statuses the "Live right now" strips show.
  *
  * Wider than `in_progress` on purpose: a published draw taking predictions is
@@ -130,12 +110,6 @@ export function compareOnNow<T extends { status: string; starts_at: string | nul
 
 /**
  * Cached "on now" list — in progress, plus draws that are open (shared).
- *
- * Kept separate from `getLiveTournaments` rather than replacing it. Two callers
- * genuinely mean "on court": `getPickGapPrompt`, whose whole premise is a
- * tournament already under way, and `getLiveStatuses`, which reports a standing
- * that does not exist before the first result. Widening the shared helper would
- * have changed both silently.
  *
  * The row cap is applied after sorting, so a tournament on court is never
  * pushed out of the strip by an earlier-starting one that has not begun. The

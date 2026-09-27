@@ -1,7 +1,7 @@
 import Link from 'next/link'
-import { AdminHeader, Chip, type ChipTone } from '../ui'
+import { AdminHeader, Chip } from '../ui'
 import { mono, when } from '../format'
-import type { BannerReport, PickGapCandidate, FeaturedCandidate } from './status'
+import type { BannerReport, FeaturedCandidate } from './status'
 import type { NoticeSpec } from '@/components/SiteNotice'
 
 /**
@@ -15,20 +15,6 @@ import type { NoticeSpec } from '@/components/SiteNotice'
  * cell on most rows is a sentence, not a figure, and a 12-column table of
  * sentences is unreadable at 375px whatever you wrap it in.
  */
-
-const OUTCOME_TONE: Record<PickGapCandidate['outcome'], ChipTone> = {
-  would_show: 'good',
-  no_gaps: 'muted',
-  no_draw: 'warn',
-  sandbox: 'muted',
-}
-
-const OUTCOME_LABEL: Record<PickGapCandidate['outcome'], string> = {
-  would_show: 'would show',
-  no_gaps: 'no gaps',
-  no_draw: 'no draw',
-  sandbox: 'sandbox',
-}
 
 function SectionTitle({ children, note }: { children: React.ReactNode; note?: string }) {
   return (
@@ -138,42 +124,6 @@ function SpecDetail({ spec }: { spec: NoticeSpec }) {
   )
 }
 
-function PickGapRow({ c }: { c: PickGapCandidate }) {
-  return (
-    <Card>
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="min-w-0">
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem' }}>
-            {c.flagEmoji ? `${c.flagEmoji} ` : ''}{c.name}
-          </div>
-          <div style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)', marginTop: '2px' }}>
-            {[c.location, c.tour, c.seriesSlug ? `/${c.seriesSlug}` : 'no series slug'].filter(Boolean).join(' · ')}
-          </div>
-        </div>
-        <Chip text={OUTCOME_LABEL[c.outcome]} tone={OUTCOME_TONE[c.outcome]} />
-      </div>
-
-      <p style={{ fontSize: '0.8rem', color: 'var(--ink)', lineHeight: 1.6, marginTop: '0.6rem' }}>
-        {c.why}
-      </p>
-
-      {c.drawMatches > 0 && (
-        <div style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)', marginTop: '0.4rem' }}>
-          {c.drawMatches} matches in the draw · {c.playedMatches} played
-          {c.slotLimited && ' · weekly-slot check also applies, not evaluated here'}
-        </div>
-      )}
-
-      {c.spec && (
-        <div className="mt-3">
-          <NoticePreview spec={c.spec} />
-          <SpecDetail spec={c.spec} />
-        </div>
-      )}
-    </Card>
-  )
-}
-
 function FeaturedRow({ c }: { c: FeaturedCandidate }) {
   return (
     <Card>
@@ -198,7 +148,7 @@ function FeaturedRow({ c }: { c: FeaturedCandidate }) {
 }
 
 export default function BannerStatus({ report }: { report: BannerReport }) {
-  const { pickGap, featured, audiences } = report
+  const { featured, audiences } = report
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--chalk)' }}>
@@ -210,17 +160,17 @@ export default function BannerStatus({ report }: { report: BannerReport }) {
             What visitors are seeing
           </h1>
           <p style={{ fontSize: '0.85rem', color: 'var(--muted)', lineHeight: 1.6, marginTop: '0.4rem' }}>
-            The two announcement bars that mount in the site nav, and which one is reaching whom
-            right now. Read-only — nothing on this page changes what is shown.
+            The announcement bar that mounts in the site nav, and whether it is up right now.
+            Read-only — nothing on this page changes what is shown.
           </p>
           <p style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)', marginTop: '0.5rem' }}>
-            Evaluated {when(report.evaluatedAt)} · prediction mode: {report.predictionMode}
+            Evaluated {when(report.evaluatedAt)}
           </p>
         </div>
 
         {/* ── Who sees what ── */}
         <section className="mb-8">
-          <SectionTitle note="Only one bar ever renders. SiteNotices arbitrates, and the pick-gap bar outranks the invite bar — including when it has been dismissed, so pressing × does not summon the other one.">
+          <SectionTitle>
             Right now
           </SectionTitle>
           <div className="flex flex-col gap-2">
@@ -236,47 +186,6 @@ export default function BannerStatus({ report }: { report: BannerReport }) {
               </Card>
             ))}
           </div>
-        </section>
-
-        {/* ── Pick-gap bar ── */}
-        <section className="mb-8">
-          <SectionTitle note="Per-user, so this is evaluated for a signed-in visitor with no bracket in any live tournament — the case most likely to see it. Anyone with picks sees it for fewer tournaments, never more.">
-            <span className="flex items-center gap-2 flex-wrap">
-              Pick-gap bar
-              <Chip
-                text={report.pickGapEnabled ? 'enabled' : 'off — prediction mode'}
-                tone={report.pickGapEnabled ? 'good' : 'alert'}
-              />
-            </span>
-          </SectionTitle>
-
-          {!report.pickGapEnabled && (
-            <div className="rounded-sm border px-4 py-3 mb-3" style={{ borderColor: '#fbbf24', background: '#fffbeb' }}>
-              <p style={{ ...mono, fontSize: '0.72rem', color: '#92400e', lineHeight: 1.6 }}>
-                Prediction mode is <strong>{report.predictionMode}</strong>, which does not allow predicting an
-                in-progress tournament. The bar is off for every user regardless of the rows below.
-              </p>
-            </div>
-          )}
-
-          {pickGap.candidates.length === 0 ? (
-            <Card>
-              <p style={{ fontSize: '0.8rem', color: 'var(--muted)', lineHeight: 1.6 }}>
-                No tournament is in progress, so there is nothing to nudge anyone about.
-              </p>
-            </Card>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {pickGap.candidates.map(c => <PickGapRow key={c.id} c={c} />)}
-            </div>
-          )}
-
-          {pickGap.candidates.length > 1 && pickGap.winner && (
-            <p style={{ ...mono, fontSize: '0.65rem', color: 'var(--muted)', lineHeight: 1.6, marginTop: '0.6rem' }}>
-              More than one tournament qualifies. The bar shows the first by start date —{' '}
-              <strong>{pickGap.winner.name}</strong> — and never stacks.
-            </p>
-          )}
         </section>
 
         {/* ── Invite bar ── */}

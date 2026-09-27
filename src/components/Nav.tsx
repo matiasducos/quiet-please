@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
 import NotificationBell from './NotificationBell'
-import SiteNotices from './SiteNotices'
+import FeaturedSlamNotice from './FeaturedSlamNotice'
 import ChatBubbleIconServer from './ChatBubbleIconServer'
 import LeagueUnreadDotServer from './LeagueUnreadDotServer'
 import PostHogIdentify from './PostHogIdentify'
@@ -385,10 +385,10 @@ export default function Nav({ username, activePage, userId, deletionRequestedAt 
         from a shared 5-minute cache entry, so the wait is a cache lookup on
         every request but the first after a deploy.
 
-        SiteNotices picks which of the two bars runs — see the note there. The
-        pick-gap branch adds one indexed per-user query on top of that cache
-        lookup, and only for signed-in visitors. */}
-    <SiteNotices userId={userId} />
+        The only bar now. A second one — "you're missing out, predict the
+        next round" — shared this slot until 2026-09-27; it cost a per-user
+        query on every signed-in page view and was dropped. */}
+    <FeaturedSlamNotice />
     </>
   )
 }
