@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { getSessionUser } from '@/lib/supabase/profile'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { unstable_cache } from 'next/cache'
@@ -486,7 +487,7 @@ export default async function LeaderboardPage({
   searchParams: Promise<{ scope?: string; country?: string; city?: string; circuit?: string; page?: string; q?: string }>
 }) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSessionUser()
 
   // Anonymous: show blurred leaderboard preview with signup overlay (FOMO, not a wall)
   if (!user) {

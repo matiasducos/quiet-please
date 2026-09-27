@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { getSessionUser } from '@/lib/supabase/profile'
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
@@ -26,7 +27,7 @@ export default async function PredictPage({
   searchParams: Promise<{ challenge?: string; round?: string }>
 }) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSessionUser()
 
   // Params are resolved before the gate so the redirect can name the bracket
   // this visitor asked for.
