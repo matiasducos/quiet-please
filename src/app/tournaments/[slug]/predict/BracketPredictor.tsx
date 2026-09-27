@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { savePrediction, importGlobalPicks } from './actions'
@@ -289,8 +289,11 @@ export default function BracketPredictor({
   initialRound,
   scopeRounds,
   initialView = 'rounds',
+  switcher,
 }: {
   tournament: any
+  /** ‹ Hangzhou › — steps to the next live tournament's bracket. Rendered above the header's breadcrumb. */
+  switcher?: ReactNode
   draw: Draw
   existingPicks: Record<string, string>
   predictionId: string | null
@@ -1823,6 +1826,7 @@ export default function BracketPredictor({
       {!hideNav && (
       <div className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="max-w-5xl mx-auto px-4 md:px-6 py-5">
+        {switcher && <div className="mb-4 flex">{switcher}</div>}
         <div className="flex items-center gap-2 mb-1" style={{ fontSize: '0.75rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
           <Link href={`/tournaments/${tournament.id}`} style={{ color: 'var(--muted)' }}>{tournament.flag_emoji ? `${tournament.flag_emoji} ` : ''}{tournament.location ? `${tournament.location} · ${tournament.name}` : tournament.name}</Link>
           <span>/</span>

@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import { Fragment, Suspense } from 'react'
 import { notFound, permanentRedirect } from 'next/navigation'
 import Link from 'next/link'
+import TournamentSwitcher from '@/components/TournamentSwitcher'
+import { editionSwitcherItems, getPublicSwitcherRows } from '@/lib/tournaments/switcher'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getNavProfile } from '@/lib/supabase/profile'
@@ -106,7 +108,13 @@ export default async function EditionPage({ params }: { params: Promise<RoutePar
   const year = parseEditionYear(rawYear)
   if (year === null) notFound()
 
-  const [{ user, profile }, page] = await Promise.all([getNavProfile(), getEdition(slug, year)])
+  // The switcher's list is the globally cached "Live right now" set, so it costs
+  // this ISR page nothing per visitor and stays in step with the strip.
+  const [{ user, profile }, page, switcherRows] = await Promise.all([
+    getNavProfile(),
+    getEdition(slug, year),
+    getPublicSwitcherRows(),
+  ])
 
   // Before giving up: was this slug renamed out from under the URL? A rename
   // moves every edition beneath the hub, and the old URLs kept their rankings
@@ -150,8 +158,12 @@ export default async function EditionPage({ params }: { params: Promise<RoutePar
       )}
 
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-10">
+        {/* Breadcrumb and switcher share a row on desktop; at phone width the
+            switcher wraps under it at full width, where the arrows are big
+            enough to hit. It renders nothing on an edition that is not live. */}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 mb-8">
         <nav
-          className="flex items-center gap-2 mb-8 flex-wrap"
+          className="flex items-center gap-2 flex-wrap"
           style={{ fontSize: '0.8rem', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}
         >
           <Link href="/tournaments" style={{ color: 'var(--muted)' }}>Tournaments</Link>
@@ -162,6 +174,12 @@ export default async function EditionPage({ params }: { params: Promise<RoutePar
           <span>/</span>
           <span style={{ color: 'var(--ink)' }}>{year}</span>
         </nav>
+        <TournamentSwitcher
+          items={editionSwitcherItems(switcherRows)}
+          currentHref={`/tournaments/${page.series.slug}/${year}`}
+          className="w-full md:w-80"
+        />
+        </div>
 
         {/* Streamed, and the boundary is deliberately HERE rather than in a
             loading.tsx: everything above has already resolved, and crucially

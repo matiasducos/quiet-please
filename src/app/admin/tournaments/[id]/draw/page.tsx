@@ -2,6 +2,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireAdmin } from '../../../auth'
 import { redirect } from 'next/navigation'
 import DrawBuilder from './DrawBuilder'
+import TournamentSwitcher from '@/components/TournamentSwitcher'
+import { getAdminSwitcherItems } from '@/lib/tournaments/switcher'
 
 export default async function DrawPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin()
@@ -10,7 +12,7 @@ export default async function DrawPage({ params }: { params: Promise<{ id: strin
   const admin = createAdminClient()
 
   // Load tournament info and existing draw in parallel
-  const [{ data: tournament }, { data: draw }] = await Promise.all([
+  const [{ data: tournament }, { data: draw }, switcherItems] = await Promise.all([
     admin
       .from('tournaments')
       .select('id, name, draw_size, tour, location, flag_emoji')
@@ -21,6 +23,7 @@ export default async function DrawPage({ params }: { params: Promise<{ id: strin
       .select('bracket_data')
       .eq('tournament_id', id)
       .single(),
+    getAdminSwitcherItems(id, 'draw'),
   ])
 
   if (!tournament) redirect('/admin')
@@ -56,6 +59,10 @@ export default async function DrawPage({ params }: { params: Promise<{ id: strin
 
   return (
     <DrawBuilder
+      // Keyed so arrowing to another tournament rebuilds the slots from its own
+      // draw rather than carrying the previous one's half-built bracket over.
+      key={tournament.id}
+      switcher={<TournamentSwitcher items={switcherItems} currentHref={`/admin/tournaments/${tournament.id}/draw`} className="w-full md:w-96" />}
       tournamentId={tournament.id}
       tournamentName={tournament.name}
       tournamentLocation={tournament.location ?? null}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, type ReactNode } from 'react'
 import Link from 'next/link'
 import { searchPlayers, createPlayer, buildDraw } from '../../../actions'
 import { nameToFlag } from '@/app/admin/countries'
@@ -18,6 +18,8 @@ interface DrawBuilderProps {
     player1: PlayerOption | 'BYE' | null
     player2: PlayerOption | 'BYE' | null
   }>
+  /** ‹ Hangzhou › — above the heading; the sticky nav is already full with Save. */
+  switcher?: ReactNode
 }
 
 const ROUND_ORDER = ['R128', 'R64', 'R32', 'R16', 'QF', 'SF', 'F']
@@ -405,7 +407,7 @@ function BracketConnector() {
 
 // ── Main DrawBuilder ──────────────────────────────────────────────────────────
 
-export default function DrawBuilder({ tournamentId, tournamentName, tournamentLocation, flagEmoji, drawSize, tour, existingSlots }: DrawBuilderProps) {
+export default function DrawBuilder({ tournamentId, tournamentName, tournamentLocation, flagEmoji, drawSize, tour, existingSlots, switcher }: DrawBuilderProps) {
   const matchCount = drawSize / 2
   type Slot = PlayerOption | 'BYE' | 'QUALIFIER' | null
 
@@ -557,6 +559,7 @@ export default function DrawBuilder({ tournamentId, tournamentName, tournamentLo
       {/* Header */}
       <div className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>
         <div className="max-w-5xl mx-auto px-4 md:px-6 py-5">
+          {switcher && <div className="mb-4 flex">{switcher}</div>}
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '-0.02em' }}>
             {flagEmoji && <span style={{ marginRight: '6px' }}>{flagEmoji}</span>}
             {tournamentLocation ?? tournamentName}
