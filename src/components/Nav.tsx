@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
-import NotificationBell from './NotificationBell'
+import NotificationBell, { NotificationBellFallback } from './NotificationBell'
+import ChatBubbleIcon from './ChatBubbleIcon'
 import FeaturedSlamNotice from './FeaturedSlamNotice'
 import ChatBubbleIconServer from './ChatBubbleIconServer'
 import LeagueUnreadDotServer from './LeagueUnreadDotServer'
@@ -194,10 +195,13 @@ export default function Nav({ username, activePage, userId, deletionRequestedAt 
               {userId && (
                 <>
                   <PostHogIdentify userId={userId} username={username!} />
-                  <Suspense fallback={null}>
+                  {/* Streamed, so no page waits on either count. The fallbacks are
+                      the icons themselves without a badge: the header is whole
+                      on first paint and only the dot arrives late. */}
+                  <Suspense fallback={<ChatBubbleIcon initialCount={0} />}>
                     <ChatBubbleIconServer />
                   </Suspense>
-                  <Suspense fallback={null}>
+                  <Suspense fallback={<NotificationBellFallback />}>
                     <NotificationBell userId={userId} />
                   </Suspense>
                 </>
