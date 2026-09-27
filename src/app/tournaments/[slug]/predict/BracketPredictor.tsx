@@ -1939,6 +1939,7 @@ export default function BracketPredictor({
               zoom={fullZoom}
               focus={fullFocus}
               onVisibleRoundChange={setActiveRound}
+              initialRound={activeRound}
             />
           </>
         ) : (<>
