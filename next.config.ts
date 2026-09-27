@@ -15,7 +15,12 @@ const nextConfig: NextConfig = {
     // the bell after /notifications marks everything read, and the predictor's
     // remembered LIST/DRAW choice. Chat and messages fetch on mount and are
     // unaffected.
-    staleTimes: { dynamic: 30 },
+    //
+    // `static` also caps a FULL prefetch — the links with
+    // unstable_dynamicOnHover. A prefetched response with no stale-time header
+    // falls back to it (segment-cache/cache.js), and its 300s default would let
+    // a bracket hovered five minutes ago open with five-minute-old picks.
+    staleTimes: { dynamic: 30, static: 60 },
   },
 
   // The social-card renderer reads .ttf files off disk at request time (see

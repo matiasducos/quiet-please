@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useId, useRef, useState } from 'react'
-import Link from 'next/link'
+import IntentLink from './IntentLink'
 import type { SwitcherItem } from '@/lib/tournaments/switcher'
 
 /**
@@ -12,9 +12,15 @@ import type { SwitcherItem } from '@/lib/tournaments/switcher'
  * The arrows wrap, because "next" off the end of a list of live events has no
  * better meaning than the first one.
  *
- * Every destination is a plain `<Link>` with an href decided on the server
+ * Every destination is a `<Link>` (via IntentLink) with an href decided on the server
  * (see `src/lib/tournaments/switcher.ts`), so the navigation progress bar picks
  * the click up from its document listener with nothing wired here.
+ *
+ * `IntentLink`: a hover (or the touchstart just before a tap)
+ * prefetches the whole next page, not just its shell, so the click lands on
+ * data that is already in the browser. Safe here because these links are few
+ * and a hover on them is nearly always followed by the click — unlike a list of
+ * cards, where every touch that starts a scroll would prefetch a page.
  *
  * Renders nothing when there is nowhere to go: fewer than two items, or a page
  * that is not itself on the list — arrows relative to a position you are not
@@ -113,7 +119,7 @@ export default function TournamentSwitcher({
       className={`relative flex items-stretch rounded-sm border bg-white ${className}`}
       style={{ borderColor: 'var(--chalk-dim)', height: 40 }}
     >
-      <Link
+      <IntentLink
         href={prev.href}
         aria-label={`Previous tournament: ${prev.subtitle}`}
         title={prev.subtitle}
@@ -121,7 +127,7 @@ export default function TournamentSwitcher({
         style={{ ...arrowStyle, borderRight: '1px solid var(--chalk-dim)' }}
       >
         <Chevron dir="left" />
-      </Link>
+      </IntentLink>
 
       <button
         type="button"
@@ -144,7 +150,7 @@ export default function TournamentSwitcher({
         </span>
       </button>
 
-      <Link
+      <IntentLink
         href={next.href}
         aria-label={`Next tournament: ${next.subtitle}`}
         title={next.subtitle}
@@ -152,7 +158,7 @@ export default function TournamentSwitcher({
         style={{ ...arrowStyle, borderLeft: '1px solid var(--chalk-dim)' }}
       >
         <Chevron dir="right" />
-      </Link>
+      </IntentLink>
 
       {open && (
         <ul
@@ -171,7 +177,7 @@ export default function TournamentSwitcher({
             const isCurrent = i === index
             return (
               <li key={item.href} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--chalk-dim)' }}>
-                <Link
+                <IntentLink
                   href={item.href}
                   onClick={() => setOpen(false)}
                   aria-current={isCurrent ? 'page' : undefined}
@@ -188,7 +194,7 @@ export default function TournamentSwitcher({
                     </span>
                   </span>
                   <StatusChip status={item.status} />
-                </Link>
+                </IntentLink>
               </li>
             )
           })}

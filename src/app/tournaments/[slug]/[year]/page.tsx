@@ -3,6 +3,7 @@ import { Fragment, Suspense } from 'react'
 import { notFound, permanentRedirect } from 'next/navigation'
 import Link from 'next/link'
 import TournamentSwitcher from '@/components/TournamentSwitcher'
+import IntentLink from '@/components/IntentLink'
 import { editionSwitcherItems, getPublicSwitcherRows } from '@/lib/tournaments/switcher'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -371,7 +372,9 @@ async function TourSection({
               //
               // Signed-in users still go direct: this page already knows who
               // they are, so sending them via /play would only add a redirect.
-              <Link
+              // IntentLink: the page's main call to action, so a hover or the
+              // touchstart before a tap prefetches the whole bracket.
+              <IntentLink
                 href={userId ? `/tournaments/${series.slug}/predict` : `/play/${series.slug}`}
                 className="px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
                 style={{ background: 'var(--court)', color: 'white', textDecoration: 'none' }}
@@ -384,7 +387,7 @@ async function TourSection({
                   : myBracket.isFullyLocked
                     ? 'Check your predictions'
                     : 'Make predictions'}
-              </Link>
+              </IntentLink>
             )}
             {(t.status === 'in_progress' || isDone) && (
               <Link
