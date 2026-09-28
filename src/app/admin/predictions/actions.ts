@@ -1,6 +1,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { revalidatePath } from 'next/cache'
 import { recordAdminAction } from '@/lib/admin-audit'
 import { committedPicks } from '@/lib/tennis'
 import { assertAdmin } from '../auth'
@@ -467,6 +468,7 @@ export async function adminUnlockPrediction(
     },
   })
 
+  revalidatePath('/admin/predictions')
   return {
     ok: true,
     noOp: false,

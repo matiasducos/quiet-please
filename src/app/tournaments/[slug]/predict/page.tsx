@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { getSessionUser } from '@/lib/supabase/profile'
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
@@ -6,7 +7,7 @@ import BracketPredictor from './BracketPredictor'
 import { parseBracketView } from '@/lib/bracket/view'
 import { TEST_EXTERNAL_ID } from '@/app/test-tournaments/constants'
 import { getTournamentISOWeeks } from '@/lib/utils/iso-week'
-import { canPredictForStatus, getPredictableStatuses, isManualLockMode } from '@/lib/app-settings'
+import { getPredictableStatuses, isManualLockMode } from '@/lib/app-settings'
 import TournamentSwitcher from '@/components/TournamentSwitcher'
 import { getPublicSwitcherRows, predictHref, predictSwitcherItems } from '@/lib/tournaments/switcher'
 import { resolveTournamentParam } from '@/lib/tournaments/series'
@@ -26,7 +27,7 @@ export default async function PredictPage({
   searchParams: Promise<{ challenge?: string; round?: string }>
 }) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSessionUser()
 
   // Params are resolved before the gate so the redirect can name the bracket
   // this visitor asked for.
@@ -69,6 +70,10 @@ export default async function PredictPage({
     viewRes,
     { data: resultsData },
     challengeRes,
+    ledgerRes,
+    manualLock,
+    switcherRows,
+    predictableStatuses,
   ] = await Promise.all([
     supabase.from('tournaments').select('*').eq('id', id).single(),
     supabase.from('draws').select('bracket_data, locked_matches').eq('tournament_id', id).single(),
@@ -81,6 +86,19 @@ export default async function PredictPage({
     challengeId
       ? supabase.from('challenges').select('challenger_id, challenged_id, status, scope_round').eq('id', challengeId).single()
       : Promise.resolve({ data: null as any }),
+    // Points per match. Read by tournament and user rather than by the
+    // prediction's id so it need not wait for the prediction — matched to it
+    // below, which also keeps a challenge's points off the global bracket.
+    supabase
+      .from('point_ledger')
+      .select('points, streak_multiplier, prediction_id, match_results(external_match_id)')
+      .eq('tournament_id', id)
+      .eq('user_id', user.id),
+    isManualLockMode(),
+    // The switcher's list and the statuses it may link a predict URL for. Both
+    // globally cached; fetched here so they are not a wait of their own at the end.
+    challengeId ? Promise.resolve([]) : getPublicSwitcherRows(),
+    getPredictableStatuses(),
   ])
 
   if (!tournament) notFound()
@@ -94,7 +112,8 @@ export default async function PredictPage({
   // global prediction mode toggle — only standalone predictions respect the toggle.
   const canPredictNow = challengeId
     ? ['accepting_predictions', 'in_progress'].includes(tournament.status)
-    : await canPredictForStatus(tournament.status)
+    // canPredictForStatus() without the second settings read: same list.
+    : predictableStatuses.includes(tournament.status)
 
   // Allow read-only viewing of completed tournaments when user has a prediction
   const isCompletedWithPicks = tournament.status === 'completed' && prediction
@@ -110,15 +129,11 @@ export default async function PredictPage({
   )
   let matchPoints: Record<string, { points: number; streakMultiplier: number }> = {}
 
+  if (ledgerRes.error) console.error('[predict] ledger read failed:', ledgerRes.error.message)
   if (prediction) {
-    const { data: pointsData } = await supabase
-      .from('point_ledger')
-      .select('points, streak_multiplier, match_results(external_match_id)')
-      .eq('prediction_id', prediction.id)
-
     matchPoints = Object.fromEntries(
-      (pointsData ?? [])
-        .filter((r: any) => r.match_results?.external_match_id)
+      (ledgerRes.data ?? [])
+        .filter((r: any) => r.prediction_id === prediction.id && r.match_results?.external_match_id)
         .map((r: any) => [
           r.match_results.external_match_id,
           { points: r.points, streakMultiplier: r.streak_multiplier ?? 1 },
@@ -223,7 +238,6 @@ export default async function PredictPage({
   const forceReadOnly = !!isCompletedWithPicks
 
   // ── Admin locked matches (manual_lock mode) ─────────────────────────────
-  const manualLock = await isManualLockMode()
   const adminLockedMatches = manualLock
     ? (draw.locked_matches as Record<string, string>) ?? {}
     : undefined
@@ -255,7 +269,6 @@ export default async function PredictPage({
   // Both reads are globally cached, so this adds no per-user query.
   let switcher: ReactNode = null
   if (!challengeId) {
-    const [switcherRows, predictableStatuses] = await Promise.all([getPublicSwitcherRows(), getPredictableStatuses()])
     switcher = (
       <TournamentSwitcher
         items={predictSwitcherItems(switcherRows, predictableStatuses)}

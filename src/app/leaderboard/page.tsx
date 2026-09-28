@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { getSessionUser } from '@/lib/supabase/profile'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { unstable_cache } from 'next/cache'
@@ -486,7 +487,7 @@ export default async function LeaderboardPage({
   searchParams: Promise<{ scope?: string; country?: string; city?: string; circuit?: string; page?: string; q?: string }>
 }) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSessionUser()
 
   // Anonymous: show blurred leaderboard preview with signup overlay (FOMO, not a wall)
   if (!user) {
@@ -567,21 +568,35 @@ export default async function LeaderboardPage({
     circuit === 'wta' ? 'wta_ranking_points' :
     'ranking_points'
 
-  // ── Parallel fetch: profile + leaderboard ──────────────────────────────
-  const { data: profile } = await supabase
-    .from('users')
-    .select('username, ranking_points, atp_ranking_points, wta_ranking_points, country, city')
-    .eq('id', user.id)
-    .single()
+  // ── Round one: everything that needs only the viewer ───────────────────
+  // The profile decides the scope's country and city; the community member set
+  // scopes the board, the search and the rank alike; the selector list depends
+  // on neither. Three reads, one wait.
+  const admin = createAdminClient()
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+  const [{ data: profile, error: profileError }, communityIds, { data: selectorTournaments, error: selectorError }] = await Promise.all([
+    supabase
+      .from('users')
+      .select('username, ranking_points, atp_ranking_points, wta_ranking_points, country, city')
+      .eq('id', user.id)
+      .single(),
+    scope === 'community' ? getCommunityIds(user.id) : Promise.resolve(null),
+    // ── Active tournaments for the dropdown selector
+    admin
+      .from('tournaments')
+      .select('id, name, location, flag_emoji, tour, status, starts_at')
+      .or(`status.in.(accepting_predictions,in_progress),and(status.eq.completed,ends_at.gt.${fourteenDaysAgo})`)
+      .order('starts_at', { ascending: false })
+      .limit(20),
+  ])
+  if (profileError) console.error('[leaderboard] profile read failed:', profileError.message)
+  if (selectorError) console.error('[leaderboard] selector tournaments failed:', selectorError.message)
 
   // Determine which scope params to use (URL > user's own location)
   const scopeCountry = sp.country ?? (scope !== 'worldwide' ? profile?.country ?? null : null)
   const scopeCity    = sp.city    ?? (scope === 'city'      ? profile?.city    ?? null : null)
 
   // ── Leaderboard data ───────────────────────────────────────────────────
-  // Community scope needs its member set up front: it scopes the page, the
-  // search and the rank count alike.
-  const communityIds   = scope === 'community' ? await getCommunityIds(user.id) : null
   const communityCount = communityIds ? communityIds.length - 1 : 0 // excluding self
 
   let users: LeaderboardUser[] = []
@@ -590,23 +605,34 @@ export default async function LeaderboardPage({
   let searchRanks: Record<string, number> = {}
   let total = 0
 
-  if (isSearching) {
+  // ── Round two: the board and my rank, side by side ─────────────────────
+  // My rank is always counted in Postgres rather than read off the visible
+  // rows: with the board paginated, "I am on screen" no longer implies anything
+  // about rank, and the count is a single index-only lookup. It needs the same
+  // scope as the board and nothing from it, so the two run together.
+  const myPoints = profile?.[pointsField] ?? 0
+  const [boardRes, myRank] = await Promise.all([
     // A search replaces the list rather than filtering it — the whole point is
     // to reach players who are nowhere near the page you are on.
-    const res = await searchLeaderboard(searchTerm, pointsField, scope, scopeCountry, scopeCity, communityIds)
-    users = res.users
-    breakdownByUser = res.breakdownByUser
-    statsByUser = res.statsByUser
-    searchRanks = res.ranks
+    isSearching
+      ? searchLeaderboard(searchTerm, pointsField, scope, scopeCountry, scopeCity, communityIds)
+      : getLeaderboardPage(
+          pointsField, scope, scopeCountry, scopeCity, page, communityIds,
+          scope === 'community' ? user.id : '_',
+        ),
+    fetchRank(supabase, pointsField, myPoints, user.id, scope, scopeCountry, scopeCity, communityIds),
+  ])
+
+  if ('ranks' in boardRes) {
+    users = boardRes.users
+    breakdownByUser = boardRes.breakdownByUser
+    statsByUser = boardRes.statsByUser
+    searchRanks = boardRes.ranks
   } else {
-    const res = await getLeaderboardPage(
-      pointsField, scope, scopeCountry, scopeCity, page, communityIds,
-      scope === 'community' ? user.id : '_',
-    )
-    users = res.users
-    breakdownByUser = res.breakdownByUser
-    statsByUser = res.statsByUser
-    total = res.total
+    users = boardRes.users
+    breakdownByUser = boardRes.breakdownByUser
+    statsByUser = boardRes.statsByUser
+    total = boardRes.total
   }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -630,24 +656,6 @@ export default async function LeaderboardPage({
   // URL. Land on the last real page rather than on an empty table.
   if (!isSearching && total > 0 && page > totalPages) redirect(pageHref(totalPages))
 
-  // ── Active tournaments for dropdown selector ─────────────────────────
-  const admin = createAdminClient()
-  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
-  const { data: selectorTournaments } = await admin
-    .from('tournaments')
-    .select('id, name, location, flag_emoji, tour, status, starts_at')
-    .or(`status.in.(accepting_predictions,in_progress),and(status.eq.completed,ends_at.gt.${fourteenDaysAgo})`)
-    .order('starts_at', { ascending: false })
-    .limit(20)
-
-  // ── My rank: position in the current scope/circuit view ─────────────────
-  // Always counted in Postgres rather than read off the visible rows: with the
-  // board paginated, "I am on screen" no longer implies anything about rank,
-  // and the count is a single index-only lookup.
-  const myPoints = profile?.[pointsField] ?? 0
-  const myRank = await fetchRank(
-    supabase, pointsField, myPoints, user.id, scope, scopeCountry, scopeCity, communityIds,
-  )
   const myPage = myRank != null ? Math.ceil(myRank / PAGE_SIZE) : null
   const myRowVisible = users.some(u => u.id === user.id)
 

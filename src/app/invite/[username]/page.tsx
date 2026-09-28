@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
+import { getSessionUser } from '@/lib/supabase/profile'
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
 import { formatPoints } from '@/lib/utils/format'
 
 export async function generateMetadata(
@@ -33,8 +33,7 @@ export default async function InviteLandingPage({
 
   // Already logged-in users don't need to see a signup landing — send them
   // to their own invite page so they can share their link instead.
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSessionUser()
   if (user) redirect('/invite')
 
   return (

@@ -1,6 +1,10 @@
 'use server'
 
-import { revalidateTag } from 'next/cache'
+// revalidatePath also clears the browser's router cache, which holds pages for
+// `experimental.staleTimes.dynamic` seconds (next.config.ts). Every action that
+// writes must call one of these, or its page can be served stale on the next
+// visit within that window.
+import { revalidatePath, revalidateTag } from 'next/cache'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient, listAllUsers } from '@/lib/supabase/admin'
 import { announceDrawOpen } from '@/lib/announce-draw-open'
@@ -448,6 +452,7 @@ export async function createPlayer(data: {
     .single()
 
   if (error) return { ok: false, error: error.message }
+  revalidatePath('/admin/players')
   return { ok: true, player: player as { id: string; external_id: string; name: string; country: string; tour: string } }
 }
 
@@ -524,6 +529,7 @@ export async function updatePlayer(
     .eq('id', playerId)
 
   if (error) return { ok: false, error: error.message }
+  revalidatePath('/admin/players')
   return { ok: true }
 }
 
@@ -552,6 +558,7 @@ export async function deletePlayer(playerId: string): Promise<{ ok: boolean; err
   const { error } = await admin.from('players').delete().eq('id', playerId)
 
   if (error) return { ok: false, error: error.message }
+  revalidatePath('/admin/players')
   return { ok: true }
 }
 
@@ -1454,6 +1461,7 @@ export async function savePointsEmailUpcoming(
     .eq('id', tournamentId)
 
   if (error) return { ok: false, error: error.message }
+  revalidatePath(`/admin/tournaments/${tournamentId}/results`)
   return { ok: true }
 }
 
@@ -2210,6 +2218,7 @@ export async function toggleAutoPredict(
 
   if (error) return { ok: false, error: error.message }
   if (!data) return { ok: false, error: 'User not found' }
+  revalidatePath('/admin')
   return { ok: true }
 }
 

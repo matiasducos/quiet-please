@@ -31,20 +31,31 @@ function BellIcon() {
 }
 
 export default async function NotificationBell({ userId }: { userId: string }) {
-  let unreadCount = 0
+  const supabase = await createClient()
+  const { count, error } = await supabase
+    .from('notifications')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .is('read_at', null)
 
-  try {
-    const supabase = await createClient()
-    const { count } = await (supabase as any)
-      .from('notifications')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .is('read_at', null)
-    unreadCount = count ?? 0
-  } catch {
-    // Notifications table may not exist yet — render bell without badge
-  }
+  // Render the bell without a badge rather than failing the nav — but say so,
+  // because a persistent failure reads as "nothing new" to every user.
+  if (error) console.error('[nav] unread notification count failed:', error.message)
 
+  return <BellLink unreadCount={count ?? 0} />
+}
+
+/**
+ * The bell as it looks before its count arrives. Nav streams the count behind
+ * a Suspense boundary so a page never waits on it; rendering the bell itself
+ * as the fallback keeps the header complete on first paint, and only the red
+ * dot — absolutely positioned, so it moves nothing — lands a moment later.
+ */
+export function NotificationBellFallback() {
+  return <BellLink unreadCount={0} />
+}
+
+function BellLink({ unreadCount }: { unreadCount: number }) {
   return (
     <Link
       href="/notifications"

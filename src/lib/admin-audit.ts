@@ -1,4 +1,4 @@
-import * as Sentry from '@sentry/nextjs'
+import * as Sentry from '@/lib/sentry-lazy'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { AdminActor } from '@/app/admin/auth'
 

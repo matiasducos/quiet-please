@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getSessionUser } from '@/lib/supabase/profile'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { notFound } from 'next/navigation'
 import BracketPredictor from '../../predict/BracketPredictor'
@@ -25,7 +26,7 @@ export default async function UserPicksPage({
 
   // Get current viewer for access control
   const userClient = await createClient()
-  const { data: { user: viewer } } = await userClient.auth.getUser()
+  const viewer = await getSessionUser()
 
   const supabase = createAdminClient()
 

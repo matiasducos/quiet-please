@@ -3,6 +3,7 @@ import { Fragment, Suspense } from 'react'
 import { notFound, permanentRedirect } from 'next/navigation'
 import Link from 'next/link'
 import TournamentSwitcher from '@/components/TournamentSwitcher'
+import IntentLink from '@/components/IntentLink'
 import { editionSwitcherItems, getPublicSwitcherRows } from '@/lib/tournaments/switcher'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -279,15 +280,17 @@ async function TourSection({
   const isDone = t.status === 'completed'
   const renderDraw = toRenderDraw(detail.bracket)
 
-  const statusAllowed = await canPredictForStatus(t.status)
-
-  // Only completed editions can have one, so the lookup is skipped entirely
-  // for live and upcoming ones rather than querying for a guaranteed miss.
-  const hasRecap = isDone && (await getRecap(t.id)) !== null
-
-  // User-specific data is read per request, never from the shared cache — a
-  // cached bracket would show players as still active after they had lost.
-  const myBracket = userId ? await loadMyBracket(t.id, userId, detail) : NO_BRACKET
+  // Three independent reads, so one wait rather than three in a row.
+  //  - Only completed editions can have a recap, so the lookup is skipped
+  //    entirely for live and upcoming ones rather than querying for a miss.
+  //  - User-specific data is read per request, never from the shared cache — a
+  //    cached bracket would show players as still active after they had lost.
+  const [statusAllowed, recap, myBracket] = await Promise.all([
+    canPredictForStatus(t.status),
+    isDone ? getRecap(t.id) : Promise.resolve(null),
+    userId ? loadMyBracket(t.id, userId, detail) : Promise.resolve(NO_BRACKET),
+  ])
+  const hasRecap = recap !== null
   const myTournament = myBracket.myTournament
 
   const resultsByMatch: Record<string, string> = Object.fromEntries(
@@ -369,7 +372,9 @@ async function TourSection({
               //
               // Signed-in users still go direct: this page already knows who
               // they are, so sending them via /play would only add a redirect.
-              <Link
+              // IntentLink: the page's main call to action, so a hover or the
+              // touchstart before a tap prefetches the whole bracket.
+              <IntentLink
                 href={userId ? `/tournaments/${series.slug}/predict` : `/play/${series.slug}`}
                 className="px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
                 style={{ background: 'var(--court)', color: 'white', textDecoration: 'none' }}
@@ -382,7 +387,7 @@ async function TourSection({
                   : myBracket.isFullyLocked
                     ? 'Check your predictions'
                     : 'Make predictions'}
-              </Link>
+              </IntentLink>
             )}
             {(t.status === 'in_progress' || isDone) && (
               <Link
@@ -866,13 +871,27 @@ async function loadMyBracket(
 ): Promise<MyBracket> {
   const supabase = await createClient()
 
-  const { data: prediction, error } = await supabase
-    .from('predictions')
-    .select('id, picks, is_fully_locked, points_earned')
-    .eq('tournament_id', tournamentId)
-    .eq('user_id', userId)
-    .is('challenge_id', null)
-    .maybeSingle()
+  // The ledger read is filtered by tournament and user, and matched to the
+  // prediction id afterwards — so it does not need the prediction first and runs
+  // beside it rather than a round trip after it. Skipped before any result
+  // exists, when there cannot be a ledger row to find.
+  const hasResults = detail.results.length > 0
+  const [{ data: prediction, error }, ledgerRes] = await Promise.all([
+    supabase
+      .from('predictions')
+      .select('id, picks, is_fully_locked, points_earned')
+      .eq('tournament_id', tournamentId)
+      .eq('user_id', userId)
+      .is('challenge_id', null)
+      .maybeSingle(),
+    hasResults
+      ? supabase
+          .from('point_ledger')
+          .select('points, prediction_id, match_results(external_match_id)')
+          .eq('tournament_id', tournamentId)
+          .eq('user_id', userId)
+      : Promise.resolve({ data: [], error: null }),
+  ])
 
   if (error) {
     console.error('[edition] prediction lookup failed:', error.message)
@@ -883,19 +902,15 @@ async function loadMyBracket(
 
   const picks = (prediction?.picks ?? {}) as Record<string, string>
   if (!prediction || Object.keys(picks).length === 0) return NO_BRACKET
-  if (detail.results.length === 0) return { myTournament: null, isFullyLocked, standing: null }
+  if (!hasResults) return { myTournament: null, isFullyLocked, standing: null }
 
   // Started here rather than awaited, so the three count queries overlap the
-  // ledger read below instead of adding a round trip after it.
+  // stray-player lookup below instead of adding a round trip after it.
   const standing = fetchStanding(tournamentId, prediction.id, prediction.points_earned ?? 0)
 
   // Points are attributed per match so the panel can show which pick earned
   // what. Scoped to this prediction id so challenge points never leak in.
-  const { data: ledger, error: ledgerError } = await supabase
-    .from('point_ledger')
-    .select('points, prediction_id, match_results(external_match_id)')
-    .eq('tournament_id', tournamentId)
-    .eq('user_id', userId)
+  const { data: ledger, error: ledgerError } = ledgerRes
 
   if (ledgerError) console.error('[edition] ledger lookup failed:', ledgerError.message)
 

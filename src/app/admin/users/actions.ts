@@ -1,6 +1,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { revalidatePath } from 'next/cache'
 import { deleteUserAccount } from '@/lib/delete-user'
 import { recordAdminAction } from '@/lib/admin-audit'
 import { assertAdmin, ADMIN_IDS } from '../auth'
@@ -219,6 +220,7 @@ export async function adminDeleteUser(
     },
   })
 
+  revalidatePath('/admin/users')
   return {
     ok: true,
     transferredLeagues: res.transferredLeagues,
