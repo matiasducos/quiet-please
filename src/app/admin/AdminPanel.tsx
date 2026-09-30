@@ -7,6 +7,8 @@ import type { ScoringTournament, CronRun, AutoPredictStats, AppSettings, AdminTo
 import type { PredictionMode } from '@/lib/app-settings'
 import { NOTIFICATION_TYPES } from './constants'
 import type { NotificationType } from './constants'
+import PendingDrawEmailsBanner from './PendingDrawEmailsBanner'
+import type { PendingDrawAnnouncement } from '@/lib/announce-draw-open'
 
 type AsyncStatus = { type: 'idle' | 'loading' | 'success' | 'error'; message?: string }
 
@@ -113,7 +115,7 @@ function TournamentCard({ t }: { t: AdminTournament }) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function AdminPanel({ tournaments, cronRuns, autoPredictStats, appSettings }: { tournaments: AdminTournament[]; cronRuns: CronRun[]; autoPredictStats: AutoPredictStats; appSettings: AppSettings }) {
+export default function AdminPanel({ tournaments, cronRuns, autoPredictStats, appSettings, pendingDrawEmails }: { tournaments: AdminTournament[]; cronRuns: CronRun[]; autoPredictStats: AutoPredictStats; appSettings: AppSettings; pendingDrawEmails: PendingDrawAnnouncement[] }) {
   const [activeTab, setActiveTab] = useState<Tab>('tournaments')
   const [tournamentSearch, setTournamentSearch] = useState('')
 
@@ -333,6 +335,8 @@ export default function AdminPanel({ tournaments, cronRuns, autoPredictStats, ap
           </span>
         </div>
       </nav>
+
+      <PendingDrawEmailsBanner pending={pendingDrawEmails} />
 
       {/* ── Unawarded points banner ── */}
       {(() => {

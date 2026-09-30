@@ -4,7 +4,7 @@ import { revalidateTag } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { tennisAdapter } from '@/lib/tennis'
 import { remapResolvedQualifiers, type DrawLike } from '@/lib/tennis/qualifier-remap'
-import { announceDrawOpen } from '@/lib/announce-draw-open'
+import { announceDrawOpen, sendPendingDrawEmails } from '@/lib/announce-draw-open'
 import { withCronLogging } from '@/lib/cron-logger'
 import type { Json } from '@/types/database'
 
@@ -72,6 +72,7 @@ export async function GET(request: Request) {
 
     // ── Process results (DB writes, status transitions, notifications) ─────
     const results = []
+    let announcedAny = false
     for (let i = 0; i < tournaments.length; i++) {
       const tournament = tournaments[i]
       const fetchResult = drawFetches[i]
@@ -191,14 +192,22 @@ export async function GET(request: Request) {
 
         // Shared with the two admin publish paths (saveManualDraw / buildDraw)
         // so an automated sync and a hand-entered draw announce identically —
-        // same opt-out handling, same per-type unsubscribe footer.
-        const { notified, emailed } = await announceDrawOpen(tournament.id)
-        console.log(`[sync-draws] "${tournament.name}": ${notified} notified, ${emailed} emailed`)
+        // same opt-out handling, same per-type unsubscribe footer. The email is
+        // sent once for the whole run, below.
+        const { notified } = await announceDrawOpen(tournament.id)
+        console.log(`[sync-draws] "${tournament.name}": ${notified} notified, email pending`)
+        announcedAny = true
       }
       // If already accepting_predictions: no status change, just refresh draw data.
 
       results.push({ name: tournament.name, status: 'synced', matches: draw.matches.length })
     }
-    return { status: 200, body: { message: 'Draw sync complete', results } }
+
+    // One email per user for every draw this run opened, instead of one per
+    // draw. Skipped when this run announced nothing; the daily expire-points
+    // cron sweeps up anything else left pending.
+    const email = announcedAny ? await sendPendingDrawEmails() : null
+
+    return { status: 200, body: { message: 'Draw sync complete', results, email } }
   })
 }

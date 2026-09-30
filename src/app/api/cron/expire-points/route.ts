@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import * as Sentry from '@/lib/sentry-lazy'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { withCronLogging } from '@/lib/cron-logger'
+import { sendPendingDrawEmails, type PendingDrawEmailResult } from '@/lib/announce-draw-open'
 
 export const maxDuration = 60
 
@@ -247,7 +248,19 @@ export async function GET(request: Request) {
   return withCronLogging('expire-points', async () => {
     const admin = createAdminClient()
 
+    // ── 0. Safety net for draw-open emails left pending ─────────────────────
+    // Publishing a draw leaves its email pending until an admin clicks "Send
+    // email" (migration 109), so draws built in one sitting share one message.
+    // A forgotten click would otherwise mean no email at all. Lives here for
+    // the same reason the calendar reminder does: Hobby allows two crons and
+    // both are taken. Runs FIRST so the time-budgeted sweep below can never
+    // starve it — a kill mid-send after the claim would lose the email.
+    // startedAt is taken before it, so the sweep's time budget accounts for
+    // however long the send took.
     const startedAt = Date.now()
+    let drawEmails: PendingDrawEmailResult | null = null
+    if (!dryRun) drawEmails = await sendPendingDrawEmails()
+
     let usersUpdated = 0
     let predictionsMarked = 0
     let batches = 0
@@ -362,6 +375,9 @@ export async function GET(request: Request) {
         calendar_gaps: calendarGaps,
         calendar_reminded: calendarReminded,
         ...(calendarError ? { calendar_error: calendarError } : {}),
+        // Non-empty `sent` means an admin published a draw and never clicked
+        // "Send email" — the safety net did its job.
+        draw_emails: drawEmails,
         // false means the time budget ran out with work still pending; the next
         // scheduled run picks it up. Worth watching in the Cron Runs tab.
         drained,
