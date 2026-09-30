@@ -92,7 +92,12 @@ export interface DrawOpenRank {
 export interface DrawOpenEmail {
   to: string
   unsubscribeToken: string
-  tournament: DrawOpenTournamentInfo
+  /**
+   * Every draw that opened since the last send — usually one, often two when
+   * same-week tournaments are entered in one sitting. One email covers them
+   * all; that is the point of it (see sendPendingDrawEmails).
+   */
+  tournaments: DrawOpenTournamentInfo[]
   /** null for players who haven't scored yet — they get an invitation instead. */
   rank: DrawOpenRank | null
   /** Used to deep-link the recipient's own Email preferences panel. */
@@ -132,17 +137,48 @@ function dateRange(startsAt: string | null, endsAt: string | null): string | nul
 
 const nf = new Intl.NumberFormat('en-GB')
 
-function drawOpenSubject(o: DrawOpenEmail) {
-  const flag = o.tournament.flagEmoji ? `${o.tournament.flagEmoji} ` : ''
-  return `${flag}Draw open: ${o.tournament.name}`
+const COUNT_WORD = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six']
+
+/** "China Open", "China Open & Japan Open", "A, B & C". */
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? ''
+  return `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}`
 }
 
-function drawOpenHtml(o: DrawOpenEmail) {
-  const t = o.tournament
-  const prefsHref = o.username
-    ? `${BASE_URL}/profile/${encodeURIComponent(o.username)}#email-preferences`
-    : undefined
+/**
+ * The subject line of a shared draw-open email. One tournament keeps the
+ * original wording; several list every flag and name so the inbox preview
+ * says what is inside without opening it. Also used by the draw reminder.
+ */
+function drawsSubject(
+  tournaments: DrawOpenTournamentInfo[],
+  single: (t: DrawOpenTournamentInfo) => string,
+  plural: string,
+) {
+  if (tournaments.length === 1) {
+    const t = tournaments[0]
+    return `${t.flagEmoji ? `${t.flagEmoji} ` : ''}${single(t)}`
+  }
+  const flags = tournaments.map(t => t.flagEmoji).filter(Boolean).join('')
+  return `${flags ? `${flags} ` : ''}${tournaments.length} ${plural}: ${joinNames(tournaments.map(t => t.name))}`
+}
 
+function drawOpenSubject(o: DrawOpenEmail) {
+  return drawsSubject(o.tournaments, t => `Draw open: ${t.name}`, 'draws open')
+}
+
+/** "The draw is open." / "Two draws are open." */
+function drawsHeading(count: number, verb: 'open' | 'out') {
+  if (count <= 1) return `The draw is ${verb}.`
+  return `${COUNT_WORD[count] ?? count} draws are ${verb}.`
+}
+
+/**
+ * One tournament's card: name, location, facts, dates, close line. When the
+ * email covers several draws, each card carries its own CTA link — one shared
+ * button at the bottom could only point at one of them.
+ */
+function tournamentCard(t: DrawOpenTournamentInfo, cta?: { href: string; label: string }) {
   // Meta line: "ATP Masters 1000 · Hard · 128 draw". Every part is optional
   // because manually-entered tournaments don't always carry all of them.
   const facts = [
@@ -158,6 +194,40 @@ function drawOpenHtml(o: DrawOpenEmail) {
          Picks close ${new Date(t.closeDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}.
        </td></tr>`
     : ''
+
+  const ctaLine = cta
+    ? `<tr><td style="padding:14px 0 0;font-family:Georgia,serif;font-size:15px;">
+         <a href="${cta.href}" style="color:#1a6b3c;font-weight:bold;text-decoration:none;">${cta.label}</a>
+       </td></tr>`
+    : ''
+
+  return `
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 24px;padding:0;border-top:1px solid #e8e3d8;border-bottom:1px solid #e8e3d8;">
+          <tr>
+            <td style="padding:18px 0 0;font-family:Georgia,serif;font-size:19px;line-height:1.3;color:#0d0d0d;">
+              ${t.flagEmoji ? `${t.flagEmoji} ` : ''}${t.name}
+            </td>
+          </tr>
+          ${t.location ? `<tr><td style="padding:6px 0 0;font-family:Georgia,serif;font-size:14px;color:#6b6b6b;">${t.location}</td></tr>` : ''}
+          ${facts.length ? `<tr><td style="padding:4px 0 0;font-family:Georgia,serif;font-size:13px;color:#8a867e;">${facts.join(' · ')}</td></tr>` : ''}
+          ${dates ? `<tr><td style="padding:4px 0 0;font-family:Georgia,serif;font-size:13px;color:#8a867e;">${dates}</td></tr>` : ''}
+          ${closeLine}
+          ${ctaLine}
+          <tr><td style="padding:0 0 18px;"></td></tr>
+        </table>`
+}
+
+function drawOpenHtml(o: DrawOpenEmail) {
+  const prefsHref = o.username
+    ? `${BASE_URL}/profile/${encodeURIComponent(o.username)}#email-preferences`
+    : undefined
+  const multi = o.tournaments.length > 1
+
+  const cards = o.tournaments
+    .map(t => tournamentCard(t, multi
+      ? { href: `${BASE_URL}/tournaments/${t.id}`, label: `Pick ${t.name} →` }
+      : undefined))
+    .join('')
 
   // The engagement block. A ranked player sees where they stand; someone who
   // hasn't scored yet is told how to get on the board rather than being shown
@@ -192,46 +262,28 @@ function drawOpenHtml(o: DrawOpenEmail) {
          Make your picks and win as many points to climb the <strong style="color:#1a6b3c;">leaderboard</strong>.
        </p>`
 
+  // Several draws: each card already links to its own tournament, so the big
+  // button goes to the list of everything open rather than favouring one.
+  const buttonHref = multi ? `${BASE_URL}/tournaments` : `${BASE_URL}/tournaments/${o.tournaments[0].id}`
+
   return `
       <div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#f5f2eb;">
         <p style="font-size:12px;letter-spacing:0.08em;color:#6b6b6b;text-transform:uppercase;margin:0 0 24px;">Quiet Please</p>
-        <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 20px;">The draw is open.</h1>
+        <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 20px;">${drawsHeading(o.tournaments.length, 'open')}</h1>
 
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 24px;padding:0;border-top:1px solid #e8e3d8;border-bottom:1px solid #e8e3d8;">
-          <tr>
-            <td style="padding:18px 0 0;font-family:Georgia,serif;font-size:19px;line-height:1.3;color:#0d0d0d;">
-              ${t.flagEmoji ? `${t.flagEmoji} ` : ''}${t.name}
-            </td>
-          </tr>
-          ${t.location ? `<tr><td style="padding:6px 0 0;font-family:Georgia,serif;font-size:14px;color:#6b6b6b;">${t.location}</td></tr>` : ''}
-          ${facts.length ? `<tr><td style="padding:4px 0 0;font-family:Georgia,serif;font-size:13px;color:#8a867e;">${facts.join(' · ')}</td></tr>` : ''}
-          ${dates ? `<tr><td style="padding:4px 0 0;font-family:Georgia,serif;font-size:13px;color:#8a867e;">${dates}</td></tr>` : ''}
-          ${closeLine}
-          <tr><td style="padding:0 0 18px;"></td></tr>
-        </table>
+        ${cards}
 
         ${standing}
         ${prize}
 
         <div style="text-align:center;">
-          <a href="${BASE_URL}/tournaments/${t.id}"
+          <a href="${buttonHref}"
              style="display:inline-block;background:#1a6b3c;color:#ffffff;text-decoration:none;padding:13px 28px;font-size:15px;border-radius:2px;">
             Make your picks →
           </a>
         </div>
         ${unsubscribeFooter(o.unsubscribeToken, 'draw_open', prefsHref)}
       </div>`
-}
-
-export async function sendDrawOpenEmail(opts: DrawOpenEmail) {
-  if (!canSend()) return
-  await resend!.emails.send({
-    from: FROM,
-    replyTo: REPLY_TO,
-    to: opts.to,
-    subject: drawOpenSubject(opts),
-    html: drawOpenHtml(opts),
-  })
 }
 
 /** Resend's batch endpoint accepts at most 100 messages per request. */
@@ -277,8 +329,7 @@ export async function sendDrawOpenEmails(recipients: DrawOpenEmail[]): Promise<n
 
 // ── Draw reminder: the anonymous half of the draw-open announcement ──────────
 
-export interface DrawReminderEmail {
-  to: string
+export interface DrawReminderTournament {
   tournament: DrawOpenTournamentInfo
   /**
    * Series slug, so the CTA can land on /play — the no-account bracket flow.
@@ -286,6 +337,12 @@ export interface DrawReminderEmail {
    * redirect and its own signed-out CTA.
    */
   seriesSlug: string | null
+}
+
+export interface DrawReminderEmail {
+  to: string
+  /** Every draw this address asked about that opened in this send. */
+  tournaments: DrawReminderTournament[]
   emailToken: string
 }
 
@@ -297,12 +354,12 @@ export interface DrawReminderEmail {
  * falsehood here, where they never made one. The mechanic is identical: the
  * address is erased by the send itself, and the link only confirms it.
  */
-function drawReminderFooter(emailToken: string) {
+function drawReminderFooter(emailToken: string, count: number) {
   const url = `${BASE_URL}/api/unsubscribe/anonymous?token=${emailToken}`
   return `
     <div style="margin-top:40px;padding-top:20px;border-top:1px solid #e8e3d8;">
       <p style="font-size:11px;color:#999;line-height:1.5;">
-        You're getting this once because you asked to be told when this draw was
+        You're getting this once because you asked to be told when ${count > 1 ? 'these draws were' : 'this draw was'}
         published. You don't have an account with us, and we deleted your address
         when we sent this — it was the only thing we collected it for, so there
         is no list to leave.<br/>
@@ -312,8 +369,13 @@ function drawReminderFooter(emailToken: string) {
 }
 
 function drawReminderSubject(o: DrawReminderEmail) {
-  const flag = o.tournament.flagEmoji ? `${o.tournament.flagEmoji} ` : ''
-  return `${flag}The ${o.tournament.name} draw is out`
+  return drawsSubject(o.tournaments.map(r => r.tournament), t => `The ${t.name} draw is out`, 'draws are out')
+}
+
+function playUrl(r: DrawReminderTournament) {
+  return r.seriesSlug
+    ? `${BASE_URL}/play/${r.seriesSlug}`
+    : `${BASE_URL}/tournaments/${r.tournament.id}`
 }
 
 /**
@@ -331,58 +393,39 @@ function drawReminderSubject(o: DrawReminderEmail) {
  * is needed to fill one in.
  */
 function drawReminderHtml(o: DrawReminderEmail) {
-  const t = o.tournament
+  const multi = o.tournaments.length > 1
+  const cards = o.tournaments
+    .map(r => tournamentCard(r.tournament, multi
+      ? { href: playUrl(r), label: `Fill in ${r.tournament.name} →` }
+      : undefined))
+    .join('')
 
-  const facts = [
-    categoryLabel(t.tour, t.category),
-    t.surface ? t.surface.charAt(0).toUpperCase() + t.surface.slice(1) : null,
-    t.drawSize ? `${t.drawSize} draw` : null,
-  ].filter(Boolean)
-
-  const dates = dateRange(t.startsAt, t.endsAt)
-
-  const closeLine = t.closeDate
-    ? `<tr><td style="padding:14px 0 0;font-family:Georgia,serif;font-size:13px;color:#b3392c;">
-         Picks close ${new Date(t.closeDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}.
-       </td></tr>`
-    : ''
-
-  const playUrl = o.seriesSlug
-    ? `${BASE_URL}/play/${o.seriesSlug}`
-    : `${BASE_URL}/tournaments/${t.id}`
+  // A single draw keeps its big button; several have one link per card above.
+  const button = multi
+    ? ''
+    : `
+        <div style="text-align:center;">
+          <a href="${playUrl(o.tournaments[0])}"
+             style="display:inline-block;background:#1a6b3c;color:#ffffff;text-decoration:none;padding:13px 28px;font-size:15px;border-radius:2px;">
+            Fill in your bracket — free →
+          </a>
+        </div>`
 
   return `
       <div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#f5f2eb;">
         <p style="font-size:12px;letter-spacing:0.08em;color:#6b6b6b;text-transform:uppercase;margin:0 0 24px;">Quiet Please</p>
-        <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 12px;">The draw is out.</h1>
-        <p style="color:#6b6b6b;font-size:16px;margin:0 0 24px;">You asked us to tell you. Here it is.</p>
+        <h1 style="font-size:28px;letter-spacing:-0.02em;margin:0 0 12px;">${drawsHeading(o.tournaments.length, 'out')}</h1>
+        <p style="color:#6b6b6b;font-size:16px;margin:0 0 24px;">You asked us to tell you. Here ${multi ? 'they are' : 'it is'}.</p>
 
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 24px;padding:0;border-top:1px solid #e8e3d8;border-bottom:1px solid #e8e3d8;">
-          <tr>
-            <td style="padding:18px 0 0;font-family:Georgia,serif;font-size:19px;line-height:1.3;color:#0d0d0d;">
-              ${t.flagEmoji ? `${t.flagEmoji} ` : ''}${t.name}
-            </td>
-          </tr>
-          ${t.location ? `<tr><td style="padding:6px 0 0;font-family:Georgia,serif;font-size:14px;color:#6b6b6b;">${t.location}</td></tr>` : ''}
-          ${facts.length ? `<tr><td style="padding:4px 0 0;font-family:Georgia,serif;font-size:13px;color:#8a867e;">${facts.join(' · ')}</td></tr>` : ''}
-          ${dates ? `<tr><td style="padding:4px 0 0;font-family:Georgia,serif;font-size:13px;color:#8a867e;">${dates}</td></tr>` : ''}
-          ${closeLine}
-          <tr><td style="padding:0 0 18px;"></td></tr>
-        </table>
+        ${cards}
 
         <p style="margin:0 0 24px;font-family:Georgia,serif;font-size:15px;color:#6b6b6b;line-height:1.5;">
           Pick every match from the first round to the final. It takes a couple of
           minutes, it scores itself as the results come in, and you don't need an
           account to fill one in.
         </p>
-
-        <div style="text-align:center;">
-          <a href="${playUrl}"
-             style="display:inline-block;background:#1a6b3c;color:#ffffff;text-decoration:none;padding:13px 28px;font-size:15px;border-radius:2px;">
-            Fill in your bracket — free →
-          </a>
-        </div>
-        ${drawReminderFooter(o.emailToken)}
+        ${button}
+        ${drawReminderFooter(o.emailToken, o.tournaments.length)}
       </div>`
 }
 

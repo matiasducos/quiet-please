@@ -7,7 +7,12 @@
 import { revalidatePath, revalidateTag } from 'next/cache'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient, listAllUsers } from '@/lib/supabase/admin'
-import { announceDrawOpen } from '@/lib/announce-draw-open'
+import {
+  announceDrawOpen,
+  getPendingDrawAnnouncements,
+  sendPendingDrawEmails,
+  type PendingDrawAnnouncement,
+} from '@/lib/announce-draw-open'
 import { buildAndStoreRecap, deleteRecap } from '@/lib/tournaments/recap'
 import { slugErrorMessage } from '@/lib/tournaments/slug'
 import { qualifierSlotId, remapResolvedQualifiers, type DrawLike } from '@/lib/tennis/qualifier-remap'
@@ -337,7 +342,8 @@ export async function saveManualDraw(
       .eq('id', tournamentId)
       .in('status', DRAW_OPENABLE_STATUSES)
 
-    // Notify + email all users that predictions are now open
+    // Notify all users that predictions are now open. The email stays pending
+    // until "Send email" so same-day draws share one (migration 109).
     await announceDrawOpen(tournamentId)
   }
 
@@ -1963,9 +1969,10 @@ export async function buildDraw(
     .eq('id', tournamentId)
     .in('status', DRAW_OPENABLE_STATUSES)
 
-  // Notify + email users. Safe to call unconditionally even when the status
-  // write above matched nothing: the announcement is claimed atomically via
-  // `draw_announced_at` (070), so a re-save is already a no-op here.
+  // Notify users in-app; the email stays pending until "Send email" so draws
+  // built in one sitting share one (109). Safe to call unconditionally even
+  // when the status write above matched nothing: the announcement is claimed
+  // atomically via `draw_announced_at` (070), so a re-save is a no-op here.
   await announceDrawOpen(tournamentId)
 
   revalidateTag('tournament-detail', 'default')
@@ -2397,4 +2404,25 @@ export async function lockRound(
 
   revalidateTag('app-settings', 'default')
   return { ok: true }
+}
+
+// ── Pending draw-open emails ─────────────────────────────────────────────────
+// Publishing a draw notifies in-app but leaves the email pending, so several
+// draws built in one sitting go out as ONE email per user (migration 109).
+
+export async function getPendingDrawEmails(): Promise<PendingDrawAnnouncement[]> {
+  await assertAdmin()
+  return getPendingDrawAnnouncements()
+}
+
+export type SendDrawEmailsState =
+  | { status: 'idle' }
+  | { status: 'done'; sent: string[]; skipped: string[]; emailed: number; reminded: number }
+
+/** A useActionState action; it needs neither the previous state nor the form. */
+export async function sendDrawEmailsNow(): Promise<SendDrawEmailsState> {
+  await assertAdmin()
+  const res = await sendPendingDrawEmails()
+  revalidatePath('/admin', 'layout')
+  return { status: 'done', ...res }
 }

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, type ReactNode } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { searchPlayers, createPlayer, buildDraw } from '../../../actions'
 import { nameToFlag } from '@/app/admin/countries'
 
@@ -20,6 +21,8 @@ interface DrawBuilderProps {
   }>
   /** ‹ Hangzhou › — above the heading; the sticky nav is already full with Save. */
   switcher?: ReactNode
+  /** "N draws published, email not sent yet" — refreshed after every save. */
+  pendingEmails?: ReactNode
 }
 
 const ROUND_ORDER = ['R128', 'R64', 'R32', 'R16', 'QF', 'SF', 'F']
@@ -407,7 +410,8 @@ function BracketConnector() {
 
 // ── Main DrawBuilder ──────────────────────────────────────────────────────────
 
-export default function DrawBuilder({ tournamentId, tournamentName, tournamentLocation, flagEmoji, drawSize, tour, existingSlots, switcher }: DrawBuilderProps) {
+export default function DrawBuilder({ tournamentId, tournamentName, tournamentLocation, flagEmoji, drawSize, tour, existingSlots, switcher, pendingEmails }: DrawBuilderProps) {
+  const router = useRouter()
   const matchCount = drawSize / 2
   type Slot = PlayerOption | 'BYE' | 'QUALIFIER' | null
 
@@ -468,6 +472,7 @@ export default function DrawBuilder({ tournamentId, tournamentName, tournamentLo
       if (ok) {
         setLastSaveMessage(`Draw saved with ${mc} matches. Predictions are now open.`)
         setStatus({ type: 'idle' })  // Reset so Save button stays visible for further edits
+        router.refresh()  // Picks up the pending-email banner this save may have created
       } else {
         setStatus({ type: 'error', message: error ?? 'Failed to save draw' })
       }
@@ -555,6 +560,8 @@ export default function DrawBuilder({ tournamentId, tournamentName, tournamentLo
           </div>
         </div>
       </div>
+
+      {pendingEmails}
 
       {/* Header */}
       <div className="border-b bg-white" style={{ borderColor: 'var(--chalk-dim)' }}>

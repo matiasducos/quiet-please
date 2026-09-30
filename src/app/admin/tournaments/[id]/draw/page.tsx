@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation'
 import DrawBuilder from './DrawBuilder'
 import TournamentSwitcher from '@/components/TournamentSwitcher'
 import { getAdminSwitcherItems } from '@/lib/tournaments/switcher'
+import { getPendingDrawAnnouncements } from '@/lib/announce-draw-open'
+import PendingDrawEmailsBanner from '../../../PendingDrawEmailsBanner'
 
 export default async function DrawPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin()
@@ -12,7 +14,7 @@ export default async function DrawPage({ params }: { params: Promise<{ id: strin
   const admin = createAdminClient()
 
   // Load tournament info and existing draw in parallel
-  const [{ data: tournament }, { data: draw }, switcherItems] = await Promise.all([
+  const [{ data: tournament }, { data: draw }, switcherItems, pendingEmails] = await Promise.all([
     admin
       .from('tournaments')
       .select('id, name, draw_size, tour, location, flag_emoji')
@@ -24,6 +26,7 @@ export default async function DrawPage({ params }: { params: Promise<{ id: strin
       .eq('tournament_id', id)
       .single(),
     getAdminSwitcherItems(id, 'draw'),
+    getPendingDrawAnnouncements(),
   ])
 
   if (!tournament) redirect('/admin')
@@ -70,6 +73,7 @@ export default async function DrawPage({ params }: { params: Promise<{ id: strin
       drawSize={tournament.draw_size ?? 32}
       tour={tournament.tour as 'ATP' | 'WTA'}
       existingSlots={existingSlots}
+      pendingEmails={<PendingDrawEmailsBanner pending={pendingEmails} />}
     />
   )
 }
