@@ -1,13 +1,13 @@
 /**
  * The two layouts a bracket can be read in.
  *
- * `rounds` is the original one-round-at-a-time list and the default for
- * everyone. `full` is the whole draw as one tree, offered beside it as an
- * experiment — see migration 108.
+ * `full` is the whole draw as one tree and the default since migration 110.
+ * `rounds` is the original one-round-at-a-time list, kept one click away —
+ * see migrations 108 and 110.
  */
 export type BracketView = 'rounds' | 'full'
 
-/** Anything that is not exactly 'full' reads as the default. */
+/** Anything that is not exactly 'rounds' reads as the default. */
 export function parseBracketView(value: unknown): BracketView {
-  return value === 'full' ? 'full' : 'rounds'
+  return value === 'rounds' ? 'rounds' : 'full'
 }
