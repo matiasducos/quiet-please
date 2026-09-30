@@ -16,7 +16,7 @@
 
 ### Supabase
 - Project is NOT linked locally — migrations must be run manually in the Supabase dashboard.
-- Latest migration: `109_draw_emailed_at.sql` (remember to bump this file when you add a new migration)
+- Latest migration: `110_bracket_view_default_full.sql` (remember to bump this file when you add a new migration)
 - Migration numbers must reflect the order they were APPLIED, not written. 066/067 are a permanent gap — those numbers were never applied to any database.
 
 ### Cookies & consent

@@ -288,7 +288,7 @@ export default function BracketPredictor({
   lockedPicks = [],
   initialRound,
   scopeRounds,
-  initialView = 'rounds',
+  initialView = 'full',
   switcher,
 }: {
   tournament: any
@@ -352,7 +352,7 @@ export default function BracketPredictor({
   scopeRounds?: string[]
   /**
    * The layout to open in — the signed-in user's `users.bracket_view` where the
-   * page has it. Every other surface opens on the round list, and the switch
+   * page has it. Every other surface opens on the whole draw, and the switch
    * still works there; it just is not remembered for a signed-out visitor.
    */
   initialView?: BracketView
