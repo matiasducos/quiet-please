@@ -12,6 +12,8 @@ import { canPredictForStatus } from '@/lib/app-settings'
 import Nav from '@/components/Nav'
 import TournamentMatchList from '@/components/TournamentMatchList'
 import BracketPredictor from '../predict/BracketPredictor'
+import SoloPlayFlow from '@/app/play/[slug]/SoloPlayFlow'
+import { isPlayableStatus } from '@/lib/anonymous-predictions'
 import MyTournamentPanel from '../MyTournamentPanel'
 import type { Standing } from '../MyTournamentPanel'
 import DrawReminderForm from './DrawReminderForm'
@@ -285,10 +287,15 @@ async function TourSection({
   //    entirely for live and upcoming ones rather than querying for a miss.
   //  - User-specific data is read per request, never from the shared cache — a
   //    cached bracket would show players as still active after they had lost.
-  const [statusAllowed, recap, myBracket] = await Promise.all([
+  //  - Admin match locks are read only when a signed-out visitor might fill in
+  //    the bracket right here, and fresh rather than from the edition cache —
+  //    the cached draw row does not carry them.
+  const mayPlayInline = !userId && isPlayableStatus(t.status) && renderDraw !== null
+  const [statusAllowed, recap, myBracket, adminLocks] = await Promise.all([
     canPredictForStatus(t.status),
     isDone ? getRecap(t.id) : Promise.resolve(null),
     userId ? loadMyBracket(t.id, userId, detail) : Promise.resolve(NO_BRACKET),
+    mayPlayInline ? loadAdminLocks(t.id) : Promise.resolve({}),
   ])
   const hasRecap = recap !== null
   const myTournament = myBracket.myTournament
@@ -296,6 +303,21 @@ async function TourSection({
   const resultsByMatch: Record<string, string> = Object.fromEntries(
     detail.results.map(r => [r.external_match_id, r.winner_external_id]),
   )
+
+  // A signed-out visitor on an open draw fills the bracket in on this page.
+  //
+  // They used to get the draw read-only at the foot of the page and a small
+  // "Fill in this bracket" button that navigated to /play — so the page that
+  // organic search lands on showed the bracket and then refused to let them
+  // touch it. Most never made the extra hop. Here the draw itself is the
+  // input, the same /play flow (same server action, same lock rules, same
+  // claim-after-signup token) embedded where they already are.
+  //
+  // Signed-in users keep the link to /predict: that route knows their existing
+  // picks, their weekly slot and their lock state, none of which an embedded
+  // anonymous bracket can represent. Crawlers are signed out, so they get this
+  // version — it renders the same players in the same draw, just editable.
+  const playInline = mayPlayInline && statusAllowed
 
   // Same derivation the "Your tournament" panel uses, over the same rows.
   const eliminatedIn = eliminationRounds(detail.results)
@@ -374,6 +396,19 @@ async function TourSection({
               // they are, so sending them via /play would only add a redirect.
               // IntentLink: the page's main call to action, so a hover or the
               // touchstart before a tap prefetches the whole bracket.
+              //
+              // When the bracket is editable on this page, the button just
+              // takes them down to it — leaving for /play would be a second
+              // copy of the same bracket one navigation away.
+              playInline ? (
+                <a
+                  href="#draw"
+                  className="px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
+                  style={{ background: 'var(--court)', color: 'white', textDecoration: 'none' }}
+                >
+                  Fill in this bracket — free ↓
+                </a>
+              ) : (
               <IntentLink
                 href={userId ? `/tournaments/${series.slug}/predict` : `/play/${series.slug}`}
                 className="px-3 py-1.5 text-xs font-medium rounded-sm transition-opacity hover:opacity-80"
@@ -388,6 +423,7 @@ async function TourSection({
                     ? 'Check your predictions'
                     : 'Make predictions'}
               </IntentLink>
+              )
             )}
             {(t.status === 'in_progress' || isDone) && (
               <Link
@@ -434,6 +470,42 @@ async function TourSection({
           {/* Scorelines are deliberately absent: match_results.score is empty
               for every row in the database, and inventing one would be worse
               than omitting it. */}
+        </div>
+      )}
+
+      {/* Straight under the header, above the collapsed field list and match
+          list: on an open draw, filling it in is the one thing this visitor
+          can do here, so it is the first thing they reach. */}
+      {playInline && renderDraw && (
+        <div id="draw" className="mb-8" style={{ scrollMarginTop: '16px' }}>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.25rem' }}>
+            {series.name} {year} draw
+          </h2>
+          <p style={{ fontSize: '0.85rem', color: 'var(--muted)', lineHeight: 1.6, marginBottom: '1rem' }}>
+            Tap a player to pick them. No account needed — save your bracket and it
+            scores itself as the results come in.
+          </p>
+          <SoloPlayFlow
+            tournament={{
+              id: t.id,
+              name: t.name,
+              location: t.location,
+              flag_emoji: t.flag_emoji,
+              tour: t.tour,
+              category: t.category,
+              status: t.status,
+              starts_at: t.starts_at ?? '',
+              ends_at: t.ends_at ?? '',
+              series_slug: series.slug,
+            }}
+            draw={renderDraw}
+            matchResults={resultsByMatch}
+            adminLockedMatches={Object.keys(adminLocks).length > 0 ? adminLocks : undefined}
+            substitutedFor={null}
+            totalMatches={renderDraw.matches.length}
+            decidedMatches={detail.results.length}
+            embedded
+          />
         </div>
       )}
 
@@ -540,7 +612,7 @@ async function TourSection({
 
       {/* Full bracket — folded in from the old /results route. This is the
           substance that keeps the page off the near-duplicate pile. */}
-      {renderDraw && (
+      {renderDraw && !playInline && (
         <div id="draw" className="mb-8">
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.75rem' }}>
             {isDone ? `${series.name} ${year} results — full draw` : `${series.name} ${year} draw`}
@@ -862,6 +934,27 @@ async function fetchStanding(
     // claim that never overstates how well the bracket is doing.
     behind: Math.max(0, (leader.data?.points_earned ?? points) - points),
   }
+}
+
+/**
+ * Matches an admin has locked by hand (`manual_lock` mode) — the one input the
+ * embedded anonymous bracket needs that the cached edition data lacks. One row,
+ * by primary key. The server action re-derives locks on save regardless, so a
+ * failed read degrades to "a locked match looks pickable and scores zero",
+ * never to banked points.
+ */
+async function loadAdminLocks(tournamentId: string): Promise<Record<string, string>> {
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('draws')
+    .select('locked_matches')
+    .eq('tournament_id', tournamentId)
+    .maybeSingle()
+  if (error) {
+    console.error('[edition] draw locks query failed:', error.message)
+    return {}
+  }
+  return (data?.locked_matches as Record<string, string> | null) ?? {}
 }
 
 async function loadMyBracket(
