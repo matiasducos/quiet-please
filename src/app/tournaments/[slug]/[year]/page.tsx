@@ -14,6 +14,7 @@ import TournamentMatchList from '@/components/TournamentMatchList'
 import BracketPredictor from '../predict/BracketPredictor'
 import SoloPlayFlow from '@/app/play/[slug]/SoloPlayFlow'
 import { isPlayableStatus } from '@/lib/anonymous-predictions'
+import { loadStrayPickPlayers } from '@/lib/tennis/stray-picks'
 import MyTournamentPanel from '../MyTournamentPanel'
 import type { Standing } from '../MyTournamentPanel'
 import DrawReminderForm from './DrawReminderForm'
@@ -1025,24 +1026,9 @@ async function loadMyBracket(
     Object.fromEntries(detail.participants.map(p => [p.externalId, { name: p.name, country: p.country }]))
 
   // A pick can name someone the draw no longer contains — a withdrawal replaced
-  // after predictions opened, or a qualifier placeholder that resolved. The draw
-  // snapshot is the only name source the panel has, so without this the pick
-  // renders as an anonymous "Qualifier". The registry still knows who they are.
-  //
-  // Bounded by one user's own picks (≤127 ids, in practice one or two), so a
-  // single .in() lookup is safe here.
-  const idsInDraw = new Set(
-    matches.flatMap(m => [m.player1?.externalId, m.player2?.externalId]).filter(Boolean) as string[],
-  )
-  const missingIds = [...new Set(Object.values(picks).filter(id => id && !idsInDraw.has(id)))]
-  if (missingIds.length > 0) {
-    const { data: strays, error: strayError } = await supabase
-      .from('players')
-      .select('external_id, name, country')
-      .in('external_id', missingIds)
-    if (strayError) console.error('[edition] stray player lookup failed:', strayError.message)
-    for (const p of strays ?? []) overrides[p.external_id] = { name: p.name, country: p.country }
-  }
+  // after predictions opened, or a qualifier placeholder that resolved. Without
+  // this the pick renders as an anonymous "Qualifier".
+  Object.assign(overrides, await loadStrayPickPlayers(supabase, picks, matches))
 
   return {
     myTournament: buildMyTournament({

@@ -281,6 +281,7 @@ export default function BracketPredictor({
   hideSaveButtons = false,
   hideBackLink = false,
   hideNav = false,
+  strayPickPlayers,
   drawResultsMode = false,
   adminLockedMatches,
   pickLockTimes,
@@ -314,6 +315,10 @@ export default function BracketPredictor({
   hideBackLink?: boolean
   /** Hides the entire internal nav bar — used when embedded in a page that already has navigation */
   hideNav?: boolean
+  /** Names for picked players the draw no longer contains (a replaced
+   *  withdrawal) — see loadStrayPickPlayers. Without it such a pick can only
+   *  be called "your pick". */
+  strayPickPlayers?: Record<string, { name: string; country: string }>
   /** When true, shows draw results UI (no picks, just actual winners) */
   drawResultsMode?: boolean
   /** Admin-locked matches (manual_lock mode): matchId → ISO timestamp when locked */
@@ -1358,6 +1363,43 @@ export default function BracketPredictor({
   }
 
   /**
+   * The user's pick on a match that cannot show it — so the card can still say
+   * who it was.
+   *
+   * The two player rows can only mark a pick that is one of the two players.
+   * Two cases fall through that: a void pick (the player went out in an earlier
+   * round, match still to play), and a PLAYED match whose pick was never in it.
+   * The second one is not void — a played match is scored, never void — so it
+   * had no marker at all: a pick on Davidovich Fokina to win the R16 simply
+   * vanished from a card reading "Berrettini v Vallejo · LOCKED", and the user
+   * could not tell they had picked anyone. Same answer for both: name the pick.
+   *
+   * `eliminated` is false for the rare pick on someone who was never in this
+   * part of the draw at all — a draw re-save that replaced a qualifier or a
+   * withdrawal — where "eliminated" would be a false claim.
+   */
+  const outPickFor = (
+    pickedId: string | undefined,
+    voidPick: boolean,
+    actualWinnerId: string | undefined,
+    p1: Player | null | undefined,
+    p2: Player | null | undefined,
+  ): { name: string; eliminated: boolean } | null => {
+    if (!pickedId) return null
+    const absentFromPlayed = !!actualWinnerId && !!p1 && !!p2
+      && pickedId !== p1.externalId && pickedId !== p2.externalId
+    if (!voidPick && !absentFromPlayed) return null
+    return {
+      name: allPlayers.get(pickedId)?.name ?? strayPickPlayers?.[pickedId]?.name ?? 'Your pick',
+      eliminated: eliminatedPlayers.has(pickedId),
+    }
+  }
+
+  /** "A. Davidovich Fokina" → "Davidovich Fokina": a 160px header has no room
+   *  for initials, and the surname is what identifies a player at a glance. */
+  const surname = (name: string) => name.replace(/^(\p{Lu}\.\s*)+/u, '') || name
+
+  /**
    * One match, reduced to what a compact card can carry.
    *
    * The same derivations the list's card makes — slot resolution, the void
@@ -1397,13 +1439,23 @@ export default function BracketPredictor({
     }
 
     const lockDisplay = getMatchLockDisplay(matchId)
+    const outPick = isBye ? null : outPickFor(pickedId, voidPick, actualWinnerId, slot1.player, slot2.player)
     const mult = canShowMultiplier && !!pickedId && !isBye && !voidPick ? previewMultiplier(matchId) : null
     const noPoints = roundPoints(match.round) === 0
     const multText = mult === null ? '' : noPoints ? ' · NO PTS' : ` ×${mult}`
 
     let badge: FullDrawCard['badge']
-    if (voidPick) {
-      badge = { text: 'PICK OUT', color: '#991b1b', bg: '#fee2e2', title: 'Your pick lost in an earlier round.' }
+    if (outPick) {
+      badge = {
+        // "OUT", not "PICK OUT": at 375px the header has ~18 characters
+        // beside DETAILS, and the surname is the part that must survive.
+        text: `OUT · ${surname(outPick.name).toUpperCase()}`,
+        color: '#991b1b',
+        bg: '#fee2e2',
+        title: outPick.eliminated
+          ? `You picked ${outPick.name}, who lost in an earlier round.`
+          : `You picked ${outPick.name}, who is not in this match.`,
+      }
     } else if (lockDisplay === 'editable' && mult !== null) {
       badge = mult > 1 && !noPoints
         ? { text: `×${mult} IF LOCKED`, color: 'var(--court)', bg: '#e4efe7', title: 'What this pick scores if you lock your picks now.', value: true }
@@ -2173,7 +2225,7 @@ export default function BracketPredictor({
                         eliminatedPlayers.has(pickedId)
                         || (!!p1 && !!p2 && pickedId !== p1.externalId && pickedId !== p2.externalId)
                       )
-                      const voidPickPlayer = voidPick ? allPlayers.get(pickedId) : null
+                      const outPick = isBye ? null : outPickFor(pickedId, voidPick, actualWinnerId, p1, p2)
 
                       // BYE matches: non-null player gets 'bye' state, null side gets 'none'
                       const s1 = isBye ? (match.player1 ? 'bye' as const : 'none' as const) : getPickState(voidPick ? undefined : pickedId, p1?.externalId, actualWinnerId)
@@ -2191,14 +2243,20 @@ export default function BracketPredictor({
                             </span>
 
                             {/* Void pick indicator */}
-                            {voidPick && (
-                              <Tooltip text="Your pick lost in an earlier round. You can still make picks for later rounds, but they won't score unless you change your upstream picks.">
+                            {outPick && (
+                              <Tooltip text={
+                                !voidPick
+                                  ? `You picked ${outPick.name} to win this match, but they weren't in it, so it scored nothing.`
+                                  : outPick.eliminated
+                                    ? "Your pick lost in an earlier round. You can still make picks for later rounds, but they won't score unless you change your upstream picks."
+                                    : `${outPick.name} isn't in this match any more — the draw changed. Pick one of the two players to score here.`
+                              }>
                                 <span style={{
                                   fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.04em',
                                   color: '#991b1b', background: '#fee2e2', padding: '1px 6px', borderRadius: '2px',
                                   display: 'inline-flex', alignItems: 'center', cursor: 'help',
                                 }}>
-                                  {voidPickPlayer?.name ?? 'Your pick'} eliminated
+                                  {outPick.name} {outPick.eliminated ? 'eliminated' : 'not in draw'}
                                   <InfoIcon />
                                 </span>
                               </Tooltip>
@@ -2207,7 +2265,7 @@ export default function BracketPredictor({
 {/* What this pick is worth, while it can still change. Shown only in
                                 the editable state: once committed the LOCKED badge takes
                                 this slot and the number is already settled. */}
-                            {!voidPick && lockDisplay === 'editable' && !!pickedId && !isBye && (() => {
+                            {!outPick && lockDisplay === 'editable' && !!pickedId && !isBye && (() => {
                               const mult = previewMultiplier(match.matchId)
                               const carries = mult > 1
                               const base = roundPoints(match.round)
@@ -2238,7 +2296,7 @@ export default function BracketPredictor({
                             })()}
 
                             {/* Lock status / hint — voluntary (user chose to lock THIS pick) → green */}
-                            {!voidPick && lockDisplay === 'voluntary_locked' && (() => {
+                            {!outPick && lockDisplay === 'voluntary_locked' && (() => {
                               const mult = canShowMultiplier ? previewMultiplier(match.matchId) : null
                               const base = roundPoints(match.round)
                               const total = mult === null || base === null ? null : base * mult
@@ -2261,7 +2319,7 @@ export default function BracketPredictor({
                               )
                             })()}
                             {/* Fully locked — whole bracket is final (read-only or "Lock all picks") → gray */}
-                            {!voidPick && lockDisplay === 'fully_locked' && (() => {
+                            {!outPick && lockDisplay === 'fully_locked' && (() => {
                               const mult = canShowMultiplier && !!pickedId && !isBye
                                 ? previewMultiplier(match.matchId) : null
                               const base = roundPoints(match.round)
@@ -2290,12 +2348,12 @@ export default function BracketPredictor({
                                 </Tooltip>
                               )
                             })()}
-                            {!voidPick && lockDisplay === 'auto_locked' && (
+                            {!outPick && lockDisplay === 'auto_locked' && (
                               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em', color: 'var(--muted)' }}>
                                 PLAYED
                               </span>
                             )}
-                            {!voidPick && lockDisplay === 'admin_locked_secured' && (() => {
+                            {!outPick && lockDisplay === 'admin_locked_secured' && (() => {
                               // "In time" and "committed" are different things, and this state
                               // covers both. Admin-locked wins over voluntary_locked in
                               // getMatchLockDisplay, so a pick here may be committed — real lock
@@ -2324,7 +2382,7 @@ export default function BracketPredictor({
                                 </Tooltip>
                               )
                             })()}
-                            {!voidPick && lockDisplay === 'admin_locked_pickable' && (
+                            {!outPick && lockDisplay === 'admin_locked_pickable' && (
                               <Tooltip text="You can still make a pick, but no points will be awarded — the admin locked this match after it started.">
                                 <span style={{
                                   fontFamily: 'var(--font-mono)', fontSize: '0.55rem', letterSpacing: '0.04em',
