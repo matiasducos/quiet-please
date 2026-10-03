@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { getSessionUser } from '@/lib/supabase/profile'
 import { createClient } from '@/lib/supabase/server'
+import { loadStrayPickPlayers } from '@/lib/tennis/stray-picks'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import BracketPredictor from './BracketPredictor'
@@ -122,6 +123,13 @@ export default async function PredictPage({
   }
 
   if (!draw?.bracket_data) redirect(`/tournaments/${id}`)
+
+  // Usually no query at all: only runs when a pick names someone the draw lost.
+  const strayPickPlayers = await loadStrayPickPlayers(
+    supabase,
+    (prediction?.picks as Record<string, string>) ?? {},
+    (draw.bracket_data as any).matches ?? [],
+  )
 
   // ── Match results + points (points need prediction.id) ─────────────────
   const matchResults: Record<string, string> = Object.fromEntries(
@@ -298,6 +306,7 @@ export default async function PredictPage({
       challengeContext={challengeContext}
       shareUrl={!challengeId && profile?.username ? `/tournaments/${id}/picks/${profile.username}` : undefined}
       adminLockedMatches={adminLockedMatches}
+      strayPickPlayers={strayPickPlayers}
       lockedPicks={(prediction?.locked_picks as string[]) ?? []}
       pickLockTimes={(prediction?.pick_lock_times as Record<string, string>) ?? {}}
       matchDecidedAt={matchDecidedAt}

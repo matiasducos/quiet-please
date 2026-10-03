@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getSessionUser } from '@/lib/supabase/profile'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { loadStrayPickPlayers } from '@/lib/tennis/stray-picks'
 import { notFound } from 'next/navigation'
 import BracketPredictor from '../../predict/BracketPredictor'
 import { parseBracketView } from '@/lib/bracket/view'
@@ -73,7 +74,7 @@ export default async function UserPicksPage({
   }
 
   // Fetch match results for color coding + per-match points
-  const [{ data: results }, { data: pointRows }] = await Promise.all([
+  const [{ data: results }, { data: pointRows }, strayPickPlayers] = await Promise.all([
     supabase
       .from('match_results')
       .select('external_match_id, winner_external_id')
@@ -83,6 +84,11 @@ export default async function UserPicksPage({
       .select('points, streak_multiplier, match_results(external_match_id)')
       .eq('user_id', targetUser.id)
       .eq('tournament_id', id),
+    loadStrayPickPlayers(
+      supabase,
+      (prediction?.picks as Record<string, string>) ?? {},
+      (draw.bracket_data as any)?.matches ?? [],
+    ),
   ])
 
   const matchResults: Record<string, string> = Object.fromEntries(
@@ -125,6 +131,7 @@ export default async function UserPicksPage({
       matchPoints={matchPoints}
       readOnly
       initialView={initialView}
+      strayPickPlayers={strayPickPlayers}
     />
   )
 }
